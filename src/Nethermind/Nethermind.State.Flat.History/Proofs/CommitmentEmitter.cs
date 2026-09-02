@@ -12,14 +12,17 @@ namespace Nethermind.State.Flat.History.Proofs;
 public sealed class CommitmentEmitter : IDisposable
 {
     public const int DefaultMaxOpenWindowNodes = 200_000;
+    public const int WalkMaxOpenWindowNodes = 50_000;
     public const byte LargeTrieFlag = 0xFF;
     private const int MaxRowsPerBatch = 65_536;
+    private const int WindowFlushChunk = 256;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly CommitmentDepthPolicy _policy;
     private readonly CommitmentStore _accounts;
     private readonly CommitmentStore _storages;
     private readonly IDb _storageColumn;
+    private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
     private readonly bool _writeThrough;
     private readonly int _maxOpenWindowNodes;
@@ -40,11 +43,12 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _block;
     private bool _haveBlock;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, object windowWriteLock, bool writeThrough, int maxOpenWindowNodes)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool writeThrough, int maxOpenWindowNodes)
     {
         _history = history;
         _policy = policy;
-        _windowWriteLock = windowWriteLock;
+        _metadata = metadata;
+        _windowWriteLock = metadata.WindowWriteLock;
         _writeThrough = writeThrough;
         _maxOpenWindowNodes = maxOpenWindowNodes;
         _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
@@ -52,11 +56,11 @@ public sealed class CommitmentEmitter : IDisposable
         _storages = new CommitmentStore(_storageColumn);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, object windowWriteLock, int maxOpenWindowNodes = DefaultMaxOpenWindowNodes) =>
-        new(history, policy, windowWriteLock, writeThrough: false, maxOpenWindowNodes);
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
+        new(history, policy, metadata, writeThrough: false, WalkMaxOpenWindowNodes);
 
-    public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, object windowWriteLock) =>
-        new(history, policy, windowWriteLock, writeThrough: true, DefaultMaxOpenWindowNodes);
+    public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
+        new(history, policy, metadata, writeThrough: true, DefaultMaxOpenWindowNodes);
 
     public CommitmentDepthPolicy Policy => _policy;
 
@@ -135,12 +139,14 @@ public sealed class CommitmentEmitter : IDisposable
             return true;
         }
 
+        if (_metadata.IsKnownLargeStorageTrie(accountPath)) return true;
         if (_largeTries.TryGetValue(accountPath, out bool large)) return large;
 
         Span<byte> flagKey = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
         WriteLargeTrieFlagKey(flagKey, accountPath);
         large = _storageColumn.KeyExists(flagKey);
         _largeTries[accountPath] = large;
+        if (large) _metadata.RememberLargeStorageTrie(accountPath);
         return large;
     }
 
@@ -242,16 +248,17 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void MarkLarge(in ValueHash256 accountPath)
     {
-        if (_largeTries.TryGetValue(accountPath, out bool large) && large) return;
+        if (_metadata.IsKnownLargeStorageTrie(accountPath)) return;
 
         _largeTries[accountPath] = true;
+        _metadata.RememberLargeStorageTrie(accountPath);
         Span<byte> flagKey = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
         WriteLargeTrieFlagKey(flagKey, accountPath);
         if (_storageColumn.KeyExists(flagKey)) return;
 
         Span<byte> since = stackalloc byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(since, _block);
-        GetBatch(FlatHistoryColumns.StorageCommitments).PutSpan(flagKey, since);
+        _storageColumn.PutSpan(flagKey, since);
     }
 
     private void WriteExact(in NodePathKey key, byte[]? rlp)
@@ -321,10 +328,15 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void FlushWindows(ulong window)
     {
-        lock (_windowWriteLock)
+        List<KeyValuePair<NodePathKey, WindowState>> pending = [.. _windows];
+        for (int start = 0; start < pending.Count; start += WindowFlushChunk)
         {
-            foreach ((NodePathKey key, WindowState state) in _windows) MergeWrite(key, state, window);
-            CommitBatch();
+            int end = Math.Min(pending.Count, start + WindowFlushChunk);
+            lock (_windowWriteLock)
+            {
+                for (int index = start; index < end; index++) MergeWrite(pending[index].Key, pending[index].Value, window);
+                CommitBatch();
+            }
         }
 
         _windows.Clear();

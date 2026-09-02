@@ -13,10 +13,12 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Flat.History.Walk;
 
 internal sealed class StorageSubtreeReplayer(
+    ISortedKeyValueStore accountHistory,
     ISortedKeyValueStore storageHistory,
     HistoryRowFormat rowFormat,
     bool rlpWrapSlots,
-    ILogManager logManager)
+    ILogManager logManager,
+    MismatchSink sink)
 {
     public void Replay(
         in TreePath slotPrefix,
@@ -25,20 +27,23 @@ internal sealed class StorageSubtreeReplayer(
         ulong from,
         ulong to,
         CommitmentEmitter? emitter,
-        Func<ValueHash256, SeriesKey>? seriesKeyFor,
         SeriesWriter series,
-        ContractRootCheck? check,
+        bool writeSeries,
         CancellationToken token)
     {
-        foreach (ClearRecord clear in clears)
-        {
-            if (clear.Block > from && clear.Block <= to) rows.ContractOf(clear.Identity);
-        }
-
         Contract[] contracts = new Contract[rows.Identities.Count];
         for (int i = 0; i < contracts.Length; i++)
         {
-            contracts[i] = new Contract(rows.Identities[i], slotPrefix, seriesKeyFor?.Invoke(rows.Identities[i]), series);
+            ValueHash256 identity = rows.Identities[i];
+            SeriesPublisher? publisher = writeSeries ? new SeriesPublisher(SeriesScope.Storage(identity), slotPrefix, SeriesScope.Storage(identity).Key(slotPrefix, scratch: true), series) : null;
+            ContractRootCheck? check = null;
+            if (!writeSeries)
+            {
+                check = new ContractRootCheck(accountHistory, rowFormat, sink);
+                check.Begin(identity, from, to, token);
+            }
+
+            contracts[i] = new Contract(identity, slotPrefix, publisher, check);
             contracts[i].Reset(emitter, logManager);
         }
 
@@ -48,14 +53,13 @@ internal sealed class StorageSubtreeReplayer(
         {
             Contract contract = contracts[contractIndex];
             HistoryRowScanner.WriteStorageFlatKey(flatKey, contract.Identity, slot);
-            HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to);
+            HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to, token);
             if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && !HistoryRowScanner.KilledByClear(clears, contract.Identity, writtenAt, asOf: from))
             {
                 contract.Tree!.Set(slot, start, rlpEncode: !rlpWrapSlots);
             }
 
-            IEnumerator<(ulong Block, byte[] Value)> ascending = cursor.Ascending().GetEnumerator();
-            streams.Add(new StreamedSlot(contractIndex, slot, ascending, ascending.MoveNext()));
+            streams.Add(new StreamedSlot(contractIndex, slot, cursor, cursor.MoveNext()));
         }
 
         foreach (StorageRowRef row in rows.Start)
@@ -67,7 +71,7 @@ internal sealed class StorageSubtreeReplayer(
         foreach (Contract contract in contracts)
         {
             contract.Recompute();
-            contract.EmitView(from, emitter, force: true);
+            contract.PublishAnchor(from, emitter);
         }
 
         emitter?.CompleteBlock();
@@ -76,7 +80,7 @@ internal sealed class StorageSubtreeReplayer(
         List<(ulong Block, int Contract)> clearEvents = [];
         foreach (ClearRecord clear in clears)
         {
-            if (clear.Block > from && clear.Block <= to) clearEvents.Add((clear.Block, rows.ContractOf(clear.Identity)));
+            if (clear.Block > from && clear.Block <= to && rows.TryGetContract(clear.Identity, out int contract)) clearEvents.Add((clear.Block, contract));
         }
 
         clearEvents.Sort(static (a, b) => a.Block.CompareTo(b.Block));
@@ -92,7 +96,7 @@ internal sealed class StorageSubtreeReplayer(
             if (nextClear < clearEvents.Count && clearEvents[nextClear].Block < block) block = clearEvents[nextClear].Block;
             foreach (StreamedSlot stream in streams)
             {
-                if (stream.HasRow && stream.Rows.Current.Block < block) block = stream.Rows.Current.Block;
+                if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
             }
 
             if (block == ulong.MaxValue) break;
@@ -115,9 +119,9 @@ internal sealed class StorageSubtreeReplayer(
 
             foreach (StreamedSlot stream in streams)
             {
-                if (!stream.HasRow || stream.Rows.Current.Block != block) continue;
+                if (!stream.HasRow || stream.Rows.Block != block) continue;
 
-                contracts[stream.Contract].Tree!.Set(stream.Slot, stream.Rows.Current.Value, rlpEncode: !rlpWrapSlots);
+                contracts[stream.Contract].Tree!.Set(stream.Slot, stream.Rows.Value.ToArray(), rlpEncode: !rlpWrapSlots);
                 touched.Add(stream.Contract);
                 stream.HasRow = stream.Rows.MoveNext();
             }
@@ -126,102 +130,57 @@ internal sealed class StorageSubtreeReplayer(
             {
                 Contract contract = contracts[index];
                 contract.Recompute();
-                contract.EmitView(block, emitter, force: false);
-                contract.Events?.Add((block, contract.Tree!.RootHash.ValueHash256));
+                contract.PublishChange(block, emitter);
             }
 
             emitter?.CompleteBlock();
         }
 
-        foreach (StreamedSlot stream in streams) stream.Rows.Dispose();
-
-        if (check is null) return;
-
-        foreach (Contract contract in contracts)
-        {
-            token.ThrowIfCancellationRequested();
-            check.Begin(contract.Identity, from, to);
-            foreach ((ulong block, ValueHash256 root) in contract.Events!) check.OnRoot(block, root);
-            check.End();
-        }
+        foreach (Contract contract in contracts) contract.Check?.End();
     }
 
-    private sealed class StreamedSlot(int contract, ValueHash256 slot, IEnumerator<(ulong Block, byte[] Value)> rows, bool hasRow)
+    private sealed class StreamedSlot(int contract, ValueHash256 slot, HistoryRowCursor rows, bool hasRow)
     {
         public readonly int Contract = contract;
         public readonly ValueHash256 Slot = slot;
-        public readonly IEnumerator<(ulong Block, byte[] Value)> Rows = rows;
+        public readonly HistoryRowCursor Rows = rows;
         public bool HasRow = hasRow;
     }
 
-    private sealed class Contract(ValueHash256 identity, TreePath slotPrefix, SeriesKey? seriesKey, SeriesWriter series)
+    private sealed class Contract(ValueHash256 identity, TreePath slotPrefix, SeriesPublisher? publisher, ContractRootCheck? check)
     {
-        private ValueHash256 _lastRoot;
-        private bool _haveRoot;
-        private NodeViewKind _lastKind = NodeViewKind.Empty;
-        private byte[]?[]? _lastChildren;
-        private CommitmentRecordingTrieStore? _recording;
+        private readonly TrieChangeCollector _changes = new();
         private IScopedTrieStore? _store;
+        private CommitmentEmitter? _emitter;
 
         public readonly ValueHash256 Identity = identity;
-        public readonly List<(ulong Block, ValueHash256 Root)>? Events = seriesKey is null ? [] : null;
+
+        public ContractRootCheck? Check => check;
 
         public StorageTree? Tree { get; private set; }
 
         public void Reset(CommitmentEmitter? emitter, ILogManager logManager)
         {
-            RawScopedTrieStore raw = new(new MemDb());
-            _recording = emitter is null ? null : new CommitmentRecordingTrieStore(raw, emitter, Identity, slotPrefix.Length);
-            _store = _recording ?? (IScopedTrieStore)raw;
+            _emitter = emitter;
+            _store = new RawScopedTrieStore(new MemDb());
             Tree = new StorageTree(_store, logManager);
         }
 
         public void Recompute()
         {
-            if (_recording is null)
-            {
-                Tree!.UpdateRootHash();
-                return;
-            }
-
-            Tree!.Commit();
+            if (_emitter is not null) _changes.Collect(Tree!.RootRef);
+            Tree!.UpdateRootHash();
+            if (_emitter is not null) _changes.RecordStorage(_emitter, Identity, slotPrefix.Length);
         }
 
-        public void EmitView(ulong block, CommitmentEmitter? emitter, bool force)
+        public void PublishAnchor(ulong block, CommitmentEmitter? emitter) =>
+            publisher?.Publish(block, NodeViews.FromRoot(Tree!.RootRef, slotPrefix.Length, _store!), emitter);
+
+        public void PublishChange(ulong block, CommitmentEmitter? emitter)
         {
-            if (seriesKey is null) return;
-
             ValueHash256 root = Tree!.RootHash.ValueHash256;
-            if (!force && _haveRoot && root == _lastRoot) return;
-
-            _haveRoot = true;
-            _lastRoot = root;
-            NodeView view = NodeViews.FromRoot(Tree.RootRef, slotPrefix.Length, _store!);
-            ushort changed = 0;
-            if (view.Kind == NodeViewKind.Branch)
-            {
-                ushort presence = NodeViews.PresenceOf(view.Children!);
-                changed = _lastKind == NodeViewKind.Branch ? NodeViews.ChangedChildren(_lastChildren, view.Children!) : presence;
-                series.Write(seriesKey.Value, block, ParentRowCodec.EncodeBranch(block, presence, changed, view.Children!));
-            }
-            else if (view.Kind == NodeViewKind.Whole)
-            {
-                series.Write(seriesKey.Value, block, ParentRowCodec.EncodeWholeNode(block, view.Rlp!));
-            }
-            else
-            {
-                series.Write(seriesKey.Value, block, ParentRowCodec.EncodeEmpty(block));
-            }
-
-            if (emitter is not null)
-            {
-                if (view.Kind == NodeViewKind.Empty) emitter.RecordStorageEmpty(Identity, slotPrefix);
-                else if (view.Kind == NodeViewKind.Branch) emitter.RecordStorageNode(Identity, slotPrefix, view.Rlp!, changed);
-                else emitter.RecordStorageNode(Identity, slotPrefix, view.Rlp!, changedChildren: 0);
-            }
-
-            _lastKind = view.Kind;
-            _lastChildren = view.Children;
+            check?.OnRoot(block, root);
+            if (publisher is not null && publisher.IsNew(root)) publisher.Publish(block, NodeViews.FromRoot(Tree.RootRef, slotPrefix.Length, _store!), emitter);
         }
     }
 }

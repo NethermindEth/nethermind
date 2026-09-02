@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -33,42 +34,113 @@ public class CommitmentEmitterTests
     [TearDown]
     public void TearDown() => _historyColumns.Dispose();
 
-    [Test]
-    public void A_full_vector_window_stays_full_when_an_older_block_is_merged_under_a_newer_row()
+    [TestCase(true, TestName = "ExistingRowNewer")]
+    [TestCase(false, TestName = "MergedStateNewer")]
+    public void A_full_vector_window_carries_every_present_child_whichever_writer_came_first(bool walkFirst)
     {
         ulong fullWindow = CommitmentDepthPolicy.FullVectorEvery;
         ulong closing = fullWindow * Policy.Interval;
-        byte[]?[] children = Children(0, 1, 2);
+        byte[]?[] newer = Children(0, 1, 2, 5);
+        byte[]?[] older = Children(0, 1, 2);
+        older[1] = TestItem.KeccakF.BytesToArray();
 
-        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata.WindowWriteLock))
+        if (walkFirst)
         {
-            walk.BeginBlock(closing);
-            walk.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(children));
+            WriteWindow(CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata), closing, newer);
+            WriteWindow(CommitmentEmitter.ForTip(_historyColumns, Policy, _metadata), closing - 1, older);
+        }
+        else
+        {
+            WriteWindow(CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata), closing - 1, older);
+            WriteWindow(CommitmentEmitter.ForTip(_historyColumns, Policy, _metadata), closing, newer);
+        }
+
+        byte[] row = WindowRow(CheckpointedPath, fullWindow)!;
+        byte[]?[] carried = new byte[]?[BranchRlp.ChildCount];
+        ushort presence = ParentRowCodec.Presence(row);
+        ushort filled = ParentRowCodec.Fill(row, presence, carried);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ParentRowCodec.LastBlock(row), Is.EqualTo(closing), "the newer block keeps the row");
+            Assert.That(filled, Is.EqualTo(presence), "a full-vector window carries a reference for every present child however the two writers interleave");
+            Assert.That(carried[1], Is.EqualTo(newer[1]), "a child both writers carried resolves to the newer block's reference");
+            Assert.That(carried[5], Is.EqualTo(newer[5]), "a child only the newer block carried is present in the merged row");
+        }
+    }
+
+    [Test]
+    public void A_node_one_level_below_the_deepest_checkpoint_marks_its_parents_changed_child()
+    {
+        TreePath deepest = TreePath.FromHexString("abcdefa");
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            walk.RecordAccountNode(deepest, BranchRlp.Encode(Children(5, 9)));
+            walk.CompleteBlock();
+            walk.BeginBlock(2);
+            walk.RecordAccountNode(deepest, BranchRlp.Encode(Children(5, 9)));
+            walk.RecordAccountNode(deepest.Append(5), LeafRlp());
             walk.CompleteBlock();
             walk.FlushOpenWindows();
         }
 
-        children[5] = TestItem.KeccakF.BytesToArray();
-        using (CommitmentEmitter tip = CommitmentEmitter.ForTip(_historyColumns, Policy, _metadata.WindowWriteLock))
-        {
-            tip.BeginBlock(closing - 1);
-            tip.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(children));
-            tip.CompleteBlock();
-        }
-
-        byte[] row = WindowRow(CheckpointedPath, fullWindow)!;
+        byte[] row = WindowRow(deepest, Policy.WindowClosingAt(2))!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ParentRowCodec.LastBlock(row), Is.EqualTo(closing), "the newer block keeps the row");
-            Assert.That(ParentRowCodec.Changed(row) & ParentRowCodec.Presence(row), Is.EqualTo(ParentRowCodec.Presence(row)),
-                "a full-vector window must carry every present child however the two emitters interleave, or the backward walk that relies on it never terminates early");
+            Assert.That((ParentRowCodec.Changed(row) >> 5) & 1, Is.EqualTo(1),
+                "the child at the first uncommitted depth is only known to have changed through its own commit record, so its key must be kept even though its bytes are dropped");
+            Assert.That((ParentRowCodec.Changed(row) >> 9) & 1, Is.Zero, "a child nobody touched stays unchanged");
+        }
+    }
+
+    [Test]
+    public void A_subtree_that_empties_inside_a_window_leaves_an_empty_row_not_its_last_branch()
+    {
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            walk.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(Children(0, 1)));
+            walk.CompleteBlock();
+            walk.BeginBlock(2);
+            walk.RecordAccountEmpty(CheckpointedPath);
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        Assert.That(ParentRowCodec.IsEmptyRow(WindowRow(CheckpointedPath, Policy.WindowClosingAt(2))!), Is.True,
+            "a subtree that vanished must not leave its previous branch readable at that window, or a fold above it would keep a child that no longer exists");
+    }
+
+    [Test]
+    public void A_branch_that_carries_a_value_is_refused_by_the_child_reader()
+    {
+        byte[] valued = new byte[19];
+        valued[0] = 0xD2;
+        for (int i = 1; i <= 16; i++) valued[i] = 0x80;
+        valued[17] = 0x81;
+        valued[18] = 0x7F;
+        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+
+        Assert.That(() => BranchRlp.ReadChildren(valued, children), Throws.InstanceOf<InvalidDataException>(),
+            "state and storage tries key by fixed-width hashes, so no branch can carry a value; one that does is not a node of these tries and must not round-trip to a different node");
+    }
+
+    private static void WriteWindow(CommitmentEmitter emitter, ulong block, byte[]?[] children)
+    {
+        using (emitter)
+        {
+            emitter.BeginBlock(block);
+            emitter.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(children));
+            emitter.CompleteBlock();
+            emitter.FlushOpenWindows();
         }
     }
 
     [Test]
     public void A_child_that_appears_and_vanishes_inside_a_window_keeps_its_changed_bit()
     {
-        using CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata.WindowWriteLock);
+        using CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata);
         walk.BeginBlock(1);
         walk.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(Children(0, 1)));
         walk.CompleteBlock();
@@ -93,7 +165,7 @@ public class CommitmentEmitterTests
     [Test]
     public void A_storage_trie_that_once_reached_the_signal_depth_stays_large_for_a_later_emitter()
     {
-        using (CommitmentEmitter first = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata.WindowWriteLock))
+        using (CommitmentEmitter first = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
         {
             first.BeginBlock(1);
             first.RecordStorageNode(StorageAccount, TreePath.FromHexString("7abcde"), LeafRlp());
@@ -102,7 +174,7 @@ public class CommitmentEmitterTests
             first.FlushOpenWindows();
         }
 
-        using (CommitmentEmitter second = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata.WindowWriteLock))
+        using (CommitmentEmitter second = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
         {
             second.BeginBlock(2);
             second.RecordStorageNode(StorageAccount, StorageTop, BranchRlp.Encode(Children(0xa, 0xc)));
@@ -122,7 +194,7 @@ public class CommitmentEmitterTests
     [Test]
     public void A_commitment_row_scan_is_charged_against_the_proof_budget()
     {
-        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata.WindowWriteLock))
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
         {
             for (ulong block = 1; block <= 3; block++)
             {
@@ -171,9 +243,10 @@ public class CommitmentEmitterTests
         }
     }
 
-    [Test]
-    public void A_depth_that_does_not_fit_the_stamp_is_refused() =>
-        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, 1, 16, 2, 4, 6), Throws.InstanceOf<InvalidConfigurationException>(),
+    [TestCase(1, 16, 2, 4, 6, TestName = "AccountCheckpointDepth")]
+    [TestCase(1, 7, 2, 16, 20, TestName = "StorageCheckpointDepth")]
+    public void A_depth_that_does_not_fit_the_stamp_is_refused(int accountExact, int accountCheckpoint, int storageExact, int storageCheckpoint, int signal) =>
+        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, accountExact, accountCheckpoint, storageExact, storageCheckpoint, signal), Throws.InstanceOf<InvalidConfigurationException>(),
             "the layout stamp packs depths into nibbles; a depth above 15 would collide with another layout and defeat the mixing guard");
 
     private byte[]? WindowRow(in TreePath path, ulong window)

@@ -4,27 +4,11 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Walk;
-
-internal enum ScanOutcome : byte
-{
-    Fits,
-    SinglePathOverflow,
-    Split,
-}
-
-internal sealed class StorageRootMoveCheck(StoragePresenceProbe probe, ulong to, List<HistoryWalkMismatch> mismatches)
-{
-    public void OnMoved(in ValueHash256 accountPath, ulong block, in ValueHash256 previous, in ValueHash256 current)
-    {
-        if (probe.HasStorageHistory(accountPath, to)) return;
-
-        mismatches.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingSlotHistory, previous, current));
-    }
-}
 
 internal sealed class HistoryRowScanner(
     ISortedKeyValueStore accountHistory,
@@ -68,7 +52,7 @@ internal sealed class HistoryRowScanner(
             ReadOnlySpan<byte> pathBytes = key[..Hash256.Size];
             if (!havePath || !pathBytes.SequenceEqual(currentPath.Bytes))
             {
-                if (havePending && pendingRoot != Keccak.EmptyTreeHash.ValueHash256) check.OnMoved(currentPath, pendingBlock, Keccak.EmptyTreeHash.ValueHash256, pendingRoot);
+                if (havePending) FinishPath(check, currentPath, pendingBlock, pendingRoot);
 
                 currentPath = new ValueHash256(pathBytes);
                 havePath = true;
@@ -84,7 +68,7 @@ internal sealed class HistoryRowScanner(
             if (block > to) continue;
 
             ReadOnlySpan<byte> value = view.CurrentValue;
-            ValueHash256 root = value.IsEmpty ? Keccak.EmptyTreeHash.ValueHash256 : ContractRootCheck.StorageRootOf(value);
+            ValueHash256 root = StorageRootOf(value);
             if (havePending)
             {
                 if (root != pendingRoot) check.OnMoved(currentPath, pendingBlock, root, pendingRoot);
@@ -111,8 +95,60 @@ internal sealed class HistoryRowScanner(
             rows.Start.Add(new AccountRowRef(currentPath, from, rows.Arena.Append(value), value.Length));
         }
 
-        if (havePending && pendingRoot != Keccak.EmptyTreeHash.ValueHash256) check.OnMoved(currentPath, pendingBlock, Keccak.EmptyTreeHash.ValueHash256, pendingRoot);
+        if (havePending) FinishPath(check, currentPath, pendingBlock, pendingRoot);
         return ScanOutcome.Fits;
+    }
+
+    public void ScanStorageGroups(byte firstByte, ulong from, ulong to, long maxRows, Action<StorageGroup> onGroup, CancellationToken token)
+    {
+        byte[] lower = new byte[StorageRowKeyLength];
+        lower[0] = firstByte;
+        byte[] end = new byte[StorageRowKeyLength + 1];
+        if (firstByte == byte.MaxValue) end.AsSpan().Fill(0xFF);
+        else end[0] = (byte)(firstByte + 1);
+
+        while (true)
+        {
+            byte[]? nextLower = null;
+            StorageGroup? group = null;
+            StorageRowCollector? collector = null;
+            bool overflow = false;
+
+            using (ISortedView view = storageHistory.GetViewBetween(lower, end, ReadFlags.HintCacheMiss))
+            {
+                while (view.MoveNext())
+                {
+                    token.ThrowIfCancellationRequested();
+                    ReadOnlySpan<byte> key = view.CurrentKey;
+                    if (key.Length != StorageRowKeyLength) continue;
+
+                    ReadOnlySpan<byte> prefix = key[..StoragePrefixLength];
+                    if (group is null)
+                    {
+                        List<ClearRecord> clears = ScanClears(prefix, to);
+                        StoragePartitionRows rows = new();
+                        collector = new StorageRowCollector(rows, clears, from, to, maxRows, rowFormat);
+                        group = new StorageGroup(prefix.ToArray(), rows, clears, Overflow: false);
+                    }
+                    else if (!prefix.SequenceEqual(group.Prefix))
+                    {
+                        nextLower = new byte[StorageRowKeyLength];
+                        prefix.CopyTo(nextLower);
+                        break;
+                    }
+
+                    if (overflow) continue;
+                    if (!collector!.TryAdd(key, view.CurrentValue)) overflow = true;
+                }
+            }
+
+            if (group is null) return;
+
+            onGroup(overflow ? group with { Overflow = true } : group);
+            if (nextLower is null) return;
+
+            lower = nextLower;
+        }
     }
 
     public ScanOutcome ScanStorage(ReadOnlySpan<byte> storagePrefix, in TreePath slotPrefix, ulong from, ulong to, long maxRows, StoragePartitionRows rows, IReadOnlyList<ClearRecord> clears, CancellationToken token)
@@ -145,7 +181,7 @@ internal sealed class HistoryRowScanner(
         return ScanOutcome.Fits;
     }
 
-    public List<ClearRecord> LoadClears(ReadOnlySpan<byte> storagePrefix, ulong to)
+    public List<ClearRecord> ScanClears(ReadOnlySpan<byte> storagePrefix, ulong to)
     {
         List<ClearRecord> clears = [];
         Span<byte> lower = stackalloc byte[ClearRowKeyLength];
@@ -171,6 +207,32 @@ internal sealed class HistoryRowScanner(
         }
 
         return clears;
+    }
+
+    public static ValueHash256 StorageRootOf(ReadOnlySpan<byte> accountRow)
+    {
+        if (accountRow.IsEmpty) return Keccak.EmptyTreeHash.ValueHash256;
+
+        RlpReader reader = new(accountRow);
+        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
+        {
+            throw new InvalidOperationException("An account history row failed to decode; the column is corrupt.");
+        }
+
+        return account.StorageRoot;
+    }
+
+    public static Account? DecodeAccount(ReadOnlySpan<byte> accountRow)
+    {
+        if (accountRow.IsEmpty) return null;
+
+        RlpReader reader = new(accountRow);
+        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
+        {
+            throw new InvalidOperationException("An account history row failed to decode; the column is corrupt.");
+        }
+
+        return new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment());
     }
 
     public static bool KilledByClear(IReadOnlyList<ClearRecord> clears, in ValueHash256 identity, ulong writtenAt, ulong asOf)
@@ -218,6 +280,11 @@ internal sealed class HistoryRowScanner(
         return identity;
     }
 
+    private static void FinishPath(StorageRootMoveCheck check, in ValueHash256 path, ulong block, in ValueHash256 root)
+    {
+        if (root != Keccak.EmptyTreeHash.ValueHash256) check.OnMoved(path, block, Keccak.EmptyTreeHash.ValueHash256, root);
+    }
+
     private static void WritePathBounds(in TreePath prefix, Span<byte> lower, Span<byte> upper)
     {
         int wholeBytes = prefix.Length / 2;
@@ -242,59 +309,5 @@ internal sealed class HistoryRowScanner(
 
         rows.Reset();
         return ScanOutcome.Split;
-    }
-}
-
-internal sealed class StorageRowCollector(StoragePartitionRows rows, IReadOnlyList<ClearRecord> clears, ulong from, ulong to, long maxRows, HistoryRowFormat rowFormat)
-{
-    private readonly byte[] _currentFlatKey = new byte[BaseFlatPersistence.StorageKeyLength];
-    private bool _haveKey;
-    private bool _skipping;
-    private bool _startTaken;
-    private int _contract;
-    private ValueHash256 _identity;
-    private ValueHash256 _slot;
-
-    public int DistinctKeys { get; private set; }
-
-    public (int Contract, ValueHash256 Slot) Current => (_contract, _slot);
-
-    public bool TryAdd(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-    {
-        ReadOnlySpan<byte> flatKey = key[..BaseFlatPersistence.StorageKeyLength];
-        if (!_haveKey || !flatKey.SequenceEqual(_currentFlatKey))
-        {
-            flatKey.CopyTo(_currentFlatKey);
-            _haveKey = true;
-            _startTaken = false;
-            _identity = HistoryRowScanner.IdentityOf(key);
-            _slot = new ValueHash256(key.Slice(HistoryRowScanner.SlotOffset, Hash256.Size));
-            _contract = rows.ContractOf(_identity);
-            _skipping = rows.StreamedSlots.Contains((_contract, _slot));
-            if (!_skipping) DistinctKeys++;
-        }
-
-        if (_skipping) return true;
-
-        ulong block = rowFormat.DecodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..]);
-        if (block > to) return true;
-
-        if (block > from)
-        {
-            if (rows.Count >= maxRows) return false;
-
-            rows.Deltas.Add(new StorageRowRef(_contract, _slot, block, rows.Arena.Append(value), value.Length));
-            return true;
-        }
-
-        if (_startTaken) return true;
-
-        _startTaken = true;
-        if (value.IsEmpty) return true;
-        if (HistoryRowScanner.KilledByClear(clears, _identity, writtenAt: block, asOf: from)) return true;
-        if (rows.Count >= maxRows) return false;
-
-        rows.Start.Add(new StorageRowRef(_contract, _slot, from, rows.Arena.Append(value), value.Length));
-        return true;
     }
 }

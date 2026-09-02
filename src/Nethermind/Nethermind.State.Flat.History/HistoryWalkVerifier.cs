@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryWalkVerifier
 {
-    public const long DefaultMaxRowsPerPartition = 8_000_000;
+    public const long DefaultMaxRowsPerPartition = 2_000_000;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly IHistoryHeaderSource _headers;
@@ -85,9 +85,6 @@ public sealed class HistoryWalkVerifier
     public HistoryWalkVerdict VerifyRange(ulong fromInclusive, ulong toInclusive, CancellationToken token) =>
         VerifyRangeParallel(fromInclusive, toInclusive, 1, token);
 
-    /// <summary>Verifies the range with up to <paramref name="workers"/> subtrees replaying concurrently; every
-    /// subtree is anchored at the range start from its own rows, so the worker count changes memory and wall
-    /// clock, never the proof.</summary>
     public HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int workers, CancellationToken token)
     {
         if (workers < 1) throw new ArgumentOutOfRangeException(nameof(workers));

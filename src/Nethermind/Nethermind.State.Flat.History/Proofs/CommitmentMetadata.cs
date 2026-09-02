@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -19,7 +20,25 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private readonly IDb _column = history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
     private readonly object _lock = new();
 
+    private readonly HashSet<ValueHash256> _largeStorageTries = [];
+
     public object WindowWriteLock { get; } = new();
+
+    public bool IsKnownLargeStorageTrie(in ValueHash256 accountPath)
+    {
+        lock (_largeStorageTries)
+        {
+            return _largeStorageTries.Contains(accountPath);
+        }
+    }
+
+    public void RememberLargeStorageTrie(in ValueHash256 accountPath)
+    {
+        lock (_largeStorageTries)
+        {
+            _largeStorageTries.Add(accountPath);
+        }
+    }
 
     public bool TryReadStamp(CommitmentDepthPolicy policy, out bool matches)
     {

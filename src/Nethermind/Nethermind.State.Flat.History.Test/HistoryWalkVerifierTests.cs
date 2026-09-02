@@ -125,7 +125,7 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
-    public void A_subtree_above_the_row_budget_is_split_and_streamed_and_the_range_still_verifies()
+    public void A_key_above_the_row_budget_is_streamed_and_the_range_still_verifies()
     {
         Account a0 = new(1, 100);
         Account a1 = new(2, 200);
@@ -158,10 +158,267 @@ public class HistoryWalkVerifierTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(split.Mismatches, Is.Empty,
-                "a budget of one row forces every subtree to split down to single keys and stream them; the combined roots must still match every header");
+                "a budget of one row forces every key with more than one row to be streamed from disk; the combined roots must still match every header");
             Assert.That(split.Verified, Is.True);
             Assert.That(split.BlocksCompared, Is.EqualTo(3UL));
             Assert.That(whole.Verified, Is.True, "the same range under the normal budget must verify identically");
+        }
+    }
+
+    [Test]
+    public void A_partition_holding_more_keys_than_the_row_budget_is_split_into_its_children_and_still_verifies()
+    {
+        Address[] siblings = AddressesSharingTheirFirstPathByte(3);
+        Account[] first = [new Account(1, 10), new Account(1, 20), new Account(1, 30)];
+        Account[] later = [new Account(2, 11), new Account(2, 21), new Account(2, 31)];
+        for (int i = 0; i < siblings.Length; i++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, siblings[i], block: 0, first[i]);
+            HistoryColumnsWriter.RecordAccount(_historyColumns, siblings[i], block: 2, later[i]);
+        }
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((siblings[0], first[0]), (siblings[1], first[1]), (siblings[2], first[2]));
+        headers.Roots[1] = headers.Roots[0];
+        headers.Roots[2] = StateRootOf((siblings[0], later[0]), (siblings[1], later[1]), (siblings[2], later[2]));
+        MarkAll(headers);
+
+        HistoryWalkVerdict split = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 2, CancellationToken.None);
+        HistoryWalkVerdict whole = CreateVerifier(headers).VerifyRange(0, 2, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(split.Mismatches, Is.Empty,
+                "three keys under one depth-2 prefix with six rows overflow a three-row budget after the second key, so the partition splits into its children and their views are folded back; the fold must reproduce every header");
+            Assert.That(split.BlocksCompared, Is.EqualTo(3UL));
+            Assert.That(whole.Verified, Is.True);
+        }
+    }
+
+    [Test]
+    public void A_split_partition_still_names_the_exact_misattributed_height()
+    {
+        Address[] siblings = AddressesSharingTheirFirstPathByte(3);
+        Account before = new(1, 100);
+        Account after = new(2, 200);
+        foreach (Address sibling in siblings) HistoryColumnsWriter.RecordAccount(_historyColumns, sibling, block: 0, before);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, siblings[1], block: 1, after);
+        foreach (Address sibling in siblings) HistoryColumnsWriter.RecordAccount(_historyColumns, sibling, block: 3, after);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((siblings[0], before), (siblings[1], before), (siblings[2], before));
+        headers.Roots[1] = headers.Roots[0];
+        headers.Roots[2] = StateRootOf((siblings[0], before), (siblings[1], after), (siblings[2], before));
+        headers.Roots[3] = StateRootOf((siblings[0], after), (siblings[1], after), (siblings[2], after));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 3, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.False);
+            Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Does.Contain((1UL, HistoryWalkMismatchKind.StateRoot)),
+                "a change recorded one block early inside a split partition must surface at that block through the folded root, not be smeared over the range");
+        }
+    }
+
+    [Test]
+    public void A_storage_trie_holding_more_slots_than_the_row_budget_is_split_by_slot_nibble_and_still_verifies()
+    {
+        UInt256[] slots = [1, 2, 3];
+        byte[][] v1 = [[0x01], [0x02], [0x03]];
+        byte[][] v2 = [[0x11], [0x12], [0x13]];
+        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
+        Account b2 = new(2, 50, StorageRootOf((slots[0], v2[0]), (slots[1], v2[1]), (slots[2], v2[2])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, v1[i]);
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 2, v2[i]);
+        }
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = headers.Roots[0];
+        headers.Roots[2] = StateRootOf((AddrB, b2));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 2, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches, Is.Empty,
+                "six slot rows of one contract overflow a three-row budget after the second slot, so the trie is split by slot nibble and folded back per block; the folded storage root must equal the owner's recorded root");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(3UL));
+        }
+    }
+
+    [Test]
+    public void A_corrupted_slot_row_inside_a_split_storage_trie_is_still_caught()
+    {
+        UInt256[] slots = [1, 2, 3];
+        byte[][] v1 = [[0x01], [0x02], [0x03]];
+        byte[][] v2 = [[0x11], [0x12], [0x13]];
+        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
+        Account b2 = new(2, 50, StorageRootOf((slots[0], v2[0]), (slots[1], v2[1]), (slots[2], v2[2])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, v1[i]);
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 2, i == 1 ? [0xEE] : v2[i]);
+        }
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = headers.Roots[0];
+        headers.Roots[2] = StateRootOf((AddrB, b2));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 2, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (2UL, HistoryWalkMismatchKind.StorageRoot) }),
+                "the per-contract root check must survive the split: the folded root at block 2 disagrees with the honest account row and nothing else does");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(3UL), "a storage mismatch reports and continues");
+        }
+    }
+
+    [Test]
+    public void A_destruct_inside_a_split_storage_trie_empties_every_sub_partition()
+    {
+        UInt256[] slots = [1, 2, 3];
+        byte[][] v1 = [[0x01], [0x02], [0x03]];
+        byte[][] v2 = [[0x11], [0x12], [0x13]];
+        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
+        Account b1 = new(2, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        Account b2 = new(3, 50, StorageRootOf((slots[0], v2[0]), (slots[1], v2[1]), (slots[2], v2[2])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 1, b1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
+        RecordClear(AddrB, block: 1);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, v1[i]);
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 2, v2[i]);
+        }
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrB, b1));
+        headers.Roots[2] = StateRootOf((AddrB, b2));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 2, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches, Is.Empty,
+            "a clear inside the range must reset every slot-nibble sub-partition at its block, so the folded root is the empty tree there and the rebuilt values afterwards");
+    }
+
+    [Test]
+    public void A_slot_row_at_a_block_the_account_column_never_recorded_is_caught()
+    {
+        Account b0 = new(1, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, Slot, block: 1, [0xAB]);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = headers.Roots[0];
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (1UL, HistoryWalkMismatchKind.MissingAccountRow) }),
+            "every storage change moves the owner's storage root, so a slot row at a block with no account row for its owner cannot have produced the header honestly");
+    }
+
+    [Test]
+    public void A_storage_root_that_moves_at_a_block_with_no_slot_row_is_caught_for_a_contract_that_has_slot_history()
+    {
+        byte[] v1 = [0xAB];
+        byte[] v2 = [0xCD];
+        Account b0 = new(1, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        Account b1 = new(2, 50, StorageRootOf((Slot, v1)), Keccak.OfAnEmptyString);
+        Account b2 = new(3, 50, StorageRootOf((Slot, v2)), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 1, b1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, Slot, block: 1, v1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrB, b1));
+        headers.Roots[2] = StateRootOf((AddrB, b2));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 2, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (2UL, HistoryWalkMismatchKind.MissingSlotHistory) }),
+            "the contract has slot history, so the merge of its rebuilt roots with its account rows must see the root move at block 2 with no slot change there");
+    }
+
+    [Test]
+    public void A_streamed_accounts_storage_root_move_without_slot_rows_is_caught()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        Account a2 = new(3, 300, StorageRootOf((Slot, [0xAB])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 2, a2);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0));
+        headers.Roots[1] = StateRootOf((AddrA, a1));
+        headers.Roots[2] = StateRootOf((AddrA, a2));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 1).VerifyRange(0, 2, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (2UL, HistoryWalkMismatchKind.MissingSlotHistory) }),
+            "a streamed key is skipped by the scanner, so only the replayer sees its rows; it must still notice the storage root moving with no slot history behind it");
+    }
+
+    [Test]
+    public void A_clear_row_alone_does_not_excuse_a_storage_root_that_moved_without_slot_rows()
+    {
+        Account b0 = new(1, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        Account b1 = new(2, 50, StorageRootOf((Slot, [0xAB])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 1, b1);
+        RecordClear(AddrB, block: 1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrB, b1));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (1UL, HistoryWalkMismatchKind.MissingSlotHistory) }),
+            "a contract with a clear but no slot rows is never visited by the storage side, so the account side must keep checking it; a clear cannot explain a root that moved to a non-empty trie");
+    }
+
+    private static Address[] AddressesSharingTheirFirstPathByte(int count)
+    {
+        Dictionary<byte, List<Address>> groups = [];
+        for (int i = 1; ; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), 0x7000_0000 + i);
+            Address address = new(bytes);
+            byte first = address.ToAccountPath.Bytes[0];
+            if (!groups.TryGetValue(first, out List<Address>? group))
+            {
+                group = [];
+                groups[first] = group;
+            }
+
+            group.Add(address);
+            if (group.Count == count) return [.. group];
         }
     }
 

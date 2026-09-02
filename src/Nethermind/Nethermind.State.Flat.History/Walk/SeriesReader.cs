@@ -1,0 +1,106 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.State.Flat.History.Proofs;
+
+namespace Nethermind.State.Flat.History.Walk;
+
+internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
+{
+    public const ulong Window = 16_384;
+
+    private readonly ISortedKeyValueStore _accountColumn = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+    private readonly ISortedKeyValueStore _storageColumn = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+    private readonly CommitmentStore _accountStore = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
+    private readonly CommitmentStore _storageStore = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+
+    public NodeSeriesState ReadStart(in SeriesKey key, ulong from)
+    {
+        NodeSeriesState state = new();
+        Span<byte> prefix = stackalloc byte[SeriesKey.MaxKeyLength];
+        int prefixLength = key.WritePrefix(prefix);
+        CommitmentStore store = key.Column == FlatHistoryColumns.StorageCommitments ? _storageStore : _accountStore;
+        using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], from);
+        if (chain.MoveNext()) state.MaterializeStart(chain);
+        return state;
+    }
+
+    public SeriesCursor Open(in SeriesKey key, ulong fromExclusive, ulong toInclusive, CancellationToken token)
+    {
+        ISortedKeyValueStore column = key.Column == FlatHistoryColumns.StorageCommitments ? _storageColumn : _accountColumn;
+        byte[] prefix = new byte[SeriesKey.MaxPrefixLength];
+        int prefixLength = key.WritePrefix(prefix);
+        return new SeriesCursor(column, prefix[..prefixLength], fromExclusive, toInclusive, token);
+    }
+
+    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, ulong fromExclusive, ulong toInclusive, CancellationToken token)
+    {
+        private readonly RowArena _arena = new();
+        private readonly List<(ulong Block, int Offset, int Length)> _window = [];
+        private ulong _nextLow = fromExclusive + 1;
+        private int _position = -1;
+        private bool _exhausted;
+
+        public ulong Block => _window[_position].Block;
+
+        public ReadOnlySpan<byte> Row
+        {
+            get
+            {
+                (ulong _, int offset, int length) = _window[_position];
+                return _arena.Slice(offset, length);
+            }
+        }
+
+        public bool MoveNext()
+        {
+            if (_position + 1 < _window.Count)
+            {
+                _position++;
+                return true;
+            }
+
+            while (!_exhausted)
+            {
+                token.ThrowIfCancellationRequested();
+                ulong hi = toInclusive - _nextLow < Window - 1 ? toInclusive : _nextLow + Window - 1;
+                ReadDescending(_nextLow, hi);
+                if (hi == toInclusive) _exhausted = true;
+                else _nextLow = hi + 1;
+
+                if (_window.Count > 0)
+                {
+                    _window.Reverse();
+                    _position = 0;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void ReadDescending(ulong lo, ulong hi)
+        {
+            _window.Clear();
+            _arena.Clear();
+            Span<byte> lower = stackalloc byte[SeriesKey.MaxKeyLength];
+            int lowerLength = CommitmentKeyLayout.WriteSeekKey(lower, prefix, hi);
+            Span<byte> upper = stackalloc byte[SeriesKey.MaxKeyLength];
+            int upperLength = CommitmentKeyLayout.WriteSeekKey(upper, prefix, lo - 1);
+
+            using ISortedView view = column.GetViewBetween(lower[..lowerLength], upper[..upperLength]);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != lowerLength) continue;
+
+                ulong block = CommitmentKeyLayout.ReadSuffix(view.CurrentKey);
+                if (block < lo || block > hi) continue;
+
+                ReadOnlySpan<byte> row = view.CurrentValue;
+                _window.Add((block, _arena.Append(row), row.Length));
+            }
+        }
+    }
+}

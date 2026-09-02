@@ -104,11 +104,7 @@ public class ForwardCommitmentCaptureTests
     [Test]
     public void A_capture_round_holding_more_trie_bytes_than_the_bound_stops_instead_of_growing()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        ForwardCommitmentCapture bounded = new(
-            _historyColumns, CommitmentDepthPolicy.Default, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes: 100);
-        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
+        HistoryWriter writer = CreateWriter(maxBufferedBytes: 100);
         for (ulong block = 0; block <= 3; block++) CommitBlock(block, PerChangePath, LeafRlp((int)block));
 
         writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
@@ -118,6 +114,32 @@ public class ForwardCommitmentCaptureTests
             Assert.That(AccountRowAtOrBelow(PerChangePath, 3, exact: true), Is.Null,
                 "a round whose buffered trie nodes exceed the byte bound is dropped whole; the retrofit walk owns that range");
             Assert.That(_metadata.TryGetTipSeries(out _, out _), Is.False, "nothing was replayed, so no tip series may claim the range");
+        }
+    }
+
+    [Test]
+    public void A_capture_round_that_reaches_the_large_trie_depth_writes_exact_rows_at_the_tries_top()
+    {
+        TreePath deep = TreePath.FromHexString("7abcde");
+        Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        genesis.Content.StorageNodes[(StorageAccount.ToCommitment(), TreePath.FromHexString("7"))] = new TrieNode(NodeType.Branch, BranchRlp.Encode(ChildrenAt(0xa, 0xb)));
+        genesis.Content.StorageNodes[(StorageAccount.ToCommitment(), deep)] = new TrieNode(NodeType.Leaf, LeafRlp(3));
+        Add(genesis, 0);
+
+        _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
+
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+        Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.FromHexString("7"), exact: true);
+        using CommitmentStore.RowChain exact = store.OpenAtOrBelow(prefix[..prefixLength], 0);
+        Span<byte> flag = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
+        CommitmentEmitter.WriteLargeTrieFlagKey(flag, StorageAccount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exact.MoveNext() && exact.CurrentSuffix == 0, Is.True,
+                "a node at the signal depth in the captured round marks the trie large, so its top gets an exact row from the capture path as well as from the walk");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).KeyExists(flag), Is.True, "the decision is persisted so later rounds stay large");
         }
     }
 
@@ -170,6 +192,15 @@ public class ForwardCommitmentCaptureTests
         }
     }
 
+    private HistoryWriter CreateWriter(long maxBufferedBytes)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ForwardCommitmentCapture bounded = new(
+            _historyColumns, CommitmentDepthPolicy.Default, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes);
+        return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
+    }
+
     private void CommitBlock(ulong block, in TreePath path, byte[] rlp)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(
@@ -192,6 +223,19 @@ public class ForwardCommitmentCaptureTests
         using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], suffix);
         if (!chain.MoveNext()) return null;
         return ParentRowCodec.WholeNodeRlp(chain.CurrentValue).ToArray();
+    }
+
+    private static byte[]?[] ChildrenAt(params int[] present)
+    {
+        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        foreach (int index in present)
+        {
+            byte[] hash = new byte[Hash256.Size];
+            hash[0] = (byte)(index + 1);
+            children[index] = hash;
+        }
+
+        return children;
     }
 
     private static byte[] LeafRlp(int tag)

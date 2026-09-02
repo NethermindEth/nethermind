@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -20,40 +19,38 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         ulong from,
         ulong to,
         CommitmentEmitter? emitter,
-        SeriesKey? seriesKey,
+        SeriesKey seriesKey,
         SeriesWriter series,
         StorageRootMoveCheck moveCheck,
         CancellationToken token)
     {
-        RawScopedTrieStore raw = new(new MemDb());
-        CommitmentRecordingTrieStore? recording = emitter is null ? null : new CommitmentRecordingTrieStore(raw, emitter, storageAccount: null, prefix.Length);
-        IScopedTrieStore store = recording ?? (IScopedTrieStore)raw;
+        RawScopedTrieStore store = new(new MemDb());
         StateTree state = new(store, logManager);
+        TrieChangeCollector? changes = emitter is null ? null : new TrieChangeCollector();
+        SeriesPublisher publisher = new(SeriesScope.Accounts, prefix, seriesKey, series);
 
         List<StreamedAccount> streams = [];
         foreach (ValueHash256 path in rows.StreamedPaths)
         {
-            HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, from, to);
+            HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, from, to, token);
             ValueHash256 startRoot = Keccak.EmptyTreeHash.ValueHash256;
             if (cursor.TryReadStart(out _, out byte[] start) && start.Length > 0)
             {
-                state.Set(path, DecodeAccount(start));
-                startRoot = ContractRootCheck.StorageRootOf(start);
+                state.Set(path, HistoryRowScanner.DecodeAccount(start));
+                startRoot = HistoryRowScanner.StorageRootOf(start);
             }
 
-            IEnumerator<(ulong Block, byte[] Value)> ascending = cursor.Ascending().GetEnumerator();
-            streams.Add(new StreamedAccount(path, ascending, ascending.MoveNext(), startRoot));
+            streams.Add(new StreamedAccount(path, cursor, cursor.MoveNext(), startRoot));
         }
 
         foreach (AccountRowRef row in rows.Start)
         {
-            state.Set(row.Path, DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+            state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
         }
 
-        ViewEmitter view = new(prefix, seriesKey, series);
         emitter?.BeginBlock(from);
-        Recompute(state, recording);
-        view.Emit(from, state, store, emitter, force: true);
+        Recompute(state, changes, emitter, prefix.Length);
+        publisher.Publish(from, NodeViews.FromRoot(state.RootRef, prefix.Length, store), emitter);
         emitter?.CompleteBlock();
 
         rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
@@ -65,7 +62,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             if (next < rows.Deltas.Count) block = rows.Deltas[next].Block;
             foreach (StreamedAccount stream in streams)
             {
-                if (stream.HasRow && stream.Rows.Current.Block < block) block = stream.Rows.Current.Block;
+                if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
             }
 
             if (block == ulong.MaxValue) break;
@@ -74,103 +71,39 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             while (next < rows.Deltas.Count && rows.Deltas[next].Block == block)
             {
                 AccountRowRef row = rows.Deltas[next++];
-                state.Set(row.Path, DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+                state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
             }
 
             foreach (StreamedAccount stream in streams)
             {
-                if (!stream.HasRow || stream.Rows.Current.Block != block) continue;
+                if (!stream.HasRow || stream.Rows.Block != block) continue;
 
-                byte[] value = stream.Rows.Current.Value;
-                state.Set(stream.Path, DecodeAccount(value));
-                ValueHash256 root = value.Length == 0 ? Keccak.EmptyTreeHash.ValueHash256 : ContractRootCheck.StorageRootOf(value);
+                ReadOnlySpan<byte> value = stream.Rows.Value;
+                state.Set(stream.Path, HistoryRowScanner.DecodeAccount(value));
+                ValueHash256 root = HistoryRowScanner.StorageRootOf(value);
                 if (root != stream.LastRoot) moveCheck.OnMoved(stream.Path, block, stream.LastRoot, root);
                 stream.LastRoot = root;
                 stream.HasRow = stream.Rows.MoveNext();
             }
 
-            Recompute(state, recording);
-            view.Emit(block, state, store, emitter, force: false);
+            Recompute(state, changes, emitter, prefix.Length);
+            if (publisher.IsNew(state.RootHash.ValueHash256)) publisher.Publish(block, NodeViews.FromRoot(state.RootRef, prefix.Length, store), emitter);
             emitter?.CompleteBlock();
         }
-
-        foreach (StreamedAccount stream in streams) stream.Rows.Dispose();
     }
 
-    private static void Recompute(PatriciaTree tree, CommitmentRecordingTrieStore? recording)
+    private static void Recompute(PatriciaTree tree, TrieChangeCollector? changes, CommitmentEmitter? emitter, int minRecordedDepth)
     {
-        if (recording is null)
-        {
-            tree.UpdateRootHash();
-            return;
-        }
-
-        tree.Commit();
+        changes?.Collect(tree.RootRef);
+        tree.UpdateRootHash();
+        if (changes is not null) changes.RecordAccounts(emitter!, minRecordedDepth);
     }
 
-    public static Account? DecodeAccount(ReadOnlySpan<byte> value)
-    {
-        if (value.IsEmpty) return null;
-
-        RlpReader reader = new(value);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
-        {
-            throw new InvalidOperationException("An account history row failed to decode; the column is corrupt.");
-        }
-
-        return new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment());
-    }
-
-    private sealed class StreamedAccount(ValueHash256 path, IEnumerator<(ulong Block, byte[] Value)> rows, bool hasRow, ValueHash256 lastRoot)
+    private sealed class StreamedAccount(ValueHash256 path, HistoryRowCursor rows, bool hasRow, ValueHash256 lastRoot)
     {
         public readonly ValueHash256 Path = path;
-        public readonly IEnumerator<(ulong Block, byte[] Value)> Rows = rows;
+        public readonly HistoryRowCursor Rows = rows;
         public bool HasRow = hasRow;
         public ValueHash256 LastRoot = lastRoot;
-    }
-
-    private sealed class ViewEmitter(TreePath prefix, SeriesKey? seriesKey, SeriesWriter series)
-    {
-        private ValueHash256 _lastRoot = default;
-        private bool _haveRoot;
-        private NodeViewKind _lastKind = NodeViewKind.Empty;
-        private byte[]?[]? _lastChildren;
-
-        public void Emit(ulong block, StateTree state, ITrieNodeResolver resolver, CommitmentEmitter? emitter, bool force)
-        {
-            if (seriesKey is null) return;
-
-            ValueHash256 root = state.RootHash.ValueHash256;
-            if (!force && _haveRoot && root == _lastRoot) return;
-
-            _haveRoot = true;
-            _lastRoot = root;
-            NodeView view = NodeViews.FromRoot(state.RootRef, prefix.Length, resolver);
-            ushort changed = 0;
-            if (view.Kind == NodeViewKind.Branch)
-            {
-                ushort presence = NodeViews.PresenceOf(view.Children!);
-                changed = _lastKind == NodeViewKind.Branch ? NodeViews.ChangedChildren(_lastChildren, view.Children!) : presence;
-                series.Write(seriesKey.Value, block, ParentRowCodec.EncodeBranch(block, presence, changed, view.Children!));
-            }
-            else if (view.Kind == NodeViewKind.Whole)
-            {
-                series.Write(seriesKey.Value, block, ParentRowCodec.EncodeWholeNode(block, view.Rlp!));
-            }
-            else
-            {
-                series.Write(seriesKey.Value, block, ParentRowCodec.EncodeEmpty(block));
-            }
-
-            if (emitter is not null)
-            {
-                if (view.Kind == NodeViewKind.Empty) emitter.RecordAccountEmpty(prefix);
-                else if (view.Kind == NodeViewKind.Branch) emitter.RecordAccountNode(prefix, view.Rlp!, changed);
-                else emitter.RecordAccountNode(prefix, view.Rlp!, changedChildren: 0);
-            }
-
-            _lastKind = view.Kind;
-            _lastChildren = view.Children;
-        }
     }
 }

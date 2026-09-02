@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.History.Walk;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -66,12 +67,15 @@ public class ArchiveProofTests
         }
     }
 
-    [TestCase(1ul, TestName = "SplitBuild_FirstBlock")]
-    [TestCase(65ul, TestName = "SplitBuild_InsideAnOpenWindow")]
-    [TestCase(Blocks, TestName = "SplitBuild_Head")]
-    public void A_build_that_splits_every_subtree_and_streams_every_key_yields_the_same_proofs(ulong block)
+    [TestCase(1ul, 1L, TestName = "StreamedBuild_FirstBlock")]
+    [TestCase(65ul, 1L, TestName = "StreamedBuild_InsideAnOpenWindow")]
+    [TestCase(Blocks, 1L, TestName = "StreamedBuild_Head")]
+    [TestCase(1ul, 40L, TestName = "SplitBuild_FirstBlock")]
+    [TestCase(65ul, 40L, TestName = "SplitBuild_InsideAnOpenWindow")]
+    [TestCase(Blocks, 40L, TestName = "SplitBuild_Head")]
+    public void A_build_under_a_row_budget_that_splits_subtrees_or_streams_keys_yields_the_same_proofs(ulong block, long maxRowsPerPartition)
     {
-        BuildCommitments(maxRowsPerPartition: 1);
+        BuildCommitments(maxRowsPerPartition);
 
         foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
         {
@@ -85,13 +89,14 @@ public class ArchiveProofTests
             "rows combined upward from single-key partitions must leave the same commitment column a whole-subtree replay leaves");
     }
 
-    [Test]
-    public void A_build_leaves_no_scratch_series_behind()
+    [TestCase(1L)]
+    [TestCase(40L)]
+    public void A_build_leaves_no_scratch_series_behind(long maxRowsPerPartition)
     {
-        BuildCommitments(maxRowsPerPartition: 1);
+        BuildCommitments(maxRowsPerPartition);
 
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
-        Assert.That(column.GetAllKeys().Any(static key => key[0] == 0xFD), Is.False,
+        Assert.That(column.GetAllKeys().Any(static key => key[0] == SeriesKey.ScratchMarker), Is.False,
             "the per-block series that carry subtree roots between partitions and their combine are scratch and must be deleted once consumed");
     }
 
@@ -188,6 +193,40 @@ public class ArchiveProofTests
         Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
             Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
             "a fully covered height resolves from the commitment chain alone, every node verified against its parent down from the header");
+    }
+
+    [TestCase(1L)]
+    [TestCase(40L)]
+    public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone(long maxRowsPerPartition)
+    {
+        BuildCommitments(maxRowsPerPartition);
+        AccountProof expected = _chain.ExpectedProof(Contract, Blocks, ContractSlots);
+
+        CorruptEveryStorageRow();
+
+        AccountProof actual = ProveFromArchive(Contract, Blocks, ContractSlots);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < ContractSlots.Length; i++)
+            {
+                Assert.That(actual.StorageProofs![i].Proof!.Select(static item => item.ToHexString()),
+                    Is.EqualTo(expected.StorageProofs![i].Proof!.Select(static item => item.ToHexString())),
+                    "at the last block a window row describes, every storage node of a small trie materializes from its window row, so the slot rows are never read; a missing or wrong storage row would make the resolver fall back to the now-corrupt slot rows and refuse");
+                Assert.That(actual.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()));
+            }
+        }
+    }
+
+    [Test]
+    public void A_covered_height_is_refused_when_the_budget_cannot_even_read_its_commitment_rows()
+    {
+        BuildCommitments();
+
+        AccountProofCollector collector = new(_accounts[3], Array.Empty<UInt256>());
+        Assert.That(() => CreateSource(TestPolicy, maxScannedRows: 1).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "commitment rows are charged against the same budget as history rows, so a budget of one row cannot walk even the root's chain and must fail closed");
     }
 
     [Test]
@@ -401,6 +440,18 @@ public class ArchiveProofTests
         }
 
         foreach (byte[] key in keys) column.PutSpan(key, [0x01, 0xC0]);
+    }
+
+    private void CorruptEveryStorageRow()
+    {
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
+        List<byte[]> keys = [];
+        using (ISortedView view = ((ISortedKeyValueStore)column).GetViewBetween(ReadOnlySpan<byte>.Empty, Bytes.FromHexString("0xff".PadRight(130, 'f'))))
+        {
+            while (view.MoveNext()) keys.Add(view.CurrentKey.ToArray());
+        }
+
+        foreach (byte[] key in keys) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
     }
 
     private void CorruptEveryAccountRow()

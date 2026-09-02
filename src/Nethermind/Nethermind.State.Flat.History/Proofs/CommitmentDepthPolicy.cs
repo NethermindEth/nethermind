@@ -73,10 +73,12 @@ public sealed class CommitmentDepthPolicy
 
     public int LargeTrieSignalDepth { get; }
 
+    public bool IsExactAccountDepth(int depth) => depth <= AccountExactDepth;
+
     internal CommitmentTier AccountTier(int depth) =>
         depth switch
         {
-            _ when depth <= AccountExactDepth => CommitmentTier.PerChange,
+            _ when IsExactAccountDepth(depth) => CommitmentTier.PerChange,
             _ when depth <= AccountCheckpointDepth => CommitmentTier.Checkpoint,
             _ => CommitmentTier.Recomputed,
         };

@@ -9,32 +9,6 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal enum NodeViewKind : byte
-{
-    Empty,
-    Branch,
-    Whole,
-}
-
-internal readonly struct NodeView(NodeViewKind kind, byte[]? rlp, byte[]?[]? children)
-{
-    public static readonly NodeView Empty = new(NodeViewKind.Empty, null, null);
-
-    public NodeViewKind Kind => kind;
-
-    public byte[]? Rlp => rlp;
-
-    public byte[]?[]? Children => children;
-
-    public byte[]? Reference => rlp is null ? null : BranchRlp.ReferenceOf(rlp);
-
-    public ValueHash256 Hash => rlp is null ? Keccak.EmptyTreeHash.ValueHash256 : Keccak.Compute(rlp);
-
-    public static NodeView Branch(byte[]?[] children) => new(NodeViewKind.Branch, BranchRlp.Encode(children), children);
-
-    public static NodeView Whole(byte[] rlp) => new(NodeViewKind.Whole, rlp, null);
-}
-
 internal static class NodeViews
 {
     public static NodeView FromRoot(TrieNode? root, int depth, ITrieNodeResolver resolver)
@@ -150,7 +124,7 @@ internal static class NodeViews
     {
         byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
         BranchRlp.ReadChildren(rlp, children);
-        return new NodeView(NodeViewKind.Branch, rlp, children);
+        return NodeView.Branch(children);
     }
 
     private static (byte[] Nibbles, bool IsLeaf, byte[] Payload) DecodeShortNode(byte[] rlp)

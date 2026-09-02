@@ -3,41 +3,67 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History.Walk;
 
 internal sealed class HistoryRowCursor
 {
-    private const int ProbeRows = 4096;
+    public const int ProbeRows = 4096;
+    public const int MaxWindowRows = 4 * ProbeRows;
     private const ulong MinWindow = 1024;
+    private const int MaxRowKeyLength = BaseFlatPersistence.StorageKeyLength + sizeof(ulong);
 
     private readonly ISortedKeyValueStore _rows;
     private readonly HistoryRowFormat _rowFormat;
     private readonly byte[] _flatKey;
     private readonly ulong _from;
     private readonly ulong _to;
+    private readonly CancellationToken _token;
+    private readonly RowArena _arena = new();
+    private readonly List<(ulong Block, int Offset, int Length)> _window = [];
+    private int _position = -1;
+    private ulong _nextLow;
+    private ulong _windowSize;
+    private bool _probed;
+    private bool _exhausted;
 
-    public HistoryRowCursor(ISortedKeyValueStore rows, HistoryRowFormat rowFormat, ReadOnlySpan<byte> flatKey, ulong from, ulong to)
+    public HistoryRowCursor(ISortedKeyValueStore rows, HistoryRowFormat rowFormat, ReadOnlySpan<byte> flatKey, ulong from, ulong to, CancellationToken token)
     {
+        if (flatKey.Length + sizeof(ulong) > MaxRowKeyLength) throw new ArgumentOutOfRangeException(nameof(flatKey));
+
         _rows = rows;
         _rowFormat = rowFormat;
         _flatKey = flatKey.ToArray();
         _from = from;
         _to = to;
+        _token = token;
+        _nextLow = from + 1;
+    }
+
+    public ulong Block => _window[_position].Block;
+
+    public ReadOnlySpan<byte> Value
+    {
+        get
+        {
+            (ulong _, int offset, int length) = _window[_position];
+            return _arena.Slice(offset, length);
+        }
     }
 
     public bool TryReadStart(out ulong block, out byte[] value)
     {
         block = 0;
         value = [];
-        Span<byte> lower = stackalloc byte[_flatKey.Length + sizeof(ulong)];
-        WriteRowKey(lower, _from);
-        Span<byte> upper = stackalloc byte[_flatKey.Length + sizeof(ulong) + 1];
+        Span<byte> lower = stackalloc byte[MaxRowKeyLength];
+        int keyLength = WriteRowKey(lower, _from);
+        Span<byte> upper = stackalloc byte[MaxRowKeyLength + 1];
         _flatKey.CopyTo(upper);
         upper[_flatKey.Length..].Fill(0xFF);
-        upper[^1] = 0x00;
+        upper[keyLength] = 0x00;
 
-        using ISortedView view = _rows.GetViewBetween(lower, upper);
+        using ISortedView view = _rows.GetViewBetween(lower[..keyLength], upper[..(keyLength + 1)]);
         while (view.MoveNext())
         {
             if (!Matches(view.CurrentKey)) continue;
@@ -50,38 +76,80 @@ internal sealed class HistoryRowCursor
         return false;
     }
 
-    public IEnumerable<(ulong Block, byte[] Value)> Ascending()
+    public bool MoveNext()
     {
-        List<(ulong Block, byte[] Value)> probe = ReadDescending(_from + 1, _to, ProbeRows, out bool complete);
-        if (complete)
+        if (_position + 1 < _window.Count)
         {
-            for (int i = probe.Count - 1; i >= 0; i--) yield return probe[i];
-            yield break;
+            _position++;
+            return true;
         }
 
-        ulong probedSpan = _to - probe[^1].Block + 1;
-        ulong window = Math.Max(MinWindow, probedSpan * ProbeRows / (ulong)probe.Count);
-        for (ulong lo = _from + 1; lo <= _to; lo += window)
+        while (!_exhausted)
         {
-            ulong hi = _to - lo < window - 1 ? _to : lo + window - 1;
-            List<(ulong Block, byte[] Value)> rows = ReadDescending(lo, hi, int.MaxValue, out _);
-            for (int i = rows.Count - 1; i >= 0; i--) yield return rows[i];
-            if (hi == _to) break;
+            _token.ThrowIfCancellationRequested();
+            if (FillNextWindow() && _window.Count > 0)
+            {
+                _position = 0;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool FillNextWindow()
+    {
+        if (_nextLow > _to)
+        {
+            _exhausted = true;
+            return false;
+        }
+
+        if (!_probed)
+        {
+            _probed = true;
+            ReadDescending(_nextLow, _to, ProbeRows, out bool complete);
+            if (complete)
+            {
+                _exhausted = true;
+                _window.Reverse();
+                return true;
+            }
+
+            ulong probedSpan = _window[0].Block - _window[^1].Block + 1;
+            _windowSize = Math.Max(MinWindow, probedSpan * ProbeRows / (ulong)_window.Count);
+        }
+
+        while (true)
+        {
+            ulong hi = _to - _nextLow < _windowSize - 1 ? _to : _nextLow + _windowSize - 1;
+            ReadDescending(_nextLow, hi, MaxWindowRows, out bool complete);
+            if (!complete && _windowSize > MinWindow)
+            {
+                _windowSize = Math.Max(MinWindow, _windowSize / 2);
+                continue;
+            }
+
+            _window.Reverse();
+            if (hi == _to) _exhausted = true;
+            else _nextLow = hi + 1;
+            return true;
         }
     }
 
-    private List<(ulong Block, byte[] Value)> ReadDescending(ulong lo, ulong hi, int limit, out bool complete)
+    private void ReadDescending(ulong lo, ulong hi, int limit, out bool complete)
     {
-        List<(ulong Block, byte[] Value)> rows = [];
+        _window.Clear();
+        _arena.Clear();
         complete = true;
-        if (lo > hi) return rows;
+        if (lo > hi) return;
 
-        Span<byte> lower = stackalloc byte[_flatKey.Length + sizeof(ulong)];
-        WriteRowKey(lower, hi);
-        Span<byte> upper = stackalloc byte[_flatKey.Length + sizeof(ulong)];
+        Span<byte> lower = stackalloc byte[MaxRowKeyLength];
+        int keyLength = WriteRowKey(lower, hi);
+        Span<byte> upper = stackalloc byte[MaxRowKeyLength];
         WriteRowKey(upper, lo - 1);
 
-        using ISortedView view = _rows.GetViewBetween(lower, upper);
+        using ISortedView view = _rows.GetViewBetween(lower[..keyLength], upper[..keyLength]);
         while (view.MoveNext())
         {
             if (!Matches(view.CurrentKey)) continue;
@@ -89,23 +157,23 @@ internal sealed class HistoryRowCursor
             ulong block = _rowFormat.DecodeSuffixBlock(view.CurrentKey[_flatKey.Length..]);
             if (block < lo || block > hi) continue;
 
-            if (rows.Count >= limit)
+            if (_window.Count >= limit)
             {
                 complete = false;
-                break;
+                return;
             }
 
-            rows.Add((block, view.CurrentValue.ToArray()));
+            ReadOnlySpan<byte> value = view.CurrentValue;
+            _window.Add((block, _arena.Append(value), value.Length));
         }
-
-        return rows;
     }
 
     private bool Matches(ReadOnlySpan<byte> key) => key.Length == _flatKey.Length + sizeof(ulong) && key[.._flatKey.Length].SequenceEqual(_flatKey);
 
-    private void WriteRowKey(Span<byte> destination, ulong block)
+    private int WriteRowKey(Span<byte> destination, ulong block)
     {
         _flatKey.CopyTo(destination);
         BinaryPrimitives.WriteUInt64BigEndian(destination[_flatKey.Length..], ~block);
+        return _flatKey.Length + sizeof(ulong);
     }
 }

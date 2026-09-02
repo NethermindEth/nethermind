@@ -139,7 +139,7 @@ public sealed class ForwardCommitmentCapture
 
     private void AddStorage(CapturedBlock captured, in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp)
     {
-        if (path.Length >= _policy.LargeTrieSignalDepth) captured.DeepStorageTries.Add(accountPath);
+        if (path.Length >= _policy.LargeTrieSignalDepth) (captured.DeepStorageTries ??= []).Add(accountPath);
         if (rlp.Length < Hash256.Size || path.Length > _policy.StorageCheckpointDepth + 1) return;
 
         captured.Storages.Add(new NodeChange(accountPath, path, rlp.ToArray()));
@@ -174,12 +174,12 @@ public sealed class ForwardCommitmentCapture
         ulong last = _buffered.Keys.Last();
 
         EnsureStamp();
-        using (CommitmentEmitter emitter = CommitmentEmitter.ForTip(_history, _policy, _metadata.WindowWriteLock))
+        using (CommitmentEmitter emitter = CommitmentEmitter.ForTip(_history, _policy, _metadata))
         {
             foreach ((ulong block, CapturedBlock captured) in _buffered)
             {
                 emitter.BeginBlock(block);
-                foreach (ValueHash256 account in captured.DeepStorageTries) emitter.RecordStorageDepthReached(account, _policy.LargeTrieSignalDepth);
+                if (captured.DeepStorageTries is { } deep) foreach (ValueHash256 account in deep) emitter.RecordStorageDepthReached(account, _policy.LargeTrieSignalDepth);
                 foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, change.Rlp);
                 foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, change.Rlp);
                 emitter.CompleteBlock();
@@ -208,7 +208,7 @@ public sealed class ForwardCommitmentCapture
     {
         public readonly List<NodeChange> Accounts = [];
         public readonly List<NodeChange> Storages = [];
-        public readonly HashSet<ValueHash256> DeepStorageTries = [];
+        public HashSet<ValueHash256>? DeepStorageTries;
         public long Bytes;
     }
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
 
@@ -10,8 +9,7 @@ namespace Nethermind.State.Flat.History.Walk;
 internal sealed class SubtreeCombiner(SeriesReader reader)
 {
     public void Combine(
-        bool isStorage,
-        in ValueHash256 scope,
+        in SeriesScope scope,
         in TreePath parent,
         Func<int, SeriesKey> childKey,
         SeriesKey? own,
@@ -22,124 +20,180 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
         ViewObserver? observer,
         CancellationToken token)
     {
-        NodeSeriesState[] states = new NodeSeriesState[BranchRlp.ChildCount];
-        IEnumerator<(ulong Block, byte[] Row)>[] cursors = new IEnumerator<(ulong Block, byte[] Row)>[BranchRlp.ChildCount];
-        bool[] hasRow = new bool[BranchRlp.ChildCount];
-        NodeView[] views = new NodeView[BranchRlp.ChildCount];
         SeriesKey[] keys = new SeriesKey[BranchRlp.ChildCount];
+        for (int index = 0; index < BranchRlp.ChildCount; index++) keys[index] = childKey(index);
 
-        try
+        SeriesPublisher publisher = new(scope, parent, own, writer);
+        ChildSeries children = new(reader, keys, from, to, token);
+        NodeView current = children.Combine();
+        emitter?.BeginBlock(from);
+        publisher.Publish(from, current, emitter);
+        emitter?.CompleteBlock();
+
+        bool observing = observer is not null && (!observer.ObservesEveryBlock || observer.OnBlock(from, current));
+        ulong observed = from;
+        while (children.TryAdvance(out ulong block))
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            token.ThrowIfCancellationRequested();
+            if (observing && observer!.ObservesEveryBlock)
             {
-                keys[index] = childKey(index);
-                states[index] = reader.ReadStart(keys[index], from);
-                views[index] = states[index].ToView();
-                cursors[index] = reader.ReadAscending(keys[index], from, to).GetEnumerator();
-                hasRow[index] = cursors[index].MoveNext();
+                for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer.OnBlock(quiet, current);
             }
 
-            NodeView current = NodeViews.Combine(views);
-            NodeViewKind previousKind = NodeViewKind.Empty;
-            byte[]?[]? previousChildren = null;
-            Emit(from, current, ref previousKind, ref previousChildren, isStorage, scope, parent, own, emitter, writer);
+            current = children.Combine();
+            emitter?.BeginBlock(block);
+            publisher.Publish(block, current, emitter);
+            emitter?.CompleteBlock();
+            if (observing)
+            {
+                if (observer!.ObservesEveryBlock) observing = observer.OnBlock(block, current);
+                else observer.OnChanged(block, current);
+            }
 
-            bool everyBlock = observer?.ObservesEveryBlock ?? false;
-            bool observing = observer is not null;
-            if (everyBlock) observing = observer!.OnBlock(from, current);
+            observed = block;
+        }
 
+        if (observing && observer!.ObservesEveryBlock)
+        {
+            for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = observer.OnBlock(quiet, current);
+        }
+
+        foreach (SeriesKey key in keys)
+        {
+            if (key.Scratch) writer.Delete(key);
+        }
+    }
+
+    public void CombineRoot(
+        Func<int, int, SeriesKey> grandchildKey,
+        ulong from,
+        ulong to,
+        CommitmentEmitter? emitter,
+        SeriesWriter writer,
+        RootHeaderCheck root,
+        CancellationToken token)
+    {
+        ChildSeries[] groups = new ChildSeries[BranchRlp.ChildCount];
+        SeriesPublisher[] groupPublishers = new SeriesPublisher[BranchRlp.ChildCount];
+        NodeView[] groupViews = new NodeView[BranchRlp.ChildCount];
+        {
+            for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+            {
+                SeriesKey[] keys = new SeriesKey[BranchRlp.ChildCount];
+                for (int child = 0; child < BranchRlp.ChildCount; child++) keys[child] = grandchildKey(nibble, child);
+                groups[nibble] = new ChildSeries(reader, keys, from, to, token);
+                groupPublishers[nibble] = new SeriesPublisher(SeriesScope.Accounts, TreePath.FromNibble([(byte)nibble]), key: null, writer);
+                groupViews[nibble] = groups[nibble].Combine();
+            }
+
+            SeriesPublisher rootPublisher = new(SeriesScope.Accounts, TreePath.Empty, key: null, writer);
+            NodeView current = NodeViews.Combine(groupViews);
+            emitter?.BeginBlock(from);
+            for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(from, groupViews[nibble], emitter);
+            rootPublisher.Publish(from, current, emitter);
+            emitter?.CompleteBlock();
+
+            bool observing = root.OnBlock(from, current);
             ulong observed = from;
             while (true)
             {
                 token.ThrowIfCancellationRequested();
                 ulong block = ulong.MaxValue;
-                for (int index = 0; index < BranchRlp.ChildCount; index++)
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
                 {
-                    if (hasRow[index] && cursors[index].Current.Block < block) block = cursors[index].Current.Block;
+                    ulong next = groups[nibble].NextBlock;
+                    if (next < block) block = next;
                 }
 
                 if (block == ulong.MaxValue) break;
 
-                if (everyBlock && observing)
+                for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = root.OnBlock(quiet, current);
+
+                emitter?.BeginBlock(block);
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
                 {
-                    for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer!.OnBlock(quiet, current);
+                    if (groups[nibble].NextBlock != block) continue;
+
+                    groups[nibble].ApplyAt(block);
+                    groupViews[nibble] = groups[nibble].Combine();
+                    if (groupPublishers[nibble].IsNew(groupViews[nibble].Hash)) groupPublishers[nibble].Publish(block, groupViews[nibble], emitter);
                 }
 
-                for (int index = 0; index < BranchRlp.ChildCount; index++)
-                {
-                    if (!hasRow[index] || cursors[index].Current.Block != block) continue;
+                current = NodeViews.Combine(groupViews);
+                if (rootPublisher.IsNew(current.Hash)) rootPublisher.Publish(block, current, emitter);
+                emitter?.CompleteBlock();
 
-                    states[index].Apply(cursors[index].Current.Row);
-                    views[index] = states[index].ToView();
-                    hasRow[index] = cursors[index].MoveNext();
-                }
-
-                current = NodeViews.Combine(views);
-                Emit(block, current, ref previousKind, ref previousChildren, isStorage, scope, parent, own, emitter, writer);
-                if (observing)
-                {
-                    if (everyBlock) observing = observer!.OnBlock(block, current);
-                    else observer!.OnChanged(block, current);
-                }
-
+                if (observing) observing = root.OnBlock(block, current);
                 observed = block;
             }
 
-            if (everyBlock && observing)
-            {
-                for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = observer!.OnBlock(quiet, current);
-            }
-        }
-        finally
-        {
-            for (int index = 0; index < BranchRlp.ChildCount; index++) cursors[index]?.Dispose();
+            for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = root.OnBlock(quiet, current);
         }
 
-        for (int index = 0; index < BranchRlp.ChildCount; index++) writer.Delete(keys[index]);
+        for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+        {
+            for (int child = 0; child < BranchRlp.ChildCount; child++)
+            {
+                SeriesKey key = grandchildKey(nibble, child);
+                if (key.Scratch) writer.Delete(key);
+            }
+        }
     }
 
-    private void Emit(
-        ulong block,
-        in NodeView view,
-        ref NodeViewKind previousKind,
-        ref byte[]?[]? previousChildren,
-        bool isStorage,
-        in ValueHash256 scope,
-        in TreePath parent,
-        SeriesKey? own,
-        CommitmentEmitter? emitter,
-        SeriesWriter writer)
+    private sealed class ChildSeries
     {
-        ushort changed = 0;
-        if (view.Kind == NodeViewKind.Branch)
-        {
-            ushort presence = NodeViews.PresenceOf(view.Children!);
-            changed = previousKind == NodeViewKind.Branch ? NodeViews.ChangedChildren(previousChildren, view.Children!) : presence;
-            if (own is { } branchKey) writer.Write(branchKey, block, ParentRowCodec.EncodeBranch(block, presence, changed, view.Children!));
-        }
-        else if (own is { } key)
-        {
-            writer.Write(key, block, view.Kind == NodeViewKind.Whole ? ParentRowCodec.EncodeWholeNode(block, view.Rlp!) : ParentRowCodec.EncodeEmpty(block));
-        }
+        private readonly NodeSeriesState[] _states = new NodeSeriesState[BranchRlp.ChildCount];
+        private readonly SeriesReader.SeriesCursor[] _cursors = new SeriesReader.SeriesCursor[BranchRlp.ChildCount];
+        private readonly bool[] _hasRow = new bool[BranchRlp.ChildCount];
+        private readonly NodeView[] _views = new NodeView[BranchRlp.ChildCount];
 
-        if (emitter is not null)
+        public ChildSeries(SeriesReader reader, SeriesKey[] keys, ulong from, ulong to, CancellationToken token)
         {
-            emitter.BeginBlock(block);
-            if (isStorage)
+            for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
-                if (view.Kind == NodeViewKind.Empty) emitter.RecordStorageEmpty(scope, parent);
-                else emitter.RecordStorageNode(scope, parent, view.Rlp!, changed);
+                _states[index] = reader.ReadStart(keys[index], from);
+                _views[index] = _states[index].ToView();
+                _cursors[index] = reader.Open(keys[index], from, to, token);
+                _hasRow[index] = _cursors[index].MoveNext();
             }
-            else
-            {
-                if (view.Kind == NodeViewKind.Empty) emitter.RecordAccountEmpty(parent);
-                else emitter.RecordAccountNode(parent, view.Rlp!, changed);
-            }
-
-            emitter.CompleteBlock();
         }
 
-        previousKind = view.Kind;
-        previousChildren = view.Children;
+        public ulong NextBlock
+        {
+            get
+            {
+                ulong block = ulong.MaxValue;
+                for (int index = 0; index < BranchRlp.ChildCount; index++)
+                {
+                    if (_hasRow[index] && _cursors[index].Block < block) block = _cursors[index].Block;
+                }
+
+                return block;
+            }
+        }
+
+        public bool TryAdvance(out ulong block)
+        {
+            block = NextBlock;
+            if (block == ulong.MaxValue) return false;
+
+            ApplyAt(block);
+            return true;
+        }
+
+        public void ApplyAt(ulong block)
+        {
+            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            {
+                if (!_hasRow[index] || _cursors[index].Block != block) continue;
+
+                _states[index].Apply(_cursors[index].Row);
+                _views[index] = _states[index].ToView();
+                _hasRow[index] = _cursors[index].MoveNext();
+            }
+        }
+
+        public NodeView Combine() => NodeViews.Combine(_views);
+
     }
 }

@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -48,7 +49,7 @@ public class NodeViewsTests
     [Test]
     public void An_empty_partition_set_combines_to_the_empty_view()
     {
-        NodeView[] children = new NodeView[16];
+        NodeView[] children = new NodeView[BranchRlp.ChildCount];
         Array.Fill(children, NodeView.Empty);
 
         NodeView combined = NodeViews.Combine(children);
@@ -75,8 +76,8 @@ public class NodeViewsTests
             return NodeViews.FromRoot(partial.RootRef, prefix.Length, store);
         }
 
-        NodeView[] children = new NodeView[16];
-        for (int nibble = 0; nibble < 16; nibble++) children[nibble] = CombineLevel(leaves, prefix.Append(nibble), partitionDepth);
+        NodeView[] children = new NodeView[BranchRlp.ChildCount];
+        for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) children[nibble] = CombineLevel(leaves, prefix.Append(nibble), partitionDepth);
         return NodeViews.Combine(children);
     }
 

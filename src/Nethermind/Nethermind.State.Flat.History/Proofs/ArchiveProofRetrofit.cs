@@ -22,7 +22,7 @@ public sealed class ArchiveProofRetrofit(
 
     public ulong WindowGranularity => policy.Interval;
 
-    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata.WindowWriteLock);
+    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata);
 
     public void Prepare()
     {
