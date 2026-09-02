@@ -180,7 +180,13 @@ internal sealed class HistoryWalkRun
             if (outcome == ScanOutcome.Split)
             {
                 rows.Reset();
-                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) ProcessAccountPartition(prefix.Append(nibble), item);
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+                {
+                    _progress.EnterChild(item, nibble, BranchRlp.ChildCount);
+                    ProcessAccountPartition(prefix.Append(nibble), item);
+                    _progress.ExitChild(item);
+                }
+
                 CombineAccount(prefix);
                 return;
             }

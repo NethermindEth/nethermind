@@ -19,6 +19,9 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     private readonly long _startedAt = Stopwatch.GetTimestamp();
     private readonly int[] _units = new int[items];
     private readonly string?[] _phases = new string?[items];
+    private readonly double[] _base = new double[items];
+    private readonly double[] _scale = new double[items];
+    private readonly Stack<(double Base, double Scale)>[] _frames = new Stack<(double Base, double Scale)>[items];
     private readonly CancellationTokenSource _stop = new();
     private long _blocksReplayed;
     private long _lastBlocksReplayed;
@@ -55,9 +58,24 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         _completed++;
     }
 
+    public void EnterChild(int item, int nibble, int children)
+    {
+        (_frames[item] ??= new Stack<(double Base, double Scale)>()).Push((_base[item], Scale(item)));
+        double scale = Scale(item) / children;
+        _base[item] += nibble * scale;
+        _scale[item] = scale;
+    }
+
+    public void ExitChild(int item)
+    {
+        (double Base, double Scale) frame = _frames[item]!.Pop();
+        _base[item] = frame.Base;
+        _scale[item] = frame.Scale;
+    }
+
     public void Replaying(int item, ulong block)
     {
-        _units[item] = FractionUnits(block);
+        if (item < 256) _units[item] = (int)((_base[item] + Fraction(block) * Scale(item)) * UnitsPerItem);
         _phases[item] = "replay";
     }
 
@@ -84,7 +102,9 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         logger.Info($"{"Walk root fold",ProgressLogger.PrefixAlignment}{block,ProgressLogger.BlockPaddingLength:N0} / {to,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}");
     }
 
-    private int FractionUnits(ulong block) => to == from ? UnitsPerItem : (int)((block - from) * (ulong)UnitsPerItem / (to - from));
+    private double Fraction(ulong block) => to == from ? 1 : (block - from) / (double)(to - from);
+
+    private double Scale(int item) => _scale[item] == 0 ? 1 : _scale[item];
 
     private string Report()
     {
