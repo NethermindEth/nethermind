@@ -48,6 +48,22 @@ public static partial class ZkEvmBitOperations
         Unsafe.Add(ref d, 3) = Swap(value.u0, m8, m16);
     }
 
+    /// <summary>Reads 32 bytes at <paramref name="source"/> reversed into <paramref name="result"/>.</summary>
+    /// <remarks><inheritdoc cref="Bswap256(in UInt256, ref Vector256{byte})" path="/remarks"/></remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Bswap256(ref readonly byte source, out UInt256 result)
+    {
+        ulong m8 = 0x00FF00FF00FF00FFUL;
+        ulong m16 = 0x0000FFFF0000FFFFUL;
+        ref byte s = ref Unsafe.AsRef(in source);
+        Unsafe.SkipInit(out result);
+        ref ulong r = ref Unsafe.As<UInt256, ulong>(ref result);
+        Unsafe.Add(ref r, 3) = Swap(Unsafe.ReadUnaligned<ulong>(ref s), m8, m16);
+        Unsafe.Add(ref r, 2) = Swap(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, 8)), m8, m16);
+        Unsafe.Add(ref r, 1) = Swap(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, 16)), m8, m16);
+        r = Swap(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, 24)), m8, m16);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Swap(ulong x, ulong m8, ulong m16)
     {
