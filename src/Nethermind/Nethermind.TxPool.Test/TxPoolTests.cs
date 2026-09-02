@@ -2804,37 +2804,92 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Revalidation_resolving_a_payer_records_the_reservation_it_takes()
+        public async Task Revalidation_evicts_a_transaction_whose_payer_moved()
         {
-            // The pool releases tx.PayerExposure verbatim, so a revalidation that reserves against a newly
-            // resolved payer without recording the figure leaks it for the life of the pool. Reachable with
-            // no attacker: a record admitted with an unresolved payer holds no exposure to inherit.
+            // The payer is never rewritten in place: RemoveTransaction runs without the head lock, so a removal
+            // landing between the payer and exposure writes would release the wrong figure from the wrong payer.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulator unavailable"));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            // Solvent, so an in-place move would succeed and keep the transaction: eviction is the policy
+            // under test, not a reservation that happened to fail.
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
 
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
-            Transaction next = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyF);
-            // Exactly one transaction's worth, so a reservation that was taken but never recorded refuses
-            // the next one. Funding the sponsor to MaxValue makes the closing assertion unfalsifiable.
+            Transaction next = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            // Exactly one transaction's worth, so the eviction must have released D for the next to be admitted.
             Assert.That(FrameTxValidation.TryCalculateMaxCost(next, Eip8141Prototype.Instance, out UInt256 oneTx), Is.True);
-            EnsureSenderBalance(TestItem.AddressF, oneTx);
+            EnsureSenderBalance(TestItem.AddressD, oneTx);
 
-            // Admitted with no payer, so it holds no reservation to carry into the revalidation.
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the transaction now resolves a solvent payer");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "a moved payer evicts rather than rewrites");
 
-            _txPool.RemoveTransaction(tx.Hash);
-
+            // Back to the original sponsor, so the follow-up measures D's ledger rather than F's empty balance.
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             Assert.That(_txPool.SubmitTx(next, TxHandlingOptions.None),
-                Is.EqualTo(AcceptTxResult.Accepted), "the reservation the revalidation took must have been released on removal");
+                Is.EqualTo(AcceptTxResult.Accepted), "the eviction must have released the original payer");
+        }
+
+        [Test]
+        public async Task Revalidation_leaves_an_unresolved_payer_as_admitted()
+        {
+            // Admitted without a payer it holds no reservation, so there is nothing to move and nothing unsafe
+            // about leaving it: evicting would drop a transaction that has become better attributed, not worse.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulator unavailable"));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(tx.PayerAddress, Is.Null, "the record is left exactly as admission wrote it");
+            }
+        }
+
+        // Block.AccountChanges is a touched set, so any block running an expiry-bearing frame transaction names
+        // the verifier; indexing it would make every such block collect the whole expiring population.
+        [Test]
+        public async Task Revalidation_ignores_a_block_that_only_touched_the_expiry_verifier()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, deadline: 9_000_000);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A sequential baseline first, so the following change list is trusted as complete.
+            Block parent = Build.A.Block.WithNumber(1).TestObject;
+            parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(parent);
+            simulator.ClearReceivedCalls();
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { Eip8141Constants.ExpiryVerifierAddress };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the verifier is not a tracked dependency");
+                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            }
         }
 
         [Test]
@@ -3356,8 +3411,21 @@ namespace Nethermind.TxPool.Test
         }
 
         // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
-        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null)
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null, ulong? deadline = null)
         {
+            // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
+            TxFrame[] frames = deadline is null
+                ?
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                ]
+                :
+                [
+                    FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 50_000),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                ];
             Transaction tx = new()
             {
                 Type = TxType.FrameTx,
@@ -3365,11 +3433,7 @@ namespace Nethermind.TxPool.Test
                 Nonce = 0,
                 SenderAddress = senderKey.Address,
                 NonceKeys = nonceKeys,
-                Frames =
-                [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
-                ],
+                Frames = frames,
                 FrameSignatures =
                 [
                     new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
