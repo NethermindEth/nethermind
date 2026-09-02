@@ -170,7 +170,8 @@ namespace Nethermind.TxPool
                     // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
                     // has to keep counting against its payer. Restored, not re-gated: the reservation was
                     // granted at admission, and refusing it now would leave a record no removal releases.
-                    if (restored.PayerAddress is { } payer && restored.PayerExposure is { } reserved)
+                    // The same predicate the release reads, so the two ends of a ledger entry cannot drift.
+                    if (TryGetPayerReservation(restored, out Address? payer, out UInt256 reserved))
                     {
                         _payerExposure.Restore(payer, reserved);
                     }

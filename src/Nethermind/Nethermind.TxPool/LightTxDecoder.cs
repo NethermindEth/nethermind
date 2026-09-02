@@ -108,18 +108,11 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return bytes;
     }
 
-    /// <summary>Reads a pre-grouping record's flat <c>nonce_keys</c> list, whose sequence header is already consumed.</summary>
-    private static UInt256[] DecodeLegacyKeys(ref RlpReader ctx, int end)
+    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
+    private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
     {
-        Span<UInt256> buffer = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
-        int count = 0;
-        while (ctx.Position < end)
-        {
-            if (count == buffer.Length) throw new RlpException($"Too many {nameof(Transaction.NonceKeys)} in {nameof(LightTransaction)}.");
-            buffer[count++] = ctx.DecodeUInt256();
-        }
-
-        return buffer[..count].ToArray();
+        UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
+        return keys.Length == 0 ? null : keys;
     }
 
     public static LightTransaction Decode(byte[] data)
@@ -164,18 +157,22 @@ public class LightTxDecoder : TxDecoder<Transaction>
         {
             // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
             // always opens with the keys list. That is total, since a key can never encode as a sequence.
+            int groupStart = ctx.Position;
             int trailingLength = ctx.ReadSequenceLength();
             int end = ctx.Position + trailingLength;
-            if (ctx.IsSequenceNext())
+            // Length-checked first: an empty group is a legacy empty list, and IsSequenceNext is an
+            // unguarded index that would read past the buffer for it.
+            if (trailingLength > 0 && ctx.IsSequenceNext())
             {
-                UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
-                nonceKeys = keys.Length == 0 ? null : keys;
+                nonceKeys = DecodeKeysOrNull(ref ctx);
                 if (ctx.Position < end) payerAddress = ctx.DecodeAddress();
                 if (ctx.Position < end) payerExposure = ctx.DecodeUInt256();
             }
             else
             {
-                nonceKeys = DecodeLegacyKeys(ref ctx, end);
+                // Rewound so the same decoder reads the flat list, whose header this group's was.
+                ctx.Position = groupStart;
+                nonceKeys = DecodeKeysOrNull(ref ctx);
             }
         }
 

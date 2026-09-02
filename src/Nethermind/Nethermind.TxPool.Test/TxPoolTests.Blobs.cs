@@ -3977,6 +3977,41 @@ namespace Nethermind.TxPool.Test
 
         // The persistent pool holds a light record, and it is that record's removal which releases the payer's
         // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
+        [Test]
+        // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
+        // transaction admitted alongside would move it.
+        [NonParallelizable]
+        public void Blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_persistent_pool()
+        {
+            // The prefix ceiling has to clear the verify frame plus its signature, or no payer resolves natively.
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+
+            Transaction SignedBlobFrameTx(ulong? deadline)
+            {
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
+                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                tx.Hash = tx.CalculateHash();
+                return tx;
+            }
+
+            Transaction first = SignedBlobFrameTx(deadline: null);
+            EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
+                + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
+
+            // The gauge, not a second submission: the payer here is the sender, whose balance already covers
+            // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
+            // residue from earlier tests, whose pools are never disposed.
+            long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore + 1), "admission must reserve against the payer");
+
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
+        }
+
         // The bound is summed over the pending set, and the persistent blob pool is exactly what carries that
         // set across a restart, so a restored record has to keep counting against its payer. Persisting the
         // fields without seeding the ledger would be worse than not persisting them: the record's removal
@@ -4011,41 +4046,6 @@ namespace Nethermind.TxPool.Test
                 Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore + 2),
                     "the restored record must seed the new pool's ledger, or it stops counting against its payer");
             }
-        }
-
-        [Test]
-        // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
-        // transaction admitted alongside would move it.
-        [NonParallelizable]
-        public void Blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_persistent_pool()
-        {
-            // The prefix ceiling has to clear the verify frame plus its signature, or no payer resolves natively.
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
-
-            Transaction SignedBlobFrameTx(ulong? deadline)
-            {
-                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
-                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
-                tx.Hash = tx.CalculateHash();
-                return tx;
-            }
-
-            Transaction first = SignedBlobFrameTx(deadline: null);
-            EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
-                + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
-
-            // The gauge, not a second submission: the payer here is the sender, whose balance already covers
-            // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
-            // residue from earlier tests, whose pools are never disposed.
-            long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
-
-            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
-            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore + 1), "admission must reserve against the payer");
-
-            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
-            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
         }
 
         // The persistent pool swaps the tx for a light record, so it is that record the DEBUG bookkeeping check

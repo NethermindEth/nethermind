@@ -310,10 +310,27 @@ public class LightTxDecoderTests
         }
     }
 
-    // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
-    // pool becomes unreadable at once.
+    // A legacy record whose flat list is empty leaves the group zero-length, and IsSequenceNext is an
+    // unguarded index: deciding the branch on it first read past the end of the buffer.
     [Test]
-    public void A_record_with_neither_field_grows_by_nothing()
+    public void An_empty_legacy_key_list_decodes_rather_than_reading_past_the_buffer()
+    {
+        Transaction bare = BlobCarryingTx(TxType.FrameTx);
+        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC0];
+
+        LightTransaction decoded = LightTxDecoder.Decode(legacy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.Null);
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
+    // pool becomes unreadable at once; a payer costs exactly the group and nothing more.
+    [Test]
+    public void A_payer_grows_the_record_by_the_group_alone()
     {
         Transaction bare = BlobCarryingTx(TxType.Blob);
         Transaction withPayer = BlobCarryingTx(TxType.Blob);
