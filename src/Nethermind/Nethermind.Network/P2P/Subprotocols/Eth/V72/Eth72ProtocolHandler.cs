@@ -1055,16 +1055,17 @@ public class Eth72ProtocolHandler(
 
     private void SendGetCells(Hash256 hash, BlobCellMask requestMask)
     {
-        if (Logger.IsDebug)
-        {
-            Logger.Debug($"{Node:c} requesting blob cells for {hash} with mask {requestMask}.");
-        }
+        if (Logger.IsTrace) TraceRequestingBlobCells(hash, requestMask);
 
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask sentMask = GetSentCellRequestMask(key, requestMask);
         GetCellsMessage72 message = new([hash], sentMask.ToBytes());
         AddSentCellRequest(key, sentMask, message.RequestId);
         Send(message);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceRequestingBlobCells(Hash256 transactionHash, BlobCellMask cellMask) =>
+            Logger.Trace($"{Node:c} requesting blob cells for {transactionHash} with mask {cellMask}.");
     }
 
     bool ISparseBlobPoolPeer.IsClosing => Session.IsClosing;

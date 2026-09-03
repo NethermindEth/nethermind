@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
+using Nethermind.History;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
 
@@ -26,7 +27,8 @@ public interface IDetectionScanner
 /// chunks chained until retained history is covered, so a deep scan can't affect validator performance.
 /// </remarks>
 public sealed class DetectionScanner(
-    IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager, ulong localChainId)
+    IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager, ulong localChainId,
+    IHistoryPruner? historyPruner = null)
     : IDetectionScanner
 {
     // ERC-20/ERC-721 Transfer, and ERC-1155 TransferSingle/TransferBatch event signatures
@@ -86,14 +88,24 @@ public sealed class DetectionScanner(
         {
             DetectionEntry? existing = cache.Get(chainId, account.ToString());
             long curHead = (long)(blockFinder.Head?.Number ?? 0);
+            // Clamped where the cursors and completion flags derive, so both walks stop at the floor in one pass.
+            // The floor is the reclaim line, not the published boundary - data between the two is still readable.
+            long floor = (long)(historyPruner?.OldestUnreclaimedBlockNumber ?? blockFinder.GetLowestBlock());
             int chunk = CurrentChunk(key);
 
             // Forward phase: cover blocks since the last scan first, so freshly-received tokens surface before
             // the downward history walk.
             if (existing is not null && curHead > existing.Head)
             {
-                long flo = Math.Max(0, existing.Head + 1 - ForwardReorgOverlapBlocks);
+                long flo = Math.Max(floor, existing.Head + 1 - ForwardReorgOverlapBlocks);
                 long fhi = Math.Min(curHead, flo + chunk - 1);
+                if (fhi < flo)
+                {
+                    // the whole remaining gap sits below the floor - resume from the current head
+                    Persist(chainId, account, existing.Contracts, existing.NftContracts, existing.ScannedFrom, curHead, existing.Complete);
+                    Schedule(req);
+                    return Task.CompletedTask;
+                }
                 HashSet<string> fErc20 = [.. existing.Contracts];
                 HashSet<string> fNfts = [.. existing.NftContracts];
                 try
@@ -110,8 +122,7 @@ public sealed class DetectionScanner(
                 }
                 catch (ResourceNotFoundException e)
                 {
-                    // forward gap is below retained receipts (node was offline past the floor) — skip it and
-                    // resume from the current head, since those blocks are pruned and can't be scanned
+                    // the floor rose past this range between our read and the finder's - resume from the current head
                     if (_logger.IsDebug) _logger.Debug($"Token detection forward gap unavailable for {account}: {e.Message}");
                     Persist(chainId, account, fErc20, fNfts, existing.ScannedFrom, curHead, existing.Complete);
                     Schedule(req);
@@ -129,8 +140,8 @@ public sealed class DetectionScanner(
 
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
-            if (hi <= 0) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
-            long lo = Math.Max(0, hi - chunk + 1);
+            if (hi <= 0 || hi < floor) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
+            long lo = Math.Max(floor, hi - chunk + 1);
 
             HashSet<string> erc20 = existing is null ? [] : [.. existing.Contracts];
             HashSet<string> nfts = existing is null ? [] : [.. existing.NftContracts];
@@ -155,7 +166,7 @@ public sealed class DetectionScanner(
                 return Task.CompletedTask;
             }
 
-            bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContractsPerScan;
+            bool complete = lo <= floor || erc20.Count + nfts.Count >= MaxContractsPerScan;
             Persist(chainId, account, erc20, nfts, complete ? 0 : lo, head, complete);
             if (complete) _active.TryRemove(key, out _);
             else { Grow(key); Schedule(req); } // chunk finished within the gap — go wider next time

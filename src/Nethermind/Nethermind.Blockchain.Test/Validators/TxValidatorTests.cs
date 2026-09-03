@@ -21,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -316,7 +317,7 @@ public class TxValidatorTests
     {
         try
         {
-            Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping)!;
             TxValidator txValidator = new(BlockchainIds.Mainnet);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
@@ -378,16 +379,21 @@ public class TxValidatorTests
 
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
     [TestCaseSource(nameof(BlobVersionedHashValidTestCases))]
-    public bool BlobVersionedHash_should_be_correct(byte[] hash)
+    public bool BlobVersionedHash_should_be_correct(byte[]? hash)
     {
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Blob)
             .WithTimestamp(ulong.MaxValue)
             .WithMaxFeePerGas(1)
             .WithMaxFeePerBlobGas(1)
-            .WithBlobVersionedHashes(new[] { hash })
+            .WithBlobVersionedHashes(new[] { hash ?? MakeArray(Hash256.Size, KzgPolynomialCommitments.KzgBlobHashVersionV1) })
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
+
+        if (hash is null)
+        {
+            tx.BlobVersionedHashes = [null!];
+        }
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         return txValidator.IsWellFormed(tx, Cancun.Instance);
@@ -496,6 +502,98 @@ public class TxValidatorTests
 
         Assert.That(() => result = txValidator.IsWellFormed(tx, Osaka.Instance).AsBool(), Throws.Nothing);
         Assert.That(result, Is.False);
+    }
+
+    private static IEnumerable<TestCaseData> SpecChangeValidationCases()
+    {
+        yield return new TestCaseData(
+                Berlin.Instance,
+                Build.A.Transaction
+                    .WithType(TxType.EIP1559)
+                    .WithAccessList(AccessList.Empty)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_release_activation_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Cancun.Instance,
+                Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields((int)Cancun.Instance.MaxBlobCount + 1, isMempoolTx: false)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_blob_count_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Osaka.Instance,
+                Build.A.Transaction
+                    .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_gas_limit_cap_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Osaka.Instance,
+                Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_proof_version_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Shanghai.Instance,
+                Build.A.Transaction
+                    .WithCode(new byte[(int)Shanghai.Instance.MaxInitCodeSize + 1])
+                    .WithGasLimit(int.MaxValue)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_contract_size_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Prague.Instance,
+                Build.A.Transaction
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .TestObject)
+            .SetName("Spec_change_signature_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Prague.Instance,
+                Build.A.Transaction
+                    .WithData([1])
+                    .WithGasLimit(Transaction.BaseTxGasCost)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_intrinsic_gas_is_covered_by_full_validation");
+    }
+
+    [TestCaseSource(nameof(SpecChangeValidationCases))]
+    public void Full_validation_covers_spec_change_validation(IReleaseSpec spec, Transaction transaction)
+    {
+        TxValidator fullValidator = new(TestBlockchainIds.ChainId);
+        SpecChangeTxValidator specChangeValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult specChangeResult = specChangeValidator.IsWellFormed(transaction, spec);
+        ValidationResult fullValidationResult = fullValidator.IsWellFormed(
+            transaction,
+            spec,
+            blockGasLimit: 0,
+            TxValidationOptions.SkipBlobProofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
+            Assert.That(fullValidationResult.AsBool, Is.False);
+        }
     }
 
     [Test]

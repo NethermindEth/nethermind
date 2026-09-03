@@ -31,10 +31,10 @@ public class CompositeTxSourceTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()
     {
-        ITxSource CreateImmediateTransactionSource(BlockHeader header, Address address, List<Transaction> txs, bool createsTransaction)
+        ITxSource CreateImmediateTransactionSource(BlockHeader parent, BlockHeader targetBlock, Address address, List<Transaction> txs, bool createsTransaction)
         {
             ITxSource immediateTransactionSource = Substitute.For<ITxSource>();
-            immediateTransactionSource.GetTransactions(header, Arg.Any<ulong>()).Returns(x =>
+            immediateTransactionSource.GetTransactions(parent, targetBlock, Arg.Any<ulong>()).Returns(x =>
             {
                 if (createsTransaction)
                 {
@@ -51,22 +51,23 @@ public class CompositeTxSourceTests
         }
 
         BlockHeader parentHeader = Build.A.BlockHeader.TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parentHeader.Number + 1).TestObject;
         ulong gasLimit = 1000ul;
         List<Transaction> expected = [];
 
         ITxSource innerPendingTxSelector = Substitute.For<ITxSource>();
 
-        ITxSource immediateTransactionSource1 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressB, expected, true);
-        ITxSource immediateTransactionSource2 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressC, expected, false);
-        ITxSource immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressD, expected, true);
+        ITxSource immediateTransactionSource1 = CreateImmediateTransactionSource(parentHeader, targetBlock, TestItem.AddressB, expected, true);
+        ITxSource immediateTransactionSource2 = CreateImmediateTransactionSource(parentHeader, targetBlock, TestItem.AddressC, expected, false);
+        ITxSource immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, targetBlock, TestItem.AddressD, expected, true);
 
         Transaction[] originalTxs = Build.A.Transaction.TestObjectNTimes(5);
-        innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<ulong>()).Returns(originalTxs);
+        innerPendingTxSelector.GetTransactions(parentHeader, targetBlock, Arg.Any<ulong>()).Returns(originalTxs);
 
         CompositeTxSource compositeTxSource = new(
             immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
 
-        Transaction[] transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();
+        Transaction[] transactions = compositeTxSource.GetTransactions(parentHeader, targetBlock, gasLimit).ToArray();
         expected.AddRange(originalTxs);
 
         Assert.That(transactions, Is.EqualTo(expected));

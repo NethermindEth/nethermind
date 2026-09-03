@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Json
         public override BigInteger Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
         {
             JsonTokenType.Number => new BigInteger(reader.GetInt64()),
-            JsonTokenType.String => BigInteger.Parse(reader.GetString()),
+            JsonTokenType.String => BigInteger.Parse(reader.GetString() ?? throw new JsonException($"Cannot convert null to {nameof(BigInteger)}")),
             _ => throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(BigInteger)}")
         };
 

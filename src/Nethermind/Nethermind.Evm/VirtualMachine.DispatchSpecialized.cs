@@ -30,7 +30,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private partial EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ref int programCounter)
+        ref nint programCounter)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where TShift : struct, IFlag
@@ -51,7 +51,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
 
         // May not be zero when resuming after a call.
-        int programCounter = VmState.ProgramCounter;
+        nint programCounter = VmState.ProgramCounter;
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(ref stack, ref gas, ref programCounter);
 
@@ -59,7 +59,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            UpdateCurrentState(programCounter, in gas, stack.Head);
+            UpdateCurrentState((int)programCounter, in gas, stack.Head);
         }
         else
         {

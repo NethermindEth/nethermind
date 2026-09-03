@@ -214,6 +214,14 @@ public abstract partial class BaseEngineModuleTests
 
         public bool? ParallelExecutionOverride { get; set; }
 
+        private const double CiSafeSingleBlockImprovementOfSlot = 5;
+
+        /// <summary>
+        /// Overrides the payload improvement window as a fraction of a slot. Must be set before <c>Build()</c>;
+        /// assigning it afterwards is a no-op because the configs are materialized during build.
+        /// </summary>
+        public double? SingleBlockImprovementOfSlotOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
@@ -241,7 +249,14 @@ public abstract partial class BaseEngineModuleTests
                     ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
                     : c);
             }
-            return configs;
+
+            List<IConfig> materialized = configs.ToList();
+            foreach (IConfig config in materialized)
+            {
+                if (config is not IBlocksConfig blocksConfig) continue;
+                blocksConfig.SingleBlockImprovementOfSlot = SingleBlockImprovementOfSlotOverride ?? CiSafeSingleBlockImprovementOfSlot;
+            }
+            return materialized;
         }
 
         /// <summary>

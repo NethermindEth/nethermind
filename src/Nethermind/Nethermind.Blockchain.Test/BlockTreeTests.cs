@@ -38,6 +38,22 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Lowest_served_block_follows_the_latest_push_but_never_drops_below_the_published_boundary()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        ulong published = tree.GetLowestBlock();
+
+        tree.UpdateLowestServedBlock(published + 500);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published + 500));
+
+        tree.UpdateLowestServedBlock(published + 100);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published + 100), "the served floor follows a descending frontier down");
+
+        tree.UpdateLowestServedBlock(0);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published), "the served floor never reports below the published boundary");
+    }
+
     private TestMemDb _blocksInfosDb = null!;
     private TestMemDb _headersDb = null!;
     private TestMemDb _blocksDb = null!;
@@ -2297,7 +2313,11 @@ public class BlockTreeTests
                 extraData: [])
             {
                 Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
-                Bloom = Core.Bloom.Empty
+                Bloom = Core.Bloom.Empty,
+                StateRoot = Keccak.EmptyTreeHash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             // Second block
@@ -2314,6 +2334,9 @@ public class BlockTreeTests
                 Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             // Third block
@@ -2330,6 +2353,9 @@ public class BlockTreeTests
                 Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             tree.SuggestBlock(genesis);
@@ -2390,7 +2416,7 @@ public class BlockTreeTests
         public bool PreventsAcceptingNewBlocks => true;
         public ulong StartLevelInclusive => 0;
         public ulong EndLevelExclusive => 3;
-        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
+        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             if (_wait)
             {
@@ -2410,7 +2436,7 @@ public class BlockTreeTests
             Task.FromResult(BlockVisitOutcome.None);
 
         public Task<LevelVisitOutcome> VisitLevelEnd(
-            ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
+            ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
             Task.FromResult(LevelVisitOutcome.None);
     }
 
