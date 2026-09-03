@@ -61,7 +61,7 @@ public sealed class PrecompileCaches
     // ReSharper disable once UnusedMember.Global - used by DI
     /// <summary> Caches the results of every precompile from <paramref name="precompileProvider"/> that supports caching. </summary>
     public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, IBlocksConfig blocksConfig, ILogManager? logManager = null)
-        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes * 1024L, logManager) { }
+        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes.KiB, logManager) { }
 
     /// <summary> Byte-exact budget, bypassing <see cref="IBlocksConfig.PrecompileCacheMaxKilobytes"/>. </summary>
     internal PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
