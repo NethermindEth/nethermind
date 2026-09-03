@@ -12,7 +12,7 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public sealed class DiscoveryConnectionsPool(
+internal sealed class DiscoveryConnectionsPool(
     ILogger logger,
     IDiscoveryConfig discoveryConfig,
     NetworkListenerState listenerState)
