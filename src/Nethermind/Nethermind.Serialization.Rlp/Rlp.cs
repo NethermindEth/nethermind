@@ -78,24 +78,25 @@ namespace Nethermind.Serialization.Rlp
         // constructor is never preinitialized by ILC, which would put a lazy-initialization check
         // (a lock plus thread-static access on NativeAOT) on every static member access of this
         // heavily used class.
-        private static bool _defaultDecodersRegistered;
+        private static int _defaultDecodersRegistered;
 
+        /// <summary>Registers the assembly's own decoders once, on the first lookup or mutation.</summary>
+        /// <remarks>
+        /// The latch is claimed with an interlocked exchange and registration then runs with no lock
+        /// held. Registration instantiates decoders, which runs their type initializers, and one of
+        /// those (<see cref="TxDecoder"/>) registers itself - so a thread holding
+        /// <c>_decoderLock</c> here would wait on the CLR class-init lock while the initializing
+        /// thread waits on <c>_decoderLock</c>. Claiming rather than waiting also keeps that
+        /// initializing thread from blocking on a registration it is itself part of.
+        /// </remarks>
         private static void EnsureDefaultDecoders()
         {
-            if (Volatile.Read(ref _defaultDecodersRegistered))
+            if (Volatile.Read(ref _defaultDecodersRegistered) != 0 ||
+                Interlocked.CompareExchange(ref _defaultDecodersRegistered, 1, 0) != 0)
             {
                 return;
             }
 
-            using Lock.Scope _ = _decoderLock.EnterScope();
-            if (_defaultDecodersRegistered)
-            {
-                return;
-            }
-
-            // Latch before registering: RegisterDecoders lands back here through RegisterDecoder,
-            // and the reentrant lock plus the latch short-circuit that recursion.
-            _defaultDecodersRegistered = true;
             RegisterDecoders(typeof(Rlp).Assembly);
         }
 
@@ -105,7 +106,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 _decoderBuilder.Clear();
                 Volatile.Write(ref _decodersSnapshot, null);
-                Volatile.Write(ref _defaultDecodersRegistered, true);
+                Volatile.Write(ref _defaultDecodersRegistered, 1);
             }
 
             RegisterDecoders(typeof(Rlp).Assembly);

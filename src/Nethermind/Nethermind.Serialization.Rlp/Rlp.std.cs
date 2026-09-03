@@ -82,15 +82,20 @@ public partial class Rlp
 
                     void AddEncoder(RlpDecoderKey key)
                     {
-                        using Lock.Scope _ = _decoderLock.EnterScope();
-                        if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
+                        // Constructed before the lock is taken: a decoder constructor runs arbitrary
+                        // type initializers, and TxDecoder's registers itself, so holding
+                        // _decoderLock across construction waits on the CLR class-init lock while
+                        // the initializing thread waits on _decoderLock. Two threads racing one type
+                        // each build an instance and the last write wins, which these stateless
+                        // decoders do not care about.
+                        if (instance is null)
                         {
                             try
                             {
                                 object? decoder = type.GetConstructor(Type.EmptyTypes) is not null
                                     ? Activator.CreateInstance(type)
                                     : Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null);
-                                _decoderBuilder[key] = instance ??= (IRlpDecoder)(decoder
+                                instance = (IRlpDecoder)(decoder
                                     ?? throw new InvalidOperationException($"Could not create decoder {type}."));
                             }
                             catch (Exception)
@@ -98,10 +103,14 @@ public partial class Rlp
                                 throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
                             }
                         }
-                        else
+
+                        using Lock.Scope _ = _decoderLock.EnterScope();
+                        if (_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) && !canOverrideExistingDecoders)
                         {
                             throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {value}.");
                         }
+
+                        _decoderBuilder[key] = instance;
                     }
                 }
             }
