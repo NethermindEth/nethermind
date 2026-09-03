@@ -14,6 +14,7 @@ internal sealed class StorageHistoryScope(
     ISortedKeyValueStore rows,
     HistoryRowFormat rowFormat,
     CommitmentStore commitments,
+    CommitmentMetadata metadata,
     CommitmentDepthPolicy policy,
     StorageClearStore clears,
     ValueHash256 accountPath,
@@ -26,7 +27,7 @@ internal sealed class StorageHistoryScope(
     private const int IdentitySuffixLength = CommitmentKeyLayout.IdentityLength - IdentityPrefixLength;
 
     private readonly byte[] _identity = accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].ToArray();
-    private readonly int _trieDepth = commitments.ReadStorageTrieDepth(accountPath);
+    private readonly int _trieDepth = metadata.StorageTrieDepth(accountPath);
 
     public override bool HasCommitmentRows(int depth) => Policy.StorageTrieHasRows(_trieDepth) && depth <= Policy.StorageCheckpointDepth;
 

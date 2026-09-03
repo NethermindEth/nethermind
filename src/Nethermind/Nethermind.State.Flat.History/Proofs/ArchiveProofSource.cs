@@ -66,7 +66,7 @@ public sealed class ArchiveProofSource(
 
     private HistoricalTrieNodeBuilder CreateStorageBuilder(in ValueHash256 accountPath, ulong block, ResolutionBudget budget) =>
         new(
-            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, policy, _clears, accountPath, _rlpWrapSlots),
+            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots),
             block, budget, _fanOut, _nodeCache);
 
     private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget) =>
