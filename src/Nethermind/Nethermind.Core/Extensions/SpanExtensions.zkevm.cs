@@ -13,6 +13,8 @@ namespace Nethermind.Core.Extensions
         private const ulong AesHashSeed1 = 0xBB67AE8584CAA73BUL;
         private const ulong AesHash20Seed0 = 0x510E527FADE682D1UL;
         private const ulong AesHash20Seed1 = 0x9B05688C2B3E6C1FUL;
+        private const ulong AesHashPairSeed0 = 0xCBBB9D5DC1059ED8UL;
+        private const ulong AesHashPairSeed1 = 0x629A292A367CD507UL;
         private const ulong AesHash32Seed0 = 0x1F83D9ABFB41BD6BUL;
         private const ulong AesHash32Seed1 = 0x5BE0CD19137E2179UL;
         private const ulong AesHashFinalSeed0 = 0x3C6EF372FE94F82BUL;

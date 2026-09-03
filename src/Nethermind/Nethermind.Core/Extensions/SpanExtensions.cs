@@ -42,6 +42,10 @@ namespace Nethermind.Core.Extensions
         private static Vector128<byte> ComputeAes32Seed()
             => Vector128.Create(AesHash32Seed0, AesHash32Seed1).AsByte();
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector128<byte> ComputeAesPairSeed()
+            => Vector128.Create(AesHashPairSeed0, AesHashPairSeed1).AsByte();
+
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false) =>
             memory.Span.ToHexString(withZeroX, false, false);
 
@@ -681,6 +685,43 @@ namespace Nethermind.Core.Extensions
             }
 
             return FastHash64For20BytesFallback(ref start);
+        }
+
+        /// <summary>
+        /// Computes a 64-bit hash of a 20-byte address paired with a 32-byte slot index.
+        /// </summary>
+        /// <param name="address">Reference to the first byte of the 20-byte address.</param>
+        /// <param name="index">Reference to the first byte of the 32-byte slot index.</param>
+        /// <returns>A 64-bit hash with good distribution across all bits.</returns>
+        /// <remarks>
+        /// One AES chain over both inputs rather than a hash of each and a fold of the two, which is two chains and
+        /// three 128-bit folds for the same 52 bytes.
+        /// <para>
+        /// The seed enters the first round as data, so the mixer is not computable without it and a slot index
+        /// cannot be chosen to cancel a difference in the address. A cancellation that does not involve the seed is
+        /// what made the earlier four-lane XOR fold a cache-flood lever. Each input still gets two rounds before the
+        /// fold, which is what spreads a difference beyond one column.
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long FastHash64ForAddressAndSlot(ref byte address, ref byte index)
+        {
+            if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
+            {
+                Vector128<byte> seed = ComputeAesPairSeed();
+                Vector128<byte> addressHead = Unsafe.As<byte, Vector128<byte>>(ref address);
+                uint addressTail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref address, 16));
+                Vector128<byte> indexLow = Unsafe.As<byte, Vector128<byte>>(ref index);
+                Vector128<byte> indexHigh = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref index, 16));
+
+                Vector128<byte> mixed = FastHashAesRound(addressHead ^ seed, seed);
+                mixed = FastHashAesRound(mixed ^ indexLow, seed ^ Vector128.CreateScalar(addressTail).AsByte());
+                mixed = FastHashAesRound(mixed ^ indexHigh, seed);
+                mixed = FastHashAesRound(mixed, seed);
+                return MumFold(mixed);
+            }
+
+            return MumFold((ulong)FastHash64For32Bytes(ref index), (ulong)FastHash64For20Bytes(ref address));
         }
 
         /// <inheritdoc cref="FastHash64For32BytesCrc"/>

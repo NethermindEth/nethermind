@@ -906,6 +906,43 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [TestCase(0, TestName = "StorageCell_VaryingOnlyTheAddressIsDistributed")]
+        [TestCase(1, TestName = "StorageCell_VaryingOnlyTheLowSlotBytesIsDistributed")]
+        [TestCase(2, TestName = "StorageCell_VaryingOnlyTheHighSlotBytesIsDistributed")]
+        public void StorageCell_EveryPartOfTheKeyReachesTheHash(int varying)
+        {
+            // One chain hashes the address and both halves of the slot, so a part that never reached the mixer
+            // would still leave the paired test above passing. Holding everything else fixed is what catches that.
+            byte[] addressBytes = new byte[Address.Size];
+            byte[] slotBytes = new byte[32];
+            long[] hashes = new long[HashDistributionSampleCount];
+
+            for (int value = 0; value < HashDistributionSampleCount; value++)
+            {
+                Span<byte> target = varying switch
+                {
+                    0 => addressBytes,
+                    1 => slotBytes.AsSpan(0, sizeof(int)),
+                    _ => slotBytes.AsSpan(24, sizeof(int))
+                };
+                BinaryPrimitives.WriteInt32LittleEndian(target, value);
+                StorageCell cell = new(new Address(addressBytes), new UInt256(slotBytes, isBigEndian: false));
+                hashes[value] = cell.GetHashCode64();
+            }
+
+            string context = varying switch
+            {
+                0 => "addresses over one slot",
+                1 => "low slot bytes under one address",
+                _ => "high slot bytes under one address"
+            };
+            using (Assert.EnterMultipleScope())
+            {
+                AssertIntHashesAreDistributed(value => (int)hashes[value], context);
+                AssertHash64WindowsAreDistributed(hashes, context);
+            }
+        }
+
         [Test]
         public void MumFold_EqualInputsAreDistributed()
             => AssertIntHashesAreDistributed(
