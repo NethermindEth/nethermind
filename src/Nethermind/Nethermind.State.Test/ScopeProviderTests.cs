@@ -404,38 +404,57 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_PopulatorScope_DisposalIsOrderedIdempotentAndConstructionFailureSafe()
+    public void Test_TrieWarmerScopes_UseCurrentConsumerAndObserveItsLifetime()
     {
         List<string> disposalOrder = [];
-        IWorldStateScopeProvider.IScope processingScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        processingScope.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("processing"));
-        IWorldStateScopeProvider processingProvider = Substitute.For<IWorldStateScopeProvider>();
-        processingProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(processingScope);
-        IWorldStateScopeProvider.ITrieWarmerScope trieWarmerScope = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
-        trieWarmerScope.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("prewarmer"));
-        processingScope.CreateTrieWarmerScope().Returns(trieWarmerScope);
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope firstConsumerScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IScope secondConsumerScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmerScope firstWarmer = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
+        IWorldStateScopeProvider.ITrieWarmerScope secondWarmer = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
+        IWorldStateScopeProvider.ITrieWarmerScope thirdWarmer = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
+        firstConsumerScope.CreateTrieWarmerScope().Returns(firstWarmer);
+        secondConsumerScope.CreateTrieWarmerScope().Returns(secondWarmer, thirdWarmer);
+        secondWarmer.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("warmer"));
+        thirdWarmer.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("warmer"));
+        secondConsumerScope.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("consumer"));
+
+        IWorldStateScopeProvider consumerBaseProvider = Substitute.For<IWorldStateScopeProvider>();
+        consumerBaseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
+            .Returns(firstConsumerScope, secondConsumerScope);
+        PrewarmerScopeProvider consumer = new(
+            consumerBaseProvider,
+            new PrewarmerState(caches, isPrewarmer: false),
+            LimboLogs.Instance);
+        IWorldStateScopeProvider populatorBaseProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope populatorProcessingScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        populatorBaseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(populatorProcessingScope);
         PrewarmerScopeProvider populator = new(
-            processingProvider,
-            new PrewarmerState(new PreBlockCaches(), isPrewarmer: true),
+            populatorBaseProvider,
+            new PrewarmerState(caches, isPrewarmer: true),
             LimboLogs.Instance);
 
-        IWorldStateScopeProvider.IScope scope = populator.BeginScope(null);
-        scope.Dispose();
-        scope.Dispose();
+        IWorldStateScopeProvider.IScope staleConsumer = consumer.BeginScope(null);
+        IWorldStateScopeProvider.IScope currentConsumer = consumer.BeginScope(null);
+        IWorldStateScopeProvider.IScope firstPopulator = populator.BeginScope(null);
+        IWorldStateScopeProvider.IScope secondPopulator = populator.BeginScope(null);
+        staleConsumer.Dispose();
+        firstPopulator.Dispose();
+        secondPopulator.Dispose();
+        currentConsumer.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(disposalOrder, Is.EqualTo(new[] { "processing", "prewarmer" }));
-            processingScope.Received(1).Dispose();
-            trieWarmerScope.Received(1).Dispose();
+            firstConsumerScope.DidNotReceive().CreateTrieWarmerScope();
+            secondConsumerScope.Received(2).CreateTrieWarmerScope();
+            populatorProcessingScope.DidNotReceive().CreateTrieWarmerScope();
+            firstWarmer.DidNotReceive().Dispose();
+            secondWarmer.Received(1).Dispose();
+            thirdWarmer.Received(1).Dispose();
+            Assert.That(disposalOrder, Is.EqualTo(new[] { "warmer", "warmer", "consumer" }));
+            Assert.DoesNotThrow(() => populator.BeginScope(null).Dispose());
         }
 
-        disposalOrder.Clear();
-        processingProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
-            .Returns(_ => throw new InvalidOperationException("processing scope failure"));
-
-        Assert.That(() => populator.BeginScope(null), Throws.InvalidOperationException);
-        Assert.That(disposalOrder, Is.EqualTo(new[] { "prewarmer" }));
     }
 
     [Test]
