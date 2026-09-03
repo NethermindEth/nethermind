@@ -146,11 +146,14 @@ public class EthRpcSimulateTestsBase
             chain.NonceManager,
             chain.EthereumEcdsa);
 
-        (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        (Hash256? hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
+        Hash256 acceptedHash = hash ?? throw new AssertionException("Accepted transaction has no hash.");
 
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        HashSet<Hash256> expectedHashes = txs.Select((tx) => tx.Hash!).ToHashSet();
+        HashSet<Hash256> expectedHashes = txs
+            .Select(static pendingTx => pendingTx.Hash ?? throw new AssertionException("Pending transaction has no hash."))
+            .ToHashSet();
 
         IBlockProducer blockProducer = chain.BlockProducer;
         IBlockTree blockTree = chain.BlockTree;
@@ -163,7 +166,9 @@ public class EthRpcSimulateTestsBase
 
             if (block is not null)
             {
-                HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
+                HashSet<Hash256> blockTxs = block.Transactions
+                    .Select(static blockTx => blockTx.Hash ?? throw new AssertionException("Block transaction has no hash."))
+                    .ToHashSet();
                 if (expectedHashes.All((tx) => blockTxs.Contains(tx)) && expectedHashes.Count == blockTxs.Count) break;
             }
 
@@ -184,7 +189,7 @@ public class EthRpcSimulateTestsBase
         while (createContractTxReceipt is null)
         {
             await Task.Delay(100);
-            createContractTxReceipt = chain.Bridge.GetReceipt(hash);
+            createContractTxReceipt = chain.Bridge.GetReceipt(acceptedHash);
         }
 
         Assert.That(createContractTxReceipt.ContractAddress, Is.Not.Null, $"Contract transaction {tx.Hash!} was not deployed.");

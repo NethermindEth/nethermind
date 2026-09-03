@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
+using Nethermind.Network;
 using NLogLevel = NLog.LogLevel;
 
 namespace Nethermind.Bootnode;
@@ -70,7 +71,7 @@ internal static class BootnodeOptionValidation
             null => true,
             _ => false
         };
-        if (!hasExpectedFamily || IsUnspecified(ipAddress))
+        if (!hasExpectedFamily || ipAddress.IsWildcardOrNone)
         {
             throw new ArgumentException($"{optionName} must be a usable external IP address.", optionName);
         }
@@ -93,12 +94,6 @@ internal static class BootnodeOptionValidation
 
         throw new ArgumentException($"{optionName} must be a valid IP address, DNS name, '*', or '+'.", optionName);
     }
-
-    private static bool IsUnspecified(IPAddress ipAddress) =>
-        ipAddress.Equals(IPAddress.Any) ||
-        ipAddress.Equals(IPAddress.IPv6Any) ||
-        ipAddress.Equals(IPAddress.None) ||
-        ipAddress.Equals(IPAddress.IPv6None);
 
     private static bool TryParseExternalIp(string value, [NotNullWhen(true)] out IPAddress? ipAddress)
     {

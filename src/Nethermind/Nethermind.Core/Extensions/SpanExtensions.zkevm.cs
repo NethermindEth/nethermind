@@ -23,9 +23,43 @@ namespace Nethermind.Core.Extensions
 
         // Distinct odd multipliers so a lane's contribution depends on its position: a plain XOR fold
         // would collide for inputs that differ only by swapping two lanes.
+        private const ulong Lane0 = 0x9E3779B97F4A7C15UL;
+        private const ulong Lane1 = 0xC2B2AE3D27D4EB4FUL;
+        private const ulong Lane2 = 0x165667B19E3779F9UL;
+        private const ulong Lane3 = 0x85EBCA77C2B2AE63UL;
+        private const int WordWidth = 32;
+
+        /// <summary>Seeds a lane multiplier for one key width.</summary>
+        /// <remarks>
+        /// The seed has to reach the lane products rather than only the accumulated result. Applied
+        /// after the lanes are combined it cancels in the difference between two keys, so any
+        /// colliding pair found for one seed holds for every seed, and the mixer is no harder to
+        /// attack than an unseeded one. Folding it into the multipliers keeps the dependence
+        /// key-dependent at no extra arithmetic -- the same multiplies, against seeded operands.
+        /// Shifting left of the low bit keeps each multiplier odd, so it stays a bijection.
+        /// Seeding by <see cref="ComputeSeed"/> of the width also separates widths, which the shared
+        /// lane constants did not: a 20-byte key and its zero-padded 32-byte form previously mixed
+        /// to the same value, because the tail read of the shorter key is the zero-extension of the
+        /// longer one's and the unused lane contributes nothing.
+        /// <para>
+        /// This placement does not by itself make the mixer hard to collide.
+        /// <see cref="InstanceRandom"/> is a fixed literal in the guest, so the seeded multipliers
+        /// are public constants and remain odd and invertible: the same closed-form derivation
+        /// applies to them. What it buys is the width separation above, which fixes a present bug,
+        /// and a mixer that a per-run seed would actually harden instead of cancelling.
+        /// </para>
+        /// </remarks>
+        private static ulong SeededLane(ulong lane, int width) =>
+            lane ^ ((ulong)ComputeSeed(width) << 1);
+
         // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
-        // constant with a five-instruction sequence at every use.
-        private static readonly ulong[] Lanes = [0x9E3779B97F4A7C15UL, 0xC2B2AE3D27D4EB4FUL, 0x165667B19E3779F9UL, 0x85EBCA77C2B2AE63UL];
+        // constant with a five-instruction sequence at every use, and an array element - unlike a
+        // static readonly primitive - cannot be folded back into one.
+        private static readonly ulong[] AddrLanes =
+            [SeededLane(Lane0, Address.Size), SeededLane(Lane1, Address.Size), SeededLane(Lane2, Address.Size)];
+
+        private static readonly ulong[] WordLanes =
+            [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
@@ -34,13 +68,13 @@ namespace Nethermind.Core.Extensions
             // the four-lane CRC-style walk is one of its hottest leaves. Every byte still feeds the
             // result -- folding to the leading word would collide across big-endian UInt256 values,
             // which share leading zeros -- but at four multiplies instead of a lane-at-a-time walk.
-            if (input.Length == 32)
+            if (input.Length == WordWidth)
             {
                 return (int)(uint)Mix32(ref MemoryMarshal.GetReference(input));
             }
 
             // Addresses are the other dominant key width.
-            if (input.Length == 20)
+            if (input.Length == Address.Size)
             {
                 return (int)(uint)MixAddress(ref MemoryMarshal.GetReference(input));
             }
@@ -52,41 +86,58 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixAddress(ref byte b)
         {
-            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(Lanes);
-            ulong lane0 = lanes;
-            ulong mixed =
-                Unsafe.ReadUnaligned<ulong>(ref b) * lane0 ^
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes);
+            return Finish(
+                Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2);
-
-            mixed ^= InstanceRandom;
-            mixed *= lane0;
-            return mixed ^ (mixed >> 29);
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2),
+                lanes);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long FastHash64For32BytesFallback(ref byte start)
+        internal static long FastHash64For32BytesFallback(ref byte start)
             => (long)Mix32(ref start);
 
         /// <summary>Mixes thirty-two bytes into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Mix32(ref byte b)
         {
-            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(Lanes);
-            ulong lane0 = lanes;
-            ulong mixed =
-                Unsafe.ReadUnaligned<ulong>(ref b) * lane0 ^
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes);
+            return Finish(
+                Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2) ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Unsafe.Add(ref lanes, 3);
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Unsafe.Add(ref lanes, 3),
+                lanes);
+        }
 
-            mixed ^= InstanceRandom;
-            mixed *= lane0;
-            return mixed ^ (mixed >> 29);
+        /// <summary>Finishes a lane combination into a well-distributed 64-bit value.</summary>
+        /// <remarks>
+        /// One multiply between two folds, both by 32, and both folds are load-bearing. The lane
+        /// multiplies carry upward only, so the pre-fold is what lets a key whose entropy sits in the
+        /// high half of a lane -- a zero-padded value at offset 4, 12, 20 or 28 -- reach the low output
+        /// bits at all; the post-fold brings the multiply's concentrated high half back down. Dropping
+        /// either collapses a 14-bit bucket window to 2048-2679 distinct values on 4096 samples, the
+        /// same failure the AES path documents at <see cref="FastHash64For20Bytes"/>. A second multiply
+        /// buys nothing further, and <c>GuestMixerTests</c> covers every aligned offset.
+        /// </remarks>
+        /// <param name="mixed">The combined lane products.</param>
+        /// <param name="domain">
+        /// A seeded lane multiplier for the same key width. Avalanche only, since a value applied
+        /// here cannot make a colliding pair diverge -- see <see cref="SeededLane"/> — but it keeps
+        /// an all-zero key off a fixed point.
+        /// </param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Finish(ulong mixed, ulong domain)
+        {
+            mixed ^= mixed >> 32;
+            mixed ^= domain;
+            mixed *= Lane0;
+            return mixed ^ (mixed >> 32);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long FastHash64For20BytesFallback(ref byte start)
+        internal static long FastHash64For20BytesFallback(ref byte start)
             => (long)MixAddress(ref start);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -17,6 +17,11 @@ namespace Nethermind.Trie
         private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
             => Interlocked.CompareExchange(ref _blockAndFlags, newValue, comparand);
 
+        /// <summary>Reads <c>_rlpArray</c> for a presence check, without the seqlock <see cref="ReadRlp"/> needs.</summary>
+        /// <remarks>Only the reference is read, so a torn length cannot be observed and an acquire read suffices.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte[]? ReadRlpArray() => Volatile.Read(ref _rlpArray);
+
         /// <summary>
         /// Atomically read _rlp using seqlock: retry if a concurrent write is detected.
         /// Memory barriers ensure ARM64 correctness (matching SeqlockCache/KeccakCache patterns).

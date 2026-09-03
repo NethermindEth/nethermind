@@ -10,8 +10,8 @@ namespace Nethermind.Db
     public partial class MemDb
     {
         // Single-threaded guest: a plain dictionary avoids ConcurrentDictionary's per-access overhead.
-        private readonly Dictionary<byte[], byte[]?> _db;
-        private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+        private readonly Dictionary<byte[], byte[]> _db;
+        private readonly Dictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 
         public virtual void Remove(ReadOnlySpan<byte> key) => _spanDb.Remove(key);
 
@@ -19,7 +19,7 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new Dictionary<byte[], byte[]?>(capacity, Bytes.EqualityComparer);
+            _db = new Dictionary<byte[], byte[]>(capacity, Bytes.EqualityComparer);
             _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
     }

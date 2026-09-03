@@ -9,8 +9,8 @@ namespace Nethermind.Db
 {
     public partial class MemDb
     {
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
-        private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+        private readonly ConcurrentDictionary<byte[], byte[]> _db;
+        private readonly ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 
         public virtual void Remove(ReadOnlySpan<byte> key) => _spanDb.TryRemove(key, out _);
 
@@ -18,7 +18,7 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]?>(Environment.ProcessorCount, capacity, Bytes.EqualityComparer);
+            _db = new ConcurrentDictionary<byte[], byte[]>(Environment.ProcessorCount, capacity, Bytes.EqualityComparer);
             _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
     }

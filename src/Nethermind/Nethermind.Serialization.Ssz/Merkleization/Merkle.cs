@@ -307,5 +307,4 @@ public static partial class Merkle
 
         merkleizer.CalculateRoot(out root);
     }
-
 }

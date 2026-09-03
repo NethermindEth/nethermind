@@ -73,7 +73,7 @@ internal sealed class EraSlimReceiptDecoder
         LogEntry[] logs = new LogEntry[logCount];
         for (int i = 0; i < logCount; i++)
         {
-            logs[i] = Rlp.Decode<LogEntry>(ref ctx);
+            logs[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx);
         }
 
         if (ctx.Position != logsEnd)

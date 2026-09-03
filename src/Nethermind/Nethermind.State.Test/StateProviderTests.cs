@@ -41,17 +41,18 @@ public class StateProviderTests(bool useFlat)
         public IWorldState WorldState { get; }
         private readonly IContainer? _container;
 
-        public Context(bool useFlat)
+        public Context(bool useFlat, ILogManager? logManager = null)
         {
+            logManager ??= Logger;
             if (useFlat)
             {
                 (IWorldStateScopeProvider scopeProvider, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
                 _container = container;
-                WorldState = new WorldState(scopeProvider, Logger);
+                WorldState = new WorldState(scopeProvider, logManager);
             }
             else
             {
-                WorldState = TestWorldStateFactory.CreateForTest();
+                WorldState = TestWorldStateFactory.CreateForTest(logManager: logManager);
             }
         }
 
@@ -97,6 +98,21 @@ public class StateProviderTests(bool useFlat)
         provider.Commit(releaseSpec);
 
         Assert.That(provider.AccountExists(systemUser), Is.True);
+    }
+
+    [Test]
+    public void Updating_code_hash_is_not_logged_at_debug()
+    {
+        TestLogger logger = new() { IsTrace = false };
+        using Context ctx = new(useFlat, new OneLoggerLogManager(new ILogger(logger)));
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 0);
+        logger.LogList.Clear();
+
+        provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance);
+
+        Assert.That(logger.LogList, Has.None.Contains($"Update {_address1} C"));
     }
 
     [Test]

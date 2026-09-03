@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -65,7 +64,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount += keys.Length;
-                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.GetValueOrDefault(k))).ToArray();
+                return keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, _db.GetValueOrDefault(k))).ToArray();
             }
         }
 
@@ -90,7 +89,7 @@ namespace Nethermind.Db
         // Removing already returned the memory; there is no deferred storage to give back.
         public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) { }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
 
@@ -99,7 +98,7 @@ namespace Nethermind.Db
         public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
         public ICollection<byte[]> Keys => _db.Select(static kvp => kvp.Key).ToArray();
-        public ICollection<byte[]> Values => _db.Select(static kvp => kvp.Value).ToArray()!;
+        public ICollection<byte[]> Values => _db.Select(static kvp => kvp.Value).ToArray();
 
         public int Count => _db.Count;
 
@@ -117,7 +116,7 @@ namespace Nethermind.Db
             }
 
             ReadsCount++;
-            return _spanDb.TryGetValue(key, out byte[] value) ? value : null;
+            return _spanDb.TryGetValue(key, out byte[]? value) ? value : null;
         }
 
         public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -143,6 +142,6 @@ namespace Nethermind.Db
 
         public long EstimatedCount => Count;
 
-        private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
+        private IEnumerable<KeyValuePair<byte[], byte[]>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
 }
