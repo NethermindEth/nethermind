@@ -4322,8 +4322,8 @@ namespace Nethermind.TxPool.Test
         {
             Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
                 maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas, nonceKeys: nonceKeys);
-            // Naming the sender explicitly is still a self_verify frame and prices identically, so this
-            // varies the hash without touching any input the reservation is computed from.
+            // Naming the sender explicitly is still a self_verify frame, so this varies the hash; the
+            // target costs 12 more intrinsic gas, so the retargeted shape reserves slightly more.
             if (distinctHash)
             {
                 int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);

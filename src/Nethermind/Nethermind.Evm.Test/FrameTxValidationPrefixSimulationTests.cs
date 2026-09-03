@@ -258,7 +258,7 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
     }
 
-    /// <remarks>Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.</remarks>
+    // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
     private void AssertPrefixCallTarget(Address target, bool violates)
     {
         byte[] code = Prepare.EvmCode
