@@ -216,13 +216,13 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the account address is popped and where the code size is pushed.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter, which may be adjusted during optimization.</param>
+    /// <param name="programCounter">The program counter; a fused compare returns it advanced past the folded opcode.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -284,9 +284,9 @@ public static partial class EvmInstructions
                 }
 
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
-                return !isCodeLengthNotZero
+                return new OpcodeResult(programCounter, !isCodeLengthNotZero
                     ? stack.PushOne<TTracingInst>()
-                    : stack.PushZero<TTracingInst>();
+                    : stack.PushZero<TTracingInst>());
             }
         }
 
@@ -294,11 +294,11 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }
