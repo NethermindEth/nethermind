@@ -41,7 +41,7 @@ public class GetInclusionListTransactionsHandlerTests
     [TestCase(false, false)]
     public void Fork_gate_follows_whether_the_chain_schedules_focil(bool focilScheduled, bool supported)
     {
-        ResultWrapper<InclusionListBytes> result = BuildHandler(focilScheduled).Handle(null);
+        ResultWrapper<InclusionListBytes> result = BuildHandler(focilScheduled).Handle();
 
         Assert.That(result.Result.ResultType, Is.EqualTo(supported ? ResultType.Success : ResultType.Failure));
         if (!supported)

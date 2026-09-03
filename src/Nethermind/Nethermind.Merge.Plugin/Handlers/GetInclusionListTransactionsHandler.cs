@@ -23,7 +23,7 @@ public class GetInclusionListTransactionsHandler(
     /// <inheritdoc/>
     /// <param name="parentBlockHash">Block whose header fixes the next-block base fee the candidates are
     /// filtered against; the head when omitted. Nonce readiness stays head-relative.</param>
-    public ResultWrapper<InclusionListBytes> Handle(Hash256? parentBlockHash)
+    public ResultWrapper<InclusionListBytes> Handle(Hash256? parentBlockHash = null)
     {
         if (!specProvider.GetFinalSpec().IsEip7805Enabled)
             return ResultWrapper<InclusionListBytes>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
