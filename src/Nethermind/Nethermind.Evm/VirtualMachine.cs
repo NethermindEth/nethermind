@@ -135,9 +135,12 @@ public partial class VirtualMachine<TGasPolicy>(
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
-    // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
-    // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
+    // Both are fixed per execution, so they are cached once in ExecuteTransaction rather than dispatched
+    // through the tracer each time: IsTracingActions is read at several hot CALL/precompile sites, and
+    // IsCancelable picks both the dispatch table and the generic instantiation that runs on it, which have
+    // to agree.
     private bool _isTracingActionsCached;
+    private bool _isCancelableCached;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -183,11 +186,13 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
+        _isCancelableCached = txTracer.IsCancelable;
         _worldState = worldState;
 
         _shouldRestoreRipemdTouch = false;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
+        PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
         MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
@@ -1300,7 +1305,8 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OffFlag is used when cancellation is not needed.
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
-        return _txTracer.IsCancelable switch
+        // Read from the value pinned at transaction start, which is also what chose the dispatch table.
+        return _isCancelableCached switch
         {
             false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
             true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),

@@ -34,12 +34,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
     }
 
+    /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
+    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[] _opcodeHandlers;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]
         GetOpcodeHandlers<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(Spec);
+        GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(Spec, refresh: false);
+
+    /// <summary>Whether the dispatch table should be rebuilt before the coming transaction.</summary>
+    private partial bool ShouldRefreshOpcodes();
+
+    /// <summary>Resolves the dispatch table the coming transaction runs on.</summary>
+    /// <remarks>
+    /// Once per transaction rather than once per frame: the tracing and cancellation flags hold for the
+    /// whole transaction and the spec for the whole block, so every frame the transaction enters or
+    /// resumes would resolve the same table, and the per-spec lookup behind it is not free.
+    /// </remarks>
+    private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+    {
+        if (_isCancelableCached)
+            PrepareOpcodes<TTracingInst, OnFlag>(spec);
+        else
+            PrepareOpcodes<TTracingInst, OffFlag>(spec);
+    }
+
+    private void PrepareOpcodes<TTracingInst, TCancelable>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        // Traced tables are left alone: a tracing run is short, and rebuilding one would cost more than
+        // the promoted code it could pick up.
+        _opcodeHandlers = GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(
+            spec, refresh: !TTracingInst.IsActive && ShouldRefreshOpcodes());
 
     private sealed unsafe class OpcodeTable
     {
@@ -48,21 +77,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? Traced;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? TracedCancelable;
 
+        /// <summary>The table for this combination of flags, built on first use.</summary>
+        /// <param name="spec">The fork whose opcode set the table describes.</param>
+        /// <param name="refresh">
+        /// Rebuild even when one is already cached, so its function pointers are captured from whatever the
+        /// JIT has promoted since the last build.
+        /// </param>
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]
-            GetHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
+            GetHandlers<TTracingInst, TCancelable>(IReleaseSpec spec, bool refresh)
             where TTracingInst : struct, IFlag
             where TCancelable : struct, IFlag
         {
-            if (TTracingInst.IsActive)
-            {
-                return TCancelable.IsActive
-                    ? TracedCancelable ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec)
-                    : Traced ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
-            }
+            ref delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? table =
+                ref TTracingInst.IsActive
+                    ? ref (TCancelable.IsActive ? ref TracedCancelable : ref Traced)
+                    : ref (TCancelable.IsActive ? ref NoTraceCancelable : ref NoTrace);
 
-            return TCancelable.IsActive
-                ? NoTraceCancelable ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec)
-                : NoTrace ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
+            return refresh
+                ? table = GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec)
+                : table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
         }
     }
 
@@ -83,8 +116,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[] handlers =
-            GetOpcodeHandlers<TTracingInst, TCancelable>();
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
 
         // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every
         // bytecode read is preceded by a program-counter bounds check, and a byte is a valid table index.
