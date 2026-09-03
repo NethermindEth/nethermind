@@ -12,9 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
-#if DEBUG
-using Nethermind.Evm.Tracing.Debugger;
-#endif
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 
@@ -1330,9 +1327,6 @@ public partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         ReturnData = null;
-#if DEBUG
-        DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
-#endif
 
         // May not be zero when resuming after a call.
         nint programCounter = VmState.ProgramCounter;
@@ -1355,15 +1349,9 @@ public partial class VirtualMachine<TGasPolicy>(
         if (ReturnData is not null)
             goto DataReturn;
 
-#if DEBUG
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
         return CallResult.Empty();
 
     DataReturn:
-#if DEBUG
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
         // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
         // the general helper, while a class one has a specialized fast path. Order them accordingly.
         if (ReturnData is VmState<TGasPolicy> state)

@@ -7,10 +7,6 @@ using System.Runtime.CompilerServices;
 using InlineIL;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-#if DEBUG
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.Debugger;
-#endif
 
 namespace Nethermind.Evm;
 
@@ -27,10 +23,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public VirtualMachine<TGasPolicy> Vm;
         public nint FinalProgramCounter;
         public int OpCodeCount;
-#if DEBUG
-        public DebugTracer<TGasPolicy>? Debugger;
-        public bool SkipDebuggerWait;
-#endif
     }
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
@@ -125,9 +117,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 OpcodeHandlers = opcodeHandlers,
                 Vm = this,
-#if DEBUG
-                Debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>(),
-#endif
             };
 
             byte opcode = Unsafe.Add(ref stack.Code, programCounter);
@@ -150,27 +139,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
     {
         VirtualMachine<TGasPolicy> vm = state.Vm;
-#if DEBUG
-        if (state.SkipDebuggerWait)
-        {
-            state.SkipDebuggerWait = false;
-        }
-        else
-        {
-            nint dispatchedProgramCounter = pc;
-            state.Debugger?.TryWait(ref vm._currentState, ref pc, ref gas, ref stack.Head);
-            if (pc != dispatchedProgramCounter)
-            {
-                if ((nuint)pc >= (nuint)stack.CodeLength)
-                {
-                    state.FinalProgramCounter = pc;
-                    return EvmExceptionType.None;
-                }
-                state.SkipDebuggerWait = true;
-                goto DispatchNext;
-            }
-        }
-#endif
         if (TCancelable.IsActive && (state.OpCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
             ThrowOperationCanceledException();
 
@@ -200,9 +168,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return EvmExceptionType.None;
         }
 
-#if DEBUG
-    DispatchNext:
-#endif
         byte nextOpcode = Unsafe.Add(ref stack.Code, pc);
         nint next = (nint)state.OpcodeHandlers[nextOpcode];
         // Keep the target in a real local so InlineIL can place it above the outgoing arguments.
