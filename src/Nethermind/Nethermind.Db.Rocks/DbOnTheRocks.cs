@@ -1313,7 +1313,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal const int FullEnumerationBatchSize = 10_000;
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
         ThrowIfDisposing();
         return GetAllCore(ordered);
@@ -1400,8 +1400,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(bool ordered, ColumnFamilyHandle? ch = null) =>
-        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value()));
+    internal IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(bool ordered, ColumnFamilyHandle? ch = null) =>
+        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value()));
 
     internal IEnumerable<byte[]> GetAllKeysCore(bool ordered, ColumnFamilyHandle? ch = null) =>
         GetAllCore(ordered, ch, static iterator => iterator.Key());
