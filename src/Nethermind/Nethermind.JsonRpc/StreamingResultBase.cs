@@ -44,6 +44,16 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
         {
             if (logger.IsDebug) logger.Debug("JSON-RPC streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
         }
+        finally
+        {
+            // The envelope's result member is already written, so an emitter that aborted before producing
+            // any value would leave a dangling `"result":` and an unparseable body.
+            if (jsonWriter.BytesCommitted == 0 && jsonWriter.BytesPending == 0)
+            {
+                jsonWriter.WriteNullValue();
+                jsonWriter.Flush();
+            }
+        }
     }
 
     protected static async ValueTask<StreamableResultStatus> WriteToWithStatusAsync(

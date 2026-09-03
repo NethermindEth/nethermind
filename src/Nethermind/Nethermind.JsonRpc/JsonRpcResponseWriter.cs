@@ -94,22 +94,40 @@ public static class JsonRpcResponseWriter
     {
         writer.Write(SuccessEnvelopeStart);
         StreamableResultStatus? status = null;
-        if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
+        try
         {
-            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
+            {
+                status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            }
+            else if (streamable is IStreamableResultWithStatus statusStreamable)
+            {
+                status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            }
+            else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
+            {
+                await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
+            }
+            else
+            {
+                await streamable.WriteToAsync(writer, cancellationToken);
+            }
         }
-        else if (streamable is IStreamableResultWithStatus statusStreamable)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            // The result member is already on the wire, so the envelope can no longer be replaced with a
+            // JSON-RPC error object; close it and flag the failure rather than leave a body no client can
+            // parse. Cancellation is excluded deliberately: a truncated body is how a caller that gave up
+            // mid-stream learns its response is incomplete. The exception still propagates for logging.
+            WriteEnvelopeTail(writer, response, StreamableResultStatus.Failed);
+            throw;
         }
-        else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
-        {
-            await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
-        }
-        else
-        {
-            await streamable.WriteToAsync(writer, cancellationToken);
-        }
+
+        WriteEnvelopeTail(writer, response, status);
+    }
+
+    private static void WriteEnvelopeTail(PipeWriter writer, JsonRpcResponse response, StreamableResultStatus? status)
+    {
         if (status is not null)
         {
             writer.Write(StreamStatusSeparator);

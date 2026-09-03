@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
@@ -28,6 +29,21 @@ public class JsonRpcResponseWriterStreamingIdTests
         {
             writer.Write("\"ok\""u8);
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingStreamable(bool emitValueBeforeThrow, Exception failure)
+        : JsonStreamingResultBase(new CancellationTokenSource(), LimboLogs.Instance.GetClassLogger<ThrowingStreamable>())
+    {
+        protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        {
+            if (emitValueBeforeThrow)
+            {
+                writer.WriteStartArray();
+                writer.WriteEndArray();
+            }
+
+            throw failure;
         }
     }
 
@@ -55,6 +71,39 @@ public class JsonRpcResponseWriterStreamingIdTests
         await pipe.Reader.CompleteAsync();
 
         Assert.That(envelope, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"ok\",\"id\":{serializedId}}}"));
+    }
+
+    public static IEnumerable<TestCaseData> FailureCases()
+    {
+        yield return new TestCaseData(true, new InvalidOperationException("boom"), "{\"jsonrpc\":\"2.0\",\"result\":[],\"_streamStatus\":\"failed\",\"id\":42}")
+            .SetName("FailureAfterValue_EnvelopeClosedAndFlagged");
+        yield return new TestCaseData(false, new InvalidOperationException("boom"), "{\"jsonrpc\":\"2.0\",\"result\":null,\"_streamStatus\":\"failed\",\"id\":42}")
+            .SetName("FailureBeforeValue_ResultIsNull");
+        // A caller that gave up mid-stream must still see an unterminated body, so it cannot mistake a
+        // partial payload for a complete one.
+        yield return new TestCaseData(true, new OperationCanceledException(), "{\"jsonrpc\":\"2.0\",\"result\":[]")
+            .SetName("Cancellation_LeavesEnvelopeTruncated");
+    }
+
+    [TestCaseSource(nameof(FailureCases))]
+    public async Task Streaming_failure_does_not_truncate_the_envelope(bool emitValueBeforeThrow, Exception failure, string expectedEnvelope)
+    {
+        Pipe pipe = new();
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(42L), Result = new ThrowingStreamable(emitValueBeforeThrow, failure) };
+
+        Exception? thrown = Assert.ThrowsAsync(failure.GetType(), async () =>
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), CancellationToken.None));
+        await pipe.Writer.CompleteAsync();
+
+        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
+        string envelope = Encoding.UTF8.GetString(read.Buffer.ToArray());
+        await pipe.Reader.CompleteAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure), "the failure must not be swallowed");
+            Assert.That(envelope, Is.EqualTo(expectedEnvelope));
+        }
     }
 
     [Test]

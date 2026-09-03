@@ -1285,6 +1285,33 @@ public class TraceRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ConcurrentStreamingCases()
+    {
+        yield return new TestCaseData("trace_replayBlockTransactions", new object?[] { "latest", new[] { "trace" } })
+            .SetName("trace_replayBlockTransactions under concurrency");
+
+        yield return new TestCaseData("trace_block", new object?[] { "latest" })
+            .SetName("trace_block under concurrency");
+    }
+
+    [TestCaseSource(nameof(ConcurrentStreamingCases))]
+    public async Task Streaming_traces_survive_concurrent_requests(string method, object?[] parameters)
+    {
+        // Production capacity of the trace module pool; concurrency well above it forces rentals to be recycled.
+        const int poolCapacity = 2;
+        const int concurrency = 8;
+
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        string[] responses = await RpcTest.TestSerializedRequestsConcurrently(
+            () => context.Blockchain.TraceRpcModule, poolCapacity, concurrency, method, parameters);
+
+        Assert.That(responses, Has.All.EqualTo(expected));
+    }
+
     [Test]
     public async Task Streaming_vmTrace_matches_buffered_with_real_opcodes()
     {
