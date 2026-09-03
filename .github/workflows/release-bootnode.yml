@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_latest:
-        description: Also publish Docker latest. Valid only when the matching Nethermind release is stable.
+        description: Also publish Docker latest. Valid only for a stable Bootnode release.
         required: true
         type: boolean
         default: false
@@ -40,13 +40,13 @@ jobs:
 
       - name: Detect version
         id: version
-        working-directory: src/Nethermind
+        working-directory: tools/Bootnode/Nethermind.Bootnode
         env:
           INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
-          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
-          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" -n Directory.Build.props)
+          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Nethermind.Bootnode.csproj)
+          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" -n Nethermind.Bootnode.csproj)
           version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
           release_tag=bootnode-$version
           release_name="Nethermind Bootnode $version"
@@ -148,7 +148,7 @@ jobs:
           relnotes=$(cat <<EOF
           # Release notes
 
-          Standalone Nethermind Bootnode release for Nethermind $RELEASE_VERSION.
+          Standalone Nethermind Bootnode release, version $RELEASE_VERSION.
 
           ## Docker image
 

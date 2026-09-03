@@ -39,7 +39,7 @@ The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode a
 
 ## Release Assets
 
-Bootnode releases use a separate GitHub release tag with the matching Nethermind version, for example `bootnode-1.39.1`. Package archive names and Docker tags use `1.39.1` rather than the GitHub-only `bootnode-1.39.1` tag, for example `nethermind-bootnode-1.39.1-linux-x64.tar.gz` and `nethermind/bootnode:1.39.1`. The `Release Bootnode` workflow always marks its GitHub release as not latest, so it does not replace the Nethermind client release in the repository sidebar. It builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For a stable version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
+Bootnode maintains an independent version line starting at `1.0.0`. Its separate GitHub Release tag includes the `bootnode-` prefix, for example `bootnode-1.0.0`; package archive names and Docker tags use the same unprefixed Bootnode version, for example `nethermind-bootnode-1.0.0-linux-x64.tar.gz` and `nethermind/bootnode:1.0.0`. The `Release Bootnode` workflow always marks its GitHub release as not latest, so it does not replace the Nethermind client release in the repository sidebar. It builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For a stable version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
 
 ```powershell
 docker pull nethermind/bootnode:latest
