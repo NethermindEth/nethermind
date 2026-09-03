@@ -50,6 +50,7 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+    private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -64,7 +65,7 @@ public class PrewarmerScopeProvider(
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
                 // The consumer reads the state at baseBlock through the caches, which may still describe another state.
-                preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot);
+                preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
             }
             catch
             {
@@ -368,6 +369,8 @@ public class PrewarmerScopeProvider(
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+
+        public bool AcceptsStorageWrites => baseWriteBatch.AcceptsStorageWrites;
 
         public void Dispose()
         {

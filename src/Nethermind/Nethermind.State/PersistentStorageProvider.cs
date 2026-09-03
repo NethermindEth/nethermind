@@ -405,6 +405,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// </remarks>
         public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
+            if (!writeBatch.AcceptsStorageWrites) return;
+
             foreach (AddressAsKey removed in removedWithStorage)
             {
                 // Only a block that saw the storage empty before touching it can prove the cache holds none of its slots.

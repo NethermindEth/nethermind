@@ -620,6 +620,35 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
+    [Test]
+    public void Detached_storage_changes_stop_before_clears_when_batch_rejects_storage_writes()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(new StorageCell(TestItem.AddressA, 1), _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
+            writeBatch.AcceptsStorageWrites.Returns(false);
+
+            snapshot.WriteTo(writeBatch);
+
+            writeBatch.DidNotReceiveWithAnyArgs().CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>());
+        }
+    }
+
     [TestCase(StorageClearRollback.Snapshot)]
     [TestCase(StorageClearRollback.ResetKeepingBlockChanges)]
     public void Rolling_back_storage_clear_preserves_committed_storage(StorageClearRollback rollback)

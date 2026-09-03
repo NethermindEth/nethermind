@@ -460,16 +460,22 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _));
+        TestLogger testLogger = new();
 
         // The commit moved the caches on: a sibling block on the parent finds nothing it can use.
-        bool carried = caches.PrepareFor(committedRoot ? newRoot : baseRoot);
+        Hash256 requestedRoot = committedRoot ? newRoot : baseRoot;
+        bool carried = caches.PrepareFor(requestedRoot, new ILogger(testLogger));
 
         AddressAsKey keyA = TestItem.AddressA;
+        string[] expectedLogs = committedRoot
+            ? []
+            : [$"Pre-block caches cleared because cached state root {newRoot} does not match requested state root {baseRoot}"];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(carried, Is.EqualTo(committedRoot));
             Assert.That(caches.StateCache.TryGetValue(in keyA, out Account account), Is.EqualTo(committedRoot));
             Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.EqualTo(committedRoot));
+            Assert.That(testLogger.LogList, Is.EqualTo(expectedLogs));
             if (committedRoot) Assert.That(account.Balance, Is.EqualTo((UInt256)400));
         }
     }

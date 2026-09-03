@@ -129,7 +129,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             CancelAndJoinSpeculativeLocked();
             // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
             // further, but the caches describe the state they were filled from, which need not be this block's parent.
-            carried = _preBlockCaches.PrepareFor(parent?.StateRoot);
+            carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
         }
 
         bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
@@ -489,7 +489,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             ClearWarmMarker();
             _warmedTxHashes.Clear();
-            _preBlockCaches.PrepareFor(head.StateRoot);
+            _preBlockCaches.PrepareFor(head.StateRoot, _logger);
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
 

@@ -177,15 +177,19 @@ public class PreBlockCaches
     /// For the driver, once every populator is joined: afterwards the caches are known to reflect
     /// <paramref name="stateRoot"/>, so populators may fill them from that state.
     /// </remarks>
+    /// <param name="stateRoot">The state root the next block starts from.</param>
+    /// <param name="logger">Reports when caches for another state root have to be cleared.</param>
     /// <returns><see langword="true"/> when the caches were kept; <see langword="false"/> when they were cleared.</returns>
-    public bool PrepareFor(Hash256? stateRoot)
+    public bool PrepareFor(Hash256? stateRoot, ILogger logger = default)
     {
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
             if (stateRoot is not null && _validFor == stateRoot) return true;
 
+            Hash256? validFor = _validFor;
             ClearCachesCore();
+            if (validFor is not null && logger.IsInfo) ReportCachesClearedForStateMismatch(logger, validFor, stateRoot);
             _validFor = stateRoot;
             return false;
         }
@@ -200,14 +204,26 @@ public class PreBlockCaches
     /// it has prepared them for the block. <see cref="BeginConsumerScope"/> beforehand joins any speculative session,
     /// so no populator writes while this runs or while the scope reads.
     /// </remarks>
-    public void EnsureNotStaleFor(Hash256? stateRoot)
+    /// <param name="stateRoot">The state root the consumer is about to read.</param>
+    /// <param name="logger">Reports when caches for another state root have to be cleared.</param>
+    public void EnsureNotStaleFor(Hash256? stateRoot, ILogger logger = default)
     {
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
-            if (stateRoot is null || _validFor != stateRoot) ClearStateCachesCore();
+            if (stateRoot is null || _validFor != stateRoot)
+            {
+                Hash256? validFor = _validFor;
+                ClearStateCachesCore();
+                if (validFor is not null && logger.IsInfo) ReportCachesClearedForStateMismatch(logger, validFor, stateRoot);
+            }
         }
     }
+
+    /// <remarks>Out of line because state mismatches are rare during linear block processing.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ReportCachesClearedForStateMismatch(ILogger logger, Hash256 validFor, Hash256? requestedState) =>
+        logger.Info($"Pre-block caches cleared because cached state root {validFor} does not match requested state root {requestedState}");
 
     /// <summary>
     /// Brings the account and storage caches from the state at <paramref name="baseStateRoot"/> to the committed
