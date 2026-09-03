@@ -195,12 +195,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
+        // Reaching here means ShouldExitFrame said no, so the status is None and gas is left: the exit
+        // block returns exactly that, and one copy of it is smaller than two.
         if (next == 0)
-        {
-            state.OpCodeCount = opCodeCount;
-            state.FinalProgramCounter = pc;
-            return EvmExceptionType.None;
-        }
+            goto Exit;
 
         // Keep the target in a real local so InlineIL can place it above the outgoing arguments.
         IL.EnsureLocal(in next);
