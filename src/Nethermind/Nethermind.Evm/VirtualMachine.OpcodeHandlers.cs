@@ -25,21 +25,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref nint programCounter);
     }
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         OpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         &ExecuteOpcode<TOpcode, TTracingInst, TCancelable>;
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[] lookup =
-            new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[byte.MaxValue + 1];
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType> badInstruction =
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup =
+            new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType> badInstruction =
             OpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
 
         for (int i = 0; i < lookup.Length; i++)
@@ -268,7 +268,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return lookup;
     }
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
