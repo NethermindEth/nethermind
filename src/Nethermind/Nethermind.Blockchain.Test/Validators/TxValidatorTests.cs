@@ -876,12 +876,7 @@ public class TxValidatorTests
             BlobVersionedHashes = carriesBlobs ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null,
         };
 
-        TxDecoder decoder = TxDecoder.Instance;
-        byte[] bytes = new byte[decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, tx);
-        RlpReader reader = new(bytes);
-        Transaction decoded = decoder.Decode(ref reader)!;
+        Transaction decoded = TxDecoderRoundtrip.Roundtrip(tx);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ValidationResult result = txValidator.IsWellFormed(decoded, Eip8141Prototype.Instance);
@@ -1488,4 +1483,88 @@ public class FrameTxPostTxModeGateTests
 
         return FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, spec);
     }
+}
+
+/// <summary>The EIP-8141 frame-count and transaction gas-cap bounds, applied through the whole
+/// frame-transaction validator rather than the stateless check alone.</summary>
+/// <remarks>The decoder bounds the frame count off the wire; a transaction built field by field over the
+/// JSON-RPC surface never meets it, so the validator is the only gate it passes.</remarks>
+[TestFixture]
+public class FrameTxStructuralAdmissionTests
+{
+    [TestCase(0, false, TestName = "an empty frame list is rejected")]
+    [TestCase(1, true, TestName = "a single frame is admitted")]
+    [TestCase(Eip8141Constants.MaxFrames, true, TestName = "the maximum frame count is admitted")]
+    [TestCase(Eip8141Constants.MaxFrames + 1, false, TestName = "one frame beyond the maximum is rejected")]
+    public void IsWellFormed_BoundsTheFrameCount(int frameCount, bool expected)
+    {
+        // Zero-gas frames, so raising MaxFrames cannot make this case fail on the transaction gas cap instead.
+        TxFrame[] frames = new TxFrame[frameCount];
+        for (int i = 0; i < frames.Length; i++)
+        {
+            frames[i] = i == 0 ? SelfVerify(0) : Execution(0);
+        }
+
+        ValidationResult result = Validate(OnChain(frames));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expected), result.Error);
+            Assert.That(result.Error, expected ? Is.Null : Is.EqualTo(FrameTxValidation.MissingFrames));
+        }
+    }
+
+    [Test]
+    public void IsWellFormed_AbsentFrameList_IsRejected()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            FrameSignatures = [],
+        };
+
+        Assert.That(Validate(tx).Error, Is.EqualTo(FrameTxValidation.MissingFrames));
+    }
+
+    // The intrinsic cost is charged before any frame runs, so the cap bites the frame budgets earlier than
+    // their bare sum suggests.
+    [TestCase(0ul, true, TestName = "a reservation at the transaction gas cap is admitted")]
+    [TestCase(1ul, false, TestName = "a reservation one gas beyond the cap is rejected")]
+    public void IsWellFormed_BoundsTheExecutionReservationByTheTransactionGasCap(ulong overshoot, bool expected)
+    {
+        ulong cap = Eip7825Constants.DefaultTxGasLimitCap;
+        Transaction tx = OnChain(SelfVerify(FrameExecutionHeadroom(cap) + overshoot));
+
+        ValidationResult result = Validate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Eip8141Prototype.Instance, out ulong reservation, out _), Is.True);
+            Assert.That(reservation, Is.EqualTo(cap + overshoot), "the case must sit exactly on the cap boundary");
+            Assert.That(result.AsBool, Is.EqualTo(expected), result.Error);
+            Assert.That(result.Error, expected ? Is.Null : Is.EqualTo(FrameTxValidation.FrameExecutionGasExceedsCap(cap + overshoot, cap)));
+        }
+    }
+
+    /// <summary>The execution gas a single-frame transaction may budget before its reservation reaches <paramref name="cap"/>.</summary>
+    private static ulong FrameExecutionHeadroom(ulong cap)
+    {
+        Transaction probe = OnChain(SelfVerify(0));
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, Eip8141Prototype.Instance, out ulong intrinsicOnly, out _),
+            Is.True, "an unpriced probe would silently hand back the whole cap as headroom");
+        return cap - intrinsicOnly;
+    }
+
+    /// <summary>A frame transaction on the validator's own chain, so the chain-id gate cannot claim the case first.</summary>
+    private static Transaction OnChain(params TxFrame[] frames)
+    {
+        Transaction tx = FrameTx(frames);
+        tx.ChainId = TestBlockchainIds.ChainId;
+        return tx;
+    }
+
+    private static ValidationResult Validate(Transaction tx) =>
+        new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Eip8141Prototype.Instance);
 }

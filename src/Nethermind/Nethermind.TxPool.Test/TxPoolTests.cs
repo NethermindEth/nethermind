@@ -3042,6 +3042,66 @@ namespace Nethermind.TxPool.Test
                 Is.EqualTo(AcceptTxResult.FrameTxMisplacedExpiryFrame));
         }
 
+        // The decoder bounds the frame count off the wire; a locally submitted transaction never meets it,
+        // so the transaction validator is the pool's only gate on the count.
+        [TestCase(Eip8141Constants.MaxFrames - 1, true, TestName = "SubmitTx_FrameTransactionAtTheMaximumFrameCount_IsAccepted")]
+        [TestCase(Eip8141Constants.MaxFrames, false, TestName = "SubmitTx_FrameTransactionBeyondTheMaximumFrameCount_IsRejected")]
+        public void SubmitTx_FrameTransactionFrameCount_IsBoundedAtIngress(int trailingFrames, bool expectedAccepted)
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            TxFrame[] trailing = new TxFrame[trailingFrames];
+            for (int i = 0; i < trailing.Length; i++)
+            {
+                trailing[i] = new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 0, UInt256.Zero, Array.Empty<byte>());
+            }
+
+            AcceptTxResult result = _txPool.SubmitTx(SelfVerifyFrameTx(trailing), TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+                // Accepted carries no message, so only the rejection has a reason to name.
+                if (!expectedAccepted) Assert.That(result.ToString(), Does.Contain(FrameTxValidation.MissingFrames));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+        }
+
+        private static IEnumerable<TestCaseData> MalformedFrameLayoutCases()
+        {
+            static TxFrame Sender(byte flags = TxFrame.ApproveScopeNone, UInt256 value = default) =>
+                new(TxFrame.ModeSender, flags, TestItem.AddressB, gasLimit: 1_000, value, Array.Empty<byte>());
+
+            yield return new TestCaseData(new[] { Sender(TxFrame.AtomicBatchFlag) }, FrameTxValidation.AtomicBatchOnLastFrame)
+                .SetName("SubmitTx_AtomicBatchFlagOnTheLastFrame_IsRejected");
+            yield return new TestCaseData(new[] { Sender(TxFrame.AtomicBatchFlag), Sender(TxFrame.ApprovePayment) }, FrameTxValidation.ApprovalScopeInAtomicBatch)
+                .SetName("SubmitTx_ApprovalScopeOnABatchedFrame_IsRejected");
+            yield return new TestCaseData(
+                    new[] { new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.One, Array.Empty<byte>()) },
+                    FrameTxValidation.ValueOutsideSenderMode)
+                .SetName("SubmitTx_ValueOnANonSenderFrame_IsRejected");
+            yield return new TestCaseData(
+                    new[] { new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()) },
+                    FrameTxValidation.ExecutionApprovalWrongTarget)
+                .SetName("SubmitTx_ExecutionApprovalNamingAThirdParty_IsRejected");
+        }
+
+        // Frame-shape rules reach the pool through the transaction validator, so each must reject at ingress
+        // rather than waiting for block production to discover it.
+        [TestCaseSource(nameof(MalformedFrameLayoutCases))]
+        public void SubmitTx_MalformedFrameLayout_IsRejectedAtIngress(TxFrame[] trailingFrames, string expectedError)
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
+
+            AcceptTxResult result = _txPool.SubmitTx(SelfVerifyFrameTx(trailingFrames), TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.False, result.ToString());
+                Assert.That(result.ToString(), Does.Contain(expectedError));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
         private Transaction SelfVerifyFrameTx(params TxFrame[] trailingFrames)
         {
             Transaction frameTx = new()
@@ -3475,14 +3535,8 @@ namespace Nethermind.TxPool.Test
         {
             PrivateKey key = defect == FrameSignatureDefect.ForeignSigner ? TestItem.PrivateKeyB : TestItem.PrivateKeyA;
             Address signer = TestItem.PrivateKeyA.Address;
-            // compute_sig_hash covers the entry's scheme/signer/msg and elides only the raw bytes, so
-            // the hash is taken with the entry already installed.
-            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
-            Signature signature = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));
-
-            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
-            bytes[0] = signature.RecoveryId;
-            signature.Bytes.CopyTo(bytes.AsSpan(1));
+            FrameTxTestFrames.SignSecp256k1(tx, key, signer);
+            byte[] bytes = tx.FrameSignatures![0].Signature.ToArray();
 
             switch (defect)
             {
@@ -4407,14 +4461,9 @@ namespace Nethermind.TxPool.Test
             return tx;
         }
 
-        private static TxFrameSignature Secp256k1FrameSignature(PrivateKey key, in ValueHash256 sigHash, Address signer)
-        {
-            Signature signature = new Ecdsa().Sign(key, sigHash);
-            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
-            bytes[0] = signature.RecoveryId;
-            signature.Bytes.CopyTo(bytes.AsSpan(1));
-            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
-        }
+        private static TxFrameSignature Secp256k1FrameSignature(PrivateKey key, in ValueHash256 sigHash, Address signer) =>
+            new(TxFrameSignature.SchemeSecp256k1, signer, default,
+                FrameTxTestFrames.Secp256k1SignatureBytes(new Ecdsa().Sign(key, sigHash)));
 
         [Test]
         public async Task Over_value_keyed_tx_does_not_dump_a_valid_plain_tx_from_the_same_sender()
