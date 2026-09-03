@@ -349,6 +349,7 @@ public class Eip8297CanonicalTreeTests
     [TestCase("duplicate-final-delete")]
     [TestCase("mixed-delete-set")]
     [TestCase("shuffled-mixed-delete-set")]
+    [TestCase("mixed-canonicalization-boundaries")]
     public void Bulk_mutation_kinds_match_oracle_serial_outcome_and_reopen(string scenarioName)
     {
         (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) = Scenario(scenarioName);
@@ -369,35 +370,72 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), scenarioName);
             Assert.That(tree.RootHash, Is.EqualTo(serial.RootHash), "bulk and serial roots");
-            Assert.That(tree.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()), "bulk and serial records");
+            Assert.That(tree.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()), "bulk and serial canonical records");
+            Assert.That(PhysicalRecords(tree), Is.EqualTo(PhysicalRecords(serial)), "bulk and serial physical records");
             Assert.That(tree.CanonicalRecords(), Is.EqualTo(records), "canonical records survive reopen");
             Assert.That(PhysicalRecords(tree), Is.EqualTo(physical), "physical groups survive reopen");
         }
     }
 
-    [Test]
-    public void Bulk_updates_sharing_a_long_persisted_prefix_load_each_branch_once()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Mixed_batch_stages_only_effective_leaf_outcomes(bool deleteKeyExists)
     {
         CountingPbtStore store = new();
-        ValueHash256 root = default;
-        PbtWriteBatch initial = Batch(
-            ([0x12, 0x34, 0x50], Value(1)),
-            ([0x12, 0x34, 0x60], Value(2)),
-            ([0x12, 0x34, 0x70], Value(3)));
-        root = TrieUpdater.UpdateRoot(store, root, initial);
-        store.ResetReads();
+        byte[] deleteKeyBytes = [0x00];
+        byte[] setKeyBytes = [0x80];
+        ValueHash256 root = deleteKeyExists
+            ? TrieUpdater.UpdateRoot(store, default, Batch((deleteKeyBytes, Value(1))))
+            : default;
 
-        PbtWriteBatch changes = Batch(
-            ([0x12, 0x34, 0x50], Value(4)),
-            ([0x12, 0x34, 0x60], Value(5)),
-            ([0x12, 0x34, 0x70], Value(6)));
-        root = TrieUpdater.UpdateRoot(store, root, changes);
+        ValueHash256 rootAfterUpdate = TrieUpdater.UpdateRoot(store, root, Batch(
+            (deleteKeyBytes, null), (setKeyBytes, Value(2))));
+
+        PbtFullKey deleteKey = new(deleteKeyBytes);
+        PbtFullKey setKey = new(setKeyBytes);
+        bool hasDeleteMutation = store.LastLeafMutations.TryGetValue(deleteKey, out ValueHash256? deleteValue);
+        bool hasSetMutation = store.LastLeafMutations.TryGetValue(setKey, out ValueHash256? setValue);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rootAfterUpdate, Is.Not.EqualTo(default(ValueHash256)));
+            Assert.That(store.LastLeafMutations, Has.Count.EqualTo(deleteKeyExists ? 2 : 1));
+            Assert.That(hasDeleteMutation, Is.EqualTo(deleteKeyExists));
+            Assert.That(deleteValue, Is.Null);
+            Assert.That(hasSetMutation, Is.True);
+            Assert.That(setValue, Is.EqualTo(new ValueHash256(Value(2))));
+            Assert.That(store.Applies, Is.EqualTo(deleteKeyExists ? 2 : 1));
+        }
+    }
+
+    [Test]
+    public void Mixed_bulk_updates_sharing_a_long_persisted_prefix_load_each_branch_once()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(
+            ([0x12, 0x34, 0x50], Value(1)),
+            ([0x12, 0x34, 0x58], Value(2)),
+            ([0x12, 0x34, 0x60], Value(3)),
+            ([0x12, 0x34, 0x70], Value(4))));
+        store.ResetReads();
+        TrieUpdaterMetrics metrics = new();
+
+        root = TrieUpdater.UpdateRoot(store, root, Batch(
+            ([0x12, 0x34, 0x50], null),
+            ([0x12, 0x34, 0x58], Value(5)),
+            ([0x12, 0x34, 0x64], Value(6)),
+            ([0x12, 0x34, 0x7F], null)), metrics);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.Not.EqualTo(default(ValueHash256)));
+            Assert.That(store.NodeReads, Is.Zero, "the updater never falls back to per-node reads");
             Assert.That(store.Reads, Is.EqualTo(store.GroupReads.Count), "each owning group is fetched once");
-            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1), "multiple nodes in one group share its cached lease");
+            Assert.That(store.GroupReads, Is.Not.Empty);
+            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1), "mixed changes share each cached group lease");
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.GroupReads.Count));
+            Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
+            Assert.That(metrics.GroupCacheProbes, Is.GreaterThanOrEqualTo(metrics.PhysicalGroupFetches));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
             Assert.That(store.Applies, Is.EqualTo(2));
         }
@@ -558,6 +596,13 @@ public class Eip8297CanonicalTreeTests
         "mixed-delete-set" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], null), ([0x30], Value(3)), ([0x20], Value(4))]),
         "shuffled-mixed-delete-set" => ([([0x10], Value(1)), ([0x20], Value(2)), ([0x80], Value(3))],
             [([0x80], null), ([0x21], Value(4)), ([0x10], null), ([0x20], Value(5)), ([0x11], Value(6))]),
+        "mixed-canonicalization-boundaries" => (
+            [([0xA8, 0x00], Value(1)), ([0xAA, 0x00], Value(2)), ([0xAB, 0x00], Value(3)),
+             ([0xB0, 0x00], Value(4)), ([0xB8, 0x00], Value(5)), ([0xF0, 0x00], Value(6))],
+            [([0xAA, 0x00], Value(20)), ([0xAB, 0x00], null), ([0xA9, 0x00], Value(7)),
+             ([0xA8, 0x00], null), ([0xA8, 0x00], Value(8)), ([0xA8, 0x00], null),
+             ([0xAC, 0x00], null), ([0xB8, 0x00], null), ([0xB4, 0x00], Value(9)),
+             ([0xF0, 0x00], Value(10)), ([0xF0, 0x00], null), ([0xF0, 0x00], Value(11))]),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -610,6 +655,7 @@ public class Eip8297CanonicalTreeTests
         internal int NodeReads { get; private set; }
         internal int Applies { get; private set; }
         internal int LastNodeWrites { get; private set; }
+        internal Dictionary<PbtFullKey, ValueHash256?> LastLeafMutations { get; } = [];
         internal Dictionary<PbtNodePath, int> GroupReads { get; } = [];
         internal List<PbtNodeGroupPayload> IssuedGroupPayloads { get; } = [];
         internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
@@ -667,6 +713,8 @@ public class Eip8297CanonicalTreeTests
         public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtLeafMutation> leaves, IReadOnlyList<PbtNodeMutation> nodes)
         {
             Applies++;
+            LastLeafMutations.Clear();
+            foreach (PbtLeafMutation mutation in leaves) LastLeafMutations[mutation.Key] = mutation.Value;
             LastNodeWrites = nodes.Count;
             if (ThrowOnApply) throw new InvalidOperationException("Configured apply failure.");
             Inner.Apply(newRoot, leaves, nodes);
