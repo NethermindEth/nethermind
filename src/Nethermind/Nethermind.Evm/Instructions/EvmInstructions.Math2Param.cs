@@ -60,7 +60,7 @@ public static partial class EvmInstructions
         return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType Math2ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
