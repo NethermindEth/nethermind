@@ -169,13 +169,18 @@ public sealed class PrecompileCaches : IDisposable
     /// <summary> Samples buffered before the rows go out in a single write. </summary>
     private const int FlushEverySamples = 128;
 
-    private const int SampleFields = 4;
+    private const int SampleFields = 7;
 
     // Sampling state is touched only from the block-processing thread, which runs ClearBlockCache inline
     // and serialized per block (BranchProcessor.QueueClearCaches), so it needs no synchronisation.
     private readonly long[] _samples = new long[FlushEverySamples * SampleFields];
     private KeyValuePair<AddressAsKey, Partition>[]? _partitionList;
     private int _sampled;
+
+    // Cumulative tallies as of the last recorded sample, so each row can carry its own deltas.
+    private long _prevRefused;
+    private long _prevSurvivingHits;
+    private long _prevMisses;
 
     /// <summary> Indexed view of <see cref="_partitions"/>, so the per-block loop skips the frozen-dictionary enumerator. </summary>
     private KeyValuePair<AddressAsKey, Partition>[] PartitionList
@@ -219,11 +224,32 @@ public sealed class PrecompileCaches : IDisposable
 
         if (peakBytes == 0) return;
 
+        long refused = 0;
+        long survivingHits = 0;
+        long misses = 0;
+        if (TrackHits)
+        {
+            for (int i = 0; i < partitions.Length; i++)
+            {
+                Partition partition = partitions[i].Value;
+                refused += partition.Tally(Partition.Tier.Refused);
+                survivingHits += partition.Tally(Partition.Tier.Surviving);
+                misses += partition.Tally(Partition.Tier.Miss);
+            }
+        }
+
         int slot = (_sampled % FlushEverySamples) * SampleFields;
         _samples[slot] = peakBytes;
         _samples[slot + 1] = peakIndex;
         _samples[slot + 2] = _survivingCache.Count;
         _samples[slot + 3] = totalBytes;
+        _samples[slot + 4] = refused - _prevRefused;
+        _samples[slot + 5] = survivingHits - _prevSurvivingHits;
+        _samples[slot + 6] = misses - _prevMisses;
+
+        _prevRefused = refused;
+        _prevSurvivingHits = survivingHits;
+        _prevMisses = misses;
 
         if (++_sampled % FlushEverySamples == 0) FlushSamples(FlushEverySamples);
     }
@@ -246,6 +272,9 @@ public sealed class PrecompileCaches : IDisposable
                 .Append(" peak=").Append(_samples[slot])
                 .Append(" peakOn=").Append(peakIndex < 0 ? "none" : partitions[peakIndex].Key.Value.ToString())
                 .Append(" surv=").Append(_samples[slot + 2])
+                .Append(" ref=").Append(_samples[slot + 4])
+                .Append(" hs=").Append(_samples[slot + 5])
+                .Append(" ms=").Append(_samples[slot + 6])
                 .Append('\n');
         }
 
