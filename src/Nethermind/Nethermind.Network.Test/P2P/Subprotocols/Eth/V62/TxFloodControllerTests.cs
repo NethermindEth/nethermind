@@ -24,6 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private TxFloodController _controller;
         private Eth62ProtocolHandler _handler;
         private ISession _session;
+        private TestLogger _testLogger;
         private ITimestamper _timestamper;
         private DateTime _now;
 
@@ -46,7 +47,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _timestamper = Substitute.For<ITimestamper>();
             _now = DateTime.UtcNow;
             _timestamper.UtcNow.Returns(_ => _now);
-            _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance, new Random(0));
+            _testLogger = new TestLogger { IsDebug = false };
+            _controller = new TxFloodController(_handler, _timestamper, new ILogger(_testLogger), new Random(0));
         }
 
         [TearDown]
@@ -103,8 +105,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             // for easier debugging
             _controller.Report(Flooding);
+            for (int i = 0; i < 100; i++)
+            {
+                _controller.Report(Flooding);
+            }
 
-            _session.Received()
+            _session.Received(1)
                 .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
         }
 
@@ -116,7 +122,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _controller.Report(Flooding);
             }
 
-            Assert.That(_controller.IsDowngraded, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.True);
+                Assert.That(_testLogger.LogList, Has.Some.EndsWith("due to tx flooding"));
+            }
         }
 
         [Test]
@@ -376,10 +386,58 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Will_disconnect_on_invalid_tx()
         {
+            for (int i = 0; i < 1000; i++)
+            {
+                _controller.Report(AcceptTxResult.Invalid);
+            }
+
+            Assert.That(_controller.IsDowngraded, Is.False);
+            _session.Received(1)
+                .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+        }
+
+        [Test]
+        public void Invalid_tx_disconnect_can_be_requested_again_after_window_reset()
+        {
+            _controller.Report(AcceptTxResult.Invalid);
+            AdvanceWindow();
+
+            _controller.Report(AcceptTxResult.Invalid);
+
+            _session.Received(2)
+                .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+        }
+
+        [Test]
+        public void Pending_disconnect_does_not_suppress_next_invalid_tx_disconnect()
+        {
+            ReportPooledRequestWindow(32_768, 0);
+            ReportPooledRequestWindow(32_768, 0);
+            AdvanceWindow();
+
+            _controller.Report(AcceptTxResult.Invalid);
             _controller.Report(AcceptTxResult.Invalid);
 
             _session.Received(1)
+                .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+            _session.Received(1)
                 .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Disconnect_message_is_trace_only(bool traceEnabled)
+        {
+            _testLogger.IsDebug = true;
+            _testLogger.IsTrace = traceEnabled;
+            _controller = new TxFloodController(_handler, _timestamper, new ILogger(_testLogger), new Random(0));
+
+            _controller.Report(AcceptTxResult.Invalid);
+
+            if (traceEnabled)
+                Assert.That(_testLogger.LogList, Has.One.EndsWith("due to invalid tx received"));
+            else
+                Assert.That(_testLogger.LogList, Is.Empty);
         }
 
         [TestCase(1)]
@@ -391,7 +449,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _controller.Report(AcceptTxResult.InvalidBlobProofs);
             }
 
-            Assert.That(_controller.IsDowngraded, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.True);
+                Assert.That(_testLogger.LogList, Has.Some.EndsWith("due to invalid blob proofs"));
+            }
             _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 

@@ -342,6 +342,24 @@ public class Eth72MessageSerializerTests
         Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
     }
 
+    [TestCase("size")]
+    [TestCase("hash")]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_empty_list_element(string field)
+    {
+        Rlp sizes = Rlp.Encode(field == "size" ? [Rlp.OfEmptyList] : [Rlp.Encode(1)]);
+        Rlp hashes = Rlp.Encode(field == "hash" ? [Rlp.OfEmptyList] : [Rlp.Encode(Hash256.Zero)]);
+        byte[] encoded = Rlp.Encode(
+            Rlp.Encode([(byte)TxType.Blob]),
+            sizes,
+            hashes,
+            Rlp.Encode(BlobCellMask.Full.ToBytes())).Bytes;
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        buffer.WriteBytes(encoded);
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
+    }
+
     [TestCase(0)]
     [TestCase(2)]
     public void NewPooledTransactionHashesMessageSerializer_should_reject_invalid_cell_mask_length(int maskLength)

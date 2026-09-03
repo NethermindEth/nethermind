@@ -299,7 +299,7 @@ public class HistoryWindowPrunerTests
     private int CountRows(FlatHistoryColumns column)
     {
         int count = 0;
-        foreach (KeyValuePair<byte[], byte[]?> _ in _historyColumns.GetColumnDb(column).GetAll()) count++;
+        foreach (KeyValuePair<byte[], byte[]> _ in _historyColumns.GetColumnDb(column).GetAll()) count++;
         return count;
     }
 

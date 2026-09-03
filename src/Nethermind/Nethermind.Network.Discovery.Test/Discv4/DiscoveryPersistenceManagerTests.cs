@@ -172,6 +172,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Use_Protocol_Node_Factory(CancellationToken cancellationToken)
+        {
+            NetworkNode persistedNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("192.168.1.1"), 30303, 30304));
+            Node restoredNode = new(TestItem.PublicKeyA, IPAddress.Parse("2001:db8::1").ToString(), 30305, 30306);
+            _networkStorage.UpdateNodes([persistedNode]);
+
+            await _persistenceManager.LoadPersistedNodes(
+                cancellationToken,
+                node => node.NodeId.Equals(persistedNode.NodeId) ? restoredNode : null);
+
+            await _discv4Adapter.Received(1).Ping(restoredNode, Arg.Any<CancellationToken>());
+        }
+
+        [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
             Node[] nodes =

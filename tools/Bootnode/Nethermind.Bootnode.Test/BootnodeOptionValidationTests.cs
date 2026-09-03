@@ -80,6 +80,8 @@ public class BootnodeOptionValidationTests
     [TestCase("", AddressFamily.InterNetwork)]
     [TestCase("203.0.113", AddressFamily.InterNetwork)]
     [TestCase("0.0.0.0", AddressFamily.InterNetwork)]
+    [TestCase("::ffff:0.0.0.0", AddressFamily.InterNetwork)]
+    [TestCase("::ffff:255.255.255.255", AddressFamily.InterNetwork)]
     [TestCase("2001:db8::1", AddressFamily.InterNetwork)]
     [TestCase("::ffff:192.0.2.1", AddressFamily.InterNetworkV6)]
     public void External_ip_rejects_invalid_or_unusable_values(string value, AddressFamily expectedFamily) =>

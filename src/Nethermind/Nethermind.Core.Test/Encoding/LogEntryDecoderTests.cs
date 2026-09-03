@@ -85,6 +85,58 @@ public class LogEntryDecoderTests
         Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Storage_struct_ref_decoders_return_default_for_empty_log_entry(bool compact)
+    {
+        RlpReader reader = new(Rlp.OfEmptyList.Bytes);
+
+        if (compact)
+        {
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
+            AssertDefault(logEntry);
+        }
+        else
+        {
+            LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
+            AssertDefault(logEntry);
+        }
+
+        static void AssertDefault(LogEntryStructRef logEntry)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
+                Assert.That(logEntry.Data.Length, Is.Zero);
+                Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
+            }
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Struct_ref_decoders_reject_null_address(bool compact)
+    {
+        Rlp malformed = compact
+            ? Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.Encode(0), Rlp.OfEmptyByteArray)
+            : Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.OfEmptyByteArray);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(malformed.Bytes);
+            if (compact)
+            {
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out _);
+            }
+            else
+            {
+                LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out _);
+            }
+        }
+    }
+
     [Test]
     public void Rejects_extra_topic_items_inside_topics_sequence()
     {
