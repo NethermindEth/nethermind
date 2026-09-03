@@ -19,6 +19,8 @@ public sealed class CommitmentDepthPolicy
     public const int DefaultAccountComposedDepths = 1 << 1;
     public const int DefaultEpochLog2 = 19;
     public const int MaxEpochLog2 = 30;
+    public const ulong MinReachableBlocks = 1UL << 32;
+    public const int MinEpochLog2ForConfig = 16;
     public const int DefaultIntervalLog2 = 9;
     public const int MinIntervalLog2 = 6;
     public const int MaxIntervalLog2 = 12;
@@ -31,6 +33,13 @@ public sealed class CommitmentDepthPolicy
     {
         int intervalLog2 = config.ArchiveProofCheckpointIntervalLog2 <= 0 ? DefaultIntervalLog2 : config.ArchiveProofCheckpointIntervalLog2;
         int epochLog2 = config.ArchiveProofEpochLog2 <= 0 ? DefaultEpochLog2 : config.ArchiveProofEpochLog2;
+        if (epochLog2 <= MaxEpochLog2 && CommitmentKeyLayout.MaxEpoch << epochLog2 < MinReachableBlocks)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.ArchiveProofEpochLog2 of {epochLog2} gives {CommitmentKeyLayout.MaxEpoch} epochs of 2^{epochLog2} blocks, which run out at block " +
+                $"{CommitmentKeyLayout.MaxEpoch << epochLog2}, because the epoch number is a two-byte key prefix. Use {MinEpochLog2ForConfig} or more.", -1);
+        }
+
         return intervalLog2 == DefaultIntervalLog2 && epochLog2 == DefaultEpochLog2
             ? Default
             : new CommitmentDepthPolicy(intervalLog2, DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth, DefaultStorageRowsSignalDepth, DefaultAccountComposedDepths, epochLog2);

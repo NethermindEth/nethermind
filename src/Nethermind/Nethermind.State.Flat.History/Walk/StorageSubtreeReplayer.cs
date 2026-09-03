@@ -197,8 +197,6 @@ internal sealed class StorageSubtreeReplayer(
 
         public void Snapshot(ulong block, CommitmentEmitter emitter)
         {
-            if (slotPrefix.Length > CommitmentEmitter.StorageSnapshotDepth) return;
-
             if (slotPrefix.Length > 0)
             {
                 if (publisher is not null) PublishView(block, emitter);

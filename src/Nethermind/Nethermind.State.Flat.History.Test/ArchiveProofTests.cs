@@ -320,6 +320,61 @@ public class ArchiveProofTests
             "block 130 sits in the second epoch; every node on the path has a row there, either from a change or from the snapshot written at the epoch's first block, so the corrupt account rows are never read");
     }
 
+    [TestCase(HistoryWalkVerifier.DefaultMaxRowsPerPartition, TestName = "OnePartition")]
+    [TestCase(40L, TestName = "SplitPartitions")]
+    [TestCase(6L, TestName = "TwiceSplitPartitions")]
+    public void An_epoch_boundary_where_a_contract_stood_still_is_not_reported_as_a_missing_account_row(long maxRowsPerPartition)
+    {
+        _policy = EpochPolicy;
+        _chain.Dispose();
+        _historyColumns.Dispose();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _chain = new ArchiveProofTestChain(_historyColumns);
+        _chain.AddBlock(0, block =>
+        {
+            for (int i = 0; i < _accounts.Length; i++) block.SetBalance(_accounts[i], (UInt256)(1000 + i));
+            for (int slot = 1; slot <= 200; slot++) block.SetStorage(Contract, (UInt256)slot, [0x20, (byte)slot]);
+        });
+
+        for (ulong number = 1; number <= Blocks; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[(int)(current % AccountCount)], (UInt256)(3000 + current)));
+        }
+
+        _chain.PublishWatermark();
+
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, retrofit);
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches, Is.Empty,
+            "the contract's storage never moves after genesis, but every epoch start publishes its subtree view so the row is there for a later read; that publish must not read as a storage root change, or the verdict fails on a healthy archive and no coverage is ever published");
+    }
+
+    [TestCase(6, TestName = "SixIsTheSmallestIntervalButFarTooSmallAnEpoch")]
+    [TestCase(15, TestName = "OneShortOfReaching")]
+    public void An_epoch_whose_two_byte_number_cannot_reach_a_plausible_chain_height_is_refused(int epochLog2) =>
+        Assert.That(() => CommitmentDepthPolicy.FromConfig(new FlatDbConfig { ArchiveProofEpochLog2 = epochLog2 }), Throws.InstanceOf<InvalidConfigurationException>(),
+            "the epoch is a two-byte key prefix, so too small an epoch runs out of numbers partway up the chain and every later row would throw where nothing names the setting");
+
+    [Test]
+    public void Pruning_is_refused_when_the_commitments_are_built_from_the_tip_alone()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1, ArchiveProofFineEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(settings.RecentEpochs, Is.Zero, "the tip path writes no epoch-start snapshot, so a node that stood still for an epoch keeps its only row in an older one and dropping that epoch would publish heights it cannot prove");
+            Assert.That(settings.FineEpochs, Is.Zero);
+        }
+    }
+
     [Test]
     public void A_demoted_epoch_still_proves_every_height_it_covers()
     {

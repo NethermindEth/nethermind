@@ -19,9 +19,10 @@ internal sealed class HistoricalTrieNodeBuilder
     private readonly Action<int> _composeFanOutChild;
     private readonly byte[]?[] _composedChildren = new byte[]?[BranchRlp.ChildCount];
     private readonly NodeView[] _composedViews = new NodeView[BranchRlp.ChildCount];
-    private TreePath _fanOutParent;
-    private ushort _fanOutChanged;
-    private ChildVector? _fanOutChildren;
+    private TreePath _fixupParent;
+    private ushort _fixupChanged;
+    private ChildVector? _fixupChildren;
+    private TreePath _composeParent;
 
     public HistoricalTrieNodeBuilder(TrieHistoryScope scope, ulong block, ResolutionBudget budget, int fanOut, ArchiveProofNodeCache? cache)
     {
@@ -125,9 +126,9 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         if (parallelChildren)
         {
-            _fanOutParent = path;
-            _fanOutChanged = changed;
-            _fanOutChildren = children;
+            _fixupParent = path;
+            _fixupChanged = changed;
+            _fixupChildren = children;
             try
             {
                 Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, _resolveFanOutChild);
@@ -138,7 +139,7 @@ internal sealed class HistoricalTrieNodeBuilder
             }
             finally
             {
-                _fanOutChildren = null;
+                _fixupChildren = null;
             }
 
             return;
@@ -154,7 +155,7 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         if (parallelChildren)
         {
-            _fanOutParent = path;
+            _composeParent = path;
             try
             {
                 Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, _composeFanOutChild);
@@ -196,11 +197,11 @@ internal sealed class HistoricalTrieNodeBuilder
         }
     }
 
-    private void ComposeFanOutChild(int index) => _composedChildren[index] = ResolveRlp(_fanOutParent.Append(index), parallelChildren: false);
+    private void ComposeFanOutChild(int index) => _composedChildren[index] = ResolveRlp(_composeParent.Append(index), parallelChildren: false);
 
     private void ResolveFanOutChild(int index)
     {
-        if (((_fanOutChanged >> index) & 1) == 1) ResolveChild(_fanOutParent.Append(index), _fanOutChildren!, index);
+        if (((_fixupChanged >> index) & 1) == 1) ResolveChild(_fixupParent.Append(index), _fixupChildren!, index);
     }
 
     private void ResolveChild(in TreePath childPath, ChildVector children, int index)

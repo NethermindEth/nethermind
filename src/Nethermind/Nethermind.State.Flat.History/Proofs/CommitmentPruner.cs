@@ -27,13 +27,13 @@ public sealed class CommitmentPruner(IColumnsDb<FlatHistoryColumns> history, Com
     {
         if (settings.FineEpochs <= 0 || !TryFloor(headEpoch, settings.FineEpochs, metadata.FineFromEpoch, out ulong keepFrom, out ulong from)) return;
 
+        metadata.SetFineFromEpoch(keepFrom);
         for (ulong epoch = from; epoch < keepFrom; epoch++)
         {
             _accounts.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
             _storages.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
         }
 
-        metadata.SetFineFromEpoch(keepFrom);
         if (_logger.IsInfo) _logger.Info(
             $"Archive proof commitments below epoch {keepFrom} (block {policy.EpochStart(keepFrom)}) dropped their per-block rows; proofs there are still served, rebuilt from the checkpoint rows, which costs a second or so instead of a hundred milliseconds.");
     }
@@ -42,6 +42,8 @@ public sealed class CommitmentPruner(IColumnsDb<FlatHistoryColumns> history, Com
     {
         if (settings.RecentEpochs <= 0 || !TryFloor(headEpoch, settings.RecentEpochs, metadata.RetainedFromEpoch, out ulong keepFrom, out ulong from)) return;
 
+        metadata.SetRetainedFromEpoch(keepFrom);
+        if (metadata.FineFromEpoch < keepFrom) metadata.SetFineFromEpoch(keepFrom);
         for (ulong epoch = from; epoch < keepFrom; epoch++)
         {
             _accounts.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
@@ -50,8 +52,6 @@ public sealed class CommitmentPruner(IColumnsDb<FlatHistoryColumns> history, Com
             _storages.RemoveEpoch(epoch, CommitmentKeyLayout.CoarseTier);
         }
 
-        metadata.SetRetainedFromEpoch(keepFrom);
-        if (metadata.FineFromEpoch < keepFrom) metadata.SetFineFromEpoch(keepFrom);
         if (_logger.IsInfo) _logger.Info(
             $"Archive proof commitments below epoch {keepFrom} (block {policy.EpochStart(keepFrom)}) were dropped; historical proofs are served from that block on, keeping the {settings.RecentEpochs} most recent epochs of 2^{policy.EpochLog2} blocks.");
     }

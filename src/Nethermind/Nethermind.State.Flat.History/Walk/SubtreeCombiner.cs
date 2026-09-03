@@ -44,6 +44,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
             NodeView previous = current;
             current = children.Combine();
+            bool moved = previous.Hash != current.Hash;
             previous.Release();
             emitter?.BeginBlock(block);
             publisher.Publish(block, current, emitter);
@@ -51,7 +52,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             if (observing)
             {
                 if (observer!.ObservesEveryBlock) observing = observer.OnBlock(block, current);
-                else observer.OnChanged(block, current);
+                else if (moved) observer.OnChanged(block, current);
             }
 
             observed = block;
