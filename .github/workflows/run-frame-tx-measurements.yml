@@ -243,9 +243,10 @@ jobs:
             # ceiling is strictly greater than the constant, so a raise above 300000 unlocks them.
             mempool_markers+=('verify_gas=500000')
             flood_markers+=('ceiling=500000')
-            # The 49-input Groth16 point declares 510000, so it needs the constant at least that high.
+            # The heaviest synthetic Groth16 point declares 510000, so it needs the constant at least that
+            # high. Its result key is the ceiling it declares; sweep-500k is only the artifact directory.
             if (( RAISE_VERIFY_GAS >= 510000 )); then
-              mempool_markers+=('shape=groth16-500k')
+              mempool_markers+=('shape=groth16-510k')
             fi
           fi
 
