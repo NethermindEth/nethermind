@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -12,7 +13,10 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -81,6 +85,26 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AddressNotAvailableSendFailureIsTraceOnly(bool traceEnabled)
+        {
+            TestLogger logger = new() { IsDebug = true, IsTrace = traceEnabled };
+            IChannel channel = Substitute.For<IChannel>();
+            channel.WriteAndFlushAsync(Arg.Any<object>())
+                .Returns(Task.FromException(new SocketException((int)SocketError.AddressNotAvailable)));
+            NettyDiscoveryV5Handler handler = new(new OneLoggerLogManager(new ILogger(logger)), channel);
+            IPEndPoint destination = new(IPAddress.Parse("2001:db8::1"), 30303);
+
+            Assert.ThrowsAsync<SocketException>(
+                async () => await handler.SendAsync([1, 2, 3], destination, CancellationToken.None));
+
+            if (traceEnabled)
+                Assert.That(logger.LogList, Has.Some.EqualTo($"TRACE/ERROR: Failed to send discv5 UDP packet to {destination}"));
+            else
+                Assert.That(logger.LogList, Is.Empty);
+        }
+
         [Test]
         public async Task ForwardsReceivedMessageToReader()
         {
@@ -112,13 +136,75 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
-        [TestCase("::ffff:127.0.0.1", "127.0.0.1")]
-        [TestCase("2001:db8::1", "2001:db8::1")]
-        public async Task NormalizesSenderAddress(string fromIp, string expectedIp)
+        [Test]
+        [NonParallelizable]
+        public async Task UpdatesDiscoveryBytesSentMetric()
+        {
+            byte[] sentData = [1, 2, 3, 4];
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            long bytesSentBefore = Interlocked.Read(ref Metrics.DiscoveryBytesSent);
+
+            await _handler.SendAsync(sentData, to, CancellationToken.None);
+            DatagramPacket outboundPacket = _channel.ReadOutbound<DatagramPacket>();
+            try
+            {
+                Assert.That(outboundPacket, Is.Not.Null);
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(outboundPacket);
+            }
+
+            Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task CompositeProtocolPipelineCountsInboundPacketOnce()
+        {
+            byte[] data = new byte[100];
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
+            EmbeddedChannel channel = new();
+            NettyDiscoveryV5Handler discv5Handler = new(new TestLogManager());
+            discv5Handler.InitializeChannel(channel);
+            channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
+            channel.Pipeline.AddLast(new NettyDiscoveryHandler(
+                Substitute.For<IDiscoveryMsgListener>(),
+                channel,
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<ITimestamper>(),
+                new TestLogManager()));
+            channel.Pipeline.AddLast(discv5Handler);
+
+            try
+            {
+                using CancellationTokenSource cancellationSource = new(10_000);
+                await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = discv5Handler
+                    .ReadMessagesAsync(cancellationSource.Token)
+                    .GetAsyncEnumerator(cancellationSource.Token);
+                ValueTask<bool> readTask = enumerator.MoveNextAsync();
+
+                channel.WriteInbound(new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+
+                Assert.That(await readTask, Is.True);
+                enumerator.Current.Dispose();
+
+                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(data.Length));
+            }
+            finally
+            {
+                channel.FinishAndReleaseAll();
+            }
+        }
+
+        [Test]
+        public async Task MapsIpv4MappedIpv6SenderToIpv4()
         {
             byte[] data = [1, 2, 3];
-            IPEndPoint from = new(IPAddress.Parse(fromIp), 10000);
-            IPEndPoint expectedFrom = new(IPAddress.Parse(expectedIp), 10000);
+            IPEndPoint from = new(IPAddress.Parse("::ffff:127.0.0.1"), 10000);
+            IPEndPoint expectedFrom = IPEndPoint.Parse("127.0.0.1:10000");
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);

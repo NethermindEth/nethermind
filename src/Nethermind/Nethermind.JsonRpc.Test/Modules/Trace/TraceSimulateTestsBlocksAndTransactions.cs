@@ -77,4 +77,19 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
         string serialized = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_simulateV1", payload!, "latest");
         Assert.That(serialized, Does.Contain("\"traces\":"));
     }
+
+    [Test]
+    public async Task State_diff_is_serialized_as_stateDiff()
+    {
+        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        string serialized = await RpcTest.TestSerializedRequest(
+            chain.TraceRpcModule, "trace_simulateV1", payload!, "latest", new[] { nameof(ParityTraceTypes.StateDiff) });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(serialized, Does.Contain("\"stateDiff\":"));
+            Assert.That(serialized, Does.Not.Contain("stateChanges"));
+        });
+    }
 }

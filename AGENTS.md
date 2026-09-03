@@ -162,7 +162,15 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.
 - A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report.xml`) uploaded as the `dottrace-reports` artifact. Each report contains `<Function>` nodes with `FQN`, `TotalTime`, `OwnTime`, `Calls`, and full call stacks — sort by `OwnTime` for hot spots, use `CallStack` attributes for call tree analysis. **`timeline` produces no XML** (Reporter.exe cannot convert it) — that job is gated off, so analyze the snapshot in the dotTrace UI instead.
-- Every profiled **EXPB** run also collects a **dotnet-trace EventPipe sidecar** (`.nettrace`, in the same `dottrace-*` artifact; the rpc-bench workflow does not collect one). It carries GC pause durations, lock contention, and exception events, which no CPU profile shows — use it whenever the question is about tail latency or stalls rather than hot code, and note it is the only structured output for `timeline` runs.
+- Every profiled **EXPB** run also collects a **dotnet-trace EventPipe sidecar** (`.nettrace`, in the same `dottrace-*` artifact, or `profiling-*` when perf is enabled; rpc-bench collects one too with `dotnet_trace=true`, as the `dotnet-trace-rpcbench` artifact, covering the measured phase only — the collector attaches after the warm-up, so that input is accepted for a single-node `jsonbench` run and supplies a 60s `tool_config.corpus_warmup_duration` when the dispatch sets none). It carries GC pause durations, lock contention, and exception events, which no CPU profile shows — use it whenever the question is about tail latency or stalls rather than hot code, and note it is the only structured output for `timeline` runs. Summarize one with [`scripts/nettrace-report.cs`](./scripts/nettrace-report.cs) (`dotnet run scripts/nettrace-report.cs -- <file.nettrace>`): GC pauses per generation, contention percentiles, exception count. Its contention figure is blocked time only — a sampling profiler books pre-block spinning against `Monitor.Enter_Slowpath`, so disagreement between the two is expected and informative.
+- Linux perf profile: pass `perf=true` to sample the client with `perf` on the host. This is the only way to see inside dotTrace's `[Native or optimized code]` node, which is routinely the third-largest entry in a snapshot: perf resolves managed frames from the runtime's perf map and native frames from the container's shared objects, so RocksDB, the allocator, `memset`/`memcpy` and GC time are attributed individually. The artifact carries `perf.folded` (one line per unique stack); raw `perf.data` is excluded. `perf` and `dottrace` are independent inputs; enabling both samples the process twice, so use perf runs for attribution and keep A/B timing numbers to dottrace-only or unprofiled runs.
+  - Symbolization is partial and worth checking first: on a verified run 19% of samples resolved to
+    managed frames, 55% to native ones (snappy, secp256k1, LZ4, kernel) and 26% stayed `[unknown]`,
+    almost all of it inside the stripped `libcoreclr.so` and `librocksdb.so` shipped in the image.
+    perf therefore narrows dotTrace's single opaque node to a named library plus a resolved majority,
+    but it does not eliminate it - an unstripped build would be needed for the rest.
+  - The capture covers every thread of the client process, RocksDB's background compaction pool included - on a short run that pool was 38% of process CPU and nearly half of it was snappy. Split by the leading `comm` field before attributing anything to block processing: `awk -F';' '$1==".NET"'` keeps the runtime's threads, `$1=="rocksdb:low"` the compaction ones.
+  - perf samples CPU cycles, so idle threads are absent and the percentages are shares of CPU, not of wall clock. They are not comparable with dotTrace's wall-clock percentages.
 - Targeted per-block dotTrace: pass `trace_blocks=<n1,n2,...>` (implies `dottrace=true`); the client's BlockProfiler plugin brackets each listed block. The artifact is one `.dtp` workspace with **one snapshot per traced block** (open in the dotTrace UI; `.dtp.NNNN` files are storage segments, not per-block files). The XML report merges all traced windows, so trace a single block per run when isolated XML matters.
 
 ### What to inspect in run output
@@ -218,12 +226,14 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - For `pull_request` and `push` auto-runs, default mode is `flat` layout with both `superblocks` and `realblocks` payload sets.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
 - Optional low-variance mode: pass `-f expb_env="EXPB_EVM_WARMUP=1"` to enable expb's per-block EVM warmup (`eth_simulateV1` before each measured block). It serves the measured block's reads from warm caches, which lowers both run-to-run CV (~1.8%→~0.55% on flat-realblocks) and AVG. Pair it with a raised RPC gas cap — `-f additional_extra_flags="--JsonRpc.GasCap=1000000000000"` — otherwise the per-request gas budget (default 100M) is exhausted on dense blocks and the warmup `eth_simulateV1` calls fail with `-38013` (intrinsic gas), silently leaving those blocks un-warmed. Caveat: warmup minimizes cold RocksDB/storage interaction, so it is a low-variance *compute* signal, not a substitute for the default cold benchmark — don't use it when measuring storage-layer changes.
+- perf profiles are folded stacks, one line per unique stack. Use [`scripts/perf-report.sh`](./scripts/perf-report.sh): `top <perf.folded> [N]` for self time, `total` for inclusive time, `native` to list only unmanaged frames, and `compare <a.folded> <b.folded> [N]` for shifts between two profiles. Counts are reported as a share of the profile so runs of different length stay comparable. Pure awk, seconds even on large profiles.
 - dotTrace XML reports are 50-70MB. **Never load full XML into context.** Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh): `top <report.xml> [N]` for hot spots, `compare <a.xml> <b.xml> [N]` for regressions/improvements. Runs in <2 seconds via grep+awk.
 
 ## RPC Benchmark Workflow Guidance
 
 - Workflow file: [`.github/workflows/run-rpc-benchmarks.yml`](./.github/workflows/run-rpc-benchmarks.yml)
 - Scripts and full reference: [`scripts/rpc-bench/README.md`](./scripts/rpc-bench/README.md)
+- [Linux perf flow](./scripts/rpc-bench/README.md#linux-perf-flow) documents the root-only RPC capture contract; [`scripts/perf-report.sh`](./scripts/perf-report.sh) reads folded profiles from both EXPB and rpc-bench.
 
 `run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
 `debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
@@ -240,8 +250,8 @@ Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T10
 sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
 rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
 
-The canonical cell, and what the `performance is good` label runs, is **100 rps for 120 s after a
-discarded 120 s warm-up**. Rates are the thing to get right:
+The canonical cell is **100 rps for 120 s after a discarded 60 s warm-up at 400 rps**. Rates are
+the thing to get right:
 
 | rate | usable? |
 |---|---|

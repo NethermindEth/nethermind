@@ -47,7 +47,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
-        => await LookupCore(targetHash, k, findNeighbourOp, null, token);
+        => await LookupCore(targetHash, k, findNeighbourOp, null, token, callerToken: token);
 
     public async IAsyncEnumerable<TNode> LookupNodes(
         TKadKey targetHash,
@@ -97,7 +97,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             Exception? error = null;
             try
             {
-                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token);
+                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token, callerToken: token);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
@@ -135,11 +135,16 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         Func<TNode, bool>? publishNode,
-        CancellationToken token
+        CancellationToken token,
+        CancellationToken callerToken
     )
     {
         if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initiate lookup for hash {targetHash}");
 
+        // `token` drives this lookup and is shadowed below by a linked source cancelled on normal
+        // completion — the drain after a worker finishes, and (via LookupNodes) on reaching maxResults.
+        // `callerToken` is the real caller/shutdown token, used to tell an expected teardown failure from
+        // a genuine one; it is never cancelled by normal completion.
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
@@ -275,11 +280,17 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                // Transport failures (e.g. unreachable host) are expected during discovery, so log them quietly.
-                bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
-                if (shouldWarn)
+                // Expected-and-quiet: a failure after the caller's token is cancelled (teardown, in whatever
+                // shape DotNetty raises), or a transport failure (unreachable host, torn-down channel —
+                // ClosedChannelException derives from IOException). Anything else is a genuine fault and
+                // warrants a warning. Use the caller's token, not the internal one, which is also cancelled
+                // on the normal drain after the first worker returns and on reaching maxResults.
+                bool isExpectedFailure = callerToken.IsCancellationRequested
+                    || e is SocketException or IOException
+                    || e.InnerException is SocketException or IOException;
+                if (!isExpectedFailure)
                 {
-                    if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogWarning($"Find neighbour op failed: {e}");
+                    if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
                 else if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Find neighbour op failed: {e.Message}");
                 return null;

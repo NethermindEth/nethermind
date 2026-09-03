@@ -720,6 +720,25 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    // GetFinalSpec skips everything above SpecProviderExtensions.LastScheduledForkTimestamp so undated forks
+    // stay out of it. Widening that band must not swallow a fork a chain has actually scheduled — it would
+    // do so silently, by landing the probe in an earlier bucket.
+    [TestCase("foundation")]
+    [TestCase("sepolia")]
+    [TestCase("hoodi")]
+    [TestCase("gnosis")]
+    [TestCase("chiado")]
+    public void Final_spec_skips_only_the_unscheduled_fork_band(string chain)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
+
+        foreach (ForkActivation activation in provider.TransitionActivations)
+        {
+            Assert.That(activation.Timestamp, Is.Null.Or.LessThanOrEqualTo(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp),
+                $"{chain} schedules a fork above the unscheduled-fork band, which GetFinalSpec would skip");
+        }
+    }
+
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -1037,8 +1056,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadChainSpecFromString(chainSpecJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+        Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
     [Test]
@@ -1067,8 +1087,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
+        Assert.That(genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
     }
 
     [TestCase(null, 0ul, TestName = "Geth genesis Amsterdam slot number: absent defaults to zero")]
@@ -1105,8 +1126,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+        Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
     [TestCase(1ul)]

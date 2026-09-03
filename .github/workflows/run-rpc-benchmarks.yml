@@ -79,6 +79,31 @@ on:
           - tracing
           - timeline
         default: "false"
+      perf:
+        description: >-
+          Record a Linux perf profile of the node (nethermind only). perf samples on the host and
+          resolves managed frames from the runtime's perf map plus native frames from the container's
+          shared objects, so time inside the interpreter, the allocator, memory zeroing and the GC is
+          attributed instead of collapsing into dotTrace's single '[Native or optimized code]' node.
+          Ships perf.folded and recorder logs; raw perf.data is excluded. Read it with scripts/perf-report.sh. Independent of
+          dottrace; enabling both samples the node twice and perturbs latency, so use perf runs for
+          attribution and not for reported numbers.
+        required: false
+        type: boolean
+        default: false
+      dotnet_trace:
+        description: >-
+          Collect a dotnet-trace EventPipe .nettrace of runtime events (GC pauses, lock contention with
+          owner stacks, thread pool, exceptions) from the node during the measured phase only
+          (nethermind, benchmark_tool=jsonbench without a reference_client). The collector is attached
+          inside the container after the warm-up, so a dispatch that sets no
+          tool_config.corpus_warmup_duration is given the standing 60s one rather than a window padded
+          with json-bench's clone, image build and corpus conversion — the report states GC pause and
+          contention as a share of that window. Coexists with dottrace and perf. Ships as the
+          dotnet-trace-rpcbench artifact; read it with scripts/nettrace-report.cs or PerfView/TraceEvent.
+        required: false
+        type: boolean
+        default: false
       state_layout:
         description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
@@ -101,8 +126,8 @@ on:
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 240s; 0 measures cold — cold p99 runs ~60% high)/resource_sampling (cgroup counters per cell, default true).
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -122,12 +147,11 @@ on:
 # The self-hosted runner serializes benchmark jobs naturally.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
-    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -138,6 +162,9 @@ jobs:
       reference_client: ${{ steps.resolve.outputs.reference_client }}
       comparison: ${{ steps.resolve.outputs.comparison }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      perf: ${{ steps.resolve.outputs.perf }}
+      dotnet_trace: ${{ steps.resolve.outputs.dotnet_trace }}
+      dotnet_trace_max_seconds: ${{ steps.resolve.outputs.dotnet_trace_max_seconds }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       image_mode: ${{ steps.resolve.outputs.image_mode }}
       image_ref: ${{ steps.resolve.outputs.image_ref }}
@@ -160,6 +187,8 @@ jobs:
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
+      warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
+      warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
     steps:
       - name: Resolve configuration
@@ -168,7 +197,6 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_LABEL: ${{ github.event.label.name }}
           PUSH_BRANCH: ${{ github.ref_name }}
           IN_TOOL: ${{ inputs.benchmark_tool }}
           IN_CLIENT: ${{ inputs.client }}
@@ -176,6 +204,8 @@ jobs:
           IN_SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
           IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
           IN_DOTTRACE: ${{ inputs.dottrace }}
+          IN_PERF: ${{ inputs.perf }}
+          IN_DOTNET_TRACE: ${{ inputs.dotnet_trace }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
           IN_ARCH: ${{ inputs.arch }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
@@ -192,25 +222,12 @@ jobs:
             snapshot_block="${IN_SNAPSHOT_BLOCK:-}"
             docker_image="${IN_DOCKER_IMAGE:-}"
             dottrace="${IN_DOTTRACE:-false}"
+            perf="${IN_PERF:-false}"
+            dotnet_trace="${IN_DOTNET_TRACE:-false}"
             state_layout="${IN_STATE_LAYOUT:-flat}"
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
             node_config="${IN_NODE_CONFIG:-}"
-          elif [[ "${PR_LABEL}" == "performance is good" ]]; then
-            # PR labeled 'performance is good': fixed eth_call corpus A/B against master. The
-            # config is hard-coded rather than read from an input so every PR is measured
-            # identically and results stay comparable across PRs and over time.
-            branch="${PR_HEAD_BRANCH}"
-            benchmark_tool="jsonbench-sweep"
-            client="nethermind"
-            reference_client="none"
-            snapshot_block="25490000"
-            docker_image=""
-            dottrace="false"
-            state_layout="flat"
-            additional_flags=""
-            tool_config='{"eth_call_corpus":true,"clients":"nethermind@nethermindeth/nethermind:master nethermind","rps_list":"100","duration":"120s","corpus_glob":"eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
-            node_config=""
           else
             # PR labeled with 'rpc-benchmark': run flood on common read methods.
             branch="${PR_HEAD_BRANCH}"
@@ -220,6 +237,8 @@ jobs:
             snapshot_block=""
             docker_image=""
             dottrace="false"
+            perf="false"
+            dotnet_trace="false"
             state_layout="flat"
             additional_flags=""
             tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
@@ -279,6 +298,31 @@ jobs:
             echo "dottrace requires client=nethermind (dotTrace is .NET-specific)."
             exit 1
           fi
+          if [[ "${perf}" == "true" && "${benchmark_tool}" == "jsonbench-sweep" ]]; then
+            echo "::error::perf=true is not supported with benchmark_tool=jsonbench-sweep. Use a single-node benchmark tool; sweep capture needs per-cell profile isolation."
+            exit 1
+          fi
+          if [[ "${perf}" == "true" && "${client}" != "nethermind" ]]; then
+            echo "::error::perf=true requires client=nethermind (managed frames come from the runtime's perf map)."
+            exit 1
+          fi
+          case "${dotnet_trace}" in
+            true|false) ;;
+            *) echo "dotnet_trace must be true or false (got '${dotnet_trace}')."; exit 1;;
+          esac
+          if [[ "${dotnet_trace}" == "true" && "${client}" != "nethermind" ]]; then
+            echo "dotnet_trace requires client=nethermind (EventPipe is .NET-specific)."
+            exit 1
+          fi
+          # The collector attaches between the warm-up and the measured cell, so its window is the cell
+          # alone — which is what nettrace-report.cs states GC pause and contention as a share of. Only
+          # a single-node jsonbench run has a warm-up to attach after; on any other shape the window
+          # would also cover the tool's own clone, image build and corpus conversion, and both shares
+          # would come out deflated by however long that took.
+          if [[ "${dotnet_trace}" == "true" ]] && { [[ "${benchmark_tool}" != "jsonbench" ]] || [[ "${comparison}" == "true" ]]; }; then
+            echo "::error::dotnet_trace=true requires benchmark_tool=jsonbench with reference_client=none — no other shape has a warm-up to attach the collector after, so the trace would cover the tool's preparation as well as the measured cell."
+            exit 1
+          fi
           if [[ -n "${snapshot_block}" ]] && ! [[ "${snapshot_block}" =~ ^[0-9]+$ ]]; then
             echo "snapshot_block must be a block number tag (e.g. 25490000), got '${snapshot_block}'."
             exit 1
@@ -317,6 +361,58 @@ jobs:
             if [[ "${comparison}" == "true" ]]; then
               echo "eth_call_corpus is benchmark-only; leave reference_client=none (a corpus sweep compares its clients itself)."
               exit 1
+            fi
+          fi
+          # Single-node jsonbench warm-up (discarded load before the measured cell, after which the
+          # profilers start). The sweep reads the same key itself (default 240s there); here the
+          # default stays 0 so an unconfigured run measures what it always did.
+          warmup_seconds="0"
+          warmup_rps="400"
+          if [[ "${benchmark_tool}" == "jsonbench" && "${comparison}" != "true" ]]; then
+            warmup_raw="$(echo "${tool_config}" | jq -r '.corpus_warmup_duration // empty')"
+            if [[ -n "${warmup_raw}" ]]; then
+              if ! [[ "${warmup_raw}" =~ ^[0-9]+s?$ ]]; then
+                echo "::error::corpus_warmup_duration must be integer seconds (optional 's' suffix), got '${warmup_raw}'."
+                exit 1
+              fi
+              warmup_seconds="$(( 10#${warmup_raw%s} ))"
+            fi
+            warmup_rps_raw="$(echo "${tool_config}" | jq -r '.corpus_warmup_rps // empty')"
+            if [[ -n "${warmup_rps_raw}" ]]; then
+              if ! [[ "${warmup_rps_raw}" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::corpus_warmup_rps must be a positive integer, got '${warmup_rps_raw}'."
+                exit 1
+              fi
+              warmup_rps="${warmup_rps_raw}"
+            fi
+            # dotnet-trace has no other way to keep json-bench's preparation out of its window: the
+            # collector is attached between the warm-up and the measured cell, so a dispatch without a
+            # warm-up leaves nothing to attach after. Supply the canonical cell's 60s rather than
+            # profile a padded window, and refuse a dispatch that explicitly asks for none.
+            if [[ "${dotnet_trace}" == "true" && "${warmup_seconds}" == "0" ]]; then
+              if [[ -n "${warmup_raw}" ]]; then
+                echo "::error::dotnet_trace=true cannot be combined with corpus_warmup_duration=${warmup_raw} — the collector attaches after the warm-up, and with none its window also covers json-bench's clone, image build and corpus conversion."
+                exit 1
+              fi
+              warmup_seconds="60"
+              echo "::notice::dotnet_trace=true: warming up for ${warmup_seconds}s at ${warmup_rps} rps so the trace covers the measured cell alone."
+            fi
+          elif [[ "${benchmark_tool}" != "jsonbench-sweep" ]] \
+              && [[ "$(echo "${tool_config}" | jq -r 'has("corpus_warmup_duration") or has("corpus_warmup_rps")')" == "true" ]]; then
+            echo "::error::corpus_warmup_duration/corpus_warmup_rps apply to benchmark_tool=jsonbench (benchmark mode, no reference_client) and jsonbench-sweep only."
+            exit 1
+          fi
+          # dotnet-trace safety net: cap the collector at the measured cell's duration plus ten minutes,
+          # so a hung cell cannot grow the .nettrace until the job times out. The cap runs from the
+          # attach, which the warm-up resolved above keeps immediately ahead of the cell. Only a plain
+          # <n>[s|m|h] tool_config.duration is parsed; anything else leaves the session uncapped and
+          # stop-node.sh ends it.
+          dotnet_trace_max_seconds=""
+          if [[ "${dotnet_trace}" == "true" ]]; then
+            cell_duration="$(echo "${tool_config}" | jq -r '.duration // empty')"
+            if [[ "${cell_duration}" =~ ^([0-9]+)([smh]?)$ ]]; then
+              case "${BASH_REMATCH[2]}" in m) unit=60 ;; h) unit=3600 ;; *) unit=1 ;; esac
+              dotnet_trace_max_seconds="$(( 10#${BASH_REMATCH[1]} * unit + 600 ))"
             fi
           fi
           [[ -z "${node_config}" ]] && node_config="{}"
@@ -508,6 +604,9 @@ jobs:
             echo "reference_client=${reference_client}"
             echo "comparison=${comparison}"
             echo "dottrace=${dottrace}"
+            echo "perf=${perf:-false}"
+            echo "dotnet_trace=${dotnet_trace:-false}"
+            echo "dotnet_trace_max_seconds=${dotnet_trace_max_seconds}"
             echo "dottrace_mode=${dottrace_mode}"
             echo "image_mode=${image_mode}"
             echo "image_ref=${image_ref}"
@@ -530,12 +629,14 @@ jobs:
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
             echo "eth_call_corpus=${eth_call_corpus}"
+            echo "warmup_seconds=${warmup_seconds}"
+            echo "warmup_rps=${warmup_rps}"
             echo "tool_config<<TOOLCFG"
             echo "${tool_config}"
             echo "TOOLCFG"
           } >> "${GITHUB_OUTPUT}"
 
-          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace}"
+          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} warmup=${warmup_seconds}s@${warmup_rps}rps"
 
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
   benchmark:
@@ -556,6 +657,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Make scripts executable
+        run: chmod +x scripts/rpc-bench/*.sh
+
+      - name: Verify perf profiling prerequisites
+        if: needs.resolve.outputs.perf == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/rpc-bench/lib.sh
+          require_perf_access
 
       - name: Ensure Docker is installed
         shell: bash
@@ -585,6 +697,10 @@ jobs:
           echo "Image ref:   ${{ needs.resolve.outputs.image_ref }}"
           echo "Ref image:   ${{ needs.resolve.outputs.ref_image_ref }}"
           echo "dotTrace:    ${{ needs.resolve.outputs.dottrace }}"
+          echo "dotTrace mode: ${{ needs.resolve.outputs.dottrace_mode || 'none' }}"
+          echo "perf:        ${{ needs.resolve.outputs.perf }}"
+          echo "dotnet-trace: ${{ needs.resolve.outputs.dotnet_trace }} (session cap: ${{ needs.resolve.outputs.dotnet_trace_max_seconds || 'none' }}s)"
+          echo "Warm-up:     ${{ needs.resolve.outputs.warmup_seconds }}s at ${{ needs.resolve.outputs.warmup_rps }} rps (single-node jsonbench; 0 = none: perf starts once RPC is ready, dotTrace collects from launch)"
           echo "DB source:   ${{ needs.resolve.outputs.db_source }}"
           echo "Ref DB:      ${{ needs.resolve.outputs.ref_db_source }}"
           echo "Isolation:   ${{ needs.resolve.outputs.db_isolation }}"
@@ -594,9 +710,6 @@ jobs:
 
       - name: Prepare scratch and output dirs
         run: mkdir -p "${OUT_DIR}" "${STATE_DIR}"
-
-      - name: Make scripts executable
-        run: chmod +x scripts/rpc-bench/*.sh
 
       - name: Reclaim root disk before pulling
         # Only the ARM box has the ~19G root disk this protects; see its rationale below.
@@ -719,7 +832,12 @@ jobs:
           # Same raised cap as corpus sweep cells, so both dispatch modes agree (empty = script default).
           RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
+          DOTNET_TRACE: ${{ needs.resolve.outputs.dotnet_trace }}
+          DOTNET_TRACE_MAX_SECONDS: ${{ needs.resolve.outputs.dotnet_trace_max_seconds }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          # With a warm-up the profilers start in 'Start profilers' below, after it, so they cover only the measured cell.
+          PROFILE_AFTER_WARMUP: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
@@ -741,6 +859,8 @@ jobs:
           ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
           DOTTRACE: "false"
+          PERF: "false"
+          DOTNET_TRACE: "false"
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
 
@@ -773,6 +893,65 @@ jobs:
           fi
           ./scripts/rpc-bench/run-flood.sh
 
+      - name: Warm up node
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0'
+        env:
+          RPC_URL: http://localhost:8545
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
+          CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
+          WARMUP_SECONDS: ${{ needs.resolve.outputs.warmup_seconds }}
+          WARMUP_RPS: ${{ needs.resolve.outputs.warmup_rps }}
+          # Leave the json-bench checkout, runner image and corpus fixture for the measured cell.
+          JB_REUSE_PREPARED: "true"
+          # The profilers attach after this step, so its success is what keeps their window the measured cell.
+          PROFILED: ${{ needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.dotnet_trace == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
+          get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          # A fresh node answers eth_blockNumber long before it serves eth_call warm: snapshot
+          # persistence still writes for minutes and the JIT has not tiered up. This discarded cell
+          # replays the measured cell's workload first; only workload identity is taken from
+          # tool_config — report/gate knobs are forced off because nothing here is published.
+          jb_ref="$(get '.ref')";                        [[ -n "${jb_ref}" ]] && export JB_REF="${jb_ref}"
+          export JB_BENCHMARK_CONFIG="$(get '.benchmark_config')"
+          jb_vus="$(get '.vus')";                        [[ -n "${jb_vus}" ]] && export JB_VUS="${jb_vus}"
+          export JB_ETH_CALL_CORPUS="${RESOLVED_ETH_CALL_CORPUS}"
+          jb_corpus="$(get '.corpus_file')"
+          [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
+          [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
+          max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          export JB_EXTRA_ARGS="$(get '.extra_args')"
+          # Discarded output stays OUT of OUT_DIR so it is never staged or published; the
+          # fail-rate gate is lifted because absorbing the cold failures is the point of this cell.
+          export OUT_DIR="${SCRATCH_ROOT}/warmup-cell/single"
+          export JB_MODE="benchmark" JB_RPS="${WARMUP_RPS}" JB_DURATION="${WARMUP_SECONDS}s"
+          export JB_DEEP_CHECK="false" JB_HTML_REPORT="false" JB_MAX_FAIL_RATE_PCT="100"
+          echo "-- WARMUP @ rps=${WARMUP_RPS} for ${WARMUP_SECONDS}s (discarded) --"
+          if ! ./scripts/rpc-bench/run-jsonbench.sh; then
+            # A failed warm-up may not have written the reuse marker, so the measured cell re-clones, rebuilds
+            # the runner image and re-converts the corpus - all inside the profiler window that the deferred
+            # start exists to keep clear. nettrace-report states GC pause and lock contention as a share of that
+            # window, so the profile would silently understate both. A cold cell is still a valid measurement;
+            # a profile whose window is not the one three docs describe is not.
+            if [[ "${PROFILED}" == "true" ]]; then
+              echo "::error::warm-up failed with profiling enabled - the profiler window would cover json-bench preparation, not just the measured cell"
+              exit 1
+            fi
+            echo "::warning::warm-up failed — the measured cell and its profiles may be cold"
+          fi
+
+      - name: Start profilers
+        # Only after the warm-up: without one, start-node.sh started them when RPC became ready.
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0' && (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.dotnet_trace == 'true')
+        env:
+          DOTNET_TRACE_MAX_SECONDS: ${{ needs.resolve.outputs.dotnet_trace_max_seconds }}
+        run: ./scripts/rpc-bench/start-profilers.sh
+
       - name: Run json-bench benchmark
         id: run-jsonbench
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench'
@@ -786,6 +965,9 @@ jobs:
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
+          # After a warm-up the tool is already prepared; re-preparing it would leave the profilers
+          # started above recording an idle node for the re-clone, rebuild and corpus re-conversion.
+          JB_REUSE_PREPARED: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -914,6 +1096,8 @@ jobs:
           corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"
           # 0 measures a cold node deliberately — the cold/warm gap is itself a result worth having.
           corpus_warmup="$(get '.corpus_warmup_duration')"; [[ -n "${corpus_warmup}" ]] && export CORPUS_WARMUP_DURATION="${corpus_warmup}"
+          # Warming faster than the cells are measured at keeps the window short at a fixed request count.
+          corpus_warmup_rps="$(get '.corpus_warmup_rps')"; [[ -n "${corpus_warmup_rps}" ]] && export CORPUS_WARMUP_RPS="${corpus_warmup_rps}"
           # Parity holds every record in memory; raising this is a deliberate act, not a default.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
           # Per-record latency matrix; bypasses k6, so it is how a large corpus runs at a high rate.
@@ -948,12 +1132,58 @@ jobs:
             echo "No dotTrace snapshots found under ${DIAG_DIR}/dottrace."
           fi
 
+      - name: Collect perf profile
+        if: always() && needs.resolve.outputs.perf == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
+        run: |
+          set -euo pipefail
+          # Archive first and defer the failure, so a capture that produced no usable profile still ships the
+          # recorder log that says why - the same ordering the expb workflow uses. Exiting before the zip
+          # discarded the only evidence.
+          perf_validation_failed=false
+          bash scripts/validate-folded-profile.sh "${DIAG_DIR}/perf/perf.folded" || perf_validation_failed=true
+
+          if [[ -d "${DIAG_DIR}/perf" ]] && [[ -n "$(find "${DIAG_DIR}/perf" -type f -not -name 'perf.data' 2>/dev/null)" ]]; then
+            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" perf -x '*/perf.data' )
+            echo "Archived perf profile to ${ARCHIVE}"
+          else
+            echo "::warning::nothing to archive under ${DIAG_DIR}/perf."
+          fi
+
+          if [[ "${perf_validation_failed}" == "true" ]]; then
+            for recorder_log in "${DIAG_DIR}"/perf/perf-record*.log; do
+              [[ -s "${recorder_log}" ]] || continue
+              echo "--- $(basename "${recorder_log}") (last 40 lines) ---"
+              tail -n 40 "${recorder_log}" | sed 's/^/    /'
+            done
+            echo "::error::perf was requested but no positive-sample ${DIAG_DIR}/perf/perf.folded was produced."
+            exit 1
+          fi
+
+      - name: Collect dotnet-trace
+        if: always() && needs.resolve.outputs.dotnet_trace == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+        run: |
+          set -euo pipefail
+          if [[ -s "${DIAG_DIR}/dotnet-trace/rpcbench.nettrace" ]]; then
+            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" dotnet-trace )
+            echo "Archived dotnet-trace to ${ARCHIVE}"
+          else
+            echo "::error::dotnet_trace was requested but no ${DIAG_DIR}/dotnet-trace/rpcbench.nettrace was produced."
+            exit 1
+          fi
+
       - name: Scan node logs for errors
         id: scan
         if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           # Corpus runs print match COUNTS only — log lines could quote private call data.
           ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
         shell: bash
@@ -1027,6 +1257,8 @@ jobs:
       - name: Publish step summary
         if: always()
         shell: bash
+        env:
+          DOTNET_TRACE: ${{ needs.resolve.outputs.dotnet_trace }}
         run: |
           set -euo pipefail
           {
@@ -1036,6 +1268,15 @@ jobs:
             if [[ "${{ needs.resolve.outputs.comparison }}" == "true" ]]; then
               echo ""
               echo "Reference: \`${{ needs.resolve.outputs.reference_client }}\` | image: \`${{ needs.resolve.outputs.ref_image_ref }}\`"
+            fi
+            if [[ "${DOTNET_TRACE}" == "true" ]]; then
+              nettrace="${DIAG_DIR}/dotnet-trace/rpcbench.nettrace"
+              echo ""
+              if [[ -s "${nettrace}" ]]; then
+                echo "dotnet-trace: \`rpcbench.nettrace\` $(du -h "${nettrace}" | cut -f1) (artifact \`dotnet-trace-rpcbench\`)"
+              else
+                echo "dotnet-trace: **no .nettrace was produced**"
+              fi
             fi
             echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
@@ -1071,24 +1312,6 @@ jobs:
         shell: bash
         run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
 
-      # Built from the STAGED tree, so everything in a public PR comment has already passed the
-      # aggregate-only validator. Never posts raw output.
-      - name: Comment corpus comparison on the PR
-        if: always() && github.event_name == 'pull_request' && github.event.label.name == 'performance is good' && steps.stage-corpus-results.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          python3 scripts/rpc-bench/corpus_results.py comment \
-            "${RUNNER_TEMP}/rpcbench-corpus-results" \
-            --baseline nethermind_master --candidate nethermind > comment.md
-          {
-            echo
-            echo "<sub>[workflow run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})</sub>"
-          } >> comment.md
-          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file comment.md
-
       - name: Upload private corpus results
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'
         uses: actions/upload-artifact@v7
@@ -1106,6 +1329,24 @@ jobs:
           path: ${{ runner.temp }}/dottrace-rpcbench.zip
           retention-days: 30
           if-no-files-found: ignore
+
+      - name: Upload perf profile
+        if: always() && needs.resolve.outputs.perf == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-rpcbench
+          path: ${{ runner.temp }}/perf-rpcbench.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload dotnet-trace
+        if: always() && needs.resolve.outputs.dotnet_trace == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-trace-rpcbench
+          path: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Defensive cleanup
         if: always()

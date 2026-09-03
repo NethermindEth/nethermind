@@ -53,6 +53,8 @@ namespace Nethermind.Synchronization
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
         private readonly IHistoryPruner _historyPruner;
+        private readonly ISyncPointers? _syncPointers;
+        private readonly ISyncConfig _syncConfig;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -65,7 +67,6 @@ namespace Nethermind.Synchronization
         private Task _rangeBroadcastTask = Task.CompletedTask;
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
-        private const int NewOldestBlockRangeUpdateFrequency = 10000;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -81,9 +82,12 @@ namespace Nethermind.Synchronization
             IGossipPolicy gossipPolicy,
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISyncPointers? syncPointers = null)
         {
+            _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _syncConfig = config;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -104,6 +108,9 @@ namespace Nethermind.Synchronization
             _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
             _historyPruner.NewOldestBlock += OnNewRange;
+            // Seed the served floor at startup so JSON-RPC's pruned-history check agrees with the eth/69
+            // advertisement before the first broadcast recomputes it.
+            _blockTree.UpdateLowestServedBlock(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
@@ -130,7 +137,26 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, _blockTree.GetLowestBlock());
+        // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
+        // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
+        // An absent pointer under fast sync falls back to the static config pivot - bodies exist only from
+        // where full sync began, so the pivot is the honest earliest even when the feeds never run; the live
+        // tree pivot rises with finality, so a genesis-following node (CL-discovered pivot) falls back to zero.
+        private ulong DownloadPointerFloor
+        {
+            get
+            {
+                if (_syncPointers is null)
+                    return 0;
+
+                ulong fallback = _syncConfig.FastSync ? _syncConfig.PivotNumber : 0;
+                return ulong.Max(
+                    _syncPointers.LowestInsertedBodyNumber ?? fallback,
+                    _syncPointers.LowestInsertedReceiptBlockNumber ?? fallback);
+            }
+        }
+
+        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -468,14 +494,18 @@ namespace Nethermind.Synchronization
             if (_blockTree.Head is null)
                 return;
 
-            // Don't send new range for every single deletion
-            if (!onNewOldestBlockArgs.isFinalUpdate &&
-                onNewOldestBlockArgs.OldestBlockHeader.Number % NewOldestBlockRangeUpdateFrequency != 0)
+            BlockHeader latest = _blockTree.Head.Header;
+            ulong servedFloor = ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor);
+            _blockTree.UpdateLowestServedBlock(servedFloor);
+            ulong floor = ulong.Min(servedFloor, latest.Number);
+            BlockHeader earliest = onNewOldestBlockArgs.OldestBlockHeader;
+            if (earliest.Number < floor)
             {
-                return;
+                // TotalDifficultyNotNeeded: ancient headers carry no TD, and a null here must not fall back below the floor.
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ?? latest;
             }
 
-            OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
+            OnNewRange(earliest, latest);
         }
 
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
@@ -486,11 +516,14 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
+            // The same floor the status handshake advertises, so a peer never sees two different earliest values.
+            ulong servedFloor = ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor);
+            _blockTree.UpdateLowestServedBlock(servedFloor);
+            ulong floor = ulong.Min(servedFloor, latestBlock.Number);
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
-            if (earliest is null || earliest.Number > latestBlock.Number)
+            if (earliest is null || earliest.Number > latestBlock.Number || earliest.Number < floor)
             {
-                ulong floor = ulong.Min(_blockTree.GetLowestBlock(), latestBlock.Number);
-                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ?? latestBlock.Header;
             }
 
             OnNewRange(earliest, latestBlock.Header);

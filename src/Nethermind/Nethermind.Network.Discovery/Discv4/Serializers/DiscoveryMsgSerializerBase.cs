@@ -104,7 +104,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
         if (!Bytes.AreEqual(mdc.Bytes, computedMdc))
         {
-            throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
+            throw new NetworkingException("Invalid packet hash", NetworkExceptionType.Validation);
         }
 
         PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData[..64], sigAndData[64], sigAndData[65..]);

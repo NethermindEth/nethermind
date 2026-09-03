@@ -43,6 +43,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 using Nethermind.History;
 using Nethermind.Init.Modules;
 
@@ -159,9 +160,16 @@ public abstract partial class BaseEngineModuleTests
         public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
-        public Task WaitForImprovedBlock(Hash256? parentHash = null) =>
+        /// <summary>
+        /// Waits for an improved block built on <paramref name="parentHash"/> that carries at least
+        /// <paramref name="minTransactions"/> transactions.
+        /// </summary>
+        /// <param name="parentHash">The required parent hash, or <see langword="null"/> to match any parent.</param>
+        /// <param name="minTransactions">The minimum transaction count, or zero to impose no transaction requirement.</param>
+        public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
-                b => parentHash is null || b.Header.ParentHash == parentHash);
+                b => (parentHash is null || b.Header.ParentHash == parentHash)
+                     && b.Transactions.Length >= minTransactions);
 
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
@@ -191,6 +199,14 @@ public abstract partial class BaseEngineModuleTests
 
         public bool? ParallelExecutionOverride { get; set; }
 
+        private const double CiSafeSingleBlockImprovementOfSlot = 5;
+
+        /// <summary>
+        /// Overrides the payload improvement window as a fraction of a slot. Must be set before <c>Build()</c>;
+        /// assigning it afterwards is a no-op because the configs are materialized during build.
+        /// </summary>
+        public double? SingleBlockImprovementOfSlotOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
@@ -204,6 +220,8 @@ public abstract partial class BaseEngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
+
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
 
@@ -216,7 +234,14 @@ public abstract partial class BaseEngineModuleTests
                     ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
                     : c);
             }
-            return configs;
+
+            List<IConfig> materialized = configs.ToList();
+            foreach (IConfig config in materialized)
+            {
+                if (config is not IBlocksConfig blocksConfig) continue;
+                blocksConfig.SingleBlockImprovementOfSlot = SingleBlockImprovementOfSlotOverride ?? CiSafeSingleBlockImprovementOfSlot;
+            }
+            return materialized;
         }
 
         /// <summary>
@@ -263,13 +288,15 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
                 blocksConfig,
                 LogManager,
-                targetAdjustedGasLimitCalculator);
+                targetAdjustedGasLimitCalculator,
+                InclusionListTxSource);
 
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);

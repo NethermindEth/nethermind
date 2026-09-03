@@ -51,7 +51,7 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
@@ -132,7 +132,7 @@ public static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -162,12 +162,31 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
+#if !ZK_EVM
+    /// <summary>
+    /// Set bytes followed by an equal run of clear ones, so loading a word at
+    /// <c>WordSize - position</c> yields a mask whose leading <c>position</c> bytes are set.
+    /// </summary>
+    /// <remarks>Spans of constants become a rodata blob, so this costs no allocation and no static field.</remarks>
+    private static ReadOnlySpan<byte> SignExtendPrefixMask =>
+    [
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+#endif
+
     /// <summary>
     /// Implements the SIGNEXTEND opcode.
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume<LowGasCost>(ref gas);
@@ -190,20 +209,23 @@ public static partial class EvmInstructions
         if (IsNullRef(ref bytesRef))
             goto StackUnderflow;
 
-        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
-        sbyte sign = (sbyte)bytes[position];
+        // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
+        sbyte sign = (sbyte)Add(ref bytesRef, position);
 
-        // Extend the sign by replacing higher-order bytes.
-        if (sign >= 0)
-        {
-            // Fill with zero bytes.
-            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
-        }
-        else
-        {
-            // Fill with 0xFF bytes.
-            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
-        }
+#if ZK_EVM
+        // No hardware SIMD in the guest: a 32-element Vector256 fallback would cost more than the copy.
+        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
+        (sign >= 0 ? BytesZero32 : BytesMax32).AsSpan(0, position).CopyTo(bytes[..position]);
+#else
+        // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
+        // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
+        // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
+        // single load, so nothing here depends on `position` being a constant.
+        EvmWord fill = Vector256.Create((byte)(sign >> 7));
+        EvmWord mask = Vector256.LoadUnsafe(
+            ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
+        Vector256.ConditionalSelect(mask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+#endif
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.

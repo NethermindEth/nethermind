@@ -53,8 +53,9 @@ which uses the same snapshots on this runner:
 - The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
   `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
   production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
-  inside the measured window; treat a run's first test/rate as warm-up. One-off
-  code-gen experiments: set `NODE_ENV_VARS`.
+  inside the measured window; treat a run's first test/rate as warm-up, or for
+  `jsonbench` set `corpus_warmup_duration` (see below). One-off code-gen
+  experiments: set `NODE_ENV_VARS`.
 
 ## Snapshot sets
 
@@ -171,6 +172,8 @@ the workflow's defensive-cleanup step).
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
+| `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
+| `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a Nethermind `jsonbench` benchmark with no reference client (the only shape with a warm-up to attach the collector after; one is supplied when the dispatch sets none). See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
 | `node_config` | Advanced JSON overrides (see below). |
@@ -255,9 +258,23 @@ from `reference_client` and overridable via `mode`:
   "html_report": true,
   "fail_on_diff": false,                           // compare: fail the job on any response difference
   "max_fail_rate_pct": 1,                          // benchmark: fail when summary.json's http fail rate exceeds this % (k6 itself exits 0 even at 100%)
+  "corpus_warmup_duration": 0,                     // benchmark: seconds (optional 's' suffix) of discarded load before the measured cell; 0 = none
+  "corpus_warmup_rps": 400,                        // rate of that warm-up
   "extra_args": ""
 }
 ```
+
+**Warm-up (`corpus_warmup_duration`, benchmark mode only).** A node that has just started
+answers `eth_blockNumber` long before it serves `eth_call` warm: snapshot persistence keeps
+writing for minutes and the JIT has not tiered up. With a non-zero duration the workflow first
+replays the same workload (same `benchmark_config`/corpus, `corpus_warmup_rps`, fail-rate gate
+lifted) into scratch — never staged or published — and **only then starts the profilers**
+(`start-profilers.sh`), so a `perf` or `dottrace` profile covers the measured cell alone. The
+measured cell reuses the json-bench checkout, runner image and corpus fixture the warm-up
+prepared (`JB_REUSE_PREPARED=true`), so its first request follows the profiler start within
+seconds rather than after a re-clone, rebuild and re-conversion. The
+sweep has its own warm-up with the same key (default 240 s there); here the default is 0 so an
+unconfigured run measures exactly what it always did, profilers starting as soon as RPC is up.
 
 `benchmark_config` accepts json-bench's curated head-only workloads by name —
 `realistic-mix-head` (weighted mainnet mix), `ethcall-contracts-head` (`eth_call`
@@ -298,17 +315,25 @@ the corpus DB is how you constrain the workload. Corpus resolution order:
 the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
 in the tool repo → fresh evolution from scratch.
 
-## `performance is good` label — automatic PR vs master
+## Fixed corpus A/B against master
 
-Adding the **`performance is good`** label to a PR runs a fixed `eth_call` corpus A/B and
-posts the result as a PR comment. The configuration is hard-coded in `resolve` rather
-than read from an input, so every PR is measured identically and results stay comparable
-across PRs and over time: the 497-record corpus, 100 rps for 120s, PR build against
-`nethermind:master` as the parity baseline.
+The canonical branch-vs-master check is a fixed `eth_call` corpus A/B — the 497-record
+corpus, 100 rps for 120s, the branch build against `nethermind:master` as the parity
+baseline. Dispatch it with `benchmark_tool: jsonbench-sweep` and:
 
-The comment carries per-metric latency deltas and the response-parity verdict. It is
-rendered by `corpus_results.py comment` from the **staged** tree, not the raw output, so
-everything posted publicly has already passed the aggregate-only validator.
+```json
+{"eth_call_corpus": true,
+ "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:<branch-tag>",
+ "rps_list": "100", "duration": "120s",
+ "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
+```
+
+Pin both arms to prebuilt tags: a bare `nethermind` entry builds the image on the benchmark
+runner, which serializes every other job behind it. Holding the rest fixed is what keeps results
+comparable across branches and over time.
+`corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders the
+per-metric latency deltas and the response-parity verdict from the **staged** tree, not the
+raw output, so its rendering has already passed the aggregate-only validator.
 
 Read it correctly: a parity divergence is a correctness regression regardless of the
 latency numbers, and latency deltas under roughly 2.5% are within run-to-run noise on
@@ -383,22 +408,37 @@ random draw. The CSV carries record indexes, milliseconds and outcome names only
 safe to publish under the same boundary as the parity reports.
 
 A `timings.meta.json` sidecar records the head block hash, record/pass counts, target and
-achieved rate, concurrency, and `warmup_seconds` — the seconds of discarded warm load the
-node absorbed before the matrix (0 = measured cold). **Only compare matrices whose metadata
-matches** — a different head, rate or concurrency makes the numbers incomparable, and
-`warmup_seconds` most of all: a cold matrix reads ~60% higher on p99 than the same node warm,
-and nothing in the CSV itself would reveal that. On k6-warmed runs the field is the exact
+achieved rate, concurrency, and `warmup_seconds`/`warmup_rps` — the discarded warm load the
+node absorbed before the matrix (0 seconds = measured cold). **Only compare matrices whose
+metadata matches** — a different head, rate or concurrency makes the numbers incomparable, and
+the warm-up fields most of all (the same seconds at a different rate is a different warm
+state): a cold matrix reads ~60% higher on p99 than the same node warm, and nothing in the
+CSV itself would reveal that. On k6-warmed runs the field is the exact
 requested duration and can be matched literally; on replay-warmed runs it is a measured
 elapsed value (and ~request+60 when the wall-clock bound fired), so compare it as
 "both warm and within a few percent", not byte-for-byte.
 
 **What a corpus sweep does per client:** first a discarded **warm-up, once per
 corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is
-rejected; default `240s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
-N x 240 s per client before measuring): a k6 cell at the highest requested rate when
-`rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
-fixture-free mode stays fixture-free. Cold nodes fail ~2% of calls and read ~60% higher p99,
-so every measured number below assumes this ran. Then one k6 latency cell per corpus per
+rejected; default `60s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
+N x 60 s per client before measuring) driven at `corpus_warmup_rps` (default `400`, so the
+window delivers the ~24k requests that `240s` at 100 rps used to, in a quarter of the wall
+time; it is a floor, so a run measuring a higher rate warms at that rate instead): a k6 cell
+when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
+fixture-free mode stays fixture-free.
+
+The request count is the point, and the rate is a request for one, not a guarantee of one — so
+both branches record what they **delivered** and warn when it lands below 80% of the target.
+Two reasons it can: `run_cell` does not scale `vus` with the rate, and k6's arrival-rate executor
+drops iterations once demand outruns that pool; and 400 rps is above the 300 rps that already
+measured a 1.22% fail rate on arm64, so on that box the warm-up is saturated by construction. The
+warm-up's own fail-rate gate is lifted, so this warning is the only thing that reports it. The
+replay branch is request-bounded rather than window-bounded for the same reason: its wall-clock
+bound has a 300s floor, so a slow node still reaches the request target instead of being cut off
+at the shorter window — meaning in that mode the warm-up can outlast `corpus_warmup_duration`.
+
+Cold nodes fail ~2% of calls and read ~60% higher p99, so every measured number below assumes
+this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
 then one full-corpus replay via `corpus_parity.py` while the node is still up.
@@ -464,6 +504,12 @@ Line-by-line is not offered: it needs PDBs the Docker images do not ship.
    `dotnet tool install JetBrains.dotTrace.GlobalTools`) is mounted read-only
    into the container, and the entrypoint is wrapped:
    `dottrace start --framework=NetCore --profiling-type=<Mode> --save-to=... --propagate-exit-code -- /nethermind/nethermind …`.
+   With a `jsonbench` warm-up (`corpus_warmup_duration`) the wrapper is launched with
+   `--collect-data-from-start=off --service-output=on --service-input=/dottrace-output/control.svc`;
+   after the warm-up `start-profilers.sh` appends `##dotTrace["start"]` to that file and
+   waits for the launcher's `##dotTrace["started"]` in the container log, failing loudly if it
+   never comes (a profiler that never collected has no snapshot to save on SIGINT). The
+   `start` wrapper is kept rather than `attach` because attach cannot do `tracing`.
 2. `stop-node.sh` stops the container with **SIGINT**, letting dotTrace finalize
    the snapshot into the mounted diag dir (`.dtp`, or `.dtt` for `timeline`).
 3. The `generate-dottrace-reports` job (Windows) runs `Reporter.exe` to convert
@@ -472,14 +518,14 @@ Line-by-line is not offered: it needs PDBs the Docker images do not ship.
 4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
    `top` over each XML and writes the hot functions into the job summary.
 
-The EXPB workflow additionally collects a **dotnet-trace EventPipe sidecar** alongside
-its dotTrace snapshot (GC pauses, lock contention, exception throws — runtime events a
-CPU profile cannot show). rpc-bench does not: a `timeline` run here yields the `.dtt`
-snapshot only, for the dotTrace UI.
+For the runtime events a CPU profile cannot show (GC pauses, lock contention, exception
+throws) enable the [dotnet-trace sidecar](#dotnet-trace-sidecar) alongside; a `timeline`
+run on its own yields the `.dtt` snapshot only, for the dotTrace UI.
 
-> The snapshot spans the node's whole lifetime (including DB load and warmup), so
-> keep the benchmark `duration` the dominant phase, or analyze by time window, so
-> RPC-call frames dominate the captured `OwnTime`.
+> Without a warm-up the snapshot spans the node's whole lifetime (including DB
+> load and JIT tiering), so keep the benchmark `duration` the dominant phase, or
+> analyze by time window, so RPC-call frames dominate the captured `OwnTime`. With
+> `corpus_warmup_duration` set, collection covers only the measured cell.
 
 Download the `dottrace-reports` artifact and inspect locally:
 
@@ -487,6 +533,84 @@ Download the `dottrace-reports` artifact and inspect locally:
 scripts/dottrace-report.sh top   reports/<name>-report.xml 30
 scripts/dottrace-report.sh compare reports/before.xml reports/after.xml 30
 ```
+
+## Linux perf flow
+
+Set `perf: true` to capture a host `cycles:u` CPU profile for a single-node
+Nethermind run. It is rejected for `benchmark_tool=jsonbench-sweep`, whose
+many cells require per-cell profile isolation.
+
+The self-hosted runner process must execute as `root`: host `perf` is launched
+directly — not through `sudo` — so the recorder PID can be retained for
+identity-safe teardown. Host `perf` must be able to sample `cycles:u` (or falls
+back to `cpu-clock:u`). Sampling starts once the node serves RPC — startup is
+excluded — or, with a `jsonbench` `corpus_warmup_duration`, only after that
+warm-up, so the profile covers the measured cell alone. A `comparison` dispatch
+produces **one** profile: the reference instance is started with perf off.
+
+Shutdown folds the recording into `perf.folded`; collection fails when it has
+no managed-symbol leaf/self samples, including all-native or all-unknown
+profiles. The `perf-rpcbench` artifact contains `perf.folded` and recorder logs
+but excludes raw `perf.data`. Analyze the folded profile with
+[`scripts/perf-report.sh`](../perf-report.sh):
+
+```bash
+scripts/perf-report.sh top perf.folded 30
+scripts/perf-report.sh compare before.folded after.folded 30
+```
+
+## dotnet-trace sidecar
+
+Set `dotnet_trace: true` (Nethermind `benchmark_tool=jsonbench` with no `reference_client`;
+rejected on every other shape) to collect an EventPipe `.nettrace` of **runtime events** — GC
+start/end and pause durations, monitor contention with the owning thread's stack, thread-pool
+adjustments, exception throws — during the **measured phase only**. The collector attaches
+between the warm-up and the measured cell, which is why that is the one accepted shape and why a
+dispatch setting no `corpus_warmup_duration` is given the canonical 60s: attached at RPC-ready
+instead, the window would also hold json-bench's clone, image build and corpus conversion, and the
+report's per-window percentages (GC pause share, contention share) would be diluted by exactly
+that padding. A warm-up that fails is therefore fatal whenever a profiler is enabled, since it may
+not have written the reuse marker and the measured cell would redo that preparation inside the
+window; unprofiled, a failed warm-up only warns and the cell is measured cold. It records no CPU samples, so it can run next to `dottrace` and `perf` without
+double-sampling the node; its providers are `gc+contention+threading+exception` at level
+**verbose**, which is required because informational `Contention` events carry no stacks and
+lock-owner attribution is the point.
+
+The collector is the framework-dependent `dotnet-trace` global tool installed on the host
+on demand (`dotnet tool install --version <pinned> --tool-path /opt/dotnet-trace dotnet-trace`,
+pinned by `DOTNET_TRACE_VERSION` in `start-node.sh`), bind-mounted
+read-only into the container and started **inside it** with `docker exec` against the
+runtime's default diagnostics IPC socket (`dotnet-trace collect -p <container pid>`), with
+`DOTNET_ROOT` resolved from the container's own `dotnet --list-runtimes` and
+`DOTNET_ROLL_FORWARD=Major`. Attaching from inside, late, is what excludes the warm-up:
+expb's alternative — a diagnostic port the runtime connects to at start — has to listen
+before the runtime starts and records everything from launch. `start-profilers.sh` attaches
+it after the `jsonbench` warm-up (`start-node.sh` starts perf and dotTrace at RPC-ready when
+there is none, but `dotnet_trace` never runs without one), fails
+loudly if the collector exits within a second (the apphost's ".NET location: Not found" is
+otherwise a silent 400-byte log), and `stop-node.sh` sends it SIGINT inside the container
+and waits for the `.nettrace` to finalize **before** the node is stopped. With a plain
+`tool_config.duration` the session is also capped (`--duration`) at that duration plus ten
+minutes, counted from the attach the warm-up keeps immediately ahead of the cell — so a hung
+cell cannot grow the file until the job times out. A collector that ended before teardown
+reached it fails the run instead of shipping a trace that misses the cell.
+
+The `dotnet-trace-rpcbench` artifact holds `rpcbench.nettrace` plus the collector log.
+[`scripts/nettrace-report.cs`](../nettrace-report.cs) summarizes it — GC count and pause per
+generation with the worst pauses ranked, contention wait count and percentiles, exception
+count:
+
+```bash
+dotnet run scripts/nettrace-report.cs -- dotnet-trace/rpcbench.nettrace [--top N]
+```
+
+Its contention figure is **blocked** time; CPU burnt spinning before a wait blocks is not in
+the trace at all, and a sampling profiler books that against `Monitor.Enter_Slowpath`
+instead — so the two collectors disagree by design, and the pair tells you which one a lock
+is costing you. For the owning stacks open the trace in PerfView (`Contention/Start` carries
+them at the verbose level the sidecar collects); stacks are managed-only. `dotnet-trace
+convert --format speedscope` produces an empty profile for these events — it only knows
+sampled CPU stacks.
 
 ## Runner prerequisites
 
@@ -502,19 +626,24 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
-  `/opt/dottrace` is not already installed by previous expb dotTrace runs).
+  `/opt/dottrace` / `/opt/dotnet-trace` are not already installed by previous runs).
+- **Host `perf` and a root runner process** on *either* runner when using
+  `perf: true` — it is available for `arch=amd64` too, and that is the default;
+  `perf` must be able to sample `cycles:u` (see [Linux perf flow](#linux-perf-flow)).
 
 ## Files
 
 | File | Role |
 |---|---|
 | `lib.sh` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
-| `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC. |
-| `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
+| `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC → start profilers (unless `PROFILE_AFTER_WARMUP=true`). |
+| `start-profilers.sh` | Start perf, deferred dotTrace collection and the dotnet-trace sidecar after the warm-up (`lib.sh` `start_profilers`); refuses to run twice. |
+| `stop-node.sh` | Stop dotnet-trace and fold perf → graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
 | `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
 | `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema and stage only validated aggregate files for the corpus artifact. |
 | `prepare-eth-call-corpus.py` | Convert a JSONL(.gz) corpus into the JSON-array fixture json-bench consumes. |
+| `../nettrace-report.cs` | Summarize a sidecar `.nettrace`: GC pauses per generation, contention percentiles, exceptions (`dotnet run scripts/nettrace-report.cs -- <file>`). |
 | `run-jsonbench.sh` | Clone/build json-bench's runner image, adapt the workload config to the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |

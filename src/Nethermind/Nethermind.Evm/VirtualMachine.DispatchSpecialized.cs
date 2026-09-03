@@ -30,7 +30,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private partial EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ref int programCounter)
+        ref nint programCounter)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where TShift : struct, IFlag
@@ -51,7 +51,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
 
         // May not be zero when resuming after a call.
-        int programCounter = VmState.ProgramCounter;
+        nint programCounter = VmState.ProgramCounter;
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(ref stack, ref gas, ref programCounter);
 
@@ -59,7 +59,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            UpdateCurrentState(programCounter, in gas, stack.Head);
+            UpdateCurrentState((int)programCounter, in gas, stack.Head);
         }
         else
         {
@@ -80,13 +80,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #if DEBUG
         debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
-        if (ReturnData is byte[] data)
-        {
-            return new CallResult(data, null);
-        }
-        else if (ReturnData is VmState<TGasPolicy> state)
+        // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
+        // the general helper, while a class one has a specialized fast path. Order them accordingly.
+        if (ReturnData is VmState<TGasPolicy> state)
         {
             return new CallResult(state);
+        }
+        else if (ReturnData is byte[] data)
+        {
+            return new CallResult(data, null);
         }
         return new CallResult(ReturnDataBuffer, null);
 

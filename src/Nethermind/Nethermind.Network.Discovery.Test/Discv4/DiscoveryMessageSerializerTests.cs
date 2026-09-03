@@ -79,6 +79,21 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void PingMessage_rejects_invalid_packet_hash()
+    {
+        PingMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, _farAddress, _nearAddress,
+                new byte[32])
+            { FarAddress = _farAddress };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        data.SetByte(data.ReaderIndex, data.GetByte(data.ReaderIndex) ^ 1);
+
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(data),
+            Throws.TypeOf<NetworkingException>().And.Message.EqualTo("Invalid packet hash"));
+    }
+
+    [Test]
     public void PingMessage_Serializes_Endpoint_Ports_In_Discv4_Order()
     {
         IPEndPoint source = new(IPAddress.Parse("10.0.0.5"), 30304);

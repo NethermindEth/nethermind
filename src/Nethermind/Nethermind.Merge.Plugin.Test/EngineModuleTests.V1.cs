@@ -59,7 +59,7 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = "0"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         UInt256 timestamp = Timestamper.UnixTime.Seconds;
@@ -159,7 +159,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = 30;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = TestItem.AddressD;
@@ -183,7 +183,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
-            Hash256 actualHead = chain.BlockTree.HeadHash;
+            Hash256 actualHead = chain.BlockTree.HeadHash!;
             Assert.That(actualHead, Is.Not.EqualTo(expected.BlockHash));
             Assert.That(actualHead, Is.EqualTo(startingHead));
         }
@@ -196,7 +196,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 notExistingHash = TestItem.KeccakH;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -211,7 +211,7 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> getResponse = await rpc.engine_getPayloadV1(payloadId);
 
         Assert.That(getResponse.ErrorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
-        Hash256 actualHead = chain.BlockTree.HeadHash;
+        Hash256 actualHead = chain.BlockTree.HeadHash!;
         Assert.That(actualHead, Is.Not.EqualTo(notExistingHash));
         Assert.That(actualHead, Is.EqualTo(startingHead));
     }
@@ -221,7 +221,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         Assert.That(getPayloadResult.ParentHash, Is.EqualTo(startingHead));
@@ -243,7 +243,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
         ExecutionPayload getPayloadResult = await PrepareAndGetPayloadResultV1(chain, rpc);
         Assert.That(getPayloadResult.ParentHash, Is.EqualTo(startingHead));
@@ -283,7 +283,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 finalizedHash = Keccak.Zero;
         ulong timestamp = 30;
         Hash256 random = Keccak.Zero;
@@ -347,7 +347,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> PrepareAndGetPayloadResultV1(MergeTestBlockchain chain,
         IEngineRpcModule rpc)
     {
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -393,7 +393,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
-        Hash256 blockHash = getPayloadResult.BlockHash;
+        Hash256 blockHash = getPayloadResult.BlockHash!;
         getPayloadResult.ParentHash = TestItem.KeccakF;
         if (blockHash == getPayloadResult.BlockHash && TryCalculateHash(getPayloadResult, out Hash256? hash))
         {
@@ -455,7 +455,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 genesisHash = chain.BlockTree.HeadHash;
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
         await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
 
         // Build block 2 on block 1 (BuildAndGetPayloadResult sees block1 as head),
@@ -610,10 +610,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
-        Hash256 newHeadHash = executionPayload.BlockHash;
+        Hash256 newHeadHash = executionPayload.BlockHash!;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, Keccak.Zero, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         using (Assert.EnterMultipleScope())
@@ -621,7 +621,7 @@ public partial class EngineModuleTests
             Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
 
-            Hash256 actualHead = chain.BlockTree.HeadHash;
+            Hash256 actualHead = chain.BlockTree.HeadHash!;
             Assert.That(actualHead, Is.Not.EqualTo(startingHead));
             Assert.That(actualHead, Is.EqualTo(newHeadHash));
         }
@@ -634,15 +634,15 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         TestRpcBlockchain testRpc = await CreateTestRpc(chain);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
-        Hash256 newHeadHash = executionPayload.BlockHash;
+        Hash256 newHeadHash = executionPayload.BlockHash!;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
 
         Hash256? actualFinalizedHash = chain.BlockTree.FinalizedHash;
-        BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data;
+        BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data!;
         Assert.That(blockForRpc, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
@@ -666,15 +666,15 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         TestRpcBlockchain testRpc = await CreateTestRpc(chain);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
-        Hash256 newHeadHash = executionPayload.BlockHash;
+        Hash256 newHeadHash = executionPayload.BlockHash!;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
 
         Hash256? actualSafeHash = chain.BlockTree.SafeHash;
-        BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data;
+        BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data!;
         Assert.That(blockForRpc, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
@@ -697,7 +697,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
         Hash256 newHeadHash = executionPayload.BlockHash!;
@@ -708,7 +708,7 @@ public partial class EngineModuleTests
             Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
 
-            Hash256 actualHead = chain.BlockTree.HeadHash;
+            Hash256 actualHead = chain.BlockTree.HeadHash!;
             Assert.That(actualHead, Is.Not.EqualTo(startingHead));
             Assert.That(actualHead, Is.EqualTo(newHeadHash));
         }
@@ -720,7 +720,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
         Hash256 newHeadHash = executionPayload.BlockHash!;
@@ -731,7 +731,7 @@ public partial class EngineModuleTests
             Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
 
-            Hash256 actualHead = chain.BlockTree.HeadHash;
+            Hash256 actualHead = chain.BlockTree.HeadHash!;
             Assert.That(actualHead, Is.Not.EqualTo(startingHead));
             Assert.That(actualHead, Is.EqualTo(newHeadHash));
         }
@@ -761,7 +761,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
         Hash256 newHeadHash = executionPayload.BlockHash!;
@@ -769,7 +769,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
         Assert.That(forkchoiceUpdatedResult.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidForkchoiceState));
 
-        Hash256 actualHead = chain.BlockTree.HeadHash;
+        Hash256 actualHead = chain.BlockTree.HeadHash!;
         Assert.That(actualHead, Is.Not.EqualTo(newHeadHash));
     }
 
@@ -778,7 +778,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Block parent = Build.A.Block.WithNumber(2).WithParentHash(TestItem.KeccakA).WithNonce(0).WithDifficulty(0).TestObject;
         Block block = Build.A.Block.WithNumber(3).WithParent(parent).WithNonce(0).WithDifficulty(0).TestObject;
 
@@ -806,7 +806,7 @@ public partial class EngineModuleTests
         });
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Block blockTreeHead = chain.BlockTree.Head!;
         Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
 
@@ -928,7 +928,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
-        Hash256 newHeadHash = executionPayload.BlockHash;
+        Hash256 newHeadHash = executionPayload.BlockHash!;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, newHeadHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
@@ -981,7 +981,7 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{terminalTotalDifficulty}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 blockHash = chain.BlockTree.HeadHash;
+        Hash256 blockHash = chain.BlockTree.HeadHash!;
         ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
         Assert.That(resultWrapper.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
         Assert.That(resultWrapper.Data.PayloadStatus.LatestValidHash, Is.EqualTo(Keccak.Zero));
@@ -1285,7 +1285,7 @@ public partial class EngineModuleTests
     public async Task ExecutionPayloadV1_set_and_get_transactions_roundtrip()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         uint count = 3;
         int value = 10;
         Address recipient = TestItem.AddressD;
@@ -1312,7 +1312,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain =
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
@@ -1385,7 +1385,7 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayload> BuildAndSendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain, bool waitForBlockImprovement)
     {
-        Hash256 head = chain.BlockTree.HeadHash;
+        Hash256 head = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -1528,7 +1528,7 @@ public partial class EngineModuleTests
     // and asserts the three pointers are unchanged.
     private static async Task AssertFcuRejectedAndStateUnchanged(MergeTestBlockchain chain, IEngineRpcModule rpc, ForkchoiceStateV1 fcu)
     {
-        Hash256 initialHeadHash = chain.BlockFinder.HeadHash;
+        Hash256 initialHeadHash = chain.BlockFinder.HeadHash!;
         Hash256 initialFinalizedHash = chain.BlockFinder.FinalizedHash!;
         Hash256 initialSafeHash = chain.BlockFinder.SafeHash!;
 
@@ -1748,7 +1748,7 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 initialFcu = new(headBlockHash: a2.BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: a1.BlockHash);
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(initialFcu)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        Block genesis = chain.BlockTree.FindBlock(chain.BlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
+        Block genesis = chain.BlockTree.FindBlock(chain.BlockTree.GenesisHash!, BlockTreeLookupOptions.None)!;
         ExecutionPayload genesisPayload = new()
         {
             BlockNumber = genesis.Number,
@@ -1786,7 +1786,7 @@ public partial class EngineModuleTests
         IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, oldHead + 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
 
         // Lower the finalized marker to blocks[lastFinalized] while keeping the head at blocks[oldHead].
-        Hash256 finalized = blocks[lastFinalized].BlockHash;
+        Hash256 finalized = blocks[lastFinalized].BlockHash!;
         ForkchoiceStateV1 setFinalized = new(headBlockHash: blocks[oldHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(setFinalized)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[oldHead].BlockHash));
@@ -1838,7 +1838,7 @@ public partial class EngineModuleTests
         const int oldHead = 4;
         const int lastFinalized = 2;
         IReadOnlyList<ExecutionPayload> blocks = await BuildChainWithLoweredFinalized(chain, rpc, oldHead, lastFinalized);
-        Hash256 finalized = blocks[lastFinalized].BlockHash;
+        Hash256 finalized = blocks[lastFinalized].BlockHash!;
 
         int newHead = lastFinalized + offset;
         // Reset the candidate's WasProcessed flag (the block stays on the main chain) so the
@@ -2076,7 +2076,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
@@ -2128,8 +2128,7 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
-            nameof(IEngineRpcModule.engine_getBlobsV3),
-            nameof(IEngineRpcModule.engine_getBlobsV4)
+            nameof(IEngineRpcModule.engine_getBlobsV3)
         ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
@@ -2147,6 +2146,12 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
             nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5)
         ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Amsterdam");
+        yield return new TestCaseData(Bogota.Instance, (string[])
+        [
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6)
+        ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Bogota");
     }
 
     [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesCases))]
@@ -2167,6 +2172,8 @@ public partial class EngineModuleTests
             .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V4");
         yield return new TestCaseData(Amsterdam.Instance, nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5))
             .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V5");
+        yield return new TestCaseData(Bogota.Instance, nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6))
+            .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V6");
     }
 
     [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesWithoutWarningsCases))]
@@ -2262,13 +2269,13 @@ public partial class EngineModuleTests
     [
         SszRestPaths.PostBlobsV2,
         SszRestPaths.PostBlobsV3,
-        SszRestPaths.PostBlobsV4,
     ];
 
-    // Amsterdam adds new method versions (newPayloadV5/getPayloadV6/fcuV4/bodies V2) at existing paths;
-    // the only genuinely new path is the witness endpoint.
+    // Amsterdam adds new method versions (newPayloadV5/getPayloadV6/fcuV4/bodies V2) and
+    // introduces the blobs V4 and witness endpoints.
     private static readonly string[] SszRestPathsAmsterdam =
     [
+        SszRestPaths.PostBlobsV4,
         SszRestPaths.PostPayloadsWitness,
     ];
 
@@ -2320,7 +2327,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(MergeTestBlockchain chain,
         IEngineRpcModule rpc, PayloadAttributes payloadAttributes)
     {
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 parentHead = chain.BlockTree.Head!.ParentHash!;
 
         return await BuildAndGetPayloadResult(rpc, chain, startingHead, parentHead, startingHead,
@@ -2330,7 +2337,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(MergeTestBlockchain chain,
         IEngineRpcModule rpc)
     {
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 parentHead = chain.BlockTree.Head!.ParentHash!;
 
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -2391,7 +2398,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ForkchoiceStateV1 fcuState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
+        ForkchoiceStateV1 fcuState = new(chain.BlockTree.HeadHash!, chain.BlockTree.HeadHash!, chain.BlockTree.HeadHash!);
 
         // Set a valid timestamp relative to the chain head if test case left it non-zero
         if (payloadAttributes.Timestamp != 0)
@@ -2400,7 +2407,7 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpcModule, method,
             chain.JsonSerializer.Serialize(fcuState),
             chain.JsonSerializer.Serialize(payloadAttributes));
-        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response)!;
 
         return errorResponse.Error?.Code ?? ErrorCodes.None;
     }

@@ -74,6 +74,7 @@ jobs:
           - Nethermind.HealthChecks.Test
           - Nethermind.History.Test
           - Nethermind.Hive.Test
+          - Nethermind.Init.Snapshot.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
@@ -107,8 +108,11 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Synchronization.Test on ARM/macOS is chunked (see include block) — its unchunked variant hits the 15-min wall.
+        exclude: # Synchronization.Test is chunked on every runner (see include block) — its unchunked variant hits the 15-min wall.
           - runner: ubuntu-24.04-arm
+            project: Nethermind.Synchronization.Test
+            chunk: ''
+          - runner: ubuntu-latest
             project: Nethermind.Synchronization.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
@@ -129,6 +133,10 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
@@ -369,7 +377,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
       setup_group: sequential
 
   matrix-guard:
@@ -383,11 +391,12 @@ jobs:
         run: |
           # Intentional exclusions:
           # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
+          # - Nethermind.Core.ZkEvm.Test: runs with EnableZkEvm=true in stateless-tests.yml
           # - Ethereum.Blockchain.Pyspec.Test: the fixture shards are superseded by the nethtest job
           #   (see run-nethtest.yml). The assembly also holds plain unit tests (StatelessSchemaTests)
           #   that remain unwired: test discovery loads the full pyspec fixture sets, so a matrix
           #   run exceeds the job timeout. Wiring those tests needs a project move.
-          allowlist="Nethermind.Precompiles.Benchmark.Test Ethereum.Blockchain.Pyspec.Test"
+          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
           missing=0
           for dir in src/Nethermind/*.Test; do
             project=$(basename "$dir")

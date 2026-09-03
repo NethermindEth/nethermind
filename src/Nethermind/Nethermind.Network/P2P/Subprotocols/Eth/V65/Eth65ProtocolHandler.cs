@@ -21,6 +21,7 @@ using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -126,7 +127,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
+            ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
+
+            // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
+            // first 256 hashes miss, keep scanning without growing the deduplication set.
+            HashSet<ValueHash256> seenHashes = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
 
             // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
             int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
@@ -136,16 +141,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
+                if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
                 {
-                    int txSize = tx.GetLength();
+                    break;
+                }
+
+                if (seenHashes.Count < MaxNumberOfTxsInOneMsg && !seenHashes.Add(hash.ValueHash256))
+                {
+                    continue;
+                }
+
+                if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                {
+                    Transaction responseTx = PreparePooledTransactionForResponse(tx);
+                    int txSize = responseTx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)
                     {
                         break;
                     }
 
-                    txsToSend.Add(tx);
+                    txsToSend.Add(responseTx);
                     packetSizeLeft -= txSize;
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
@@ -153,6 +169,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             return Task.FromResult(CreatePooledTransactionsMessage(txsToSend));
         }
+
+        protected virtual bool CanServePooledTransaction(Transaction tx) => true;
+
+        /// <summary>
+        /// Gets the representation of a pooled transaction that this protocol version can serve.
+        /// </summary>
+        protected virtual bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+            => _txPool.TryGetPendingTransaction(hash, out tx);
+
+        protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 
         /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>
         /// <remarks>Overridden by protocol versions that carry the response on a different message code.</remarks>

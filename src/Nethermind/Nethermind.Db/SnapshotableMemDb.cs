@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Db
     /// In-memory database with MVCC-based snapshot support.
     /// Uses Multi-Version Concurrency Control to enable O(1) snapshot creation.
     /// </summary>
-    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
+    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
     {
         private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
         private readonly EntryComparer _entryComparer = new();
@@ -84,6 +85,22 @@ namespace Nethermind.Db
 
         public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
+        /// <summary>Half-open, matching the RocksDB range tombstone this stands in for in tests. Goes through
+        /// <see cref="Set"/> so the versioning that snapshots rely on sees each removal.</summary>
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            foreach (byte[] key in Keys)
+            {
+                if (Bytes.BytesComparer.Compare(key, firstKeyInclusive) >= 0 && Bytes.BytesComparer.Compare(key, lastKeyExclusive) < 0)
+                {
+                    Set(key, null);
+                }
+            }
+        }
+
+        // Removing already returned the memory; there is no deferred storage to give back.
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) { }
+
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
             byte[] keyArray = key.ToArray();
@@ -107,9 +124,9 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            List<KeyValuePair<byte[], byte[]?>> result;
+            List<KeyValuePair<byte[], byte[]>> result;
             lock (_versionLock)
             {
                 result = [];
@@ -118,7 +135,7 @@ namespace Nethermind.Db
                     byte[]? value = GetValueAtVersion(key, _currentVersion);
                     if (value is not null)
                     {
-                        result.Add(new KeyValuePair<byte[], byte[]?>(key, value));
+                        result.Add(new KeyValuePair<byte[], byte[]>(key, value));
                     }
                 }
             }
@@ -179,10 +196,7 @@ namespace Nethermind.Db
             {
                 lock (_versionLock)
                 {
-                    return GetAllUniqueKeys()
-                        .Select(k => GetValueAtVersion(k, _currentVersion))
-                        .Where(v => v is not null)
-                        .ToArray()!;
+                    return GetAllValues().ToArray();
                 }
             }
         }
@@ -230,7 +244,7 @@ namespace Nethermind.Db
             }
         }
 
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
         {
             int version;
             lock (_versionLock)
@@ -285,9 +299,9 @@ namespace Nethermind.Db
             }
         }
 
-        internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllAtVersion(int version)
+        internal IEnumerable<KeyValuePair<byte[], byte[]>> GetAllAtVersion(int version)
         {
-            List<KeyValuePair<byte[], byte[]?>> result;
+            List<KeyValuePair<byte[], byte[]>> result;
             lock (_versionLock)
             {
                 result = [];
@@ -296,7 +310,7 @@ namespace Nethermind.Db
                     byte[]? value = GetValueAtVersion(key, version);
                     if (value is not null)
                     {
-                        result.Add(new KeyValuePair<byte[], byte[]?>(key, value));
+                        result.Add(new KeyValuePair<byte[], byte[]>(key, value));
                     }
                 }
             }
@@ -310,8 +324,8 @@ namespace Nethermind.Db
         /// </summary>
         private byte[]? GetValueAtVersion(byte[] key, int version)
         {
-            (byte[] key, int, byte[]) lower = (key, 0, (byte[]?)null);
-            (byte[] key, int version, byte[]) upper = (key, version, (byte[]?)null);
+            (byte[] key, int, byte[]?) lower = (key, 0, null);
+            (byte[] key, int version, byte[]?) upper = (key, version, null);
 
             if (_entryComparer.Compare(lower, upper) > 0)
                 return null;
@@ -329,7 +343,7 @@ namespace Nethermind.Db
             byte[]? lastKey = null;
             foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
             {
-                if (lastKey == null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
+                if (lastKey is null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                 {
                     lastKey = entry.Key;
                     yield return entry.Key;
@@ -438,8 +452,8 @@ namespace Nethermind.Db
         /// </summary>
         private void RemovePreviousVersions(byte[] key, int currentVersion)
         {
-            (byte[] key, int, byte[]) lower = (key, 0, (byte[]?)null);
-            (byte[] key, int, byte[]) upper = (key, currentVersion - 1, (byte[]?)null);
+            (byte[] key, int, byte[]?) lower = (key, 0, null);
+            (byte[] key, int, byte[]?) upper = (key, currentVersion - 1, null);
 
             if (_entryComparer.Compare(lower, upper) > 0)
                 return;
@@ -511,7 +525,7 @@ namespace Nethermind.Db
                 }
             }
 
-            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
 
             public void Dispose() => _db.OnSnapshotDisposed(_snapshotVersion);
         }
@@ -534,8 +548,8 @@ namespace Nethermind.Db
                 byte[] keyArray = key.ToArray();
                 lock (_db._versionLock)
                 {
-                    (byte[] _firstKey, int, byte[]) lower = (_firstKey, 0, (byte[]?)null);
-                    (byte[] keyArray, int, byte[]) upper = (keyArray, 0, (byte[]?)null);
+                    (byte[] _firstKey, int, byte[]?) lower = (_firstKey, 0, null);
+                    (byte[] keyArray, int, byte[]?) upper = (keyArray, 0, null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)
                     {
@@ -588,10 +602,10 @@ namespace Nethermind.Db
             {
                 lock (_db._versionLock)
                 {
-                    (byte[], int, byte[]) lower = _currentKey is not null
-                        ? (_currentKey, int.MaxValue, (byte[]?)null)
-                        : (_firstKey, 0, (byte[]?)null);
-                    (byte[] _lastKey, int, byte[]) upper = (_lastKey, 0, (byte[]?)null);
+                    (byte[], int, byte[]?) lower = _currentKey is not null
+                        ? (_currentKey, int.MaxValue, null)
+                        : (_firstKey, 0, null);
+                    (byte[] _lastKey, int, byte[]?) upper = (_lastKey, 0, null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)
                         return false;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -273,14 +272,12 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
         Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
         Address? Eip7002ContractAddress { get; }
 
 
@@ -288,7 +285,6 @@ namespace Nethermind.Core.Specs
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
         Address? Eip7251ContractAddress { get; }
 
 
@@ -301,7 +297,6 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
         Address? Eip2935ContractAddress { get; }
 
         /// <summary>
@@ -457,6 +452,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
         public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

@@ -12,19 +12,19 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] _opcodeMethods;
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesNoTrace;
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesTraced;
+    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[]? _opcodesNoTrace;
+    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[]? _opcodesTraced;
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         _opcodeMethods = !TTracingInst.IsActive
             ? _opcodesNoTrace ??= GenerateOpCodes<TTracingInst>(spec)
             : _opcodesTraced ??= GenerateOpCodes<TTracingInst>(spec);
 
-    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
+    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
     public object ReturnData;
@@ -67,7 +67,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             // Precompile hard failure (out of gas): mirror HandleFailure + PopAndRestoreParentState.
             _worldState.Restore(child.Snapshot);
-            RevertParityTouchBugAccount();
+            VirtualMachineStatics.RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
             RemoveAdvancedStateGasRefund(child, ref child.Gas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
             // EIP-8037: the failed call did not create its (dead) recipient; refund NEW_ACCOUNT.
@@ -115,6 +115,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         if (reverted)
         {
             _worldState.Restore(child.Snapshot);
+            VirtualMachineStatics.RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
         }
         else
         {

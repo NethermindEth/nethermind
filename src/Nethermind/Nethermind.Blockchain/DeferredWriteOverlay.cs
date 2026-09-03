@@ -119,4 +119,26 @@ internal sealed class DeferredWriteOverlay<TPayload>(
             alsoUnderLock();
         }
     }
+
+    /// <summary>Same guarantee as <see cref="Remove"/> for a whole range. Keyed by hash, so it scans - the overlay
+    /// only ever holds writes still in flight.</summary>
+    public void RemoveRange(ulong fromInclusive, ulong toExclusive, Action alsoUnderLock)
+    {
+        lock (_lock)
+        {
+            if (Volatile.Read(ref _pendingCount) != 0)
+            {
+                foreach (KeyValuePair<ValueHash256, Entry> entry in _pending)
+                {
+                    if (entry.Value.BlockNumber < fromInclusive || entry.Value.BlockNumber >= toExclusive) continue;
+                    if (_pending.TryRemove(entry.Key, out _))
+                    {
+                        Interlocked.Decrement(ref _pendingCount);
+                    }
+                }
+            }
+
+            alsoUnderLock();
+        }
+    }
 }

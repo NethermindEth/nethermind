@@ -6,12 +6,14 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -151,7 +153,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-        Task normalWarmTask = Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        bool isPreparation = suggestedBlock is BlockToProduce;
+        int transactionCount = suggestedBlock.Transactions.Length;
+        Task normalWarmTask = Task.Run(() => PreWarmCachesParallel(
+            blockState,
+            suggestedBlock,
+            parent,
+            spec,
+            parallelOptions,
+            addressWarmer,
+            isPreparation,
+            transactionCount,
+            cancellationToken));
 
         if (discoveryCandidates is null) return normalWarmTask;
 
@@ -437,7 +450,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, systemAccessLists: default);
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-        PreWarmCachesParallel(blockState, delta, head, spec, parallelOptions, addressWarmer, token);
+        PreWarmCachesParallel(
+            blockState,
+            delta,
+            head,
+            spec,
+            parallelOptions,
+            addressWarmer,
+            isPreparation: true,
+            transactionCount: delta.Transactions.Length,
+            cancellationToken: token);
     }
 
     private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -598,13 +620,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         (_envPool as IDisposable)?.Dispose();
     }
 
-    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(
+        BlockState blockState,
+        Block suggestedBlock,
+        BlockHeader parent,
+        IReleaseSpec spec,
+        ParallelOptions parallelOptions,
+        AddressWarmer addressWarmer,
+        bool isPreparation,
+        int transactionCount,
+        CancellationToken cancellationToken)
     {
         try
         {
             if (cancellationToken.IsCancellationRequested) return;
 
-            if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
+            if (_logger.IsDebug) DebugPreWarming("Started", suggestedBlock.Number, isPreparation, transactionCount);
 
             if (!addressWarmer.HasBal)
             {
@@ -612,7 +643,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
+            if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
         }
         catch (Exception ex)
         {
@@ -624,6 +655,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             addressWarmer.Wait();
             addressWarmer.Dispose();
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void DebugPreWarming(string state, ulong blockNumber, bool isPreparation, int transactionCount) =>
+            _logger.Debug(
+                $"{state} pre-warming caches for {(isPreparation ? "preparation" : "validation")} of block {blockNumber} with {transactionCount} {(isPreparation ? "new transactions" : "transactions")}.");
     }
 
     private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader? parent)
@@ -747,12 +783,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 continue;
             }
 
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
-            {
-                list = new(4);
-                groups[sender] = list;
-            }
-            list.Add((i, tx));
+            ref ArrayPoolList<(int, Transaction)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, sender, out _);
+            (list ??= new(4)).Add((i, tx));
         }
 
         ArrayPoolList<WarmupJob> result = new(groups.Count);
@@ -987,15 +1019,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
+                    int txCount = block.Transactions.Length;
+                    int ilCount = block.InclusionListTransactions?.Length ?? 0;
 
                     ParallelUnbalancedWork.For(
                         0,
-                        block.Transactions.Length,
+                        txCount + ilCount,
                         parallelOptions,
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        Transaction tx = state.Payload.Transactions[i];
+                        Transaction[] txs = state.Payload.Transactions;
+                        // Indexes past the block txs warm inclusion-list txs — they may be promoted into the block.
+                        Transaction tx = i < txs.Length ? txs[i] : state.Payload.InclusionListTransactions![i - txs.Length];
                         WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
 
                         return state;

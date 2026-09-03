@@ -12,6 +12,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -38,6 +39,65 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerManager.Start();
             await ctx.PeerManager.StopAsync();
+        }
+
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task Start_rejects_non_positive_peer_update_interval(int interval)
+        {
+            await using Context ctx = new();
+            ctx.NetworkConfig.PeersUpdateInterval = interval;
+
+            InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(
+                () => ctx.PeerManager.Start())!;
+
+            Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
+        }
+
+        [Test]
+        public async Task Periodic_peer_update_continues_after_no_candidate_iterations()
+        {
+            const int expectedSelectionCount = 3;
+            int selectionCount = 0;
+            TaskCompletionSource thirdSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(_ =>
+            {
+                if (Interlocked.Increment(ref selectionCount) == expectedSelectionCount)
+                {
+                    thirdSelection.TrySetResult();
+                }
+
+                return peers;
+            });
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(Array.Empty<Peer>());
+
+            INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
+            networkConfig.MaxActivePeers.Returns(1);
+            networkConfig.NumConcurrentOutgoingConnects.Returns(1);
+            networkConfig.MaxOutgoingConnectPerSec.Returns(20);
+            networkConfig.PeersUpdateInterval.Returns(10);
+
+            PeerManager peerManager = new(
+                Substitute.For<IRlpxHost>(),
+                peerPool,
+                Substitute.For<INodeStatsManager>(),
+                networkConfig,
+                Substitute.For<IEnode>(),
+                LimboLogs.Instance);
+
+            peerManager.Start();
+            try
+            {
+                await thirdSelection.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(Volatile.Read(ref selectionCount), Is.GreaterThanOrEqualTo(expectedSelectionCount));
+            }
+            finally
+            {
+                await peerManager.StopAsync();
+            }
         }
 
         [Test]
@@ -334,7 +394,7 @@ namespace Nethermind.Network.Test
 
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
-        // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
+        [TestCase(true, ConnectionDirection.Out)]
         [TestCase(false, ConnectionDirection.Out)]
         [NonParallelizable]
         public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
@@ -376,11 +436,13 @@ namespace Nethermind.Network.Test
             }
             else
             {
+                // Dialing rlpx directly would leave the session unowned: the peer manager only keeps an
+                // outgoing session for a peer it already made active. Adding the node to the pool makes it
+                // dial, which activates the peer and attaches the OUT session before the IN one arrives.
                 ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
-                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
-                {
-                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
-                }
+                ctx.PeerPool.GetOrAdd(session1.Node);
+                Assert.That(() => ctx.PeerManager.ActivePeers.SingleOrDefault()?.OutSession,
+                    Is.Not.Null.After(_delayLonger, 20), "peer manager did not establish the OUT session");
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
             }

@@ -90,13 +90,6 @@ public sealed partial class KeccakHash
         if ((uint)(output.Length - 1) >= STATE_SIZE)
             ThrowInvalidOutputSize(output.Length);
 
-#if ZK_EVM
-        if (output.Length == HASH_SIZE)
-        {
-            ComputeHash256(input, output);
-            return;
-        }
-#endif
         int inputLength = input.Length;
         // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
         if (Avx512F.VL.IsSupported && output.Length == HASH_SIZE &&
@@ -296,16 +289,6 @@ public sealed partial class KeccakHash
         if (_hash is not null)
             ThrowHashingComplete();
 
-#if ZK_EVM
-        if (_state.Length == 0 && _roundSize == HASH_DATA_AREA && output.Length == HASH_SIZE)
-        {
-            ComputeHash256(_remainderBuffer.AsSpan(0, _remainderLength), output);
-            Pool.ReturnRemainder(ref _remainderBuffer);
-
-            _remainderLength = 0;
-            return;
-        }
-#endif
         ulong[] state = _state;
 
         if (state.Length == 0)
@@ -406,7 +389,6 @@ public sealed partial class KeccakHash
         // Obtain the state data in the desired (hash) size we want.
         _hash = output;
 
-        // Return the result.
         return output;
     }
 
@@ -414,6 +396,36 @@ public sealed partial class KeccakHash
     private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
     {
         ref byte stateRef = ref MemoryMarshal.GetReference(state);
+
+        // A full rate block is the overwhelmingly common absorb and is exactly seventeen lanes.
+        // Spelling them out drops the loop bound and residue handling entirely and lets every offset
+        // fold into a load/store displacement. Only reachable with no vector width, i.e. the guest.
+        // The state is ulong-aligned so it stays a ulong ref; the input is a caller-supplied span with
+        // no such guarantee, hence ReadUnaligned, which costs nothing (riscv64 emits a plain ld for
+        // both spellings, and every rate block starts on a multiple of eight anyway).
+        if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
+        {
+            ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);
+            ref byte inRef = ref MemoryMarshal.GetReference(input);
+            Unsafe.Add(ref st, 0) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
+            Unsafe.Add(ref st, 1) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
+            Unsafe.Add(ref st, 2) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
+            Unsafe.Add(ref st, 3) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
+            Unsafe.Add(ref st, 4) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
+            Unsafe.Add(ref st, 5) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
+            Unsafe.Add(ref st, 6) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
+            Unsafe.Add(ref st, 7) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
+            Unsafe.Add(ref st, 8) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
+            Unsafe.Add(ref st, 9) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
+            Unsafe.Add(ref st, 10) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
+            Unsafe.Add(ref st, 11) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
+            Unsafe.Add(ref st, 12) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
+            Unsafe.Add(ref st, 13) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
+            Unsafe.Add(ref st, 14) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
+            Unsafe.Add(ref st, 15) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
+            Unsafe.Add(ref st, 16) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+            return;
+        }
         if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
         {
             // Convert to uint for the mod else the Jit does a more complicated signed mod
@@ -474,10 +486,23 @@ public sealed partial class KeccakHash
         {
             int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
             ref byte inputRef = ref MemoryMarshal.GetReference(input);
-            for (int i = 0; i < ulongLength; i += sizeof(ulong))
+            int i = 0;
+            // Unrolled by four: this is the whole absorb on targets without vector acceleration, and
+            // at one lane per iteration the loop bookkeeping costs as much again as the XOR itself.
+            for (; i <= ulongLength - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
+            {
+                ref ulong s0 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
+                ref byte in0 = ref Unsafe.Add(ref inputRef, i);
+                s0 ^= Unsafe.ReadUnaligned<ulong>(ref in0);
+                Unsafe.Add(ref s0, 1) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
+                Unsafe.Add(ref s0, 2) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
+                Unsafe.Add(ref s0, 3) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
+            }
+
+            for (; i < ulongLength; i += sizeof(ulong))
             {
                 ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
-                ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                ulong input64 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i));
                 state64 ^= input64;
             }
 

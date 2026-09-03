@@ -188,11 +188,14 @@ public partial class EthRpcModuleTests
         ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
-        byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
-
-        Assert.That(txBytes, Is.Not.Null);
+        JsonRpcResponse<byte[]> response = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC response.");
+        byte[] txBytes = response.Result
+            ?? throw new InvalidOperationException("Expected raw transaction bytes.");
         RlpReader context = new(txBytes);
-        Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(
+            ref context,
+            RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }
 
@@ -2048,7 +2051,8 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
-        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
+        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction))
+            ?? throw new InvalidOperationException("Expected a decoded transaction.");
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"transaction invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
@@ -2220,7 +2224,8 @@ public partial class EthRpcModuleTests
 
         (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
-        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}")
+            ?? throw new InvalidOperationException("Expected an access-list transaction.");
 
         if (accessListProvided != AccessListProvided.None)
         {
@@ -2240,7 +2245,8 @@ public partial class EthRpcModuleTests
 
         // Contract creation with infinite loop; gas 200K should be capped to 60K
         TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}")
+            ?? throw new InvalidOperationException("Expected a transaction.");
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
 
@@ -2413,6 +2419,103 @@ public partial class EthRpcModuleTests
             Is.True);
     }
 
+    [Test]
+    public async Task Eth_createAccessList_omits_entries_that_do_not_reduce_gas_under_eip7981()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
+        // PUSH20 accessedAccount; BALANCE; POP; STOP — a single cold account access, no storage.
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}"}""";
+
+        // optimize=false keeps the entry, proving the account is genuinely accessed.
+        (JToken unoptimized, long unoptimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
+        Address[] unoptimizedAddresses = unoptimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
+        Assert.That(unoptimizedAddresses, Does.Contain(new Address(accessedAccount)));
+
+        // Under EIP-7981 the entry's floor-token surcharge outweighs the cold-access saving, so the
+        // gas-minimal list is empty. The reported gas must be the empty-list gas (18005); keeping the
+        // one optimisable entry would report 18005 + 1280 (a 20-byte address at 4 tokens x 16 gas,
+        // EIP-7981 + EIP-7976), so pinning it guards against reporting the discovered-list gas.
+        (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+            Assert.That(optimizedGas, Is.EqualTo(18005));
+            Assert.That(optimizedGas, Is.LessThan(unoptimizedGas));
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_optimize_drops_caller_supplied_entries_that_do_not_reduce_gas()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        // Caller pre-declares the account it will touch; optimize must still return the gas-minimal
+        // empty list rather than echoing the supplied entry back (AccessList.Empty, not null).
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","accessList":[{"address":"0x00000000000000000000000000000000deadbeef","storageKeys":[]}]}""";
+
+        (JToken optimized, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_keeps_discovered_list_when_empty_rerun_changes_execution()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
+        const long gas = 200_000;
+
+        // Probe the gasleft the contract observes right after touching the account, with and without
+        // the list pre-warming it. Removing the list shifts the EIP-7981 surcharge out of intrinsic,
+        // so the empty rerun reaches the check with more gasleft. PUSH20 acct; BALANCE; POP; GAS;
+        // PUSH1 0; MSTORE; PUSH1 0x20; PUSH1 0; RETURN.
+        const string probeCode = "0x7300000000000000000000000000000000deadbeef31505a60005260206000f3";
+        long gasleftEmpty = await ProbeGasleft(ctx, contractAddr, probeCode, gas, withList: false);
+        long gasleftWithList = await ProbeGasleft(ctx, contractAddr, probeCode, gas, withList: true);
+        Assert.That(gasleftEmpty, Is.GreaterThan(gasleftWithList), "precondition: the empty rerun must observe more gasleft");
+
+        // Revert iff gasleft > midpoint: the empty rerun (more gasleft) reverts while the
+        // discovered-list run (less gasleft) succeeds. The gas-only winner would be the reverting
+        // empty run, so this exercises the status-parity guard — the discovered list must be kept.
+        // PUSH20 acct; BALANCE; POP; GAS; PUSH3 threshold; LT; PUSH1 0x21; JUMPI; STOP;
+        // JUMPDEST; PUSH1 0; PUSH1 0; REVERT.
+        long threshold = (gasleftEmpty + gasleftWithList) / 2;
+        Assert.That(threshold, Is.LessThanOrEqualTo(0xffffff), "threshold must fit the PUSH3 immediate");
+        string revertingCode = "0x7300000000000000000000000000000000deadbeef31505a62" + threshold.ToString("x6") + "10602157005b60006000fd";
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"{{{revertingCode}}}"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","gas":"0x30d40"}""";
+
+        (JToken result, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Address[] addresses = result["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, "discovered list run succeeds, so no error is surfaced");
+            Assert.That(addresses, Does.Contain(new Address(accessedAccount)), "the discovered entry must be kept, not dropped for the cheaper-but-reverting empty run");
+        }
+    }
+
+    private static async Task<long> ProbeGasleft(Context ctx, string contractAddr, string code, long gas, bool withList)
+    {
+        string listFragment = withList
+            ? ",\"accessList\":[{\"address\":\"0x00000000000000000000000000000000deadbeef\",\"storageKeys\":[]}],\"type\":\"0x1\""
+            : "";
+        object tx = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{CreateAccessListSender}\",\"to\":\"{contractAddr}\",\"gas\":\"0x{gas:x}\"{listFragment}}}")!;
+        object stateOverride = JsonSerializer.Deserialize<object>($"{{\"{contractAddr}\":{{\"code\":\"{code}\"}}}}")!;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", tx, "latest", stateOverride);
+        string ret = JToken.Parse(serialized)["result"]!.Value<string>()![2..];
+        return Convert.ToInt64(ret[^16..], 16);
+    }
+
     [TestCase(null)]
     [TestCase(0UL)]
     public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero(ulong? gasCap)
@@ -2511,8 +2614,11 @@ public partial class EthRpcModuleTests
 
         string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
+        Error error = actual.Error
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error.");
+        Assert.That(error.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
     }
 
 
@@ -2549,7 +2655,8 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx).Bytes));
 
-        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result);
+        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC success response.");
         Assert.That(actual.Result, Is.Not.Null);
     }
 
@@ -2572,8 +2679,11 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
+        Error error = actual.Error
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error.");
+        Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
 
     [Test]
@@ -2602,7 +2712,10 @@ public partial class EthRpcModuleTests
 
         string jsonFromRpc = await test.TestEthRpc("eth_getTransactionByHash", setCodeTx!.CalculateHash());
 
-        SetCodeTransactionForRpc actual = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc).Result;
+        JsonRpcResponse<SetCodeTransactionForRpc> response = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC response.");
+        SetCodeTransactionForRpc actual = response.Result
+            ?? throw new InvalidOperationException("Expected a set-code transaction.");
 
         AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
 
@@ -2900,7 +3013,8 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null)
+            bool? useFlatDb = null,
+            int estimateErrorMargin = 0)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -2912,7 +3026,7 @@ public partial class EthRpcModuleTests
             {
                 TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0, Timeout = -1 })
+                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
                     .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
                     .Build(wrappedConfigurer).Result,
@@ -2929,42 +3043,4 @@ public partial class EthRpcModuleTests
         }
     }
 
-    /// <summary>
-    /// Builds the state-override and transaction for EIP-7610 CREATE2 collision regression tests.
-    /// </summary>
-    internal static (object StateOverride, object Transaction) BuildEip7610Fixture()
-    {
-        byte[] initCode = Bytes.FromHexString("602a6000556001601160003960016000f300");
-
-        Address factoryAddress = new("0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1");
-        byte[] create2Input = new byte[85];
-        create2Input[0] = 0xff;
-        factoryAddress.Bytes.CopyTo(create2Input.AsSpan(1, 20));
-        // bytes 21-52: salt = 0 (already zeroed)
-        Keccak.Compute(initCode).Bytes.CopyTo(create2Input.AsSpan(53, 32));
-        Address contractC = new(Keccak.Compute(create2Input).Bytes[12..]);
-
-        const string factoryBytecode =
-            "0x601260376000397f0000000000000000000000000000000000000000000000000000000000000000" +
-            "601260006000f5600052602060" +
-            "00f3602a6000556001601160003960016000f300";
-
-        object stateOverride = JsonSerializer.Deserialize<object>($$"""
-            {
-                "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1": { "code": "{{factoryBytecode}}", "balance": "0xde0b6b3a7640000" },
-                "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11": { "balance": "0xde0b6b3a7640000" },
-                "{{contractC}}": { "stateDiff": { "0x0000000000000000000000000000000000000000000000000000000000000000": "0x000000000000000000000000000000000000000000000000000000000000002a" } }
-            }
-            """)!;
-
-        object transaction = JsonSerializer.Deserialize<object>("""
-            {
-                "from": "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11",
-                "to": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
-                "gas": "0xf4240"
-            }
-            """)!;
-
-        return (stateOverride, transaction);
-    }
 }

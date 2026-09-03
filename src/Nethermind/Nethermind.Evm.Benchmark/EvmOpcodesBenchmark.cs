@@ -46,7 +46,7 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
 
-    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
+    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref nint, EvmExceptionType>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
     private byte[] _stackBuffer = null!;
     private int _stackOffset;
@@ -84,8 +84,11 @@ public unsafe class EvmOpcodesBenchmark
     private const ulong DynamicCallTargetBase = 0x2000UL;
     private static readonly UInt256 DynamicStorageBase = new(1_000_000UL);
     private static readonly UInt256 KeccakLength = new((ulong)KeccakWordSize);
+    private static readonly UInt256 CopyLength = new((ulong)EvmPooledMemory.WordSize);
+    private static readonly UInt256 CopySourceOffset = UInt256.Zero;
+    private static readonly UInt256 CopyDestinationOffset = new((ulong)EvmPooledMemory.WordSize);
     private static readonly Address CallTargetAddress = Address.FromNumber(0x1000);
-    private static readonly byte[] StopCode = [(byte)Instruction.STOP];
+    private static readonly byte[] CopySource = CreateCopySource();
     private static readonly Instruction[] AllValidLegacyOpcodes = Enum
         .GetValues<Instruction>()
         .Where(static opcode => Enum.IsDefined(opcode) && opcode != Instruction.INVALID)
@@ -149,7 +152,7 @@ public unsafe class EvmOpcodesBenchmark
         Address address = Address.SystemUser;
         _stateProvider.CreateAccount(address, UInt256.One);
         _stateProvider.CreateAccount(CallTargetAddress, UInt256.Zero);
-        _stateProvider.InsertCode(CallTargetAddress, StopCode, spec);
+        _stateProvider.InsertCode(CallTargetAddress, CopySource, spec);
         if (Opcode is Instruction.SSTORE or Instruction.SLOAD or Instruction.TSTORE or Instruction.TLOAD)
         {
             InitializeDynamicStorageLocations(address);
@@ -189,6 +192,7 @@ public unsafe class EvmOpcodesBenchmark
             }
         }
 
+        ReadOnlyMemory<byte> inputData = Opcode == Instruction.CALLDATACOPY ? CopySource : default;
         _env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
             executingAccount: address,
@@ -196,7 +200,7 @@ public unsafe class EvmOpcodesBenchmark
             codeSource: address,
             callDepth: 0,
             value: 0,
-            inputData: default);
+            inputData: inputData);
 
         _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(ulong.MaxValue),
@@ -209,6 +213,10 @@ public unsafe class EvmOpcodesBenchmark
 
         _vm.SetVmState(_vmState);
         _vm.SetTracer(NullTxTracer.Instance);
+        if (Opcode == Instruction.RETURNDATACOPY)
+        {
+            _vm.ReturnDataBuffer = CopySource;
+        }
 
         // Generate the opcode function pointer table (same as production)
         _opcodes = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
@@ -255,7 +263,7 @@ public unsafe class EvmOpcodesBenchmark
             for (int i = 0; i < runs; i++)
             {
                 EthereumGasPolicy gas = _gas;
-                int pc = 0;
+                nint pc = 0;
                 result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
                 DisposeNestedReturnFrame();
             }
@@ -276,7 +284,7 @@ public unsafe class EvmOpcodesBenchmark
             PreparePerRunLocationSetup(runIndex);
 
             EthereumGasPolicy gas = _gas;
-            int pc = 0;
+            nint pc = 0;
             result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
             DisposeNestedReturnFrame();
         }
@@ -298,7 +306,7 @@ public unsafe class EvmOpcodesBenchmark
                 stack.Head = depth - (i * 2);
 
                 EthereumGasPolicy gas = _gas;
-                int pc = 0;
+                nint pc = 0;
                 result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
                 DisposeNestedReturnFrame();
             }
@@ -492,6 +500,13 @@ public unsafe class EvmOpcodesBenchmark
             case Instruction.EXTCODECOPY:
                 return SetupExtCodeCopyStack(runs);
 
+            case Instruction.CALLDATACOPY:
+            case Instruction.CODECOPY:
+            case Instruction.RETURNDATACOPY:
+            case Instruction.MCOPY:
+                SetupStack3(in CopyDestinationOffset, in CopySourceOffset, in CopyLength);
+                return 3;
+
             case Instruction.ADD:
             case Instruction.SUB:
             case Instruction.EXP:
@@ -570,13 +585,20 @@ public unsafe class EvmOpcodesBenchmark
         for (int run = 0; run < effectiveRuns; run++)
         {
             int slot = run * 4;
-            WriteStackSlot(slot + 0, UInt256.Zero); // length
-            WriteStackSlot(slot + 1, UInt256.Zero); // sourceOffset
-            WriteStackSlot(slot + 2, UInt256.Zero); // memoryOffset
+            WriteStackSlot(slot + 0, in CopyLength); // length
+            WriteStackSlot(slot + 1, in CopySourceOffset); // sourceOffset
+            WriteStackSlot(slot + 2, in CopyDestinationOffset); // memoryOffset
             WriteStackSlot(slot + 3, in CallTarget); // address (popped first)
         }
 
         return depth;
+    }
+
+    private static byte[] CreateCopySource()
+    {
+        byte[] source = EvmPooledMemoryBenchmarkHelper.CreatePayload(EvmPooledMemory.WordSize);
+        source[0] = (byte)Instruction.STOP;
+        return source;
     }
 
     private int SetupGenericStack(Instruction opcode)
@@ -641,7 +663,7 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         EthereumGasPolicy gas = _gas;
-        int pc = 0;
+        nint pc = 0;
         _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
         DisposeNestedReturnFrame();
 
