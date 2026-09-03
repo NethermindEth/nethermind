@@ -33,14 +33,7 @@ public static class TrieUpdater
         PbtWriteOperation[] operations = [.. changes.Operations];
 
         GroupOverlay overlay = new(store, metrics);
-        try
-        {
-            return FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan());
-        }
-        finally
-        {
-            overlay.Dispose();
-        }
+        return FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan());
     }
 
     private static ValueHash256 FoldMutations(
@@ -57,8 +50,11 @@ public static class TrieUpdater
             return setCount == 0 ? default : BuildSubtree(overlay, activeGroup, path, operations[..setCount]);
         }
 
-        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (!ReferenceEquals(group, activeGroup) && operations.Length > 1)
+        if (activeGroup is not null && activeGroup.TryGetPosition(path, out _))
+            return FoldMutationsInGroup(store, overlay, activeGroup, path, expectedHash, operations);
+
+        using GroupFrame group = overlay.Resolve(null, path, out _);
+        if (operations.Length > 1)
             BucketizeByGroupBoundary(operations, group.BitDepth);
         return FoldMutationsInGroup(store, overlay, group, path, expectedHash, operations);
     }
@@ -140,7 +136,15 @@ public static class TrieUpdater
         if (reconciledHash == default)
             return BuildSubtree(overlay, group, path, divergentSets);
         PbtNode reconciled = overlay.Load(group, path, reconciledHash, out GroupFrame reconciledGroup);
-        return InsertSetsIntoNode(overlay, reconciledGroup, path, reconciled, divergentSets);
+        bool ownsReconciledGroup = !ReferenceEquals(reconciledGroup, group);
+        try
+        {
+            return InsertSetsIntoNode(overlay, reconciledGroup, path, reconciled, divergentSets);
+        }
+        finally
+        {
+            if (ownsReconciledGroup) reconciledGroup.Dispose();
+        }
     }
 
     private static int RetainSets(Span<PbtWriteOperation> operations)
@@ -181,12 +185,20 @@ public static class TrieUpdater
         PbtNodePath remainingPath = remainingDirection == 0 ? leftPath : rightPath;
         ValueHash256 remainingHash = remainingDirection == 0 ? leftHash : rightHash;
         PbtNode remaining = overlay.Load(group, remainingPath, remainingHash, out GroupFrame remainingGroup);
-        overlay.Remove(remainingGroup, remainingPath);
-        PbtNode promoted = remaining is PbtBranchNode remainingBranch
-            ? new PbtBranchNode(PbtBitPrefix.Concat(prefix, remainingDirection, remainingBranch.Prefix), remainingBranch.LeftHash, remainingBranch.RightHash)
-            : remaining;
-        overlay.Store(group, path, promoted);
-        return promoted.Hash;
+        bool ownsRemainingGroup = !ReferenceEquals(remainingGroup, group);
+        try
+        {
+            overlay.Remove(remainingGroup, remainingPath);
+            PbtNode promoted = remaining is PbtBranchNode remainingBranch
+                ? new PbtBranchNode(PbtBitPrefix.Concat(prefix, remainingDirection, remainingBranch.Prefix), remainingBranch.LeftHash, remainingBranch.RightHash)
+                : remaining;
+            overlay.Store(group, path, promoted);
+            return promoted.Hash;
+        }
+        finally
+        {
+            if (ownsRemainingGroup) remainingGroup.Dispose();
+        }
     }
 
     private static ValueHash256 InsertSets(
@@ -198,8 +210,11 @@ public static class TrieUpdater
     {
         if (expectedHash == default) return BuildSubtree(overlay, activeGroup, path, sets);
 
-        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (!ReferenceEquals(group, activeGroup) && sets.Length > 1)
+        if (activeGroup is not null && activeGroup.TryGetPosition(path, out _))
+            return InsertSetsInGroup(overlay, activeGroup, path, expectedHash, sets);
+
+        using GroupFrame group = overlay.Resolve(null, path, out _);
+        if (sets.Length > 1)
             BucketizeByGroupBoundary(sets, group.BitDepth);
         return InsertSetsInGroup(overlay, group, path, expectedHash, sets);
     }
@@ -261,27 +276,34 @@ public static class TrieUpdater
         PbtNodePath rightPath = path.Append(common, 1);
         PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
         GroupFrame existingGroup = overlay.Store(group, existingPath, leaf);
-
-        ValueHash256 leftHash;
-        ValueHash256 rightHash;
-        if (existingDirection == 0)
+        bool ownsExistingGroup = !ReferenceEquals(existingGroup, group);
+        try
         {
-            leftHash = partition > 0
-                ? InsertSetsIntoNode(overlay, existingGroup, leftPath, leaf, sets[..partition])
-                : leaf.Hash;
-            rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
-        }
-        else
-        {
-            leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
-            rightHash = partition < sets.Length
-                ? InsertSetsIntoNode(overlay, existingGroup, rightPath, leaf, sets[partition..])
-                : leaf.Hash;
-        }
+            ValueHash256 leftHash;
+            ValueHash256 rightHash;
+            if (existingDirection == 0)
+            {
+                leftHash = partition > 0
+                    ? InsertSetsIntoNode(overlay, existingGroup, leftPath, leaf, sets[..partition])
+                    : leaf.Hash;
+                rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
+            }
+            else
+            {
+                leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
+                rightHash = partition < sets.Length
+                    ? InsertSetsIntoNode(overlay, existingGroup, rightPath, leaf, sets[partition..])
+                    : leaf.Hash;
+            }
 
-        PbtBranchNode split = new(common, leftHash, rightHash);
-        overlay.Store(group, path, split);
-        return split.Hash;
+            PbtBranchNode split = new(common, leftHash, rightHash);
+            overlay.Store(group, path, split);
+            return split.Hash;
+        }
+        finally
+        {
+            if (ownsExistingGroup) existingGroup.Dispose();
+        }
     }
 
     private static ValueHash256 InsertSetsIntoBranch(
@@ -317,27 +339,34 @@ public static class TrieUpdater
             PbtNodePath rightPath = path.Append(common, 1);
             PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
             GroupFrame existingGroup = overlay.Store(group, existingPath, relocated);
-
-            ValueHash256 leftHash;
-            ValueHash256 rightHash;
-            if (existingDirection == 0)
+            bool ownsExistingGroup = !ReferenceEquals(existingGroup, group);
+            try
             {
-                leftHash = partition > 0
-                    ? InsertSetsIntoNode(overlay, existingGroup, leftPath, relocated, sets[..partition])
-                    : relocated.Hash;
-                rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
-            }
-            else
-            {
-                leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
-                rightHash = partition < sets.Length
-                    ? InsertSetsIntoNode(overlay, existingGroup, rightPath, relocated, sets[partition..])
-                    : relocated.Hash;
-            }
+                ValueHash256 leftHash;
+                ValueHash256 rightHash;
+                if (existingDirection == 0)
+                {
+                    leftHash = partition > 0
+                        ? InsertSetsIntoNode(overlay, existingGroup, leftPath, relocated, sets[..partition])
+                        : relocated.Hash;
+                    rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
+                }
+                else
+                {
+                    leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
+                    rightHash = partition < sets.Length
+                        ? InsertSetsIntoNode(overlay, existingGroup, rightPath, relocated, sets[partition..])
+                        : relocated.Hash;
+                }
 
-            PbtBranchNode split = new(common, leftHash, rightHash);
-            overlay.Store(group, path, split);
-            return split.Hash;
+                PbtBranchNode split = new(common, leftHash, rightHash);
+                overlay.Store(group, path, split);
+                return split.Hash;
+            }
+            finally
+            {
+                if (ownsExistingGroup) existingGroup.Dispose();
+            }
         }
 
         int childDirectionBit = path.BitDepth + branch.Prefix.BitCount;
@@ -366,8 +395,11 @@ public static class TrieUpdater
         PbtNodePath path,
         Span<PbtWriteOperation> sets)
     {
-        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (!ReferenceEquals(group, activeGroup) && sets.Length > 1)
+        if (activeGroup is not null && activeGroup.TryGetPosition(path, out _))
+            return BuildSubtreeInGroup(overlay, activeGroup, path, sets);
+
+        using GroupFrame group = overlay.Resolve(null, path, out _);
+        if (sets.Length > 1)
             BucketizeByGroupBoundary(sets, group.BitDepth);
         return BuildSubtreeInGroup(overlay, group, path, sets);
     }
@@ -503,9 +535,8 @@ public static class TrieUpdater
         return new PbtBitPrefix(bytes, count);
     }
 
-    private sealed class GroupOverlay(IPbtStore store, TrieUpdaterMetrics? metrics = null) : IDisposable
+    private sealed class GroupOverlay(IPbtStore store, TrieUpdaterMetrics? metrics = null)
     {
-        private readonly Dictionary<PbtNodePath, GroupFrame> _groups = [];
 
         internal void SetLeaf(PbtWriteOperation operation) => store.SetLeaf(operation.Key, operation.Value);
 
@@ -516,9 +547,17 @@ public static class TrieUpdater
             out GroupFrame group)
         {
             group = Resolve(activeGroup, path, out int position);
-            PbtNode node = group.Load(position);
-            if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
-            return node;
+            try
+            {
+                PbtNode node = group.Load(position);
+                if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
+                return node;
+            }
+            catch
+            {
+                if (!ReferenceEquals(group, activeGroup)) group.Dispose();
+                throw;
+            }
         }
 
         internal GroupFrame Resolve(GroupFrame? activeGroup, PbtNodePath path, out int position)
@@ -528,30 +567,28 @@ public static class TrieUpdater
             PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
             position = location.Position;
             metrics?.IncrementGroupCacheProbes();
-            if (_groups.TryGetValue(location.GroupKey, out GroupFrame? group)) return group;
-
-            group = new GroupFrame(store, location.GroupKey, metrics);
-            _groups.Add(location.GroupKey, group);
-            return group;
+            return new GroupFrame(store, location.GroupKey, metrics);
         }
 
         internal GroupFrame Store(GroupFrame? activeGroup, PbtNodePath path, PbtNode node)
         {
             GroupFrame group = Resolve(activeGroup, path, out int position);
-            group.Store(position, node);
-            return group;
+            try
+            {
+                group.Store(position, node);
+                return group;
+            }
+            catch
+            {
+                if (!ReferenceEquals(group, activeGroup)) group.Dispose();
+                throw;
+            }
         }
 
-        internal void Remove(GroupFrame? activeGroup, PbtNodePath path)
+        internal void Remove(GroupFrame activeGroup, PbtNodePath path)
         {
-            GroupFrame group = Resolve(activeGroup, path, out int position);
-            group.Remove(position);
-        }
-
-        public void Dispose()
-        {
-            foreach (GroupFrame group in _groups.Values) group.Dispose();
-            _groups.Clear();
+            activeGroup.TryGetPosition(path, out int position);
+            activeGroup.Remove(position);
         }
     }
 
