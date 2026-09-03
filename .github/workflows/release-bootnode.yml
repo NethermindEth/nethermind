@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_latest:
-        description: Also publish Docker latest. Valid only for a stable Bootnode release.
+        description: Also publish Docker latest.
         required: true
         type: boolean
         default: false
@@ -32,7 +32,6 @@ jobs:
       release-name: ${{ steps.version.outputs.release-name }}
       version: ${{ steps.version.outputs.version }}
       package-prefix: ${{ steps.version.outputs.package-prefix }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
       publish-latest: ${{ steps.version.outputs.publish-latest }}
     steps:
       - name: Check out repository
@@ -42,12 +41,12 @@ jobs:
         id: version
         working-directory: tools/Bootnode/Nethermind.Bootnode
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
           version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Nethermind.Bootnode.csproj)
-          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" -n Nethermind.Bootnode.csproj)
-          version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
+          version=$version_prefix
           release_tag=bootnode-$version
           release_name="Nethermind Bootnode $version"
           package_prefix=nethermind-bootnode-$version
@@ -57,9 +56,22 @@ jobs:
             exit 1
           fi
 
-          if [[ -n "$version_suffix" && "$INPUT_PUBLISH_LATEST" == "true" ]]; then
-            echo "Docker latest cannot be published for a prerelease."
-            exit 1
+          if release=$(gh release view "$release_tag" --json isDraft,targetCommitish 2>/dev/null); then
+            if [[ "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
+              release_ref=$(jq -r '.targetCommitish' <<< "$release")
+            else
+              release_ref=$release_tag
+            fi
+
+            if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$release_ref" --jq .sha); then
+              echo "::error::Could not resolve the existing Bootnode release $release_tag."
+              exit 1
+            fi
+
+            if [[ "$release_target" != "$GITHUB_SHA" ]]; then
+              echo "::error::Bootnode release $release_tag already targets $release_target, not $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale release before re-cutting this version."
+              exit 1
+            fi
           fi
 
           echo "Detected version $version"
@@ -67,7 +79,6 @@ jobs:
           echo "release-name=$release_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "package-prefix=$package_prefix" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$([[ -n "$version_suffix" ]] && echo 'true' || echo 'false')" >> "$GITHUB_OUTPUT"
           echo "publish-latest=$INPUT_PUBLISH_LATEST" >> "$GITHUB_OUTPUT"
           echo "PACKAGE_PREFIX=$package_prefix" >> "$GITHUB_ENV"
 
@@ -148,7 +159,6 @@ jobs:
           RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
           RELEASE_NAME: ${{ needs.build.outputs.release-name }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
-          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
           relnotes=$(cat <<EOF
           # Release notes
@@ -167,18 +177,12 @@ jobs:
           EOF
           )
 
-          prerelease_flag=()
-          if [[ "$PRERELEASE" == "true" ]]; then
-            prerelease_flag=(--prerelease)
-          fi
-
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Drafting release $RELEASE_TAG"
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
               -t "$RELEASE_NAME" \
               -d \
-              "${prerelease_flag[@]}" \
               -F <(printf '%s' "$relnotes")
           fi
 
@@ -199,7 +203,7 @@ jobs:
           fi
 
           if [[ "$release_target" != "$GITHUB_SHA" ]]; then
-            echo "::error::Bootnode release $RELEASE_TAG resolves to $release_target, but this build targets $GITHUB_SHA. Re-dispatch from a ref at the intended commit, or delete the stale release before re-cutting it."
+            echo "::error::Bootnode release $RELEASE_TAG resolves to $release_target, but this build targets $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale release before re-cutting it."
             exit 1
           fi
 
@@ -210,8 +214,7 @@ jobs:
           gh release edit "$RELEASE_TAG" \
             -t "$RELEASE_NAME" \
             --draft=false \
-            --latest=false \
-            "${prerelease_flag[@]}"
+            --latest=false
 
   publish-docker:
     name: Publish to Docker Hub
@@ -237,18 +240,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
-          PRERELEASE: ${{ needs.build.outputs.prerelease }}
           PUBLISH_LATEST: ${{ needs.build.outputs.publish-latest }}
         run: |
           image=nethermind/bootnode
           tags=(-t "$image:$RELEASE_VERSION")
-          if [[ "$PRERELEASE" == "false" && "$PUBLISH_LATEST" == "true" ]]; then
+          if [[ "$PUBLISH_LATEST" == "true" ]]; then
             latest_release_version=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq \
-              '.[] | select(.draft == false and .prerelease == false and (.tag_name | startswith("bootnode-"))) | .tag_name | sub("^bootnode-"; "")' |
+              '.[] | select(.draft == false and (.tag_name | startswith("bootnode-"))) | .tag_name | sub("^bootnode-"; "")' |
               sort -V |
               tail -n 1)
             if [[ -z "$latest_release_version" || "$RELEASE_VERSION" != "$latest_release_version" ]]; then
-              echo "::error::Docker latest can only be published for the highest published stable Bootnode version ($latest_release_version)."
+              echo "::error::Docker latest can only be published for the highest published Bootnode version ($latest_release_version)."
               exit 1
             fi
             tags+=(-t "$image:latest")
