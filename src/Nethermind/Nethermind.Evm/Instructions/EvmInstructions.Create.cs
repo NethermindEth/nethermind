@@ -64,14 +64,10 @@ public static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gas">Reference to the gas state.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag

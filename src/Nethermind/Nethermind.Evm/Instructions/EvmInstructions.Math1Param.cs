@@ -45,13 +45,12 @@ public static partial class EvmInstructions
     /// <param name="_">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; otherwise,
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
@@ -132,7 +131,7 @@ public static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -186,7 +185,7 @@ public static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume<LowGasCost>(ref gas);

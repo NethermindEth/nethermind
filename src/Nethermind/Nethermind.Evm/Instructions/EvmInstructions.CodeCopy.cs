@@ -65,10 +65,7 @@ public static partial class EvmInstructions
     /// rather than re-walking <c>vm.VmState.Env.CodeInfo.CodeSpan</c>.
     /// </summary>
     public static EvmExceptionType InstructionCodeCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
@@ -78,10 +75,7 @@ public static partial class EvmInstructions
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
     /// </summary>
     public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
@@ -92,10 +86,7 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -146,15 +137,12 @@ public static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack for operand retrieval and memory copy operations.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -233,10 +221,8 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+    public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

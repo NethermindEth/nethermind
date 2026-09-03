@@ -28,7 +28,7 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionProgramCounter<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionProgramCounter<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -45,12 +45,11 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost specific for a jump destination marker.
@@ -67,15 +66,15 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack from which the jump destination is popped.</param>
     /// <param name="gas">Reference to the gas state; reduced by the gas cost for jumping.</param>
-    /// <param name="programCounter">Reference to the program counter that may be updated with the jump destination.</param>
+    /// <param name="programCounter">The program counter; the destination is returned rather than written back.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.InvalidJumpDestination"/>
     /// on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static OpcodeResult InstructionJump<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJump<TGasPolicy, OffFlag>(vm, ref stack, ref gas, ref programCounter);
+        => InstructionJump<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
 
     /// <summary>
     /// <see cref="InstructionJump{TGasPolicy}"/> for non-traced tables: a valid taken jump also
@@ -83,13 +82,13 @@ public static partial class EvmInstructions
     /// eliminating the marker's dispatch.
     /// </summary>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionJumpAndSkipJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    internal static OpcodeResult InstructionJumpAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJump<TGasPolicy, OnFlag>(vm, ref stack, ref gas, ref programCounter);
+        => InstructionJump<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType InstructionJump<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    private static OpcodeResult InstructionJump<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
     {
@@ -103,12 +102,12 @@ public static partial class EvmInstructions
         // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
         PrefetchCodeAtDestination(ref stack, programCounter);
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter, EvmExceptionType.None);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     InvalidJumpDestination:
-        return EvmExceptionType.InvalidJumpDestination;
+        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
     }
 
     /// <summary>
@@ -119,16 +118,16 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack from which the jump destination and condition are popped.</param>
     /// <param name="gas">Reference to the gas state; reduced by the cost for conditional jump.</param>
-    /// <param name="programCounter">Reference to the program counter that may be updated on a jump.</param>
+    /// <param name="programCounter">The program counter; the destination is returned rather than written back.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; returns <see cref="EvmExceptionType.StackUnderflow"/>
     /// or <see cref="EvmExceptionType.InvalidJumpDestination"/> on error.
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static OpcodeResult InstructionJumpIf<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJumpIf<TGasPolicy, OffFlag>(vm, ref stack, ref gas, ref programCounter);
+        => InstructionJumpIf<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
 
     /// <summary>
     /// <see cref="InstructionJumpIf{TGasPolicy}"/> for non-traced tables: a valid taken jump also
@@ -137,13 +136,13 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType InstructionJumpIfAndSkipJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    internal static OpcodeResult InstructionJumpIfAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJumpIf<TGasPolicy, OnFlag>(vm, ref stack, ref gas, ref programCounter);
+        => InstructionJumpIf<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType InstructionJumpIf<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    private static OpcodeResult InstructionJumpIf<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
     {
@@ -162,12 +161,12 @@ public static partial class EvmInstructions
             PrefetchCodeAtDestination(ref stack, programCounter);
         }
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter, EvmExceptionType.None);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     InvalidJumpDestination:
-        return EvmExceptionType.InvalidJumpDestination;
+        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -204,7 +203,7 @@ public static partial class EvmInstructions
     /// Stops the execution of the EVM.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionStop<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => EvmExceptionType.Stop;
 
@@ -214,7 +213,7 @@ public static partial class EvmInstructions
     /// and returns a revert exception.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRevert<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionRevert<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
@@ -246,7 +245,7 @@ public static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
@@ -340,7 +339,7 @@ public static partial class EvmInstructions
     /// <summary>
     /// Handles invalid opcodes by deducting a high gas cost and returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionInvalid<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionInvalid<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume<HighGasCost>(ref gas);
@@ -350,7 +349,7 @@ public static partial class EvmInstructions
     /// <summary>
     /// Default handler for undefined opcodes, always returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionBadInstruction<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => EvmExceptionType.BadInstruction;
 
