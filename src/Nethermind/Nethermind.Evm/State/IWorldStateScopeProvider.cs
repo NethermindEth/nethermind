@@ -19,7 +19,7 @@ public interface IWorldStateScopeProvider
     bool HasRoot(BlockHeader? baseBlock);
 
     /// <summary>A single-threaded, hint-only lifetime for warming trie paths.</summary>
-    public interface ITrieWarmerScope : IDisposable
+    public interface ITrieWarmupSession : IDisposable
     {
         /// <summary>Queues an account path for warm-up.</summary>
         /// <param name="address">The account address to warm.</param>
@@ -31,7 +31,7 @@ public interface IWorldStateScopeProvider
         void HintWarmSlot(in ValueAddress address, in UInt256 index);
 
         /// <summary>A reusable no-op scope for backends without trie warm-up support.</summary>
-        public sealed class Noop : ITrieWarmerScope
+        public sealed class Noop : ITrieWarmupSession
         {
             public static Noop Instance { get; } = new();
 
@@ -62,7 +62,7 @@ public interface IWorldStateScopeProvider
         /// warming return a reusable no-op scope.
         /// </remarks>
         /// <returns>An owned trie-warmer scope bound to this scope.</returns>
-        ITrieWarmerScope CreateTrieWarmerScope() => ITrieWarmerScope.Noop.Instance;
+        ITrieWarmupSession CreateTrieWarmupSession() => ITrieWarmupSession.Noop.Instance;
 
         void UpdateRootHash();
 

@@ -158,8 +158,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
 
-    public IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope() =>
-        _snapshotBundle.CreateTrieWarmerScope(_currentStateId, _warmer, _logManager);
+    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+        _snapshotBundle.CreateTrieWarmupSession(_currentStateId, _warmer, _logManager);
 
     public void UpdateRootHash()
     {

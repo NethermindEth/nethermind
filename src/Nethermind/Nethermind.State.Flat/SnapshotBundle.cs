@@ -574,11 +574,11 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    internal IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope(
+    internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
         in StateId baseState,
         ITrieWarmer trieWarmer,
         ILogManager logManager) =>
-        new FlatTrieWarmerScope(baseState, this, _trieNodeCache, trieWarmer, logManager);
+        new FlatTrieWarmupSession(baseState, this, _trieNodeCache, trieWarmer, logManager);
 
     /// <summary>
     /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
