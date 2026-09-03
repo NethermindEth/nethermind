@@ -290,6 +290,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         _discoveryHandler.InitializeChannel(channel);
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
         channel.Pipeline.AddLast(_discoveryHandler);
+        ActivateIfChannelIsActive(channel);
     }
 
     protected override void DetachEventHandlers()

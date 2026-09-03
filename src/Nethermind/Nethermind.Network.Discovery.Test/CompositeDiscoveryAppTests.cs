@@ -79,6 +79,53 @@ public class CompositeDiscoveryAppTests
         using Socket released = CreateUdpListenerSocket(port);
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task StartAsync_InitializesDiscoveryAppsOnlyAfterFallbackBindSucceeds()
+    {
+        int port;
+        using (Socket reservation = CreateUdpListenerSocket(0))
+        {
+            port = ((IPEndPoint)reservation.LocalEndPoint!).Port;
+        }
+
+        NetworkConfig networkConfig = new() { DiscoveryPort = port };
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        bool initializedOnEventLoop = false;
+        discoveryApp.When(app => app.InitializeChannel(Arg.Any<IChannel>())).Do(call =>
+            initializedOnEventLoop = ((IChannel)call[0]).EventLoop.InEventLoop);
+        discoveryApp.StartAsync().Returns(Task.CompletedTask);
+        discoveryApp.StopAsync().Returns(Task.CompletedTask);
+        RecordingChannelFactory channelFactory = new();
+        CompositeDiscoveryApp app = new(
+            networkConfig,
+            new DiscoveryConfig(),
+            LimboLogs.Instance,
+            listenerState,
+            [discoveryApp],
+            channelFactory);
+
+        try
+        {
+            await app.StartAsync();
+            await discoveryApp.Received(1).StartAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
+                Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
+                Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
+                Assert.That(initializedOnEventLoop, Is.True);
+                discoveryApp.Received(1).InitializeChannel(channelFactory.CreatedChannels[1]);
+            }
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
     [TestCase("0.0.0.0", "2001:db8::1", "192.0.2.1", 30304)]
     [TestCase("2001:db8::5", "192.0.2.1", "2001:db8::1", 30305)]
     [TestCase("::", "2001:db8::1", "2001:db8::1", 30305)]

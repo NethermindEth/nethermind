@@ -160,6 +160,14 @@ public abstract class KademliaDiscoveryApp(
         TryStartActivation();
     }
 
+    protected void ActivateIfChannelIsActive(IChannel channel)
+    {
+        if (channel.Active)
+        {
+            OnChannelActivated(channel, EventArgs.Empty);
+        }
+    }
+
     private void TryStartActivation()
     {
         lock (_lifetimeLock)

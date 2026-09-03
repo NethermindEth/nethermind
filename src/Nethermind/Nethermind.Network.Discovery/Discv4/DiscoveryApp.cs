@@ -225,6 +225,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         channel.Pipeline
             .AddLast(new DotNetty.Handlers.Logging.LoggingHandler(LogLevel.INFO))
             .AddLast(_discoveryHandler);
+        ActivateIfChannelIsActive(channel);
     }
 
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)

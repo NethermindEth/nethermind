@@ -102,10 +102,17 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         _eventLoopGroup = eventLoopGroup;
         try
         {
-            await _connections.BindAsync(
+            IChannel channel = await _connections.BindAsync(
                 () => CreateBootstrap(eventLoopGroup),
                 CreateDatagramChannel,
                 _networkConfig.DiscoveryPort);
+            // A failed bind closes stateful discovery handlers, so attach them only to the successful channel.
+            // Run on the event loop to complete HandlerAdded callbacks before the protocol apps start.
+            await channel.EventLoop.SubmitAsync(() =>
+            {
+                InitializeChannel(channel);
+                return true;
+            });
 
             await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
         }
@@ -133,7 +140,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
             .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
             .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2))
             ;
-        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
+        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(static _ => { }));
         return bootstrap;
     }
 

@@ -3,12 +3,25 @@
 
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Enr;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4;
@@ -209,6 +222,62 @@ public class DiscoveryAppTests
             IPAddress.Any);
 
         Assert.That(bootNodes, Is.Empty);
+    }
+
+    [Test]
+    public async Task StartAsync_ShouldRemoveBootnodeOutsideBoundFamilyAfterFallback()
+    {
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("2001:4860:4860::8888"),
+            tcpPort: 9001,
+            udpPort: 9001);
+        NetworkConfig networkConfig = new()
+        {
+            Bootnodes = [new NetworkNode(enr.ToString())],
+            ExternalIp = "8.8.8.8",
+            LocalIp = "::"
+        };
+        DiscoveryConfig discoveryConfig = new();
+        IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+        IProcessExitSource processExitSource = new ProcessExitSource(CancellationToken.None);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+
+        using MemDb discoveryDb = new();
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(networkConfig).As<INetworkConfig>();
+        builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
+        builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        builder.RegisterInstance(listenerState);
+        builder.RegisterInstance(processExitSource).As<IProcessExitSource>();
+        builder.RegisterInstance<IEcdsa>(new EthereumEcdsa(0));
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(Substitute.For<IForkInfo>());
+        builder.RegisterInstance(Substitute.For<INodeRecordProvider>());
+        builder.RegisterInstance(Substitute.For<INodeStatsManager>());
+        builder.RegisterInstance(new NetworkStorage(discoveryDb, LimboLogs.Instance))
+            .Keyed<INetworkStorage>(DbNames.DiscoveryNodes);
+        using IContainer container = builder.Build();
+        IEnode enode = new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303);
+        await using DiscoveryApp app = new(
+            container,
+            enode,
+            networkConfig,
+            discoveryConfig,
+            ipResolver,
+            processExitSource,
+            LimboLogs.Instance,
+            listenerState,
+            services => services.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+
+        await app.StartAsync();
+
+        kademlia.Received(1).Remove(Arg.Is<Node>(node =>
+            node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
+        kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
     }
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>
