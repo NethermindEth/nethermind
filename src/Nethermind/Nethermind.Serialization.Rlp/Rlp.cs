@@ -53,6 +53,7 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
+        static Rlp() => RegisterDecoders(typeof(Rlp).Assembly);
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -74,50 +75,17 @@ namespace Nethermind.Serialization.Rlp
         private static readonly Lock _decoderLock = new();
         private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
-        // Deferred to the first decoder lookup instead of a static constructor: an explicit
-        // constructor is never preinitialized by ILC, which would put a lazy-initialization check
-        // (a lock plus thread-static access on NativeAOT) on every static member access of this
-        // heavily used class.
-        private static int _defaultDecodersRegistered;
-
-        /// <summary>Registers the assembly's own decoders once, on the first lookup or mutation.</summary>
-        /// <remarks>
-        /// The latch is claimed with an interlocked exchange and registration then runs with no lock
-        /// held. Registration instantiates decoders, which runs their type initializers, and one of
-        /// those (<see cref="TxDecoder"/>) registers itself - so a thread holding
-        /// <c>_decoderLock</c> here would wait on the CLR class-init lock while the initializing
-        /// thread waits on <c>_decoderLock</c>. Claiming rather than waiting also keeps that
-        /// initializing thread from blocking on a registration it is itself part of.
-        /// </remarks>
-        private static void EnsureDefaultDecoders()
-        {
-            if (Volatile.Read(ref _defaultDecodersRegistered) != 0 ||
-                Interlocked.CompareExchange(ref _defaultDecodersRegistered, 1, 0) != 0)
-            {
-                return;
-            }
-
-            RegisterDecoders(typeof(Rlp).Assembly);
-        }
-
         public static void ResetDecoders()
         {
-            using (Lock.Scope _ = _decoderLock.EnterScope())
-            {
-                _decoderBuilder.Clear();
-                Volatile.Write(ref _decodersSnapshot, null);
-                Volatile.Write(ref _defaultDecodersRegistered, 1);
-            }
-
+            using Lock.Scope _ = _decoderLock.EnterScope();
+            _decoderBuilder.Clear();
+            Volatile.Write(ref _decodersSnapshot, null);
             RegisterDecoders(typeof(Rlp).Assembly);
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
-            // Defaults first, preserving the ordering the static constructor used to guarantee -
-            // otherwise a caller's decoder would collide with the default registration later.
-            EnsureDefaultDecoders();
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
             Volatile.Write(ref _decodersSnapshot, null);

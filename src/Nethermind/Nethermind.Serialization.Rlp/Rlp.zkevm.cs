@@ -30,7 +30,6 @@ public partial class Rlp
 
     private static Dictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
-        EnsureDefaultDecoders();
         using Lock.Scope _ = _decoderLock.EnterScope();
         Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
         if (snapshot is null)
@@ -44,8 +43,6 @@ public partial class Rlp
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
     {
-        EnsureDefaultDecoders();
-
         // Under zkEVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
         // Register the required decoders explicitly instead.
