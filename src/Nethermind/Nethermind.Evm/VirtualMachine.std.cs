@@ -20,6 +20,27 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[]? NoTrace;
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[]? Traced;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedNoTrace;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedNoTraceCancelable;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedTraced;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedTracedCancelable;
+
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]
+            GetThreaded<TTracingInst, TCancelable>(IReleaseSpec spec)
+            where TTracingInst : struct, IFlag
+            where TCancelable : struct, IFlag
+        {
+            if (TTracingInst.IsActive)
+            {
+                return TCancelable.IsActive
+                    ? ThreadedTracedCancelable ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec)
+                    : ThreadedTraced ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec);
+            }
+
+            return TCancelable.IsActive
+                ? ThreadedNoTraceCancelable ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec)
+                : ThreadedNoTrace ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec);
+        }
     }
 
     // Weak keys: transient state-override specs in eth_simulateV1 must not be retained forever by this
@@ -30,6 +51,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
+        if (!StreamInterpreter.Enabled || !StreamInterpreter.ForceAllContexts)
+            return;
+
         OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());
 
         // Check if tracing instructions are inactive.
