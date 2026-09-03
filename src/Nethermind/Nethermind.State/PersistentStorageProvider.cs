@@ -353,8 +353,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
     /// <remarks>
-    /// Recycling is safe here because a block that detached its changes left an empty map behind: the states it held
-    /// belong to the snapshot, which returns them itself once written.
+    /// Only a block that took no snapshot has states to return here, and it pays for them on its own thread. One that
+    /// detached its changes left an empty map behind, and its states belong to the snapshot, which returns them once
+    /// written; that is also what keeps a state from being returned twice.
     /// </remarks>
     public void ClearStorageMap()
     {
@@ -442,8 +443,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void Dispose()
         {
-            // Off the block's thread, so the contract states cost nothing to recycle here. Each was rented by the
-            // block that filled it and is released once, which is what keeps the pool sound.
+            // The write-back thread, so recycling costs the block nothing on the path that gets here; the blocks
+            // that take no snapshot pay for it in ClearStorageMap instead. Each state was rented by the block that
+            // filled it and is released once, which is what keeps the pool sound.
             storages.ResetAndClear();
             Volatile.Write(ref provider._spareStorages, storages);
             provider._stateProvider.ReturnRemovedAccounts(removedWithStorage);

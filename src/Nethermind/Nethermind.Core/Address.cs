@@ -361,8 +361,9 @@ namespace Nethermind.Core
         public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
 
         /// <remarks>
-        /// The 20-byte comparison is spelled out rather than left to <see cref="Address.Equals(Address)"/>, which the
-        /// JIT emits as a call from a cache probe and so puts on the hot path of every lookup.
+        /// The checks are spelled out and the compare goes straight to <see cref="Address.BytesEqual"/>, rather than
+        /// through <see cref="Address.Equals(Address)"/>, which carries no inlining hint and so becomes a call on the
+        /// hot path of every cache probe.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in AddressAsKey other)
