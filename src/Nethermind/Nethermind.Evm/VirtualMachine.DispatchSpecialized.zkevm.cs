@@ -127,19 +127,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // OnAfterInstructionTrace being empty is UNCHECKED - revisit the skip below if it gains a body.
                 Debug.Assert(outOfGas == TGasPolicy.IsOutOfGas(in gas),
                     "Out-of-gas fast path diverged from TGasPolicy.IsOutOfGas");
-                if (outOfGas)
-                {
-                    OpCodeCount += opCodeCount;
-                    TGasPolicy.SetOutOfGas(ref gas);
-                    exceptionType = EvmExceptionType.OutOfGas;
-                    goto Halted;
-                }
+                // One exit test per opcode: a fault, Stop/Revert and a suspended child frame all arrive as a
+                // nonzero status, with out-of-gas folded in branch-free. Told apart after the loop.
+                if (ShouldExitFrame(exceptionType, outOfGas))
+                    break;
+
+                Debug.Assert(ReturnData is null,
+                    "A handler that stages ReturnData must report a non-None status, or the loop runs past the halt");
 
                 if (typeof(TGasPolicy) != typeof(EthereumGasPolicy))
                     TGasPolicy.OnAfterInstructionTrace(in gas);
-
-                if (exceptionType != EvmExceptionType.None)
-                    break;
 
                 // typeof folds where the inliner gives up on the IsActive getter. == OnFlag, not != OffFlag,
                 // so a third IFlag would fail closed.
@@ -147,18 +144,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
                 Debug.Assert(typeof(TTracingInst) == typeof(OnFlag) == TTracingInst.IsActive,
                     "Tracing fast path assumes OnFlag/OffFlag are the only dispatch flags");
-
-                // Only the 0xF0+ family sets ReturnData, so the cheap majority skips the field load.
-                if (instruction >= Instruction.CREATE && ReturnData is not null)
-                {
-                    break;
-                }
             }
 
             OpCodeCount += opCodeCount;
+
+            if (TGasPolicy.IsOutOfGas(in gas))
+            {
+                TGasPolicy.SetOutOfGas(ref gas);
+                exceptionType = EvmExceptionType.OutOfGas;
+            }
+            else if (exceptionType != EvmExceptionType.None && typeof(TGasPolicy) != typeof(EthereumGasPolicy))
+            {
+                TGasPolicy.OnAfterInstructionTrace(in gas);
+            }
         }
 
-    Halted:
         programCounter = pc;
         return exceptionType;
     }

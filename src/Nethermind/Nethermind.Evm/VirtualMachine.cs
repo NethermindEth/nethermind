@@ -65,6 +65,18 @@ public static class VirtualMachineStatics
     internal static readonly Address Ripemd160Address = Address.FromNumber(3);
 
     /// <summary>
+    /// Whether the dispatch loop must leave the frame after an instruction: the handler returned a status
+    /// other than <see cref="EvmExceptionType.None"/>, or the gas policy ran out of gas.
+    /// </summary>
+    /// <remarks>
+    /// Branch-free, so the per-opcode epilogue is a single test; the exit path re-reads the out-of-gas flag
+    /// to tell the two apart, out-of-gas taking priority.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool ShouldExitFrame(EvmExceptionType status, bool outOfGas) =>
+        ((int)status | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
+
+    /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
     /// </summary>
     /// <remarks>

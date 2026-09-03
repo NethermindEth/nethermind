@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 #if DEBUG
@@ -187,33 +188,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 pc = opPc;
 
-                if (TGasPolicy.IsOutOfGas(in gas))
-                {
-                    OpCodeCount += opCodeCount;
-                    TGasPolicy.SetOutOfGas(ref gas);
-                    exceptionType = EvmExceptionType.OutOfGas;
-                    goto Halted;
-                }
+                // One exit test per opcode: a fault, Stop/Revert and a suspended child frame all arrive as a
+                // nonzero status, with out-of-gas folded in branch-free. Told apart after the loop.
+                if (ShouldExitFrame(exceptionType, TGasPolicy.IsOutOfGas(in gas)))
+                    break;
+
+                Debug.Assert(ReturnData is null,
+                    "A handler that stages ReturnData must report a non-None status, or the loop runs past the halt");
 
                 TGasPolicy.OnAfterInstructionTrace(in gas);
 
-                if (exceptionType != EvmExceptionType.None)
-                    break;
-
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-
-                // Only the 0xF0+ family sets ReturnData, so the cheap majority skips the field load.
-                if (instruction >= Instruction.CREATE && ReturnData is not null)
-                {
-                    break;
-                }
             }
 
             OpCodeCount += opCodeCount;
+
+            if (TGasPolicy.IsOutOfGas(in gas))
+            {
+                TGasPolicy.SetOutOfGas(ref gas);
+                exceptionType = EvmExceptionType.OutOfGas;
+            }
+            else if (exceptionType != EvmExceptionType.None)
+            {
+                TGasPolicy.OnAfterInstructionTrace(in gas);
+            }
         }
 
-    Halted:
         programCounter = pc;
         return exceptionType;
     }

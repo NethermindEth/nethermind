@@ -361,7 +361,7 @@ public static partial class EvmInstructions
                 snapshot: in snapshot,
                 newAccountCharged: newAccountCharged);
 
-            return EvmExceptionType.None;
+            return EvmExceptionType.Suspend;
         }
 
         // Jump forward to be unpredicted by the branch predictor.
@@ -405,8 +405,9 @@ public static partial class EvmInstructions
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/> on success; otherwise, an error such as <see cref="EvmExceptionType.StackUnderflow"/>,
-    /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
+    /// <see cref="EvmExceptionType.Stop"/> on success, the frame's output staged in
+    /// <see cref="VirtualMachine{TGasPolicy}.ReturnData"/>; otherwise an error such as
+    /// <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
@@ -428,7 +429,7 @@ public static partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

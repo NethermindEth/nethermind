@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
+
+using static Nethermind.Evm.VirtualMachineStatics;
 
 [assembly: InternalsVisibleTo("Nethermind.Init")]
 
@@ -329,14 +332,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
                     };
 
-                    if (TGasPolicy.IsOutOfGas(in gas))
+                    bool memOutOfGas = TGasPolicy.IsOutOfGas(in gas);
+                    // One exit test, as in the boundary epilogue below.
+                    if (ShouldExitFrame(exceptionType, memOutOfGas))
                     {
-                        OpCodeCount += opCodeCount;
-                        goto OutOfGas;
+                        // Out-of-gas skips the hook, as the checks this replaced did.
+                        if (!memOutOfGas)
+                            TGasPolicy.OnAfterInstructionTrace(in gas);
+                        break;
                     }
 
                     TGasPolicy.OnAfterInstructionTrace(in gas);
-                    if (exceptionType != EvmExceptionType.None) break;
 
                     metered = false;
                     programCounter = entry.Pc + entry.Advance;
@@ -359,19 +365,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                 programCounter = pc;
 
-                if (TGasPolicy.IsOutOfGas(in gas))
+                bool outOfGas = TGasPolicy.IsOutOfGas(in gas);
+                // One exit test per opcode: a fault, Stop/Revert and a suspended child frame all arrive as a
+                // nonzero status, with out-of-gas folded in branch-free; the tail below routes each one.
+                if (ShouldExitFrame(exceptionType, outOfGas))
                 {
-                    OpCodeCount += opCodeCount;
-                    goto OutOfGas;
+                    // Out-of-gas skips the hook, as the checks this replaced did.
+                    if (!outOfGas)
+                        TGasPolicy.OnAfterInstructionTrace(in gas);
+                    break;
                 }
 
+                Debug.Assert(ReturnData is null,
+                    "A handler that stages ReturnData must report a non-None status, or the loop runs past the halt");
+
                 TGasPolicy.OnAfterInstructionTrace(in gas);
-
-                if (exceptionType != EvmExceptionType.None)
-                    break;
-
-                if (ReturnData is not null)
-                    break;
 
                 // Table handlers may consume more than one instruction; recompute the entry from the landing pc.
                 if ((nuint)programCounter >= (nuint)pcToEntry.Length)
@@ -400,7 +408,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             OpCodeCount += opCodeCount;
         }
 
-        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
+        if (TGasPolicy.IsOutOfGas(in gas))
+            goto OutOfGas;
+
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
             UpdateCurrentState((int)programCounter, in gas, stack.Head);
         }
@@ -499,16 +510,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
 
-            if (TGasPolicy.IsOutOfGas(in gas))
-                return new MeteredResult(MeteredOutcome.OutOfGas, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
+            bool outOfGas = TGasPolicy.IsOutOfGas(in gas);
+            // One exit test per opcode: a fault, Stop/Revert and a suspended child frame all arrive as a
+            // nonzero status, with out-of-gas folded in branch-free.
+            if (ShouldExitFrame(exceptionType, outOfGas))
+            {
+                if (outOfGas)
+                    return new MeteredResult(MeteredOutcome.OutOfGas, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
+
+                TGasPolicy.OnAfterInstructionTrace(in gas);
+                return new MeteredResult(MeteredOutcome.BreakLoop, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
+            }
+
+            Debug.Assert(ReturnData is null,
+                "A handler that stages ReturnData must report a non-None status, or the loop runs past the halt");
 
             TGasPolicy.OnAfterInstructionTrace(in gas);
-
-            if (exceptionType != EvmExceptionType.None)
-                return new MeteredResult(MeteredOutcome.BreakLoop, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
-
-            if (ReturnData is not null)
-                return new MeteredResult(MeteredOutcome.BreakLoop, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             if ((nuint)programCounter >= (nuint)pcToEntry.Length)
             {
