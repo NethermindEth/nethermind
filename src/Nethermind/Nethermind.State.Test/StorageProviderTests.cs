@@ -620,16 +620,25 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
-    [Test]
-    public void Detached_storage_changes_stop_before_clears_when_batch_rejects_storage_writes()
+    // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be
+    // re-checked. Each case leaves two clears to make, and pins that the second is never reached.
+    [TestCase(StorageWriteStop.BeforeTheFirstClear, 0)]
+    [TestCase(StorageWriteStop.AtARemovedAccountClear, 1)]
+    [TestCase(StorageWriteStop.AtAContractClear, 1)]
+    public void Detached_storage_changes_stop_at_the_clear_that_makes_the_batch_reject_storage_writes(
+        StorageWriteStop stop, int expectedStorageBatches)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
         BlockHeader baseBlock;
         using (provider.BeginScope(IWorldState.PreGenesis))
         {
-            provider.CreateAccount(TestItem.AddressA, 1);
-            provider.Set(new StorageCell(TestItem.AddressA, 1), _values[1]);
+            foreach (Address address in (Address[])[TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+            {
+                provider.CreateAccount(address, 1);
+                provider.Set(new StorageCell(address, 1), _values[1]);
+            }
+
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
@@ -637,16 +646,48 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            provider.ClearStorage(TestItem.AddressA);
+            if (stop == StorageWriteStop.AtARemovedAccountClear)
+            {
+                foreach (Address address in (Address[])[TestItem.AddressB, TestItem.AddressC])
+                {
+                    // Execution reads an account before removing it, and only a removal that saw storage on the
+                    // account it read counts as taking that storage with it.
+                    provider.GetNonce(address);
+                    provider.DeleteAccount(address);
+                }
+            }
+            else
+            {
+                provider.ClearStorage(TestItem.AddressA);
+                provider.ClearStorage(TestItem.AddressB);
+                // Would follow the clears, so it also pins that the slot writes are not reached.
+                provider.Set(new StorageCell(TestItem.AddressA, 2), _values[2]);
+            }
+
             provider.Commit(Frontier.Instance);
             using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
             IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
-            writeBatch.AcceptsStorageWrites.Returns(false);
+            bool accepts = stop != StorageWriteStop.BeforeTheFirstClear;
+            writeBatch.AcceptsStorageWrites.Returns(_ => accepts);
+            writeBatch.CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>()).Returns(storageBatch);
+            // What the real batch does: a clear drops the pre-block slots it held, and it has nothing left to complete.
+            storageBatch.When(b => b.Clear()).Do(_ => accepts = false);
 
             snapshot.WriteTo(writeBatch);
 
-            writeBatch.DidNotReceiveWithAnyArgs().CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>());
+            writeBatch.Received(expectedStorageBatches).CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>());
+            storageBatch.Received(expectedStorageBatches).Clear();
+            storageBatch.DidNotReceiveWithAnyArgs().Set(Arg.Any<UInt256>(), Arg.Any<byte[]>());
         }
+    }
+
+    public enum StorageWriteStop
+    {
+        BeforeTheFirstClear,
+        AtARemovedAccountClear,
+        AtAContractClear,
     }
 
     [TestCase(StorageClearRollback.Snapshot)]
