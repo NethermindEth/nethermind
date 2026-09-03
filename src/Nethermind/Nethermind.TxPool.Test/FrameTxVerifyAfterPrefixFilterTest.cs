@@ -38,10 +38,20 @@ internal class FrameTxVerifyAfterPrefixFilterTest
             .SetName("a trailing expiry frame is rejected as a VERIFY frame behind the prefix");
         yield return new TestCaseData(new[] { OnlyVerify(), Pay(), Execution(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a VERIFY frame behind a paymaster prefix is rejected");
-        // A layout matching none of the recognized prefixes has no boundary to sit behind; the rules
-        // that reject it do so on their own terms.
+        // Nothing can approve payment ahead of the only approving frame, so there is no prefix to sit behind.
         yield return new TestCaseData(new[] { Execution(), SelfVerify() }, AcceptTxResult.Accepted)
-            .SetName("an unrecognized layout is left to the other rules");
+            .SetName("a layout whose only approving frame is last has nothing behind it");
+        // A leading VERIFY frame the grammar does not name leaves the layout unrecognized, and simulation
+        // admits it, so its trailing VERIFY frame would otherwise reach the pool unjudged.
+        yield return new TestCaseData(new[] { ExtraVerify(), SelfVerify(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a VERIFY frame behind an unrecognized prefix is rejected");
+        yield return new TestCaseData(new[] { ExtraVerify(), SelfVerify(), Execution() }, AcceptTxResult.Accepted)
+            .SetName("an unrecognized prefix without a trailing VERIFY frame is admissible");
+        yield return new TestCaseData(new[] { OnlyVerify(), ExtraVerify(), Pay(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a VERIFY frame behind a paymaster prefix carrying an extra check is rejected");
+        // The boundary is the approval flag rather than the mode, which carries no scope of its own.
+        yield return new TestCaseData(new[] { ApprovingDefault(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a VERIFY frame behind an approving DEFAULT frame is rejected");
     }
 
     [TestCaseSource(nameof(PrefixCases))]

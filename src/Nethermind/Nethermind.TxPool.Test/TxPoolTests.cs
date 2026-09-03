@@ -3102,7 +3102,42 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private Transaction SelfVerifyFrameTx(params TxFrame[] trailingFrames)
+        // Simulation admits this layout and stops at the payer, so it never reaches the trailing VERIFY frame
+        // that can invalidate the transaction later. FrameTxValidationPrefixSimulationTests runs the real one.
+        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsAccepted")]
+        [TestCase(true, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingVerifyFrame_IsRejected")]
+        public void SubmitTx_FrameTransactionBehindAnUnrecognizedPrefix_IsJudgedOnItsTrailingFrame(bool trailingVerify)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            TxFrame trailing = trailingVerify
+                ? new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                : new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>());
+
+            AcceptTxResult result = _txPool.SubmitTx(UnrecognizedPrefixFrameTx(trailing), TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(trailingVerify ? AcceptTxResult.FrameTxVerifyAfterPrefix : AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(trailingVerify ? 0 : 1));
+            }
+        }
+
+        /// <summary>A leading VERIFY frame carrying no approval scope, which the prefix grammar does not name.</summary>
+        private Transaction UnrecognizedPrefixFrameTx(params TxFrame[] trailingFrames) =>
+            SignedFrameTx([FrameTxTestFrames.ExtraVerify(), SelfVerifyPrefixFrame(), .. trailingFrames]);
+
+        private Transaction SelfVerifyFrameTx(params TxFrame[] trailingFrames) =>
+            SignedFrameTx([SelfVerifyPrefixFrame(), .. trailingFrames]);
+
+        private static TxFrame SelfVerifyPrefixFrame() =>
+            new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>());
+
+        private Transaction SignedFrameTx(TxFrame[] frames)
         {
             Transaction frameTx = new()
             {
@@ -3110,11 +3145,7 @@ namespace Nethermind.TxPool.Test
                 ChainId = _specProvider.ChainId,
                 Nonce = 0,
                 SenderAddress = TestItem.PrivateKeyA.Address,
-                Frames =
-                [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    .. trailingFrames,
-                ],
+                Frames = frames,
                 FrameSignatures = [],
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,

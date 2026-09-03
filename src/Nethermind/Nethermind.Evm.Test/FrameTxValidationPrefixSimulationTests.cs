@@ -96,6 +96,39 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    private static IEnumerable<TestCaseData> UnrecognizedPrefixCases()
+    {
+        TxFrame extraVerify = new(TxFrame.ModeVerify, flags: 0, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default);
+        TxFrame deploy = new(TxFrame.ModeDefault, flags: 0, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default);
+        TxFrame trailingVerify = new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default);
+
+        yield return new TestCaseData(new[] { extraVerify, SelfVerifyFrame(), trailingVerify }, true)
+            .SetName("Simulate_ExtraLeadingVerifyFrame_ResolvesPayerBehindAnUnrecognizedLayout");
+        // The prefix admits one opening deploy frame, and only ahead of a VERIFY frame.
+        yield return new TestCaseData(new[] { deploy, deploy, SelfVerifyFrame(), trailingVerify }, false)
+            .SetName("Simulate_SecondLeadingDeployFrame_EndsThePrefixBeforeAnyPayer");
+    }
+
+    // What the prefix loop admits is a leading run of VERIFY frames, which is wider than the layouts
+    // RecognizedPrefixLength names: the trailing VERIFY frame of an admitted one is never simulated.
+    [TestCaseSource(nameof(UnrecognizedPrefixCases))]
+    public void Simulate_LayoutOutsideTheRecognizedGrammar_ResolvesAPayerOnlyFromALeadingVerifyRun(TxFrame[] frames, bool expectedPayer)
+    {
+        DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, frames);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(expectedPayer), result.ErrorDescription);
+            Assert.That(tracer.Payer, expectedPayer ? Is.EqualTo(Sender) : Is.Null);
+            Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(tx), Is.True,
+                "the pool bound must claim the trailing VERIFY frame the simulation never reaches");
+        }
+    }
+
     [Test]
     public void Simulate_PrefixNeverSetsPayer_Rejected()
     {
