@@ -114,12 +114,8 @@ public class FrameTxFloodMeasurement
     {
         foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
         {
-            int[] retries = ceiling == 100_000 ? [1, 2, 4, 8] : [1, 8];
-            foreach (int kRetry in retries)
-            {
-                yield return new TestCaseData(ceiling, kRetry, 0);
-                yield return new TestCaseData(ceiling, kRetry, 100);
-            }
+            yield return new TestCaseData(ceiling, 0);
+            yield return new TestCaseData(ceiling, 100);
         }
     }
 
@@ -158,18 +154,6 @@ public class FrameTxFloodMeasurement
         foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-510k", "groth16-soispoke" })
         {
             yield return new TestCaseData(shape);
-        }
-    }
-
-    private static IEnumerable<TestCaseData> RetryCases()
-    {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
-        {
-            int[] retries = ceiling == 100_000 ? [1, 2, 4, 8] : [1, 8];
-            foreach (int kRetry in retries)
-            {
-                yield return new TestCaseData(ceiling, kRetry);
-            }
         }
     }
 
@@ -318,15 +302,15 @@ public class FrameTxFloodMeasurement
         AssertWorkloadBlockDoesRealWork();
     }
 
-    /// <summary>Measures producer delay while admission competes with bounded prefix retries.</summary>
+    /// <summary>Measures producer delay while admission competes with a fixed failing-prefix occupancy.</summary>
     [TestCaseSource(nameof(ProductionDelayCases))]
-    public async Task Block_production_delay_under_flood_and_retries(ulong ceiling, int kRetry, int offeredRate)
+    public async Task Block_production_delay_at_fixed_occupancy(ulong ceiling, int offeredRate)
     {
         SkipUnlessSingleCore();
         if (offeredRate > 0) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry: 1, ceiling: ceiling);
         FloodOutcome outcome = offeredRate > 0
             ? MeasureProductionUnderFlood(rig, offeredRate)
             : NoFloodProductionOutcome(rig);
@@ -337,7 +321,7 @@ public class FrameTxFloodMeasurement
         bool floodStarved = offeredRate > 0 && outcome.AchievedRate < offeredRate * RateHeldFloor;
         bool delivered = offeredRate == 0 || outcome.AchievedRate > offeredRate * MinDeliveredRateFloor;
 
-        Emit($"case=production_pass_at_fixed_occupancy ceiling={ceiling} k_retry={kRetry} offered_rate={offeredRate} "
+        Emit($"case=production_pass_at_fixed_occupancy ceiling={ceiling} offered_rate={offeredRate} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={outcome.ProcessMicros.Count} "
              + $"evictions={rig.EvictionsInWindow} failing_executions={rig.ExecutionsInWindow} "
              + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} "
@@ -349,7 +333,7 @@ public class FrameTxFloodMeasurement
             Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
                 "the producer never re-executed the failing prefix, so this measures an ordinary block");
             Assert.That(rig.Evictions, Is.GreaterThan(0),
-                $"no eviction fired at K_retry={kRetry}, so the retry bound was never exercised");
+                "no eviction fired, so the fixed-occupancy producer workload was not exercised");
             Assert.That(outcome.ProcessMicros, Has.Count.GreaterThan(10),
                 "too few production passes for a percentile to mean anything");
             Assert.That(outcome.Rejected, Is.EqualTo(outcome.Submitted).Within(1),
@@ -539,18 +523,18 @@ public class FrameTxFloodMeasurement
     private static string Groth16FitField(string shape) =>
         shape == "groth16-510k" ? "fits_500k=no " : "";
 
-    [TestCaseSource(nameof(RetryCases))]
-    public async Task Sustainable_rejection_rate_by_ramp_with_retries(ulong ceiling, int kRetry)
+    [TestCaseSource(nameof(CeilingCases))]
+    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling)
     {
         SkipUnlessSingleCore();
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry: 1, ceiling: ceiling);
         rig.RunFor(WarmupWindow);
         double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
 
-        RunRateRamp(ceiling, "keccak-wide", "rate_ramp_with_retries", "r_max_with_retries", $"k_retry={kRetry} ", w0,
+        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_r_max", extraFields: "", w0,
             rate => MeasureProductionUnderFlood(rig, rate));
     }
 
