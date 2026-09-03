@@ -1202,61 +1202,6 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public async Task OwnedTrieWarmerScope_PublishesAccountAndSlotNodesToDistinctProcessingScope()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 slot = 1;
-        byte[] slotValue = Enumerable.Repeat((byte)0x2a, 32).ToArray();
-        (Account account, Hash256 stateRoot, MemDb trieDb) = BuildSingleAccountTries(address, slot, slotValue);
-        using (trieDb)
-        {
-            FlatDbConfig config = new()
-            {
-                TrieCacheMemoryBudget = MemorySizes.MiB,
-                TrieWarmerWorkerCount = 2,
-                VerifyWithTrie = true,
-            };
-            ResourcePool resourcePool = new(config);
-            TrieNodeCache trieNodeCache = new(config, LimboLogs.Instance);
-            RecordingPersistenceReader prewarmerReader = new(trieDb, address, account, slot, slotValue);
-            RecordingPersistenceReader mainReader = new(trieDb, address, account, slot, slotValue);
-            QueueFlatDbManager flatDbManager = new(resourcePool, trieNodeCache, prewarmerReader, mainReader);
-            await using TrieWarmer trieWarmer = new(LimboLogs.Instance, config);
-            using FlatScopeProvider provider = new(
-                new TestMemDb(),
-                flatDbManager,
-                config,
-                trieWarmer,
-                ResourcePool.Usage.MainBlockProcessing,
-                LimboLogs.Instance,
-                isReadOnly: false);
-            BlockHeader baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject;
-
-            using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(baseBlock, new LocalMetrics());
-            IWorldStateScopeProvider.ITrieWarmerScope trieWarmerScope = ordinaryScope.CreateTrieWarmerScope();
-            trieWarmerScope.HintWarmSlot(new ValueAddress(address.Bytes), slot);
-            trieWarmerScope.HintWarmAccount(new ValueAddress(address.Bytes));
-            trieWarmerScope.Dispose();
-
-            using IWorldStateScopeProvider.IScope mainScope = provider.BeginScope(baseBlock, new LocalMetrics());
-            Account? readAccount = mainScope.Get(address);
-            byte[] readSlot = mainScope.CreateStorageTree(address).Get(slot);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(readAccount, Is.EqualTo(account));
-                Assert.That(readSlot, Is.EqualTo(slotValue));
-                Assert.That(prewarmerReader.StateTrieReads, Is.GreaterThan(0));
-                Assert.That(prewarmerReader.StorageTrieReads, Is.GreaterThan(0));
-                Assert.That(mainReader.StateTrieReads, Is.Zero,
-                    "the distinct main scope should consume the shared trie-node cache");
-                Assert.That(mainReader.StorageTrieReads, Is.LessThan(prewarmerReader.StorageTrieReads),
-                    "the distinct main scope should consume warmed storage nodes from the shared trie-node cache");
-            }
-        }
-    }
-
-    [Test]
     public void CreateTrieWarmerScope_WhenScopeConstructionThrows_ReleasesGatheredBundleExactlyOnce()
     {
         FlatDbConfig config = new();
@@ -1286,7 +1231,7 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(2));
+            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
             Assert.That(reader.DisposeCount, Is.EqualTo(1));
             Assert.That(trieWarmer.EnterCount, Is.EqualTo(2));
         }
@@ -1320,6 +1265,13 @@ public class FlatWorldStateScopeProviderTests
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
+        ordinaryScope.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resourcePool.ReturnedCachedResources, Is.Zero);
+            Assert.That(reader.DisposeCount, Is.Zero);
+        }
+
         Task firstDisposeTask = Task.Factory.StartNew(
             scope.Dispose,
             CancellationToken.None,
@@ -1347,61 +1299,11 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(secondDisposeTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
             Assert.That(trieWarmer.EnterCount, Is.EqualTo(2));
-            Assert.That(trieWarmer.ExitCount, Is.EqualTo(1));
+            Assert.That(trieWarmer.ExitCount, Is.EqualTo(2));
             Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
-            Assert.That(reader.DisposeCount, Is.Zero);
-            trieNodeCache.Received(1).Add(Arg.Any<TransientResource>());
+            Assert.That(reader.DisposeCount, Is.EqualTo(1));
+            trieNodeCache.DidNotReceive().Add(Arg.Any<TransientResource>());
         }
-    }
-
-    private static (Account Account, Hash256 StateRoot, MemDb TrieDb)
-        BuildSingleAccountTries(Address address, in UInt256 slot, byte[] slotValue)
-    {
-        MemDb trieDb = new();
-        Hash256 addressHash = address.ToAccountPath.ToHash256();
-        StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
-        storageTree.Set(slot, slotValue);
-        storageTree.Set(slot + 1, slotValue);
-        storageTree.Commit();
-
-        Account account = new(1, 1, storageTree.RootHash, Keccak.OfAnEmptyString);
-        StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
-        stateTree.Set(address, account);
-        stateTree.Commit();
-
-        return (account, stateTree.RootHash, trieDb);
-    }
-
-    private sealed class QueueFlatDbManager(
-        IResourcePool resourcePool,
-        ITrieNodeCache trieNodeCache,
-        params IPersistence.IPersistenceReader[] readers) : IFlatDbManager
-    {
-        private int _nextReader;
-
-        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
-        {
-            IPersistence.IPersistenceReader reader = readers[Interlocked.Increment(ref _nextReader) - 1];
-            return new SnapshotBundle(
-                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-                trieNodeCache,
-                resourcePool,
-                usage);
-        }
-
-        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
-        {
-            IPersistence.IPersistenceReader reader = readers[Interlocked.Increment(ref _nextReader) - 1];
-            return new ReadOnlySnapshotBundle(
-                new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty());
-        }
-
-        public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) =>
-            throw new NotSupportedException();
-
-        public void FlushCache(CancellationToken cancellationToken) { }
-
-        public bool HasStateForBlock(in StateId stateId) => true;
     }
 
     private sealed class FixedFlatDbManager(ReadOnlySnapshotBundle snapshotBundle, IResourcePool resourcePool, ITrieNodeCache trieNodeCache) : IFlatDbManager

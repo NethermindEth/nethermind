@@ -235,7 +235,7 @@ public sealed class SnapshotBundle : IDisposable
     // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
     // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
     // spinning forever (the target has no whole-bundle lease deferring that release).
-    private TransientResource? TryLeaseTransientResource()
+    internal TransientResource? TryLeaseTransientResource()
     {
         SpinWait spinWait = default;
         while (true)
@@ -577,27 +577,8 @@ public sealed class SnapshotBundle : IDisposable
     internal IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope(
         in StateId baseState,
         ITrieWarmer trieWarmer,
-        ILogManager logManager)
-    {
-        TransientResource? transientResource = null;
-        try
-        {
-            transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv);
-            FlatTrieWarmerScope scope = new(
-                baseState,
-                this,
-                transientResource,
-                _trieNodeCache,
-                trieWarmer,
-                logManager);
-            transientResource = null;
-            return scope;
-        }
-        finally
-        {
-            transientResource?.ReleaseLease();
-        }
-    }
+        ILogManager logManager) =>
+        new FlatTrieWarmerScope(baseState, this, _trieNodeCache, trieWarmer, logManager);
 
     /// <summary>
     /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
@@ -609,6 +590,9 @@ public sealed class SnapshotBundle : IDisposable
     /// </remarks>
     /// <returns><c>false</c> when the bundle is already fully disposed; the caller must skip the traversal.</returns>
     internal bool TryLeaseReadOnlyBundle() => _readOnlySnapshotBundle.TryLease();
+
+    internal ReadOnlySnapshotBundle? TryLeaseReadOnlySnapshotBundle() =>
+        _readOnlySnapshotBundle.TryLease() ? _readOnlySnapshotBundle : null;
 
     /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();

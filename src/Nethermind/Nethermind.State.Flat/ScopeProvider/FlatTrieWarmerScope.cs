@@ -16,7 +16,7 @@ internal sealed class FlatTrieWarmerScope :
     IWorldStateScopeProvider.ITrieWarmerScope,
     ITrieWarmer.IAddressWarmer
 {
-    private readonly SnapshotBundle _snapshotBundle;
+    private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
     private readonly TransientResource _transientResource;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
@@ -44,22 +44,38 @@ internal sealed class FlatTrieWarmerScope :
     public FlatTrieWarmerScope(
         in StateId baseState,
         SnapshotBundle snapshotBundle,
-        TransientResource transientResource,
         ITrieNodeCache trieNodeCache,
         ITrieWarmer trieWarmer,
         ILogManager logManager)
     {
-        _snapshotBundle = snapshotBundle;
-        _transientResource = transientResource;
-        _trieNodeCache = trieNodeCache;
-        _trieWarmer = trieWarmer;
-        _logManager = logManager;
-        _stateTree = new PatriciaTree(new StateResolver(this), logManager)
+        ReadOnlySnapshotBundle? readOnlySnapshotBundle = null;
+        TransientResource? transientResource = null;
+        try
         {
-            RootHash = baseState.StateRoot.ToCommitment()
-        };
+            readOnlySnapshotBundle = snapshotBundle.TryLeaseReadOnlySnapshotBundle()
+                ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
+            transientResource = snapshotBundle.TryLeaseTransientResource()
+                ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
 
-        _trieWarmer.OnEnterScope();
+            _readOnlySnapshotBundle = readOnlySnapshotBundle;
+            _transientResource = transientResource;
+            _trieNodeCache = trieNodeCache;
+            _trieWarmer = trieWarmer;
+            _logManager = logManager;
+            _stateTree = new PatriciaTree(new StateResolver(this), logManager)
+            {
+                RootHash = baseState.StateRoot.ToCommitment()
+            };
+
+            _trieWarmer.OnEnterScope();
+            readOnlySnapshotBundle = null;
+            transientResource = null;
+        }
+        finally
+        {
+            transientResource?.ReleaseLease();
+            readOnlySnapshotBundle?.Dispose();
+        }
     }
 
     public void HintWarmAccount(in ValueAddress address)
@@ -92,7 +108,7 @@ internal sealed class FlatTrieWarmerScope :
     {
         if (_storageWarmers.TryGetValue(address, out StorageWarmer? storageWarmer)) return storageWarmer;
 
-        Hash256 storageRoot = _snapshotBundle.GetAccount(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+        Hash256 storageRoot = _readOnlySnapshotBundle.GetAccount(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
         if (storageRoot == Keccak.EmptyTreeHash) return null;
 
         storageWarmer = new StorageWarmer(this, address.ToAccountPath.ToHash256(), storageRoot, _logManager);
@@ -148,12 +164,17 @@ internal sealed class FlatTrieWarmerScope :
 
         if (_trieNodeCache.TryGet(address, in path, hash, out node)) return node;
 
-        node = address is null
-            ? _snapshotBundle.FindStateNodeOrUnknownForTrieWarmer(in path, hash)
-            : _snapshotBundle.FindStorageNodeOrUnknownTrieWarmer(address, in path, hash);
+        bool foundInSnapshot = address is null
+            ? _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node)
+            : _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
+        if (!foundInSnapshot)
+        {
+            node = new TrieNode(NodeType.Unknown, hash);
+            node.MarkWarmerOwned();
+        }
         return address is null
-            ? _transientResource.GetOrAddStateNode(in path, node)
-            : _transientResource.GetOrAddStorageNode((Hash256AsKey)address, in path, node);
+            ? _transientResource.GetOrAddStateNode(in path, node!)
+            : _transientResource.GetOrAddStorageNode((Hash256AsKey)address, in path, node!);
     }
 
     public void Dispose()
@@ -175,7 +196,6 @@ internal sealed class FlatTrieWarmerScope :
                 try
                 {
                     jobsDrained?.GetAwaiter().GetResult();
-                    _trieNodeCache.Add(_transientResource);
                 }
                 catch (Exception exception)
                 {
@@ -183,6 +203,7 @@ internal sealed class FlatTrieWarmerScope :
                 }
 
                 CaptureException(ref disposeException, _transientResource.ReleaseLease);
+                CaptureException(ref disposeException, _readOnlySnapshotBundle.Dispose);
                 CaptureException(ref disposeException, _trieWarmer.OnExitScope);
             }
             finally
@@ -222,7 +243,7 @@ internal sealed class FlatTrieWarmerScope :
         }
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            scope._snapshotBundle.TryLoadStateRlp(in path, hash, flags);
+            scope._readOnlySnapshotBundle.TryLoadStateRlp(in path, hash, flags);
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null ? this : new StorageResolver(scope, address);
@@ -239,7 +260,7 @@ internal sealed class FlatTrieWarmerScope :
         }
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            scope._snapshotBundle.TryLoadStorageRlp(address, in path, hash, flags);
+            scope._readOnlySnapshotBundle.TryLoadStorageRlp(address, in path, hash, flags);
     }
 
     private sealed class StorageWarmer : ITrieWarmer.IStorageWarmer

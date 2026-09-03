@@ -1240,6 +1240,24 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
+    {
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+
+        using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
+        caches.MainScope = null;
+        ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
+
+        if (populator)
+            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+        else
+            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
+    }
+
     private class Context : IDisposable
     {
         public WorldState StateProvider { get; }
@@ -1249,11 +1267,7 @@ public class StorageProviderTests(bool useFlat)
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
 
-        public Context(
-            bool useFlat,
-            PreBlockCaches preBlockCaches = null,
-            bool setInitialState = true,
-            bool trackWrittenData = false)
+        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false)
         {
             IWorldStateScopeProvider scopeProvider;
             if (useFlat)
@@ -1269,10 +1283,7 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(
-                    scopeProvider,
-                    new PrewarmerState(preBlockCaches, isPrewarmer: true),
-                    LimboLogs.Instance);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, new PrewarmerState(preBlockCaches, isPrewarmer: true), LimboLogs.Instance);
             }
 
             if (trackWrittenData)

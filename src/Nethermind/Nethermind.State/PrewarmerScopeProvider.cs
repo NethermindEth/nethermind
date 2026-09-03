@@ -54,41 +54,41 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = null;
-        PreBlockCaches.TrieWarmerScopeSource? trieWarmerScopeSource = null;
         IWorldStateScopeProvider.IScope? processingScope = null;
         try
         {
             processingScope = baseProvider.BeginScope(baseBlock, metrics);
-            if (isPrewarmer)
+            lock (preBlockCaches)
             {
-                trieWarmerScope = preBlockCaches.RentTrieWarmerScope();
-            }
-            else
-            {
-                trieWarmerScopeSource = preBlockCaches.RegisterTrieWarmerScopeSource(processingScope);
+                if (isPrewarmer)
+                {
+                    trieWarmerScope = preBlockCaches.MainScope?.CreateTrieWarmerScope();
+                }
+                else
+                {
+                    preBlockCaches.MainScope = processingScope;
+                }
             }
             PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-            ScopeWrapper scope = new(processingScope, preBlockCaches, logManager, isPrewarmer, trieWarmerScope, trieWarmerScopeSource, storageReadCapture, metrics);
+            ScopeWrapper scope = new(processingScope, preBlockCaches, logManager, isPrewarmer, trieWarmerScope, storageReadCapture, metrics);
             processingScope = null;
             trieWarmerScope = null;
-            trieWarmerScopeSource = null;
             return scope;
         }
         finally
         {
             try
             {
-                trieWarmerScope?.Dispose();
-                trieWarmerScopeSource?.Dispose();
+                processingScope?.Dispose();
             }
             finally
             {
-                processingScope?.Dispose();
+                trieWarmerScope?.Dispose();
             }
         }
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope, PreBlockCaches.TrieWarmerScopeSource? trieWarmerScopeSource, PreBlockCaches.StorageReadCapture? storageReadCapture, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope, PreBlockCaches.StorageReadCapture? storageReadCapture, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -96,7 +96,6 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = trieWarmerScope;
-        private readonly PreBlockCaches.TrieWarmerScopeSource? trieWarmerScopeSource = trieWarmerScopeSource;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -112,7 +111,6 @@ public class PrewarmerScopeProvider(
             try
             {
                 trieWarmerScope?.Dispose();
-                trieWarmerScopeSource?.Dispose();
             }
             finally
             {
@@ -120,7 +118,18 @@ public class PrewarmerScopeProvider(
                 {
                     _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
                 }
-                baseScope.Dispose();
+                if (!isPrewarmer)
+                {
+                    lock (preBlockCaches)
+                    {
+                        if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
+                        baseScope.Dispose();
+                    }
+                }
+                else
+                {
+                    baseScope.Dispose();
+                }
             }
         }
 
