@@ -310,6 +310,7 @@ namespace Nethermind.Core
             return result;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
 
 #if ZK_EVM
@@ -371,13 +372,30 @@ namespace Nethermind.Core
         public static implicit operator Address(AddressAsKey key) => key._key;
         public static implicit operator AddressAsKey(Address key) => new(key);
 
-        public bool Equals(AddressAsKey other) => _key == other._key;
+        public bool Equals(AddressAsKey other) => Equals(in other);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
         public override string ToString() => _key?.ToString() ?? "<null>";
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
 
-        public bool Equals(in AddressAsKey other) => _key == other._key;
+        /// <remarks>
+        /// The 20-byte comparison is spelled out rather than left to <see cref="Address.Equals(Address)"/>, which the
+        /// JIT emits as a call from a cache probe and so puts on the hot path of every lookup.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(in AddressAsKey other)
+        {
+            Address a = _key;
+            Address b = other._key;
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null) return false;
+
+            ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
+            ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
+            return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
+                && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, Vector128<byte>.Count)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, Vector128<byte>.Count));
+        }
     }
 
     public ref struct AddressStructRef
