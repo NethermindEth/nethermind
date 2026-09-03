@@ -5,53 +5,48 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm;
 
-/// <summary>An opcode handler's outcome: the program counter it selected, packed with its halting status.</summary>
+/// <summary>An opcode handler's outcome: the program counter it selected, alongside its halting status.</summary>
 /// <remarks>
-/// The counter occupies the low 32 bits and the <see cref="EvmExceptionType"/> the high 32. Taking the
-/// counter by reference instead forces it into an address-taken stack slot for as long as the body runs;
-/// returning it keeps it in a register. One <see cref="ulong"/> wide because a 16-byte struct returns
-/// through memory on the Windows x64 ABI.
+/// Taking the counter by reference instead forces it into an address-taken stack slot for as long as the
+/// body runs; returning it keeps it in a register. Two 4-byte fields rather than one packed <see cref="ulong"/>
+/// so that the JIT tracks them separately: a handler that reports no counter stores a constant, and the
+/// dispatch's test against it folds away. Eight bytes wide, so it still returns in a register.
 /// </remarks>
-public readonly struct OpcodeResult
+[method: MethodImpl(MethodImplOptions.AggressiveInlining)]
+public readonly struct OpcodeResult(nint programCounter, EvmExceptionType exception)
 {
     /// <summary>The <see cref="ProgramCounter"/> of a handler that leaves the counter to the caller.</summary>
     /// <remarks>
     /// Most handlers only step over their own opcode, so they return a bare <see cref="EvmExceptionType"/>
-    /// and the dispatch keeps the counter it already holds. EIP-170 caps code at 24 KiB and EIP-3860 caps
-    /// init code at 48 KiB, so no counter a handler can select reaches this value.
+    /// and the dispatch keeps the counter it already holds. Negative because a counter never is, which
+    /// lets the dispatch test the sign rather than compare against a constant.
     /// </remarks>
-    internal const uint NoProgramCounter = 0x8000_0000;
+    internal const int NoProgramCounter = -1;
 
-    private readonly ulong _packed;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public OpcodeResult(nint programCounter, EvmExceptionType exception)
-        => _packed = ((ulong)(uint)exception << 32) | (uint)programCounter;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private OpcodeResult(ulong packed) => _packed = packed;
+    private readonly int _programCounter = (int)programCounter;
+    private readonly EvmExceptionType _exception = exception;
 
     /// <summary>The counter the handler selected, or <see cref="NoProgramCounter"/> if it selected none.</summary>
     public nint ProgramCounter
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => (nint)(uint)_packed;
+        get => _programCounter;
     }
 
     /// <summary>Why the handler halted, or <see cref="EvmExceptionType.None"/> if it did not.</summary>
     public EvmExceptionType Exception
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => (EvmExceptionType)(uint)(_packed >> 32);
+        get => _exception;
     }
 
     /// <summary>Wraps a status from a handler that leaves the program counter to the caller.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator OpcodeResult(EvmExceptionType exception)
-        => new(((ulong)(uint)exception << 32) | NoProgramCounter);
+        => new(NoProgramCounter, exception);
 
     /// <summary>Wraps a counter from a handler that moved it and did not halt.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator OpcodeResult(nint programCounter)
-        => new(((ulong)(uint)EvmExceptionType.None << 32) | (uint)programCounter);
+        => new(programCounter, EvmExceptionType.None);
 }

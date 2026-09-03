@@ -181,7 +181,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         // Only the handlers that move the counter report one; the rest leave the step taken above.
         nint programCounter = result.ProgramCounter;
-        if (programCounter != OpcodeResult.NoProgramCounter)
+        if (programCounter >= 0)
             pc = programCounter;
 
         // The counter is final here, so the target resolves before the halt checks instead of after them.
