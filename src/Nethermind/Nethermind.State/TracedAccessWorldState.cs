@@ -351,7 +351,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         {
             // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
             // frame without allocating a new byte[32] per SLOAD.
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value);
+            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
             return _scratchStorage;
         }
 
