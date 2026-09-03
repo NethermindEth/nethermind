@@ -20,6 +20,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static OpcodeTable GetOpcodeTable() => _opcodeTable;
 
+    /// <inheritdoc/>
+    /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
+    private partial bool ShouldRefreshOpcodes() => false;
+
     public object ReturnData;
 
     /// <summary>
