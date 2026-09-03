@@ -8,7 +8,7 @@ using System.Net.Sockets;
 namespace Nethermind.Network.Discovery;
 
 /// <summary>
-/// Describes which remote address families the local RLPx and discovery sockets can serve from their shared bind address.
+/// Describes which remote address families a local listener can serve.
 /// </summary>
 public static class DiscoveryAddressSupport
 {
@@ -33,7 +33,7 @@ public static class DiscoveryAddressSupport
     public static AddressFamily GetFamily(IPAddress address)
         => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
 
-    private static bool SupportsFamily(IPAddress localIp, AddressFamily addressFamily)
+    internal static bool SupportsFamily(IPAddress localIp, AddressFamily addressFamily)
         => addressFamily switch
         {
             AddressFamily.InterNetwork =>
@@ -65,6 +65,21 @@ public static class DiscoveryAddressSupport
         => (
             SupportsFamily(localIp, AddressFamily.InterNetwork) ? externalIpV4 : null,
             SupportsFamily(localIp, AddressFamily.InterNetworkV6) ? externalIpV6 : null);
+
+    /// <summary>
+    /// Selects addresses served by both the RLPx and discovery listeners.
+    /// </summary>
+    internal static (IPAddress? IPv4, IPAddress? IPv6) SelectAdvertised(
+        IPAddress? rlpxAddress,
+        IPAddress? discoveryAddress,
+        IPAddress? externalIpV4,
+        IPAddress? externalIpV6)
+        => (
+            SupportsBoth(rlpxAddress, discoveryAddress, AddressFamily.InterNetwork) ? externalIpV4 : null,
+            SupportsBoth(rlpxAddress, discoveryAddress, AddressFamily.InterNetworkV6) ? externalIpV6 : null);
+
+    private static bool SupportsBoth(IPAddress? first, IPAddress? second, AddressFamily family)
+        => first is not null && second is not null && SupportsFamily(first, family) && SupportsFamily(second, family);
 
     /// <summary>
     /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.

@@ -13,7 +13,8 @@ public sealed class NodeSourceToDiscV4Feeder(
     IDiscoveryApp discoveryApp,
     IIPResolver ipResolver,
     IProcessExitSource exitSource,
-    int maxNodes = 50)
+    int maxNodes = 50,
+    NetworkListenerState? listenerState = null)
 {
     public const string SourceKey = "Enr";
 
@@ -21,6 +22,7 @@ public sealed class NodeSourceToDiscV4Feeder(
     private readonly IDiscoveryApp _discoveryApp = discoveryApp;
     private readonly IIPResolver _ipResolver = ipResolver;
     private readonly IProcessExitSource _exitSource = exitSource;
+    private readonly NetworkListenerState? _listenerState = listenerState;
     private readonly int _maxNodes = maxNodes;
 
     public async Task Run()
@@ -31,7 +33,7 @@ public sealed class NodeSourceToDiscV4Feeder(
         }
 
         CancellationToken token = _exitSource.Token;
-        IPAddress localIp = (await _ipResolver.Resolve(token)).LocalIp;
+        IPAddress localIp = _listenerState?.DiscoveryAddress ?? (await _ipResolver.Resolve(token)).LocalIp;
         int addedNodes = 0;
         await foreach (Node node in _nodeSource.DiscoverNodes(token).WithCancellation(token))
         {

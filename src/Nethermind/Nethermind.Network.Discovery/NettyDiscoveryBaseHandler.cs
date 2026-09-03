@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Logging;
-using System.Net;
 
 namespace Nethermind.Network.Discovery;
 
@@ -16,7 +16,7 @@ public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager, IChanne
 
     // https://github.com/ethereum/devp2p/blob/master/discv4.md#wire-protocol
     // https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#udp-communication
-    protected internal const int MaxPacketSize = 1280;
+    protected const int MaxPacketSize = 1280;
 
     protected IChannel Channel => _channel ?? throw new InvalidOperationException("Discovery channel is not initialized.");
 
@@ -27,7 +27,7 @@ public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager, IChanne
     /// </summary>
     protected static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
     {
-        IPAddress address = NetworkHelper.NormalizeIpv4Mapped(endpoint.Address);
+        IPAddress address = endpoint.Address.NormalizeMappedIPv4();
         return ReferenceEquals(address, endpoint.Address) ? endpoint : new IPEndPoint(address, endpoint.Port);
     }
 

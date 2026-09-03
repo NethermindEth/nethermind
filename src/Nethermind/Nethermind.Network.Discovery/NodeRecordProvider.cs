@@ -21,7 +21,8 @@ public sealed class NodeRecordProvider(
     IBlockTree blockTree,
     IForkInfo forkInfo,
     ITimestamper timestamper,
-    ILogManager logManager
+    ILogManager logManager,
+    NetworkListenerState? listenerState = null
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -40,6 +41,10 @@ public sealed class NodeRecordProvider(
                 if (!_subscribed)
                 {
                     blockTree.NewHeadBlock += OnNewHeadBlock;
+                    if (listenerState is not null)
+                    {
+                        listenerState.Changed += OnListenerChanged;
+                    }
                     _subscribed = true;
                 }
 
@@ -54,6 +59,12 @@ public sealed class NodeRecordProvider(
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        => RefreshRecord(e.Block.Header);
+
+    private void OnListenerChanged(object? sender, EventArgs e)
+        => RefreshRecord(effectiveHeader: null);
+
+    private void RefreshRecord(BlockHeader? effectiveHeader)
     {
         Task<LocalNodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
         if (task is null)
@@ -66,18 +77,18 @@ public sealed class NodeRecordProvider(
             task = _nodeRecordTask;
             if (task is not null)
             {
-                _nodeRecordTask = RefreshNodeRecord(task, e.Block.Header);
+                _nodeRecordTask = RefreshNodeRecord(task, effectiveHeader);
             }
         }
     }
 
-    private async Task<LocalNodeRecord> RefreshNodeRecord(Task<LocalNodeRecord> currentTask, BlockHeader head)
+    private async Task<LocalNodeRecord> RefreshNodeRecord(Task<LocalNodeRecord> currentTask, BlockHeader? effectiveHeader)
     {
         LocalNodeRecord current = await currentTask;
         try
         {
             IIPResolver.NethermindIp ip = await ipResolver.Resolve(CancellationToken.None);
-            LocalNodeRecordState state = CreateState(head, ip);
+            LocalNodeRecordState state = CreateState(effectiveHeader, ip);
             if (current.State == state)
             {
                 return current;
@@ -105,10 +116,13 @@ public sealed class NodeRecordProvider(
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        (IPAddress? externalIpV4, IPAddress? externalIpV6) = DiscoveryAddressSupport.SelectAdvertised(
-            ip.LocalIp,
-            ip.ExternalIpV4,
-            ip.ExternalIpV6);
+        (IPAddress? externalIpV4, IPAddress? externalIpV6) = listenerState is null
+            ? DiscoveryAddressSupport.SelectAdvertised(ip.LocalIp, ip.ExternalIpV4, ip.ExternalIpV6)
+            : DiscoveryAddressSupport.SelectAdvertised(
+                listenerState.RlpxAddress,
+                listenerState.DiscoveryAddress,
+                ip.ExternalIpV4,
+                ip.ExternalIpV6);
 
         return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
@@ -122,12 +136,12 @@ public sealed class NodeRecordProvider(
 
         if (ip.ExternalIpV4 is not null && state.ExternalIpV4 is null)
         {
-            _logger.Warn("External IPv4 address is available but not advertised because the node does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+            _logger.Warn("External IPv4 address is available but not advertised because the RLPx and discovery listeners do not both serve IPv4.");
         }
 
         if (ip.ExternalIpV6 is not null && state.ExternalIpV6 is null)
         {
-            _logger.Warn("External IPv6 address is available but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
+            _logger.Warn("External IPv6 address is available but not advertised because the RLPx and discovery listeners do not both serve IPv6.");
         }
 
         if (state.ExternalIpV4 is null && state.ExternalIpV6 is null)

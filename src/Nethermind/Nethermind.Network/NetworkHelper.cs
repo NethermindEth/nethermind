@@ -6,7 +6,6 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network;
@@ -21,37 +20,17 @@ public static class NetworkHelper
     /// address families (the DotNetty sockets are created dual-mode). Callers must be prepared for the bind to
     /// fail and retry with the original address. Specific addresses are returned unchanged so an operator can
     /// pin the listener to a single family or interface. An explicit <c>0.0.0.0</c> override is kept IPv4-only;
-    /// only an unset wildcard is widened. macOS is excluded uniformly as a conservative measure:
-    /// its discovery datagram channel is deliberately created with
-    /// <see cref="System.Net.Sockets.AddressFamily.InterNetwork"/> (see <c>CompositeDiscoveryApp</c>).
+    /// only an unset wildcard is widened.
     /// </remarks>
     public static IPAddress GetInboundBindAddress(IPAddress localIp, string? localIpConfig)
         => GetInboundBindAddress(localIp, localIpConfig, CanBindDualStack());
 
     internal static IPAddress GetInboundBindAddress(IPAddress localIp, string? localIpConfig, bool supportsDualStack)
-        => supportsDualStack && IsWildcardForDualStack(localIp, localIpConfig) ? IPAddress.IPv6Any : localIp;
+        => supportsDualStack && localIpConfig is null && IPAddress.Any.Equals(localIp)
+            ? IPAddress.IPv6Any
+            : localIp;
 
-    private static bool IsWildcard(IPAddress localIp)
-        => IPAddress.Any.Equals(localIp) || IPAddress.IPv6Any.Equals(localIp);
-
-    private static bool IsWildcardForDualStack(IPAddress localIp, string? localIpConfig)
-    {
-        if (!IsWildcard(localIp)) return false;
-
-        // Explicit IPv4 wildcard must stay IPv4-only; only the default (unset) wildcard is widened.
-        return localIpConfig is null
-            || !IPAddress.TryParse(localIpConfig, out IPAddress? configured)
-            || configured.AddressFamily != AddressFamily.InterNetwork;
-    }
-
-    private static bool CanBindDualStack()
-        => !RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && Socket.OSSupportsIPv6;
-
-    /// <summary>
-    /// Reduces an IPv4-mapped IPv6 address (<c>::ffff:a.b.c.d</c>) to its plain IPv4 form; any other address is returned unchanged.
-    /// </summary>
-    public static IPAddress NormalizeIpv4Mapped(IPAddress address)
-        => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+    private static bool CanBindDualStack() => Socket.OSSupportsIPv6;
 
     private static PortInUseException MapOrRethrow(Exception exception, int[]? ports = null, string[]? urls = null)
     {

@@ -25,12 +25,13 @@ namespace Nethermind.Network.Discovery;
 public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
-    private readonly IIPResolver _ipResolver;
     private readonly IConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
     private readonly ILogger _logger;
+    private readonly NetworkListenerState _listenerState;
+    private IEventLoopGroup? _eventLoopGroup;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
@@ -39,12 +40,13 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         ILogManager logManager,
         Func<DiscoveryV5App> discoveryV5Factory, // These two are factory because they are optional.
         Func<DiscoveryApp> discoveryV4Factory,
-        IChannelFactory? channelFactory = null
+        IChannelFactory? channelFactory = null,
+        NetworkListenerState? listenerState = null
     )
     {
         _networkConfig = networkConfig;
-        _ipResolver = ipResolver;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig);
+        _listenerState = listenerState ?? new NetworkListenerState(networkConfig, ipResolver, logManager);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, _listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
 
@@ -74,24 +76,58 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     {
         if (_discoveryApps.Length == 0) return;
 
-        IPAddress localIp = (await _ipResolver.Resolve()).LocalIp;
+        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
+        _eventLoopGroup = eventLoopGroup;
+        try
+        {
+            await _connections.BindAsync(
+                () => CreateBootstrap(eventLoopGroup),
+                CreateDatagramChannel,
+                _networkConfig.DiscoveryPort,
+                _listenerState.PreferredAddress,
+                _listenerState.FallbackAddress);
+
+            await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
+        }
+        catch
+        {
+            try
+            {
+                await Task.WhenAll(
+                    _connections.StopAsync(),
+                    WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StopAsync()));
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error stopping discovery after startup failed. {e}");
+            }
+
+            try
+            {
+                await ShutdownEventLoopGroup();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error shutting down the discovery event loop after startup failed. {e}");
+            }
+
+            throw;
+        }
+    }
+
+    private Bootstrap CreateBootstrap(IEventLoopGroup eventLoopGroup)
+    {
         Bootstrap bootstrap = new Bootstrap()
-            .Group(new MultithreadEventLoopGroup(1))
+            .Group(eventLoopGroup)
             .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
             .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2))
             ;
-
-        if (_channelFactory is not null)
-            bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());
-        else
-            bootstrap.ChannelFactory(() => new SocketDatagramChannel(CreateDatagramSocket(localIp)));
-
         bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
-
-        await _connections.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
-
-        await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
+        return bootstrap;
     }
+
+    private IChannel CreateDatagramChannel(IPAddress address)
+        => _channelFactory?.CreateDatagramChannel() ?? new SocketDatagramChannel(CreateDatagramSocket(address));
 
     /// <summary>
     /// Creates the UDP socket whose address family and dual-mode behavior match a configured listener address.
@@ -102,12 +138,21 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     internal static Socket CreateDatagramSocket(IPAddress localIp)
     {
         Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
-        if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
+        try
         {
-            socket.DualMode = localIp.Equals(IPAddress.IPv6Any) || localIp.IsIPv4MappedToIPv6;
-        }
+            socket.ExclusiveAddressUse = true;
+            if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                socket.DualMode = localIp.Equals(IPAddress.IPv6Any) || localIp.IsIPv4MappedToIPv6;
+            }
 
-        return socket;
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -141,10 +186,20 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
         finally
         {
-            _compositeNodeSource.Dispose();
-            await DisposeDiscoveryApps();
+            try
+            {
+                await ShutdownEventLoopGroup();
+            }
+            finally
+            {
+                _compositeNodeSource.Dispose();
+                await DisposeDiscoveryApps();
+            }
         }
     }
+
+    private Task ShutdownEventLoopGroup()
+        => Interlocked.Exchange(ref _eventLoopGroup, null)?.ShutdownGracefullyAsync() ?? Task.CompletedTask;
 
     string IStoppableService.Description => "discovery connection";
 

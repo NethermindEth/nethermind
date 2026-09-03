@@ -260,6 +260,61 @@ public class NodeRecordProviderTests
         AssertEndpointEntries(decoded, null, "2001:db8::5");
     }
 
+    [TestCase("::", "::", "192.0.2.1", "2001:db8::1")]
+    [TestCase("::", "0.0.0.0", "192.0.2.1", null)]
+    [TestCase("0.0.0.0", "::", "192.0.2.1", null)]
+    [TestCase("::1", "::", null, "2001:db8::1")]
+    public async Task GetCurrentAsync_AdvertisesOnlyFamiliesServedByBothListeners(
+        string rlpxAddress,
+        string discoveryAddress,
+        string? expectedIp,
+        string? expectedIp6)
+    {
+        IIPResolver.NethermindIp resolvedIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("2001:db8::1"));
+        NetworkListenerState listenerState = CreateListenerState(resolvedIp);
+        listenerState.SetRlpxAddress(IPAddress.Parse(rlpxAddress));
+        listenerState.SetDiscoveryAddress(IPAddress.Parse(discoveryAddress));
+
+        NodeRecordProvider provider = CreateProvider(
+            Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
+            new NetworkForkId(0x01020304, 20),
+            resolvedIp,
+            listenerState: listenerState);
+
+        NodeRecord record = await provider.GetCurrentAsync();
+
+        AssertEndpointEntries(NodeRecord.FromEnrString(record.ToString()), expectedIp, expectedIp6);
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_RefreshesWhenListenersFinishBinding()
+    {
+        IIPResolver.NethermindIp resolvedIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("2001:db8::1"));
+        NetworkListenerState listenerState = CreateListenerState(resolvedIp);
+        NodeRecordProvider provider = CreateProvider(
+            Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
+            new NetworkForkId(0x01020304, 20),
+            resolvedIp,
+            listenerState: listenerState);
+
+        NodeRecord beforeBind = await provider.GetCurrentAsync();
+        listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+        listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+        NodeRecord afterBind = await provider.GetCurrentAsync();
+
+        AssertEndpointEntries(beforeBind, null, null);
+        AssertEndpointEntries(afterBind, "192.0.2.1", "2001:db8::1");
+        Assert.That(afterBind.EnrSequence, Is.GreaterThan(beforeBind.EnrSequence));
+    }
+
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
         => CreateProvider(head, forkId, new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp));
 
@@ -267,13 +322,14 @@ public class NodeRecordProviderTests
         Block head,
         NetworkForkId forkId,
         IIPResolver.NethermindIp resolvedIp,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        NetworkListenerState? listenerState = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(head);
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(head.Header.Number, head.Header.Timestamp).Returns(forkId);
-        return CreateProvider(blockTree, forkInfo, resolvedIp, timestampMilliseconds: 1_000, logManager: logManager);
+        return CreateProvider(blockTree, forkInfo, resolvedIp, timestampMilliseconds: 1_000, logManager: logManager, listenerState: listenerState);
     }
 
     private static NodeRecordProvider CreateProvider(
@@ -292,12 +348,13 @@ public class NodeRecordProviderTests
         IForkInfo forkInfo,
         IIPResolver.NethermindIp resolvedIp,
         long timestampMilliseconds,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        NetworkListenerState? listenerState = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
 
-        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, logManager);
+        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, logManager, listenerState);
     }
 
     private static NodeRecordProvider CreateProvider(
@@ -305,7 +362,8 @@ public class NodeRecordProviderTests
         IForkInfo forkInfo,
         IIPResolver ipResolver,
         long timestampMilliseconds,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        NetworkListenerState? listenerState = null)
     {
         INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
         networkConfig.P2PPort.Returns(30303);
@@ -324,7 +382,16 @@ public class NodeRecordProviderTests
             blockTree,
             forkInfo,
             timestamper,
-            logManager ?? LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance,
+            listenerState);
+    }
+
+    private static NetworkListenerState CreateListenerState(IIPResolver.NethermindIp resolvedIp)
+    {
+        NetworkConfig networkConfig = new() { LocalIp = "::" };
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
+        return new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
     }
 
     private static void AssertEndpointEntries(NodeRecord decoded, string? expectedIp, string? expectedIp6)

@@ -46,7 +46,8 @@ public class DiscoveryV5AppTests
     private DiscoveryV5App CreateDiscoveryV5App(
         IPAddress externalIp,
         Action<ContainerBuilder>? configureDiscv5Services = null,
-        IPAddress? localIp = null)
+        IPAddress? localIp = null,
+        IPAddress? boundDiscoveryIp = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -57,6 +58,12 @@ public class DiscoveryV5AppTests
         IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        NetworkListenerState? listenerState = null;
+        if (boundDiscoveryIp is not null)
+        {
+            listenerState = new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
+            listenerState.SetDiscoveryAddress(boundDiscoveryIp);
+        }
         EthereumEcdsa ecdsa = new(0);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         Block head = Build.A.Block.Genesis.TestObject;
@@ -68,6 +75,10 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
         builder.RegisterInstance(enode).As<IEnode>();
         builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        if (listenerState is not null)
+        {
+            builder.RegisterInstance(listenerState);
+        }
         builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
         builder.RegisterInstance(blockTree).As<IBlockTree>();
@@ -89,7 +100,8 @@ public class DiscoveryV5AppTests
             new DiscoveryConfig { },
             new ProcessExitSource(CancellationToken.None),
             LimboLogs.Instance,
-            configureDiscv5Services
+            configureDiscv5Services,
+            listenerState
         );
     }
 
@@ -400,6 +412,21 @@ public class DiscoveryV5AppTests
         NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
 
         bool result = ipv4DiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    [Test]
+    public async Task Should_UseBoundDiscoveryFamilyAfterFallback()
+    {
+        await using DiscoveryV5App fallbackApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            localIp: IPAddress.IPv6Any,
+            boundDiscoveryIp: IPAddress.Any);
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
+
+        bool result = fallbackApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
         Assert.That(result, Is.False);
         Assert.That(node, Is.Null);

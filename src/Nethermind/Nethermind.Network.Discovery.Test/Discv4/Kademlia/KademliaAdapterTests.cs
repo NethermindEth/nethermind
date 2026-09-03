@@ -73,7 +73,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IMessageSerializationService _receiverSerializationManager;
         private Node _receiver;
 
-        private void ConfigureBondCallback(IPEndPoint? pongFarAddress = null, ulong? pongEnrSequence = null) =>
+        private void ConfigureBondCallback(
+            IPEndPoint? pongFarAddress = null,
+            ulong? pongEnrSequence = null,
+            Action<PingMsg>? onWirePing = null) =>
             _msgSender
                 .SendMsg(Arg.Any<PingMsg>())
                 .Returns(ci =>
@@ -81,6 +84,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     PingMsg sent = (PingMsg)ci[0]!;
                     using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    onWirePing?.Invoke(msg);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
                         _timestamper.UnixTime.SecondsLong + 1,
@@ -142,7 +146,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs) => new(
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null) => new(
             new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
             _routingTable,
             new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
@@ -160,7 +164,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _timestamper,
             Substitute.For<IProcessExitSource>(),
             new Ecdsa(),
-            _logManager)
+            _logManager,
+            listenerState)
         {
             MsgSender = _msgSender,
         };
@@ -339,6 +344,34 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(result, Is.True);
             await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address)));
+        }
+
+        [TestCase("0.0.0.0", 30303)]
+        [TestCase("::1", 0)]
+        [CancelAfter(10000)]
+        public async Task Ping_UsesActualListenerFamilyInWireSource(string rlpxAddress, int expectedTcpPort, CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            IPAddress externalIpv4 = IPAddress.Parse("192.0.2.10");
+            IPAddress externalIpv6 = IPAddress.Parse("2001:db8::10");
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+                new IIPResolver.NethermindIp(IPAddress.IPv6Any, externalIpv6, externalIpv4, externalIpv6)));
+            _kademliaConfig.CurrentNodeId = new Node(TestItem.PublicKeyA, externalIpv6.ToString(), 30303, 30304);
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetDiscoveryAddress(IPAddress.Any);
+            listenerState.SetRlpxAddress(IPAddress.Parse(rlpxAddress));
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            PingMsg? wirePing = null;
+            ConfigureBondCallback(onWirePing: ping => wirePing = ping);
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(wirePing?.SourceAddress, Is.EqualTo(new IPEndPoint(externalIpv4, 30304)));
+                Assert.That(wirePing?.SourceTcpPort, Is.EqualTo(expectedTcpPort));
+            }
         }
 
         [Test]

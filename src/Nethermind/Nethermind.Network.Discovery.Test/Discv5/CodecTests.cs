@@ -225,7 +225,8 @@ public class CodecTests
 
     [TestCase("192.0.2.1")]
     [TestCase("2001:db8::1")]
-    public void MessageCodec_Roundtrips_Pong(string recipientIp)
+    [TestCase("::ffff:192.0.2.1", "192.0.2.1")]
+    public void MessageCodec_Roundtrips_Pong(string recipientIp, string? expectedIp = null)
     {
         using PongMsg message = new([0, 0, 0, 2], 3, IPAddress.Parse(recipientIp), 30303);
 
@@ -236,7 +237,7 @@ public class CodecTests
         PongMsg decodedPong = (PongMsg)decoded;
         Assert.That(decodedPong.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedPong.EnrSequence, Is.EqualTo(message.EnrSequence));
-        Assert.That(decodedPong.RecipientIp, Is.EqualTo(message.RecipientIp));
+        Assert.That(decodedPong.RecipientIp, Is.EqualTo(IPAddress.Parse(expectedIp ?? recipientIp)));
         Assert.That(decodedPong.RecipientPort, Is.EqualTo(message.RecipientPort));
     }
 

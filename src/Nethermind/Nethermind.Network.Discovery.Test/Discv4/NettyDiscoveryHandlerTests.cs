@@ -341,65 +341,28 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await adapter.Received(8).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
-        [Test]
-        public async Task DualStackMappedSender_IsAcceptedAndNormalizedToIPv4()
+        [TestCase("::ffff:127.0.0.2", "127.0.0.2")]
+        [TestCase("2001:db8::2", "2001:db8::2")]
+        public async Task DualStackSender_IsAcceptedInCanonicalForm(string senderAddress, string expectedAddress)
         {
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
 
-            DiscoveryMsg? received = null;
-            _ = adapter.OnIncomingMsg(Arg.Do<DiscoveryMsg>(x => received = x));
-
-            IPEndPoint mappedSender = new(IPAddress.Parse("::ffff:127.0.0.2"), _address2.Port);
-            byte[] data = SerializePing(service);
-
-            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), mappedSender, _address));
-
-            await SleepWhileWaiting();
-
-            await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
-            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
-            Assert.That(received?.FarAddress?.Address, Is.EqualTo(IPAddress.Parse("127.0.0.2")));
-        }
-
-        [Test]
-        public async Task DualStackNativeIpv6Sender_IsAcceptedUnchanged()
-        {
-            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
-
-            TaskCompletionSource<DiscoveryMsg> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            DiscoveryMsg? received = null;
+            TaskCompletionSource<DiscoveryMsg> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(callInfo =>
             {
-                DiscoveryMsg msg = callInfo.Arg<DiscoveryMsg>();
-                received = msg;
-                tcs.TrySetResult(msg);
+                received.TrySetResult(callInfo.Arg<DiscoveryMsg>());
                 return Task.CompletedTask;
             });
 
-            IPEndPoint ipv6Sender = new(IPAddress.Parse("2001:db8::2"), _address2.Port);
-            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, ipv6Sender, _address, new byte[32])
-            {
-                FarAddress = ipv6Sender
-            };
-            IByteBuffer serialized = service.ZeroSerialize(msg);
-            byte[] data;
-            try
-            {
-                data = serialized.ReadAllBytesAsArray();
-            }
-            finally
-            {
-                serialized.SafeRelease();
-            }
+            IPEndPoint sender = new(IPAddress.Parse(senderAddress), _address2.Port);
+            byte[] data = SerializePing(service);
 
-            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), ipv6Sender, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), sender, _address));
 
-            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
-            await tcs.Task.WaitAsync(cts.Token);
-
+            DiscoveryMsg message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
             ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
-            Assert.That(received?.FarAddress, Is.EqualTo(ipv6Sender));
+            Assert.That(message.FarAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse(expectedAddress), sender.Port)));
         }
 
         [Test]

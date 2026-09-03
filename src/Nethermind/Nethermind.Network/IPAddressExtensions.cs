@@ -13,6 +13,12 @@ public static class IPAddressExtensions
     extension(IPAddress ipAddress)
     {
         /// <summary>
+        /// Returns the plain IPv4 form of an IPv4-mapped IPv6 address, or the original address otherwise.
+        /// </summary>
+        public IPAddress NormalizeMappedIPv4()
+            => ipAddress.IsIPv4MappedToIPv6 ? ipAddress.MapToIPv4() : ipAddress;
+
+        /// <summary>
         /// Returns <c>true</c> for wildcard IPv4 or IPv6 addresses and the <see cref="IPAddress.None"/>
         /// sentinel, including IPv4-mapped forms.
         /// </summary>

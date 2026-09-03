@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
@@ -132,6 +134,30 @@ public class NodeSourceToDiscV4FeederTests
             added.Host == "2001:db8::1" &&
             added.Port == 30303 &&
             added.DiscoveryPort == 30304));
+    }
+
+    [Test]
+    [CancelAfter(1000)]
+    public async Task Test_ShouldUseBoundDiscoveryFamilyAfterFallback(CancellationToken token)
+    {
+        TestNodeSource source = new();
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        IIPResolver ipResolver = CreateIpResolver(IPAddress.IPv6Any);
+        NetworkListenerState listenerState = new(new NetworkConfig { LocalIp = "::" }, ipResolver, LimboLogs.Instance);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, ipResolver, processExitSource, 1, listenerState);
+        Task feederTask = feeder.Run();
+        Node ipv6Node = new(TestItem.PublicKeyA, "2001:db8::1", 30303, 30304);
+        Node ipv4Node = new(TestItem.PublicKeyB, "192.0.2.1", 30303, 30304);
+
+        source.AddNode(ipv6Node);
+        source.AddNode(ipv4Node);
+        await feederTask.WaitAsync(token);
+
+        discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Is<Node>(node => ReferenceEquals(node, ipv6Node)));
+        discoveryApp.Received(1).AddNodeToDiscovery(Arg.Is<Node>(node => ReferenceEquals(node, ipv4Node)));
     }
 
     private static IIPResolver CreateIpResolver(IPAddress? localIp = null)

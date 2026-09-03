@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Config;
@@ -33,11 +34,12 @@ public class KademliaAdapter(
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     IEcdsa ecdsa,
-    ILogManager logManager
-) : KademliaAdapterBase("discv4", ipResolver, logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
+    ILogManager logManager,
+    NetworkListenerState? listenerState = null
+) : KademliaAdapterBase("discv4", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
     private const int PeerCandidateChannelCapacity = 64;
-    internal const int MaxNodesPerNeighborsMsg = 12;
+    private const int MaxNodesPerNeighborsMsg = 12;
 
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
@@ -228,8 +230,10 @@ public class KademliaAdapter(
     private async Task<PongMsg?> TryBond(Node receiver, NodeSession session, CancellationToken token)
     {
         IPEndPoint endpoint = receiver.DiscoveryAddress;
+        AddressFamily family = DiscoveryAddressSupport.GetFamily(endpoint.Address);
+        IPEndPoint sourceAddress = GetSourceAddress(family);
 
-        PingMsg msg = new(endpoint, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.DiscoveryAddress, kademliaConfig.CurrentNodeId.Port, 0)
+        PingMsg msg = new(endpoint, CalculateExpirationTime(), sourceAddress, GetSourceTcpPort(family), 0)
         {
             EnrSequence = (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence // optional and does not seem to be used anywhere.
         };
@@ -250,6 +254,37 @@ public class KademliaAdapter(
             session.OnPingCompleted(endpoint, pingToken);
         }
     }
+
+    private IPEndPoint GetSourceAddress(AddressFamily family)
+    {
+        Node currentNode = kademliaConfig.CurrentNodeId;
+        if (ListenerState?.DiscoveryAddress is not { } listenerAddress ||
+            !DiscoveryAddressSupport.SupportsFamily(listenerAddress, family))
+        {
+            return currentNode.DiscoveryAddress;
+        }
+
+        IPAddress? sourceIp = family switch
+        {
+            AddressFamily.InterNetwork => ResolvedIp.ExternalIpV4,
+            AddressFamily.InterNetworkV6 => ResolvedIp.ExternalIpV6,
+            _ => null
+        };
+
+        if (sourceIp is null && DiscoveryAddressSupport.GetFamily(currentNode.DiscoveryAddress.Address) == family)
+        {
+            sourceIp = currentNode.DiscoveryAddress.Address;
+        }
+
+        sourceIp ??= family == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any;
+        return new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
+    }
+
+    private int GetSourceTcpPort(AddressFamily family)
+        => ListenerState is null ||
+           ListenerState.RlpxAddress is { } rlpxAddress && DiscoveryAddressSupport.SupportsFamily(rlpxAddress, family)
+            ? kademliaConfig.CurrentNodeId.Port
+            : 0;
 
     public async Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
     {

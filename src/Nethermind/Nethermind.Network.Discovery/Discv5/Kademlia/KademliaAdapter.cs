@@ -36,7 +36,8 @@ public sealed class KademliaAdapter(
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<ValueHash256> distance,
-    ILogManager logManager) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
+    ILogManager logManager,
+    NetworkListenerState? listenerState = null) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
     private const int MaxEnrsPerNodesMessage = 3;
@@ -987,7 +988,7 @@ public sealed class KademliaAdapter(
     {
         IPAddress endpointAddress = endpoint.Address;
         AddressFamily family = DiscoveryAddressSupport.GetFamily(endpointAddress);
-        IPAddress normalizedAddress = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
+        IPAddress normalizedAddress = endpointAddress.NormalizeMappedIPv4();
         return record.TryGetDiscoveryEndpoint(family, out IPEndPoint? discoveryEndpoint) &&
                discoveryEndpoint.Address.Equals(normalizedAddress) &&
                discoveryEndpoint.Port == endpoint.Port;

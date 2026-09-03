@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,8 +37,6 @@ namespace Nethermind.Network.Rlpx
 
         private bool _isInitialized;
         public int LocalPort { get; }
-        private readonly IPAddress _localIp;
-        private readonly INetworkConfig _networkConfig;
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -48,13 +47,13 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
-        private readonly Func<IServerChannel> _createServerChannel;
         private readonly Func<IChannel> _createClientChannel;
         private readonly Action<Task<IChannel>, object?> _disconnectConnectedChannel;
         private readonly Action<Task, object?> _onChannelCloseCompleted;
         private readonly Action<Task, object?> _markDisconnectedAfterCloseDelay;
         private readonly NodeFilter _nodeFilter;
         private readonly IPrivilegedIpProvider _privilegedIpProvider;
+        private readonly NetworkListenerState _listenerState;
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -69,7 +68,8 @@ namespace Nethermind.Network.Rlpx
             IIPResolver ipResolver,
             IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
-            IChannelFactory? channelFactory = null)
+            IChannelFactory? channelFactory = null,
+            NetworkListenerState? listenerState = null)
         {
             ArgumentNullException.ThrowIfNull(serializationService);
             ArgumentNullException.ThrowIfNull(handshakeService);
@@ -93,16 +93,14 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
-            _networkConfig = networkConfig;
+            _listenerState = listenerState ?? new NetworkListenerState(networkConfig, ipResolver, logManager);
             LocalPort = networkConfig.P2PPort;
             // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
             // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
             IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
-            _localIp = ips.LocalIp;
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
-            _createServerChannel = CreateServerChannel;
             _createClientChannel = CreateClientChannel;
             _disconnectConnectedChannel = DisconnectConnectedChannel;
             _onChannelCloseCompleted = OnChannelCloseCompleted;
@@ -136,38 +134,11 @@ namespace Nethermind.Network.Rlpx
                 _bossGroup = new MultithreadEventLoopGroup(threads);
                 _workerGroup = new MultithreadEventLoopGroup(threads);
 
-                ServerBootstrap bootstrap = new();
-                bootstrap
-                    .Group(_bossGroup, _workerGroup)
-                    .ChannelFactory(_createServerChannel)
-                    .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .Option(ChannelOption.SoBacklog, 100)
-                    .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
-                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
-                    .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
-                    .ChildHandler(new InboundChannelInitializer(this));
-
-                Task<IChannel> openTask = BindListenerAsync(bootstrap);
-
-                _bootstrapChannel = await openTask.ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
-                        return null;
-                    }
-
-                    return t.Result;
-                });
-
-                if (_bootstrapChannel is null)
-                {
-                    ThrowBootstrapChannelInitializationFailed();
-                }
+                _bootstrapChannel = await BindListenerAsync();
             }
             catch (Exception ex)
             {
+                _listenerState.SetRlpxAddress(null);
                 _logger.Error($"{nameof(Init)} failed.", ex);
                 // Replacing to prevent double dispose which hangs
                 IEventLoopGroup bossGroup = Interlocked.Exchange(ref _bossGroup, null);
@@ -180,17 +151,73 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private async Task<IChannel> BindListenerAsync(ServerBootstrap bootstrap)
+        private async Task<IChannel> BindListenerAsync()
         {
-            IPAddress bindAddress = NetworkHelper.GetInboundBindAddress(_localIp, _networkConfig.LocalIp);
+            IPAddress bindAddress = _listenerState.PreferredAddress;
             try
             {
-                return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(bindAddress, LocalPort), LocalPort);
+                return await BindAsync(bindAddress);
             }
-            catch (Exception e) when (!bindAddress.Equals(_localIp))
+            catch (Exception e) when (!bindAddress.Equals(_listenerState.FallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort} ({e.Message}). Retrying on {_localIp}:{LocalPort}.");
-                return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(_localIp, LocalPort), LocalPort);
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort} ({e.Message}). Retrying on {_listenerState.FallbackAddress}:{LocalPort}.");
+                return await BindAsync(_listenerState.FallbackAddress);
+            }
+        }
+
+        private async Task<IChannel> BindAsync(IPAddress address)
+        {
+            IServerChannel? createdChannel = null;
+            ServerBootstrap bootstrap = CreateServerBootstrap(() => createdChannel = CreateServerChannel(address));
+            try
+            {
+                IChannel channel = await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(address, LocalPort), LocalPort);
+                IPEndPoint? endpoint = channel.LocalAddress switch
+                {
+                    IPEndPoint ipEndpoint => ipEndpoint,
+                    IIPEndpointSource source => source.IPEndpoint,
+                    _ => null
+                };
+                if (endpoint is not null)
+                {
+                    _listenerState.SetRlpxAddress(endpoint.Address);
+                }
+
+                return channel;
+            }
+            catch
+            {
+                await CloseFailedChannel(createdChannel);
+                throw;
+            }
+        }
+
+        private ServerBootstrap CreateServerBootstrap(Func<IServerChannel> channelFactory)
+            => new ServerBootstrap()
+                .Group(_bossGroup, _workerGroup)
+                .ChannelFactory(channelFactory)
+                .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                .Option(ChannelOption.SoBacklog, 100)
+                .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
+                .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
+                .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
+                .ChildHandler(new InboundChannelInitializer(this));
+
+        private async Task CloseFailedChannel(IChannel? channel)
+        {
+            if (channel is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await channel.CloseAsync();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to close an unsuccessful {nameof(RlpxHost)} bind attempt. {e}");
             }
         }
 
@@ -198,12 +225,30 @@ namespace Nethermind.Network.Rlpx
         private static void ThrowAlreadyInitialized()
             => throw new InvalidOperationException($"{nameof(RlpxHost)} already initialized.");
 
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowBootstrapChannelInitializationFailed()
-            => throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
+        private IServerChannel CreateServerChannel(IPAddress address)
+        {
+            if (_channelFactory is not null)
+            {
+                return _channelFactory.CreateServer();
+            }
 
-        private IServerChannel CreateServerChannel()
-            => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel();
+            Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                socket.ExclusiveAddressUse = true;
+                if (address.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    socket.DualMode = address.Equals(IPAddress.IPv6Any) || address.IsIPv4MappedToIPv6;
+                }
+
+                return new TcpServerSocketChannel(socket);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
 
         private IChannel CreateClientChannel()
             => _channelFactory?.CreateClient() ?? new TcpSocketChannel();
@@ -286,7 +331,7 @@ namespace Nethermind.Network.Rlpx
             if (session.Direction == ConnectionDirection.In
                 && channel.RemoteAddress is IPEndPoint remoteEndpoint)
             {
-                IPAddress remoteIp = NetworkHelper.NormalizeIpv4Mapped(remoteEndpoint.Address);
+                IPAddress remoteIp = remoteEndpoint.Address.NormalizeMappedIPv4();
                 if (!_privilegedIpProvider.IsPrivileged(remoteIp) && !_nodeFilter.TryAccept(remoteIp))
                 {
                     if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteIp}");
@@ -406,6 +451,7 @@ namespace Nethermind.Network.Rlpx
                     _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
                 }
             }) ?? Task.CompletedTask);
+            _listenerState.SetRlpxAddress(null);
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
@@ -548,9 +594,7 @@ namespace Nethermind.Network.Rlpx
             {
                 Session session = new(_rlpxHost.LocalPort, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
                 IPEndPoint? ipEndPoint = channel.RemoteAddress.ToIPEndpoint();
-                // A dual-stack listener reports IPv4 peers as IPv4-mapped addresses; normalize them so the
-                // session host (and everything derived from it) stays in its plain form.
-                session.RemoteHost = NetworkHelper.NormalizeIpv4Mapped(ipEndPoint.Address).ToString();
+                session.RemoteHost = ipEndPoint.Address.NormalizeMappedIPv4().ToString();
                 session.RemotePort = ipEndPoint.Port;
                 _rlpxHost.InitializeChannel(channel, session);
             }
