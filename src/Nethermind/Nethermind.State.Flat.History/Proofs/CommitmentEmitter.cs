@@ -158,7 +158,7 @@ public sealed class CommitmentEmitter : IDisposable
     {
         foreach ((ValueHash256 accountPath, int reached) in _blockStorageMaxDepth)
         {
-            _blockTrieDepths[accountPath] = _metadata.NoteStorageTrieDepth(accountPath, reached);
+            if (reached > StorageTrieDepth(accountPath)) _blockTrieDepths[accountPath] = _metadata.NoteStorageTrieDepth(accountPath, reached);
         }
     }
 

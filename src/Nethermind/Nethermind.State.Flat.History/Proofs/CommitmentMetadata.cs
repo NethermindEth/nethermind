@@ -47,9 +47,12 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
 
     public int NoteStorageTrieDepth(in ValueHash256 accountPath, int depth)
     {
+        int known = StorageTrieDepth(accountPath);
+        if (depth <= known) return known;
+
         lock (_depthWriteLock)
         {
-            int known = StorageTrieDepth(accountPath);
+            known = StorageTrieDepth(accountPath);
             if (depth <= known) return known;
 
             _storages.WriteStorageTrieDepth(accountPath, depth);

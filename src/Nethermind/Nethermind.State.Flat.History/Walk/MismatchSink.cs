@@ -6,9 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class MismatchSink
+internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
 {
     public const int MaxRecorded = 100_000;
+    public const int MaxRecordedPerItem = 2_048;
+    private const int RecordLength = sizeof(ulong) + 1 + Hash256.Size + Hash256.Size;
 
     private readonly List<HistoryWalkMismatch> _mismatches = [];
 
@@ -16,7 +18,7 @@ internal sealed class MismatchSink
     {
         lock (_mismatches)
         {
-            if (_mismatches.Count < MaxRecorded) _mismatches.Add(mismatch);
+            if (_mismatches.Count < capacity) _mismatches.Add(mismatch);
         }
     }
 
@@ -24,7 +26,7 @@ internal sealed class MismatchSink
     {
         lock (_mismatches)
         {
-            int room = MaxRecorded - _mismatches.Count;
+            int room = capacity - _mismatches.Count;
             if (room <= 0) return;
 
             _mismatches.AddRange(mismatches.Count <= room ? mismatches : mismatches.GetRange(0, room));
@@ -66,7 +68,7 @@ internal sealed class MismatchSink
     {
         lock (_mismatches)
         {
-            for (; encoded.Length >= RecordLength && _mismatches.Count < MaxRecorded; encoded = encoded[RecordLength..])
+            for (; encoded.Length >= RecordLength && _mismatches.Count < capacity; encoded = encoded[RecordLength..])
             {
                 _mismatches.Add(new HistoryWalkMismatch(
                     BinaryPrimitives.ReadUInt64BigEndian(encoded),
@@ -76,8 +78,6 @@ internal sealed class MismatchSink
             }
         }
     }
-
-    private const int RecordLength = sizeof(ulong) + 1 + Hash256.Size + Hash256.Size;
 
     private static void Write(Span<byte> destination, in HistoryWalkMismatch mismatch, ref int offset)
     {

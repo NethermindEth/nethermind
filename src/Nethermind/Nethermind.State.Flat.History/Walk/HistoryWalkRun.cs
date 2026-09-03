@@ -175,7 +175,7 @@ internal sealed class HistoryWalkRun
 
     private MismatchSink ResumeItemMismatches(int item)
     {
-        MismatchSink found = new();
+        MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
         if (_metadata.TryGetWalkItemProgress(item, out _, out ReadOnlySpan<byte> persisted)) found.Decode(persisted);
         return found;
     }
@@ -207,9 +207,8 @@ internal sealed class HistoryWalkRun
         StoragePresenceProbe probe = new(_storageHistory);
         while (true)
         {
-            List<HistoryWalkMismatch> local = [];
-            StorageRootMoveCheck check = new(probe, local);
-            ScanOutcome outcome = _scanner.ScanAccounts(prefix, _from, _to, _maxRowsPerPartition, rows, check, _token);
+            List<HistoryWalkMismatch> scanned = [];
+            ScanOutcome outcome = _scanner.ScanAccounts(prefix, _from, _to, _maxRowsPerPartition, rows, new StorageRootMoveCheck(probe, scanned), _token);
             if (outcome == ScanOutcome.SinglePathOverflow) continue;
 
             if (outcome == ScanOutcome.Split)
@@ -227,15 +226,17 @@ internal sealed class HistoryWalkRun
             }
 
             ulong? resumeFrom = prefix.Length == AccountPartitionDepth && _metadata.TryGetWalkItemProgress(item, out ulong reached) ? reached : null;
-            Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block, found, local) : null;
+            List<HistoryWalkMismatch> replayed = [];
+            Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block, found, replayed) : null;
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
-                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, check, _progress, item, resumeFrom, _checkpointBlocks, checkpoint, _token);
+                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, new StorageRootMoveCheck(probe, replayed), _progress, item, resumeFrom, _checkpointBlocks, checkpoint, _token);
                 emitter?.FlushOpenWindows();
             }
 
-            found.AddRange(local);
+            found.AddRange(replayed);
+            found.AddRange(scanned);
             return;
         }
     }

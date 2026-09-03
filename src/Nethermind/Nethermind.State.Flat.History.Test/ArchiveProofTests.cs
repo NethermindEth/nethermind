@@ -161,6 +161,31 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_scan_derived_mismatch_is_reported_once_however_often_the_partition_resumes()
+    {
+        Address moved = _accounts[5];
+        HistoryColumnsWriter.RecordAccount(_historyColumns, moved, block: 70, new Account(1, 2005 + 5 * 70, Keccak.Compute("moved"), Keccak.OfAnEmptyString));
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected.Count(static m => m.Kind == HistoryWalkMismatchKind.MissingSlotHistory), Is.EqualTo(2), "precondition: the storage root moves out at block 70 and back at the account's next change, both without slot rows");
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        int movedItem = Keccak.Compute(moved.Bytes).Bytes[0];
+        using CancellationTokenSource first = new();
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item == movedItem) first.Cancel(); }, first.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: cut at the moved account's partition checkpoint, after the scan already found the move");
+        using CancellationTokenSource second = new();
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item == movedItem) second.Cancel(); }, second.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: cut there a second time, so the persisted findings went through two resumes");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "the scan re-derives its findings on every run, so only the replay's findings may ride along with a checkpoint or every restart would add another copy");
+    }
+
+    [Test]
     public void Mismatches_found_before_a_checkpoint_survive_the_restart()
     {
         CorruptEveryStorageRow();
