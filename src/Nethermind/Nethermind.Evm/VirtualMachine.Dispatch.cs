@@ -19,17 +19,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     internal struct DispatchState
     {
-        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>* OpcodeHandlers;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* OpcodeHandlers;
         public VirtualMachine<TGasPolicy> Vm;
+
+        /// <summary>Where the chain stopped, and how many opcodes it ran. Written only as it leaves.</summary>
+        /// <remarks>
+        /// Both ride the dispatch signature while the chain runs. A counter in the struct would be a
+        /// narrow read-modify-write through a byref on every opcode, which the zkEVM guest charges at
+        /// roughly twenty times an aligned load.
+        /// </remarks>
         public nint FinalProgramCounter;
+
+        /// <inheritdoc cref="FinalProgramCounter"/>
         public int OpCodeCount;
     }
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
-    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[] _opcodeHandlers;
+    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] _opcodeHandlers;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]
+    internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
         GetOpcodeHandlers<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
@@ -71,19 +80,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private sealed unsafe class OpcodeTable
     {
-        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? NoTrace;
-        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? NoTraceCancelable;
-        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? Traced;
-        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? TracedCancelable;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? NoTrace;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? NoTraceCancelable;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? Traced;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? TracedCancelable;
 
         /// <summary>The table for this combination of flags, built on first use.</summary>
         /// <param name="spec">The fork whose opcode set the table describes.</param>
-        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
             GetHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
             where TTracingInst : struct, IFlag
             where TCancelable : struct, IFlag
         {
-            ref delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]? table =
+            ref delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? table =
                 ref TTracingInst.IsActive
                     ? ref (TCancelable.IsActive ? ref TracedCancelable : ref Traced)
                     : ref (TCancelable.IsActive ? ref NoTraceCancelable : ref NoTrace);
@@ -122,11 +131,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] handlers = _opcodeHandlers;
 
         // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every
         // bytecode read is preceded by a program-counter bounds check, and a byte is a valid table index.
-        fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
+        fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
             DispatchState state = new()
             {
@@ -135,7 +144,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             };
 
             byte opcode = Unsafe.Add(ref stack.Code, programCounter);
-            EvmExceptionType exceptionType = opcodeHandlers[opcode](ref stack, ref gas, ref state, programCounter);
+            EvmExceptionType exceptionType = opcodeHandlers[opcode](ref stack, ref gas, ref state, programCounter, 0);
             OpCodeCount += state.OpCodeCount;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -148,13 +157,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ref EvmStack stack,
         ref TGasPolicy gas,
         ref DispatchState state,
-        nint pc)
+        nint pc,
+        int opCodeCount)
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
         VirtualMachine<TGasPolicy> vm = state.Vm;
-        if (TCancelable.IsActive && (state.OpCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
+        if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
             ThrowOperationCanceledException();
 
         // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
@@ -165,7 +175,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         pc++;
-        state.OpCodeCount++;
+        opCodeCount++;
         EvmExceptionType exceptionType = TOpcode.Execute(ref stack, ref gas, vm, ref pc);
 
         // The counter is final here, so the target resolves before the halt checks instead of after them.
@@ -186,6 +196,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         if (next == 0)
         {
+            state.OpCodeCount = opCodeCount;
             state.FinalProgramCounter = pc;
             return EvmExceptionType.None;
         }
@@ -197,6 +208,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         IL.Emit.Ldarg(nameof(gas));
         IL.Emit.Ldarg(nameof(state));
         IL.Emit.Ldarg(nameof(pc));
+        IL.Emit.Ldarg(nameof(opCodeCount));
         IL.Push(next);
         IL.Emit.Tail();
         IL.Emit.Calli(new StandAloneMethodSig(
@@ -205,11 +217,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             TypeRef.Type<EvmStack>().MakeByRefType(),
             TypeRef.Type<TGasPolicy>().MakeByRefType(),
             TypeRef.Type<DispatchState>().MakeByRefType(),
-            TypeRef.Type<nint>()));
+            TypeRef.Type<nint>(),
+            TypeRef.Type<int>()));
         IL.Emit.Ret();
         throw IL.Unreachable();
 
     Exit:
+        state.OpCodeCount = opCodeCount;
         state.FinalProgramCounter = pc;
         if (TGasPolicy.IsOutOfGas(in gas))
         {
