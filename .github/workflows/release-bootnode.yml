@@ -180,7 +180,7 @@ jobs:
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           PUBLISH_LATEST: ${{ needs.build.outputs.publish-latest }}
         run: |
-          image=nethermind/nethermind-bootnode
+          image=nethermind/bootnode
           tags=(-t "$image:$RELEASE_TAG")
           if [[ "$PRERELEASE" == "false" && "$PUBLISH_LATEST" == "true" ]]; then
             tags+=(-t "$image:latest")
