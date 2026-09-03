@@ -17,23 +17,31 @@ public sealed class CommitmentDepthPolicy
     public const int DefaultLargeTrieSignalDepth = 6;
     public const int DefaultStorageRowsSignalDepth = 4;
     public const int DefaultAccountComposedDepths = 1 << 1;
+    public const int DefaultEpochLog2 = 19;
+    public const int MaxEpochLog2 = 30;
     public const int DefaultIntervalLog2 = 9;
     public const int MinIntervalLog2 = 6;
     public const int MaxIntervalLog2 = 12;
     public const int FullVectorEvery = 256;
-    public const int StampLength = 6;
+    public const int StampLength = 7;
 
     public static readonly CommitmentDepthPolicy Default = new(DefaultIntervalLog2);
 
-    public static CommitmentDepthPolicy FromConfig(IFlatDbConfig config) =>
-        config.ArchiveProofCheckpointIntervalLog2 <= 0 ? Default : new CommitmentDepthPolicy(config.ArchiveProofCheckpointIntervalLog2);
+    public static CommitmentDepthPolicy FromConfig(IFlatDbConfig config)
+    {
+        int intervalLog2 = config.ArchiveProofCheckpointIntervalLog2 <= 0 ? DefaultIntervalLog2 : config.ArchiveProofCheckpointIntervalLog2;
+        int epochLog2 = config.ArchiveProofEpochLog2 <= 0 ? DefaultEpochLog2 : config.ArchiveProofEpochLog2;
+        return intervalLog2 == DefaultIntervalLog2 && epochLog2 == DefaultEpochLog2
+            ? Default
+            : new CommitmentDepthPolicy(intervalLog2, DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth, DefaultStorageRowsSignalDepth, DefaultAccountComposedDepths, epochLog2);
+    }
 
     public CommitmentDepthPolicy(int intervalLog2)
         : this(intervalLog2, DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth, DefaultStorageRowsSignalDepth)
     {
     }
 
-    public CommitmentDepthPolicy(int intervalLog2, int accountExactDepth, int accountCheckpointDepth, int storageExactDepth, int storageCheckpointDepth, int largeTrieSignalDepth, int storageRowsSignalDepth, int accountComposedDepths = DefaultAccountComposedDepths)
+    public CommitmentDepthPolicy(int intervalLog2, int accountExactDepth, int accountCheckpointDepth, int storageExactDepth, int storageCheckpointDepth, int largeTrieSignalDepth, int storageRowsSignalDepth, int accountComposedDepths = DefaultAccountComposedDepths, int epochLog2 = DefaultEpochLog2)
     {
         if (intervalLog2 is < MinIntervalLog2 or > MaxIntervalLog2)
         {
@@ -63,6 +71,11 @@ public sealed class CommitmentDepthPolicy
             throw new InvalidConfigurationException($"Composed account depths {accountComposedDepths:b} must lie strictly between the root and the exact depth {accountExactDepth}.", -1);
         }
 
+        if (epochLog2 < intervalLog2 || epochLog2 > MaxEpochLog2)
+        {
+            throw new InvalidConfigurationException($"The commitment epoch 2^{epochLog2} must span at least one checkpoint window (2^{intervalLog2}) and at most 2^{MaxEpochLog2} blocks.", -1);
+        }
+
         IntervalLog2 = intervalLog2;
         AccountExactDepth = accountExactDepth;
         AccountCheckpointDepth = accountCheckpointDepth;
@@ -71,6 +84,7 @@ public sealed class CommitmentDepthPolicy
         LargeTrieSignalDepth = largeTrieSignalDepth;
         StorageRowsSignalDepth = storageRowsSignalDepth;
         AccountComposedDepths = accountComposedDepths;
+        EpochLog2 = epochLog2;
     }
 
     public int IntervalLog2 { get; }
@@ -90,6 +104,18 @@ public sealed class CommitmentDepthPolicy
     public int StorageRowsSignalDepth { get; }
 
     public int AccountComposedDepths { get; }
+
+    public int EpochLog2 { get; }
+
+    public ulong EpochBlocks => 1UL << EpochLog2;
+
+    public ulong Epoch(ulong block) => block >> EpochLog2;
+
+    public ulong EpochOfWindow(ulong window) => window >> (EpochLog2 - IntervalLog2);
+
+    public ulong EpochStart(ulong epoch) => epoch << EpochLog2;
+
+    public bool IsEpochStartWindow(ulong window) => (window & ((1UL << (EpochLog2 - IntervalLog2)) - 1)) == 0;
 
     public bool IsComposedAccountDepth(int depth) => depth < 8 && ((AccountComposedDepths >> depth) & 1) != 0;
 
@@ -122,7 +148,7 @@ public sealed class CommitmentDepthPolicy
 
     public bool ClosesWindow(ulong block) => (block & (Interval - 1)) == 0;
 
-    public static bool IsFullVectorSuffix(ulong suffix) => suffix % FullVectorEvery == 0;
+    public bool IsFullVectorSuffix(ulong suffix) => suffix % FullVectorEvery == 0 || IsEpochStartWindow(suffix);
 
     public void WriteStamp(Span<byte> destination)
     {
@@ -132,6 +158,7 @@ public sealed class CommitmentDepthPolicy
         destination[3] = (byte)LargeTrieSignalDepth;
         destination[4] = (byte)StorageRowsSignalDepth;
         destination[5] = (byte)AccountComposedDepths;
+        destination[6] = (byte)EpochLog2;
     }
 
     public bool MatchesStamp(ReadOnlySpan<byte> stamp)
@@ -144,5 +171,5 @@ public sealed class CommitmentDepthPolicy
     }
 
     public override string ToString() =>
-        $"K=2^{IntervalLog2}, accounts exact<={AccountExactDepth} (composed at {AccountComposedDepths:b}) checkpoint<={AccountCheckpointDepth}, storage rows once a trie has reached depth {StorageRowsSignalDepth}: exact<={StorageExactDepth} (once depth {LargeTrieSignalDepth}) checkpoint<={StorageCheckpointDepth}";
+        $"K=2^{IntervalLog2}, epoch 2^{EpochLog2}, accounts exact<={AccountExactDepth} (composed at {AccountComposedDepths:b}) checkpoint<={AccountCheckpointDepth}, storage rows once a trie has reached depth {StorageRowsSignalDepth}: exact<={StorageExactDepth} (once depth {LargeTrieSignalDepth}) checkpoint<={StorageCheckpointDepth}";
 }

@@ -42,6 +42,7 @@ public class ArchiveProofTests
         _chain = new ArchiveProofTestChain(_historyColumns);
         _accounts = BuildAddresses(AccountCount);
         _policy = TestPolicy;
+        _recentEpochs = 0;
         BuildChain();
     }
 
@@ -97,7 +98,7 @@ public class ArchiveProofTests
         retrofit.Prepare();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
         HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
-        CommitmentMetadata metadata = new(_historyColumns);
+        CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
 
         using CancellationTokenSource interrupt = new();
         int checkpoints = 0;
@@ -124,7 +125,7 @@ public class ArchiveProofTests
     public void A_verify_only_run_interrupted_inside_a_subtree_resumes_from_its_checkpoint_without_false_mismatches()
     {
         HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
-        CommitmentMetadata metadata = new(_historyColumns);
+        CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
 
         using CancellationTokenSource interrupt = new();
         Assert.That(
@@ -226,7 +227,7 @@ public class ArchiveProofTests
         Assert.That(
             () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, progress) => { if (item == contractItem) interrupt.Cancel(); }, interrupt.Token, checkpointGroups: 1),
             Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut at the storage range's checkpoint right after the contract's group");
-        Assert.That(new CommitmentMetadata(_historyColumns).TryGetWalkItemProgress(contractItem, out _), Is.True, "precondition: the storage range left a group checkpoint behind");
+        Assert.That(new CommitmentMetadata(_historyColumns, TestPolicy).TryGetWalkItemProgress(contractItem, out _), Is.True, "precondition: the storage range left a group checkpoint behind");
 
         HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
 
@@ -284,6 +285,64 @@ public class ArchiveProofTests
         {
             AssertProofMatchesTheTrie(Contract, block, ContractSlots);
         }
+    }
+
+    [TestCase(1ul)]
+    [TestCase(64ul)]
+    [TestCase(127ul)]
+    [TestCase(128ul)]
+    [TestCase(130ul)]
+    [TestCase(Blocks)]
+    public void Proofs_resolve_across_epoch_buckets(ulong block)
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+
+        foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
+        {
+            AssertProofMatchesTheTrie(address, block, address == Contract ? ContractSlots : []);
+        }
+    }
+
+    [Test]
+    public void A_node_untouched_in_an_epoch_still_resolves_from_commitments_alone_through_the_epoch_start_snapshot()
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+        Address quiet = _accounts.First(static a => a != Contract && Keccak.Compute(a.Bytes).Bytes[0] != Keccak.Compute(Contract.Bytes).Bytes[0]);
+        AccountProof expected = _chain.ExpectedProof(quiet, 130);
+
+        CorruptEveryAccountRow();
+
+        AccountProof actual = ProveFromArchive(quiet, 130);
+        Assert.That(actual.Proof!.Select(static item => item.ToHexString()), Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+            "block 130 sits in the second epoch; every node on the path has a row there, either from a change or from the snapshot written at the epoch's first block, so the corrupt account rows are never read");
+    }
+
+    [Test]
+    public void Epochs_older_than_the_recent_window_are_dropped_and_proofs_below_them_refused()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(_accounts[1], 130);
+
+        CreateRetrofit(_policy).PruneBelow(_chain.Head);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(static key => key.Length > 3 && key[0] == 0 && key[1] == 0 && key[2] == CommitmentKeyLayout.FineTier), Is.False, "every account row of epoch 0 is gone in one range delete");
+            Assert.That(storages.GetAllKeys().Any(static key => key.Length > 3 && key[0] == 0 && key[1] == 0 && key[2] == CommitmentKeyLayout.FineTier), Is.False, "every storage row of epoch 0 is gone");
+            Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(100)), Is.False, "a block in the dropped epoch is refused, not served from raw history");
+            Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(130)), Is.True, "the retained epoch stays servable");
+        }
+
+        CorruptEveryAccountRow();
+        AccountProof actual = ProveFromArchive(_accounts[1], 130);
+        Assert.That(actual.Proof!.Select(static item => item.ToHexString()), Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+            "a retained epoch resolves on its own: its snapshot rows stand in for whatever the dropped epoch held, so the corrupt history rows are never read");
     }
 
     [Test]
@@ -485,7 +544,7 @@ public class ArchiveProofTests
             new HistoryReader(_flatDb, windowed, availability, rowFormat, LimboLogs.Instance),
             rowFormat,
             TestPolicy,
-            new CommitmentMetadata(windowed),
+            new CommitmentMetadata(windowed, CommitmentDepthPolicy.Default),
             new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
             config,
             LimboLogs.Instance);
@@ -515,6 +574,10 @@ public class ArchiveProofTests
             yield return candidate;
         }
     }
+
+    private static CommitmentDepthPolicy EpochPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1, CommitmentDepthPolicy.DefaultAccountComposedDepths, epochLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
+
+    private int _recentEpochs;
 
     private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
 
@@ -565,9 +628,9 @@ public class ArchiveProofTests
 
     private ArchiveProofRetrofit CreateRetrofit(CommitmentDepthPolicy policy, bool discardMismatchedLayout = false)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout };
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout, ArchiveProofRecentEpochs = _recentEpochs };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        return new ArchiveProofRetrofit(_historyColumns, policy, new CommitmentMetadata(_historyColumns), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+        return new ArchiveProofRetrofit(_historyColumns, policy, new CommitmentMetadata(_historyColumns, policy), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
     }
 
     private ArchiveProofSource CreateSource(CommitmentDepthPolicy policy, long maxScannedRows = 0)
@@ -580,7 +643,7 @@ public class ArchiveProofTests
             new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance),
             rowFormat,
             policy,
-            new CommitmentMetadata(_historyColumns),
+            new CommitmentMetadata(_historyColumns, policy),
             new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
             config,
             LimboLogs.Instance);

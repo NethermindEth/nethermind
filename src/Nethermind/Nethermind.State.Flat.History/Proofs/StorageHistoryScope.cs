@@ -28,6 +28,11 @@ internal sealed class StorageHistoryScope(
 
     private readonly byte[] _identity = accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].ToArray();
     private readonly int _trieDepth = metadata.StorageTrieDepth(accountPath);
+    private ulong? _rootEpoch;
+
+    protected override ulong? ProbeStartEpoch => _rootEpoch;
+
+    public override void NoteRootLastBlock(ulong block) => _rootEpoch = Policy.Epoch(block);
 
     public override bool HasCommitmentRows(int depth) => Policy.StorageTrieHasRows(_trieDepth) && depth <= Policy.StorageCheckpointDepth;
 

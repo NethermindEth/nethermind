@@ -8,14 +8,14 @@ using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
+internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy)
 {
     public const ulong Window = 16_384;
 
     private readonly ISortedKeyValueStore _accountColumn = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
     private readonly ISortedKeyValueStore _storageColumn = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
-    private readonly CommitmentStore _accountStore = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
-    private readonly CommitmentStore _storageStore = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+    private readonly CommitmentStore _accountStore = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
+    private readonly CommitmentStore _storageStore = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
 
     public NodeSeriesState ReadStart(in SeriesKey key, ulong from)
     {
@@ -23,7 +23,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
         Span<byte> prefix = stackalloc byte[SeriesKey.MaxKeyLength];
         int prefixLength = key.WritePrefix(prefix);
         CommitmentStore store = key.Column == FlatHistoryColumns.StorageCommitments ? _storageStore : _accountStore;
-        using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], from);
+        using CommitmentStore.RowChain chain = key.Scratch ? store.OpenScratchAtOrBelow(prefix[..prefixLength], from) : store.OpenAtOrBelow(prefix[..prefixLength], from);
         if (chain.MoveNext()) state.MaterializeStart(chain);
         return state;
     }
@@ -33,10 +33,10 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
         ISortedKeyValueStore column = key.Column == FlatHistoryColumns.StorageCommitments ? _storageColumn : _accountColumn;
         byte[] prefix = new byte[SeriesKey.MaxPrefixLength];
         int prefixLength = key.WritePrefix(prefix);
-        return new SeriesCursor(column, prefix[..prefixLength], fromExclusive, toInclusive, maxRowsBuffered, token);
+        return new SeriesCursor(column, prefix[..prefixLength], key.Scratch ? null : policy, fromExclusive, toInclusive, maxRowsBuffered, token);
     }
 
-    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token) : IDisposable
+    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, CommitmentDepthPolicy? epochs, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token) : IDisposable
     {
         public const int MinRowsBuffered = 64;
         private const ulong MinWindow = 64;
@@ -78,6 +78,12 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
                 }
 
                 ulong hi = toInclusive - _nextLow < _windowSize - 1 ? toInclusive : _nextLow + _windowSize - 1;
+                if (epochs is not null)
+                {
+                    ulong epochEnd = epochs.EpochStart(epochs.Epoch(_nextLow) + 1) - 1;
+                    if (hi > epochEnd) hi = epochEnd;
+                }
+
                 if (!ReadDescending(_nextLow, hi))
                 {
                     if (_windowSize > MinWindow)
@@ -119,10 +125,21 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
         {
             _window.Clear();
             _arena.Clear();
-            Span<byte> lower = stackalloc byte[SeriesKey.MaxKeyLength];
-            int lowerLength = CommitmentKeyLayout.WriteSeekKey(lower, prefix, hi);
-            Span<byte> upper = stackalloc byte[SeriesKey.MaxKeyLength];
-            int upperLength = CommitmentKeyLayout.WriteSeekKey(upper, prefix, lo - 1);
+            Span<byte> lower = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+            Span<byte> upper = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+            int lowerLength;
+            int upperLength;
+            if (epochs is null)
+            {
+                lowerLength = CommitmentKeyLayout.WriteSeekKey(lower, prefix, hi);
+                upperLength = CommitmentKeyLayout.WriteSeekKey(upper, prefix, lo - 1);
+            }
+            else
+            {
+                ulong epoch = epochs.Epoch(lo);
+                lowerLength = CommitmentKeyLayout.WriteRowKey(lower, epoch, CommitmentKeyLayout.FineTier, prefix, hi);
+                upperLength = CommitmentKeyLayout.WriteRowKey(upper, epoch, CommitmentKeyLayout.FineTier, prefix, lo - 1);
+            }
 
             using ISortedView view = column.GetViewBetween(lower[..lowerLength], upper[..upperLength], ReadFlags.HintCacheMiss);
             while (view.MoveNext())

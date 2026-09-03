@@ -75,6 +75,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             }
 
             ulong lastCheckpoint = replayedUpTo;
+            ulong nextEpochStart = emitter is null ? ulong.MaxValue : emitter.Policy.EpochStart(emitter.Policy.Epoch(replayedUpTo) + 1);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -86,6 +87,12 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 }
 
                 if (block == ulong.MaxValue) break;
+
+                while (block >= nextEpochStart && nextEpochStart <= to)
+                {
+                    Snapshot(emitter!, changes!, publisher, state, store, prefix.Length, nextEpochStart);
+                    nextEpochStart += emitter!.Policy.EpochBlocks;
+                }
 
                 if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
                 {
@@ -124,11 +131,26 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                     lastCheckpoint = block;
                 }
             }
+
+            while (nextEpochStart <= to)
+            {
+                Snapshot(emitter!, changes!, publisher, state, store, prefix.Length, nextEpochStart);
+                nextEpochStart += emitter!.Policy.EpochBlocks;
+            }
         }
         finally
         {
             foreach (StreamedAccount stream in streams) stream.Rows.Dispose();
         }
+    }
+
+    private static void Snapshot(CommitmentEmitter emitter, TrieChangeCollector changes, SeriesPublisher publisher, StateTree state, ITrieNodeResolver resolver, int depth, ulong epochStart)
+    {
+        emitter.BeginBlock(epochStart);
+        Publish(publisher, epochStart, state, depth, resolver, emitter);
+        changes.CollectAll(state.RootRef, emitter.AccountRecordDepth, resolver);
+        changes.RecordAccounts(emitter, depth + 1);
+        emitter.CompleteBlock();
     }
 
     private static void Publish(SeriesPublisher publisher, ulong block, StateTree state, int depth, ITrieNodeResolver resolver, CommitmentEmitter? emitter)

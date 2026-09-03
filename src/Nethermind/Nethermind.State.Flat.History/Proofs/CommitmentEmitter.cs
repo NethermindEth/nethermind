@@ -53,8 +53,8 @@ public sealed class CommitmentEmitter : IDisposable
         _metadata = metadata;
         _windowWriteLock = metadata.WindowWriteLock;
         _maxOpenWindowNodes = maxOpenWindowNodes;
-        _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
-        _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+        _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
+        _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     }
 
     public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
@@ -68,6 +68,8 @@ public sealed class CommitmentEmitter : IDisposable
     public int AccountRecordDepth => _policy.AccountCheckpointDepth + 1;
 
     public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
+
+    public const int StorageSnapshotDepth = 1;
 
     public void BeginBlock(ulong block)
     {
@@ -249,7 +251,7 @@ public sealed class CommitmentEmitter : IDisposable
             isBranch = true;
             ushort presence = _children.Presence;
             bool wasBranch = _exactBranches.TryGetValue(key, out bool previous) && previous;
-            ushort changed = CommitmentDepthPolicy.IsFullVectorSuffix(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
+            ushort changed = _policy.IsFullVectorSuffix(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
             int length = ParentRowCodec.EncodeBranch(_block, presence, changed, _children, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
         }
@@ -346,7 +348,7 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void WriteState(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong window, WindowState state, IWriteBatch batch)
     {
-        bool full = CommitmentDepthPolicy.IsFullVectorSuffix(window);
+        bool full = _policy.IsFullVectorSuffix(window);
         switch (state.Kind)
         {
             case WindowKind.Empty:
@@ -377,9 +379,9 @@ public sealed class CommitmentEmitter : IDisposable
         }
     }
 
-    private static int MergeBranch(ReadOnlySpan<byte> existing, WindowState state, ulong window, ChildVector merged, Span<byte> row)
+    private int MergeBranch(ReadOnlySpan<byte> existing, WindowState state, ulong window, ChildVector merged, Span<byte> row)
     {
-        bool full = CommitmentDepthPolicy.IsFullVectorSuffix(window);
+        bool full = _policy.IsFullVectorSuffix(window);
         bool existingNewer = ParentRowCodec.LastBlock(existing) > state.LastBlock;
         ushort existingChanged = ParentRowCodec.Changed(existing);
         ushort changed = (ushort)(existingChanged | state.Changed);

@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History.Walk;
 
@@ -11,13 +12,17 @@ internal sealed class TrieChangeCollector
 {
     private readonly List<(TreePath Path, TrieNode Node)> _changed = [];
 
-    public void Collect(TrieNode? root, int maxDepth)
+    public void Collect(TrieNode? root, int maxDepth) => Collect(root, maxDepth, resolver: null);
+
+    public void CollectAll(TrieNode? root, int maxDepth, ITrieNodeResolver resolver) => Collect(root, maxDepth, resolver);
+
+    private void Collect(TrieNode? root, int maxDepth, ITrieNodeResolver? resolver)
     {
         _changed.Clear();
         if (root is null) return;
 
         TreePath path = TreePath.Empty;
-        Visit(root, ref path, maxDepth);
+        Visit(root, ref path, maxDepth, resolver);
     }
 
     public void RecordAccounts(CommitmentEmitter emitter, int minRecordedDepth)
@@ -36,34 +41,40 @@ internal sealed class TrieChangeCollector
         }
     }
 
-    private void Visit(TrieNode node, ref TreePath path, int maxDepth)
+    private void Visit(TrieNode node, ref TreePath path, int maxDepth, ITrieNodeResolver? resolver)
     {
-        if (node.Keccak is not null || path.Length > maxDepth) return;
+        if ((resolver is null && node.Keccak is not null) || path.Length > maxDepth) return;
 
         _changed.Add((path, node));
         if (node.IsLeaf || path.Length == maxDepth) return;
 
         if (node.IsExtension)
         {
-            if (!node.TryGetDirtyChild(0, out TrieNode? child)) return;
+            if (!TryGetChild(node, ref path, 0, resolver, out TrieNode? child)) return;
 
             int length = path.Length;
             path.AppendMut(node.Key!);
-            Visit(child, ref path, maxDepth);
+            Visit(child, ref path, maxDepth, resolver);
             path.TruncateMut(length);
             return;
         }
 
         int parentLength = path.Length;
-        path.AppendMut(0);
         for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
         {
-            if (!node.TryGetDirtyChild(nibble, out TrieNode? child)) continue;
+            if (!TryGetChild(node, ref path, nibble, resolver, out TrieNode? child)) continue;
 
-            path.SetLast(nibble);
-            Visit(child, ref path, maxDepth);
+            path.AppendMut(nibble);
+            Visit(child, ref path, maxDepth, resolver);
+            path.TruncateMut(parentLength);
         }
+    }
 
-        path.TruncateMut(parentLength);
+    private static bool TryGetChild(TrieNode node, ref TreePath parentPath, int index, ITrieNodeResolver? resolver, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? child)
+    {
+        if (resolver is null) return node.TryGetDirtyChild(index, out child);
+
+        child = node.GetChild(resolver, ref parentPath, index);
+        return child is not null;
     }
 }

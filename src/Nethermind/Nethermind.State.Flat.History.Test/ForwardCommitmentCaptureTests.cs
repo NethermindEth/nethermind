@@ -43,7 +43,7 @@ public class ForwardCommitmentCaptureTests
 
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        _metadata = new CommitmentMetadata(_historyColumns);
+        _metadata = new CommitmentMetadata(_historyColumns, Policy);
         ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
     }
@@ -129,7 +129,7 @@ public class ForwardCommitmentCaptureTests
 
         _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
 
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), Policy, CommitmentKeyLayout.IdentityLength);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.FromHexString("7"), exact: true);
         using CommitmentStore.RowChain exact = store.OpenAtOrBelow(prefix[..prefixLength], 0);
@@ -151,7 +151,7 @@ public class ForwardCommitmentCaptureTests
 
         _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
 
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), Policy, CommitmentKeyLayout.IdentityLength);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], StoragePath, exact: false);
         using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], 1);
@@ -216,7 +216,7 @@ public class ForwardCommitmentCaptureTests
 
     private byte[]? AccountRowAtOrBelow(in TreePath path, ulong suffix, bool exact)
     {
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), Policy, 0);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, path, exact);
         using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], suffix);

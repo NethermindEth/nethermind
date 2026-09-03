@@ -139,6 +139,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                         }
 
                         _retrofit?.PublishCoverage(from, to);
+                        _retrofit?.PruneBelow(to);
                         if (_logger.IsInfo) _logger.Info(
                             $"History walk verification PASSED: {verdict.BlocksCompared} blocks rebuilt from rows and matched against headers in {elapsed}.");
 

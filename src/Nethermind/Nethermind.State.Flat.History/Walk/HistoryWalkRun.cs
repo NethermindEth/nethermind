@@ -77,12 +77,13 @@ internal sealed class HistoryWalkRun
         _to = to;
         _token = token;
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
-        _metadata = new CommitmentMetadata(history);
+        CommitmentDepthPolicy policy = emitterSource?.Policy ?? CommitmentDepthPolicy.Default;
+        _metadata = new CommitmentMetadata(history, policy);
         _progress = new WalkProgress(_logger, WorkItems, from, to);
         _scanner = new HistoryRowScanner(_accountHistory, _storageHistory, storageClears, rowFormat);
         _accounts = new AccountSubtreeReplayer(_accountHistory, rowFormat, logManager);
         _storages = new StorageSubtreeReplayer(_accountHistory, _storageHistory, rowFormat, rlpWrapSlots, logManager);
-        _combiner = new SubtreeCombiner(new SeriesReader(history), maxRowsPerPartition);
+        _combiner = new SubtreeCombiner(new SeriesReader(history, policy), maxRowsPerPartition);
     }
 
     public HistoryWalkVerdict Execute(int workers)

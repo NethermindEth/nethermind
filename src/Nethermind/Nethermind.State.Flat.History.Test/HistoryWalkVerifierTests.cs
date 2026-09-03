@@ -449,7 +449,7 @@ public class HistoryWalkVerifierTests
 
         using CancellationTokenSource interrupt = new();
         headers.OnFirstRead = interrupt.Cancel;
-        CommitmentMetadata metadata = new(_historyColumns);
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
 
         Assert.That(() => CreateVerifier(headers).VerifyRange(0, 1, interrupt.Token), Throws.InstanceOf<OperationCanceledException>(),
             "precondition: the run is cut at the root fold, after every subtree finished");
@@ -488,7 +488,7 @@ public class HistoryWalkVerifierTests
         headers.Roots[1] = StateRootOf((AddrA, a1));
         MarkAll(headers);
 
-        CommitmentMetadata metadata = new(_historyColumns);
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.BeginWalk(0, 7, HistoryWalkRun.WorkItems);
         for (int item = 0; item < HistoryWalkRun.WorkItems; item++) metadata.MarkWalkItemDone(item, []);
 

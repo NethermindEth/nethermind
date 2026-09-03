@@ -12,9 +12,15 @@ internal static class CommitmentKeyLayout
 {
     public const int IdentityLength = BaseFlatPersistence.AccountKeyLength;
     public const int SuffixLength = sizeof(ulong);
+    public const int EpochLength = sizeof(ushort);
+    public const int TierLength = 1;
     public const int MaxPathLength = 1 + Hash256.Size;
-    public const int MaxKeyLength = IdentityLength + MaxPathLength + SuffixLength;
+    public const int MaxPrefixLength = IdentityLength + MaxPathLength;
+    public const int MaxKeyLength = EpochLength + TierLength + MaxPrefixLength + SuffixLength;
     public const byte ExactRowFlag = 0x80;
+    public const byte FineTier = 0x00;
+    public const byte ReservedMarker = 0xFF;
+    public const ulong MaxEpoch = ushort.MaxValue - 1;
 
     public static int PathBytes(int depth) => (depth + 1) / 2;
 
@@ -30,6 +36,36 @@ internal static class CommitmentKeyLayout
     {
         identity.CopyTo(destination);
         return identity.Length + WritePathPrefix(destination[identity.Length..], path, exact);
+    }
+
+    public static bool IsExactPrefix(scoped ReadOnlySpan<byte> prefix, int identityLength) => (prefix[identityLength] & ExactRowFlag) != 0;
+
+    public static int WriteRowKey(Span<byte> destination, ulong epoch, byte tier, scoped ReadOnlySpan<byte> prefix, ulong suffix)
+    {
+        int position = WriteEpochTier(destination, epoch, tier);
+        prefix.CopyTo(destination[position..]);
+        position += prefix.Length;
+        BinaryPrimitives.WriteUInt64BigEndian(destination[position..], ~suffix);
+        return position + SuffixLength;
+    }
+
+    public static int WriteRowUpperBound(Span<byte> destination, ulong epoch, byte tier, scoped ReadOnlySpan<byte> prefix)
+    {
+        int position = WriteEpochTier(destination, epoch, tier);
+        prefix.CopyTo(destination[position..]);
+        position += prefix.Length;
+        destination.Slice(position, SuffixLength).Fill(0xFF);
+        destination[position + SuffixLength] = 0x00;
+        return position + SuffixLength + 1;
+    }
+
+    public static int WriteEpochTier(Span<byte> destination, ulong epoch, byte tier)
+    {
+        if (epoch > MaxEpoch) throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "A commitment epoch must fit the two-byte key prefix.");
+
+        BinaryPrimitives.WriteUInt16BigEndian(destination, (ushort)epoch);
+        destination[EpochLength] = tier;
+        return EpochLength + TierLength;
     }
 
     public static int WriteSeekKey(Span<byte> destination, scoped ReadOnlySpan<byte> prefix, ulong suffix)
@@ -53,11 +89,11 @@ internal static class CommitmentKeyLayout
     public static void WriteIdentity(Span<byte> destination, in ValueHash256 accountPath) =>
         accountPath.Bytes[..IdentityLength].CopyTo(destination);
 
+    public const int StorageTrieDepthKeyLength = 1 + IdentityLength;
+
     public static void WriteStorageTrieDepthKey(Span<byte> destination, in ValueHash256 accountPath)
     {
-        WriteIdentity(destination, accountPath);
-        destination[IdentityLength] = StorageTrieDepthFlag;
+        destination[0] = ReservedMarker;
+        WriteIdentity(destination[1..], accountPath);
     }
-
-    public const byte StorageTrieDepthFlag = 0xFF;
 }

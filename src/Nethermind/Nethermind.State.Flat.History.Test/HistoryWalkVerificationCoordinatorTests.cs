@@ -51,7 +51,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         return new HistoryWalkVerificationCoordinator(
-            _db, _historyColumns, headers, availability, rowFormat, config, new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, new CommitmentMetadata(_historyColumns), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance), new CommitmentMetadata(_historyColumns), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
     }
 
     [Test]
@@ -82,7 +82,7 @@ public class HistoryWalkVerificationCoordinatorTests
         availability.PublishWatermark(2, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
-            _db, _historyColumns, headers, availability, rowFormat, config, new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, new CommitmentMetadata(_historyColumns), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance), new CommitmentMetadata(_historyColumns), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
         coordinator.Start();
 
         Assert.That(coordinator.Started, Is.True);

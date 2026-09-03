@@ -28,7 +28,7 @@ public class CommitmentEmitterTests
     public void SetUp()
     {
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _metadata = new CommitmentMetadata(_historyColumns);
+        _metadata = new CommitmentMetadata(_historyColumns, Policy);
     }
 
     [TearDown]
@@ -182,7 +182,7 @@ public class CommitmentEmitterTests
             second.FlushOpenWindows();
         }
 
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), Policy, CommitmentKeyLayout.IdentityLength);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], StorageTop, exact: true);
         using CommitmentStore.RowChain exact = store.OpenAtOrBelow(prefix[..prefixLength], 2);
@@ -204,7 +204,7 @@ public class CommitmentEmitterTests
             }
         }
 
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), Policy, 0);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, TreePath.FromHexString("ab"), exact: true);
         using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], 3, new ResolutionBudget(2));
@@ -273,7 +273,7 @@ public class CommitmentEmitterTests
             walk.FlushOpenWindows();
         }
 
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), Policy, 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ExactRow(store, root, 1), Is.Not.Null, "the root keeps its exact row: one seek instead of composing 256 grandchildren");
@@ -329,7 +329,7 @@ public class CommitmentEmitterTests
             walk.FlushOpenWindows();
         }
 
-        CommitmentStore store = new(column);
+        CommitmentStore store = new(column, policy, CommitmentKeyLayout.IdentityLength);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], StorageTop, exact: false);
         using (Assert.EnterMultipleScope())
@@ -348,7 +348,7 @@ public class CommitmentEmitterTests
 
     private byte[]? WindowRow(in TreePath path, ulong window)
     {
-        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments));
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), Policy, 0);
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, path, exact: false);
         return store.TryGetExact(prefix[..prefixLength], window);

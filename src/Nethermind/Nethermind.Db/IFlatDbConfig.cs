@@ -64,6 +64,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Delete the archive proof commitment columns and rebuild them when they were written under a different layout than this node is configured for (another checkpoint interval, or an older release). Off refuses to build and keeps the rows; on discards rows nothing can read any more. Nothing is deleted while the layout matches, so it is harmless to leave on.", DefaultValue = "false")]
     bool ArchiveProofDiscardMismatchedLayout { get; set; }
 
+    [ConfigItem(Description = "Epoch of the archive proof commitment rows, as a power of two blocks. Rows are keyed by epoch so a whole epoch can be dropped in one range delete; every epoch starts with a snapshot of the account tiers and the storage roots. Must be at least the checkpoint interval; 0 uses 19 (about 2.5 months of blocks). Changing it invalidates commitments already built.", DefaultValue = "0")]
+    int ArchiveProofEpochLog2 { get; set; }
+
+    [ConfigItem(Description = "Number of most recent commitment epochs to keep. Older epochs are deleted and historical proofs below them are refused; 0 keeps every epoch (a full archive).", DefaultValue = "0")]
+    int ArchiveProofRecentEpochs { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

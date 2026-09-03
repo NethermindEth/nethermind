@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
-public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
+public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy)
 {
     public const byte FormatVersion = 1;
 
@@ -20,6 +20,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private static ReadOnlySpan<byte> CoverageKey => [Marker, 0x02];
     private static ReadOnlySpan<byte> TipSeriesKey => [Marker, 0x03];
     private static ReadOnlySpan<byte> WalkRangeKey => [Marker, 0x04];
+    private static ReadOnlySpan<byte> RetainedFromEpochKey => [Marker, 0x07];
     private const byte WalkItemMarker = 0x05;
     private const byte WalkItemProgressMarker = 0x06;
     public const int MaxWalkItems = 1 << 16;
@@ -28,7 +29,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
 
     private readonly IDb _column = history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
     private readonly IDb _storageColumn = history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
-    private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+    private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly object _lock = new();
     private readonly object _depthWriteLock = new();
     private readonly ClockCache<ValueHash256, int> _storageTrieDepths = new(StorageTrieDepthCacheEntries);
@@ -128,7 +129,33 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
         }
     }
 
-    public bool TryGetCoverage(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(CoverageKey, out fromInclusive, out toInclusive);
+    public bool TryGetCoverage(out ulong fromInclusive, out ulong toInclusive)
+    {
+        if (!TryReadRange(CoverageKey, out fromInclusive, out toInclusive)) return false;
+
+        ulong floor = policy.EpochStart(RetainedFromEpoch);
+        if (floor > fromInclusive) fromInclusive = floor;
+        return fromInclusive <= toInclusive;
+    }
+
+    public ulong RetainedFromEpoch
+    {
+        get
+        {
+            byte[]? value = _column.Get(RetainedFromEpochKey);
+            return value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
+        }
+    }
+
+    public void SetRetainedFromEpoch(ulong epoch)
+    {
+        Span<byte> value = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, epoch);
+        lock (_lock)
+        {
+            _column.PutSpan(RetainedFromEpochKey, value);
+        }
+    }
 
     public bool TryGetTipSeries(out ulong startInclusive, out ulong frontierInclusive) => TryReadRange(TipSeriesKey, out startInclusive, out frontierInclusive);
 

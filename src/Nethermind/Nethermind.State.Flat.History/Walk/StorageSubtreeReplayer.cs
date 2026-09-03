@@ -88,6 +88,7 @@ internal sealed class StorageSubtreeReplayer(
             HashSet<int> touched = [];
             int nextDelta = 0;
             int nextClear = 0;
+            ulong nextEpochStart = emitter is null ? ulong.MaxValue : emitter.Policy.EpochStart(emitter.Policy.Epoch(from) + 1);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -100,6 +101,14 @@ internal sealed class StorageSubtreeReplayer(
                 }
 
                 if (block == ulong.MaxValue) break;
+
+                while (block >= nextEpochStart && nextEpochStart <= to)
+                {
+                    emitter!.BeginBlock(nextEpochStart);
+                    foreach (Contract contract in contracts) contract.Snapshot(nextEpochStart, emitter);
+                    emitter.CompleteBlock();
+                    nextEpochStart += emitter.Policy.EpochBlocks;
+                }
 
                 if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
                 {
@@ -142,6 +151,14 @@ internal sealed class StorageSubtreeReplayer(
                 emitter?.CompleteBlock();
             }
 
+            while (nextEpochStart <= to && emitter is not null)
+            {
+                emitter.BeginBlock(nextEpochStart);
+                foreach (Contract contract in contracts) contract.Snapshot(nextEpochStart, emitter);
+                emitter.CompleteBlock();
+                nextEpochStart += emitter.Policy.EpochBlocks;
+            }
+
             foreach (Contract contract in contracts) contract.Finish();
         }
         finally
@@ -176,6 +193,20 @@ internal sealed class StorageSubtreeReplayer(
             _emitter = emitter;
             _store ??= new RawScopedTrieStore(new MemDb());
             Tree = new StorageTree(_store, logManager);
+        }
+
+        public void Snapshot(ulong block, CommitmentEmitter emitter)
+        {
+            if (slotPrefix.Length > CommitmentEmitter.StorageSnapshotDepth) return;
+
+            if (slotPrefix.Length > 0)
+            {
+                if (publisher is not null) PublishView(block, emitter);
+                return;
+            }
+
+            _changes.CollectAll(Tree!.RootRef, CommitmentEmitter.StorageSnapshotDepth, _store!);
+            _changes.RecordStorage(emitter, Identity, slotPrefix.Length);
         }
 
         public void Recompute()

@@ -66,9 +66,10 @@ internal sealed class HistoricalTrieNodeBuilder
         if (_scope.MayHaveExactRows(path.Length))
         {
             using CommitmentStore.RowChain exact = _scope.OpenRows(path, exact: true, _block, _budget);
-            if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue) && !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)) && Materialize(exact) is { } fromExact)
+            if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue))
             {
-                return fromExact;
+                if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(exact.CurrentValue));
+                if (!NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)) && Materialize(exact) is { } fromExact) return fromExact;
             }
         }
 
@@ -87,6 +88,7 @@ internal sealed class HistoricalTrieNodeBuilder
         using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, anchor + 1, _budget);
         if (!chain.MoveNext()) return RebuildRlp(path);
         if (!ParentRowCodec.IsValid(chain.CurrentValue)) return RebuildRlp(path);
+        if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(chain.CurrentValue));
         if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= _block) return Materialize(chain);
 
         ReadOnlySpan<byte> movedRow = chain.CurrentValue;

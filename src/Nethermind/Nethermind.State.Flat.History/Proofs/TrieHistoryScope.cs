@@ -18,6 +18,14 @@ internal abstract class TrieHistoryScope(
 
     public CommitmentDepthPolicy Policy => policy;
 
+    public ulong MinEpoch { get; init; }
+
+    protected virtual ulong? ProbeStartEpoch => null;
+
+    public virtual void NoteRootLastBlock(ulong block)
+    {
+    }
+
     public abstract bool HasCommitmentRows(int depth);
 
     public virtual bool IsComposed(int depth) => false;
@@ -42,7 +50,7 @@ internal abstract class TrieHistoryScope(
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = WriteCommitmentPrefix(prefix, path, exact);
-        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget);
+        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget, MinEpoch, ProbeStartEpoch);
     }
 
     public void EnumerateLeaves(in TreePath prefix, ulong block, ResolutionBudget budget, List<TrieLeaf> leaves)

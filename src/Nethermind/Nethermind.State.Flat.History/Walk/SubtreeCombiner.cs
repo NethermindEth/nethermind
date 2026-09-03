@@ -102,6 +102,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
             bool observing = root.OnBlock(from, current);
             ulong observed = from;
+            ulong nextEpochStart = emitter is null ? ulong.MaxValue : emitter.Policy.EpochStart(emitter.Policy.Epoch(from) + 1);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -110,6 +111,14 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 {
                     ulong next = groups[nibble].NextBlock;
                     if (next < block) block = next;
+                }
+
+                while (nextEpochStart <= to && nextEpochStart < block)
+                {
+                    emitter!.BeginBlock(nextEpochStart);
+                    rootPublisher.Publish(nextEpochStart, current, emitter);
+                    emitter.CompleteBlock();
+                    nextEpochStart += emitter.Policy.EpochBlocks;
                 }
 
                 if (block == ulong.MaxValue) break;

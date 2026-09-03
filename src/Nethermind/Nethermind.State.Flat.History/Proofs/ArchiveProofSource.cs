@@ -25,8 +25,8 @@ public sealed class ArchiveProofSource(
 
     private readonly ISortedKeyValueStore _accountRows = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
     private readonly ISortedKeyValueStore _storageRows = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageHistory);
-    private readonly CommitmentStore _accountCommitments = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
-    private readonly CommitmentStore _storageCommitments = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+    private readonly CommitmentStore _accountCommitments = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
+    private readonly CommitmentStore _storageCommitments = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly StorageClearStore _clears = new(history.GetColumnDb(FlatHistoryColumns.StorageClears));
     private readonly ArchiveProofNodeCache _nodeCache = new(NodeCacheCapacity);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
@@ -57,20 +57,21 @@ public sealed class ArchiveProofSource(
         where TCtx : struct, INodeContext<TCtx>
     {
         ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows);
-        PatriciaTree tree = new(CreateAccountStore(stateId.BlockNumber, budget), logManager);
+        ulong minEpoch = metadata.TryGetCoverage(out ulong coveredFrom, out _) ? policy.Epoch(coveredFrom) : 0;
+        PatriciaTree tree = new(CreateAccountStore(stateId.BlockNumber, budget, minEpoch), logManager);
         tree.Accept(visitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
     }
 
-    private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget) =>
-        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy), block, budget, _fanOut, _nodeCache);
+    private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget, ulong minEpoch) =>
+        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy) { MinEpoch = minEpoch }, block, budget, _fanOut, _nodeCache);
 
-    private HistoricalTrieNodeBuilder CreateStorageBuilder(in ValueHash256 accountPath, ulong block, ResolutionBudget budget) =>
+    private HistoricalTrieNodeBuilder CreateStorageBuilder(in ValueHash256 accountPath, ulong block, ResolutionBudget budget, ulong minEpoch) =>
         new(
-            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots),
+            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots) { MinEpoch = minEpoch },
             block, budget, _fanOut, _nodeCache);
 
-    private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget) =>
+    private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget, ulong minEpoch) =>
         new(
-            CreateAccountBuilder(block, budget),
-            accountPath => new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget), storageResolverFactory: null));
+            CreateAccountBuilder(block, budget, minEpoch),
+            accountPath => new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null));
 }
