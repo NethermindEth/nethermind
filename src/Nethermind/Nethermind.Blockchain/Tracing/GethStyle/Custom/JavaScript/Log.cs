@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             public Instruction Value { get; } = value;
 
             public int toNumber() => (int)Value;
-            public string toString() => OpcodeJsonNames.Get(Value).Value;
+            public string toString() => OpcodeJsonNames.GetName(Value);
             public bool isPush() => Value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 

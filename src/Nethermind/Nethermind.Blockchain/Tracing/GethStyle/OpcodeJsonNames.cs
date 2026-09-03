@@ -8,19 +8,24 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-/// <summary>Provides go-ethereum opcode names for JSON trace output.</summary>
+/// <summary>Provides go-ethereum opcode names for trace output.</summary>
 public static class OpcodeJsonNames
 {
-    private static readonly JsonEncodedText[] _names = BuildLookup();
+    private static readonly (string Name, JsonEncodedText JsonName)[] _lookup = BuildLookup();
 
     /// <summary>Gets the go-ethereum JSON name for an opcode.</summary>
     /// <param name="opcode">Opcode byte.</param>
     /// <returns>The pre-encoded opcode name.</returns>
-    public static JsonEncodedText Get(Instruction opcode) => _names[(byte)opcode];
+    public static JsonEncodedText Get(Instruction opcode) => _lookup[(byte)opcode].JsonName;
 
-    private static JsonEncodedText[] BuildLookup()
+    /// <summary>Gets the go-ethereum name for an opcode.</summary>
+    /// <param name="opcode">Opcode byte.</param>
+    /// <returns>The unescaped opcode name.</returns>
+    public static string GetName(Instruction opcode) => _lookup[(byte)opcode].Name;
+
+    private static (string Name, JsonEncodedText JsonName)[] BuildLookup()
     {
-        JsonEncodedText[] table = new JsonEncodedText[256];
+        (string Name, JsonEncodedText JsonName)[] table = new (string, JsonEncodedText)[256];
         for (int i = 0; i < 256; i++)
         {
             Instruction opcode = (Instruction)i;
@@ -45,7 +50,7 @@ public static class OpcodeJsonNames
                 0xfb => "EXTSTATICCALL",
                 byte value => Enum.GetName(opcode) ?? string.Create(CultureInfo.InvariantCulture, $"opcode 0x{value:x} not defined"),
             };
-            table[i] = JsonEncodedText.Encode(name);
+            table[i] = (name, JsonEncodedText.Encode(name));
         }
         return table;
     }

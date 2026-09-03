@@ -68,7 +68,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         {
             Pc = pc,
             Operation = (byte)opcode,
-            OperationName = OpcodeJsonNames.Get(opcode).Value,
+            OperationName = OpcodeJsonNames.GetName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
             Refund = _refundTracker.Refund,
