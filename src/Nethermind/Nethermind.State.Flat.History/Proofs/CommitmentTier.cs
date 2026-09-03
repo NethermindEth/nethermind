@@ -7,5 +7,6 @@ internal enum CommitmentTier
 {
     PerChange,
     Checkpoint,
+    Composed,
     Recomputed,
 }

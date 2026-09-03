@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -15,6 +16,9 @@ internal sealed class HistoricalTrieNodeBuilder
     private readonly ArchiveProofNodeCache? _cache;
     private readonly ParallelOptions _fanOutOptions;
     private readonly Action<int> _resolveFanOutChild;
+    private readonly Action<int> _composeFanOutChild;
+    private readonly byte[]?[] _composedChildren = new byte[]?[BranchRlp.ChildCount];
+    private readonly NodeView[] _composedViews = new NodeView[BranchRlp.ChildCount];
     private TreePath _fanOutParent;
     private ushort _fanOutChanged;
     private ChildVector? _fanOutChildren;
@@ -28,6 +32,7 @@ internal sealed class HistoricalTrieNodeBuilder
         _cache = cache;
         _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut) };
         _resolveFanOutChild = ResolveFanOutChild;
+        _composeFanOutChild = ComposeFanOutChild;
     }
 
     public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
@@ -55,6 +60,7 @@ internal sealed class HistoricalTrieNodeBuilder
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren)
     {
+        if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren);
         if (!_scope.HasCommitmentRows(path.Length)) return RebuildRlp(path);
 
         if (_scope.MayHaveExactRows(path.Length))
@@ -141,6 +147,54 @@ internal sealed class HistoricalTrieNodeBuilder
             if (((changed >> index) & 1) == 1) ResolveChild(path.Append(index), children, index);
         }
     }
+
+    private byte[]? Compose(in TreePath path, bool parallelChildren)
+    {
+        if (parallelChildren)
+        {
+            _fanOutParent = path;
+            try
+            {
+                Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, _composeFanOutChild);
+            }
+            catch (AggregateException e) when (e.InnerException is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+            }
+        }
+        else
+        {
+            for (int index = 0; index < BranchRlp.ChildCount; index++) _composedChildren[index] = ResolveRlp(path.Append(index), parallelChildren: false);
+        }
+
+        NodeView[] views = _composedViews;
+        try
+        {
+            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            {
+                byte[]? child = _composedChildren[index];
+                views[index] = child is null ? NodeView.Empty : NodeViews.FromRlp(child);
+            }
+
+            NodeView composed = NodeViews.Combine(views);
+            try
+            {
+                return composed.Kind == NodeViewKind.Empty ? null : composed.Rlp.ToArray();
+            }
+            finally
+            {
+                composed.Release();
+            }
+        }
+        finally
+        {
+            foreach (NodeView view in views) view.Release();
+            Array.Clear(_composedChildren);
+            Array.Clear(views);
+        }
+    }
+
+    private void ComposeFanOutChild(int index) => _composedChildren[index] = ResolveRlp(_fanOutParent.Append(index), parallelChildren: false);
 
     private void ResolveFanOutChild(int index)
     {

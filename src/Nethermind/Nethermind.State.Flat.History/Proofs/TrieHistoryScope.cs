@@ -20,6 +20,8 @@ internal abstract class TrieHistoryScope(
 
     public abstract bool HasCommitmentRows(int depth);
 
+    public virtual bool IsComposed(int depth) => false;
+
     public abstract bool MayHaveExactRows(int depth);
 
     public abstract int WriteCommitmentPrefix(Span<byte> destination, in TreePath path, bool exact);

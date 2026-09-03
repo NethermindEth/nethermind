@@ -183,6 +183,8 @@ public sealed class CommitmentEmitter : IDisposable
                 case CommitmentTier.Checkpoint:
                     Accumulate(key, rlp, isEmpty: length == EmptyRecord);
                     break;
+                case CommitmentTier.Composed:
+                    break;
             }
         }
 

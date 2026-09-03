@@ -17,9 +17,11 @@ internal sealed class AccountHistoryScope(
 {
     private static readonly AccountDecoder Decoder = new();
 
-    public override bool HasCommitmentRows(int depth) => depth <= Policy.AccountCheckpointDepth;
+    public override bool HasCommitmentRows(int depth) => depth <= Policy.AccountCheckpointDepth && !Policy.IsComposedAccountDepth(depth);
 
-    public override bool MayHaveExactRows(int depth) => depth <= Policy.AccountExactDepth;
+    public override bool IsComposed(int depth) => Policy.IsComposedAccountDepth(depth);
+
+    public override bool MayHaveExactRows(int depth) => Policy.IsExactAccountDepth(depth);
 
     public override int WriteCommitmentPrefix(Span<byte> destination, in TreePath path, bool exact) =>
         CommitmentKeyLayout.WritePathPrefix(destination, path, exact);

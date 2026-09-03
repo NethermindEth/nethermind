@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class ForwardCommitmentCaptureTests
 {
-    private static readonly TreePath PerChangePath = TreePath.FromHexString("a");
+    private static readonly TreePath PerChangePath = TreePath.FromHexString("ab");
     private static readonly TreePath CheckpointedPath = TreePath.FromHexString("abc");
     private static readonly CommitmentDepthPolicy Policy = new(CommitmentDepthPolicy.DefaultIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
     private static readonly TreePath StoragePath = TreePath.FromHexString("7f");

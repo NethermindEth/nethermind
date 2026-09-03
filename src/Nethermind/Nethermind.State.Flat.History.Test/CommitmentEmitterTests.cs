@@ -199,14 +199,14 @@ public class CommitmentEmitterTests
             for (ulong block = 1; block <= 3; block++)
             {
                 walk.BeginBlock(block);
-                walk.RecordAccountNode(TreePath.FromHexString("a"), BranchRlp.Encode(Children((int)block)));
+                walk.RecordAccountNode(TreePath.FromHexString("ab"), BranchRlp.Encode(Children((int)block)));
                 walk.CompleteBlock();
             }
         }
 
         CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments));
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
-        int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, TreePath.FromHexString("a"), exact: true);
+        int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, TreePath.FromHexString("ab"), exact: true);
         using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix[..prefixLength], 3, new ResolutionBudget(2));
 
         Assert.That(() => { while (chain.MoveNext()) { } }, Throws.InstanceOf<StateUnavailableException>(),
@@ -248,8 +248,39 @@ public class CommitmentEmitterTests
     [TestCase(1, 5, 2, 4, 6, 7, TestName = "StorageRowsSignalAboveTheLargeTrieSignal")]
     [TestCase(1, 5, 2, 4, 6, 0, TestName = "StorageRowsSignalZero")]
     public void A_depth_that_does_not_fit_the_stamp_is_refused(int accountExact, int accountCheckpoint, int storageExact, int storageCheckpoint, int signal, int rowsSignal) =>
-        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, accountExact, accountCheckpoint, storageExact, storageCheckpoint, signal, rowsSignal), Throws.InstanceOf<InvalidConfigurationException>(),
+        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, accountExact, accountCheckpoint, storageExact, storageCheckpoint, signal, rowsSignal, accountExact == 1 ? 0 : CommitmentDepthPolicy.DefaultAccountComposedDepths), Throws.InstanceOf<InvalidConfigurationException>(),
             "the layout stamp packs depths into nibbles; a depth above 15 would collide with another layout and defeat the mixing guard");
+
+    [TestCase(1, TestName = "TheRoot")]
+    [TestCase(1 << 2, TestName = "TheExactDepthItself")]
+    public void A_composed_depth_outside_the_exact_top_is_refused(int composed) =>
+        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, 2, 5, 2, 4, 6, 4, composed), Throws.InstanceOf<InvalidConfigurationException>(),
+            "a composed depth is rebuilt from its children's exact rows, so it must sit strictly between the stored root and the exact depth");
+
+    [Test]
+    public void A_composed_account_depth_writes_no_row_and_its_children_keep_theirs()
+    {
+        TreePath root = TreePath.Empty;
+        TreePath composed = TreePath.FromHexString("a");
+        TreePath child = TreePath.FromHexString("ab");
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            walk.RecordAccountNode(root, BranchRlp.Encode(Children(0xa)));
+            walk.RecordAccountNode(composed, BranchRlp.Encode(Children(0xb)));
+            walk.RecordAccountNode(child, BranchRlp.Encode(Children(1, 2)));
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ExactRow(store, root, 1), Is.Not.Null, "the root keeps its exact row: one seek instead of composing 256 grandchildren");
+            Assert.That(ExactRow(store, composed, 1), Is.Null, "a depth-1 row repeats the sixteen depth-2 references that already have exact rows, so it is composed at read time instead of stored");
+            Assert.That(ExactRow(store, child, 1), Is.Not.Null, "the depth-2 children the composition reads from keep their exact rows");
+        }
+    }
 
     [Test]
     public void An_account_node_below_the_checkpoint_depth_writes_no_row()
@@ -306,6 +337,13 @@ public class CommitmentEmitterTests
             Assert.That(store.TryGetExact(prefix[..prefixLength], policy.WindowClosingAt(2)), Is.Not.Null, "once the trie is deep enough that a whole rebuild is no longer one cheap scan, its top gets checkpoint rows");
             Assert.That(store.ReadStorageTrieDepth(StorageAccount), Is.EqualTo(CommitmentDepthPolicy.DefaultStorageRowsSignalDepth), "the depth reached is persisted so the read side and later emitters agree");
         }
+    }
+
+    private static byte[]? ExactRow(CommitmentStore store, in TreePath path, ulong block)
+    {
+        Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, path, exact: true);
+        return store.TryGetExact(prefix[..prefixLength], block);
     }
 
     private byte[]? WindowRow(in TreePath path, ulong window)

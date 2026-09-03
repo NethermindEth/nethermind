@@ -37,6 +37,15 @@ internal static class NodeViews
         return NodeView.Extension(rest, reference[..referenceLength]);
     }
 
+    public static NodeView FromRlp(ReadOnlySpan<byte> rlp)
+    {
+        ChildVector children = ChildVector.Rent();
+        if (BranchRlp.TryReadChildren(rlp, children)) return NodeView.Branch(children, rlp, knownHash: null);
+
+        ChildVector.Return(children);
+        return NodeView.Whole(rlp);
+    }
+
     public static NodeView Combine(ReadOnlySpan<NodeView> children)
     {
         int present = 0;
