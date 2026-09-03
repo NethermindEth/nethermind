@@ -20,13 +20,12 @@ public ref partial struct EvmStack
     private static void WriteBeWord(ref EvmWord head, in UInt256 value)
     {
         ref ulong d = ref Unsafe.As<EvmWord, ulong>(ref head);
-        ulong low = ZkEvmBitOperations.Bswap64(value.u0);
         if ((value.u1 | value.u2 | value.u3) == 0)
         {
             d = 0;
             Unsafe.Add(ref d, 1) = 0;
             Unsafe.Add(ref d, 2) = 0;
-            Unsafe.Add(ref d, 3) = low;
+            Unsafe.Add(ref d, 3) = ZkEvmBitOperations.Bswap64(value.u0);
         }
         else
         {
