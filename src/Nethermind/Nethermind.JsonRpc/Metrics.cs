@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
-using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
@@ -25,45 +23,30 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcInvalidRequests { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap: the per-cost-class admission gate (see the RpcAdmission* metrics and JsonRpc.EvmExecutionConcurrency / TracingConcurrency / ProofConcurrency and their MaxQueueWaitMs / TracingMaxQueueWaitMs / ProofMaxQueueWaitMs budgets), the module pool, or the override-environment limit. A nonzero rate means callers receive 'Too many requests'.")]
+        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (the EVM-execution admission gate — see the RpcAdmission* metrics, JsonRpc.EvmExecutionConcurrency and JsonRpc.MaxQueueWaitMs — a module pool, or the override-environment limit). A nonzero rate means callers receive 'Too many requests'.")]
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
 
-        [CounterMetric]
-        [Description("Number of gated JSON RPC requests shed up front because the predicted queue wait exceeded the class's wait budget (JsonRpc.MaxQueueWaitMs, TracingMaxQueueWaitMs or ProofMaxQueueWaitMs), because that budget is zero, or because JsonRpc.RequestQueueLimit requests of the class were already queued, per cost class.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionPredictedWaitRejections { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of gated JSON RPC requests shed after waiting the class's wait budget (JsonRpc.MaxQueueWaitMs, TracingMaxQueueWaitMs or ProofMaxQueueWaitMs) without being granted an execution slot (lighter requests are served first), per cost class.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionWaitTimeoutRejections { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of gated JSON RPC requests whose caller went away while they waited for an execution slot, per cost class. The only exit from the queue that is not a rejection: a rate approaching the served rate means clients are hanging up faster than the class can serve them, and is the signal to lower the class's wait budget.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionCancellations { get; } = new();
+        [GaugeMetric]
+        [Description("Number of EVM-executing JSON RPC requests waiting for an execution slot. A request whose caller has disconnected stays counted until the next grant or expiry sweep removes it, at most JsonRpc.MaxQueueWaitMs.")]
+        public static long RpcAdmissionQueued { get; set; }
 
         [GaugeMetric]
-        [Description("Number of gated JSON RPC requests currently waiting for an execution slot, per cost class.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionQueued { get; } = new();
-
-        [GaugeMetric]
-        [Description("Number of gated JSON RPC requests currently executing, per cost class. A value pinned at the class's permit count while RpcAdmissionQueued stays zero is the signature of a leaked permit.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionInFlight { get; } = new();
+        [Description("Number of EVM-executing JSON RPC requests currently executing. A value pinned at JsonRpc.EvmExecutionConcurrency while RpcAdmissionQueued stays zero is the signature of a leaked permit.")]
+        public static long RpcAdmissionInFlight { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC admission permit releases that found nothing in flight and were ignored, per cost class. Each is a lease released more than once; a double release while other requests were in flight raises the class's effective permit count by one until the class next drains, and is counted then. Any nonzero value is a bug in a call site.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionReleaseAnomalies { get; } = new();
+        [Description("Number of EVM-executing JSON RPC requests shed up front: predicted queue wait above JsonRpc.MaxQueueWaitMs, queueing disabled, or JsonRpc.RequestQueueLimit requests already waiting. Spikes on short bursts suggest a longer MaxQueueWaitMs.")]
+        public static long RpcAdmissionPredictedWaitRejections { get; set; }
+
+        [CounterMetric]
+        [Description("Number of EVM-executing JSON RPC requests shed after waiting JsonRpc.MaxQueueWaitMs without being granted a slot (lighter requests are served first). A sustained rate means the node is saturated rather than bursty.")]
+        public static long RpcAdmissionWaitTimeoutRejections { get; set; }
 
         [GaugeMetric]
-        [Description("Exponentially weighted moving average of the per-unit-weight service time of gated JSON RPC requests, in milliseconds, per cost class.")]
-        [KeyIsLabel("cost_class")]
-        public static ConcurrentDictionary<RpcMethodCostClass, double> RpcAdmissionServiceTimeMs { get; } = new();
+        [Description("Exponentially weighted moving average of the service time per weight unit (128 KiB of params) of EVM-executing JSON RPC requests, in milliseconds.")]
+        public static double RpcAdmissionServiceTimeMs { get; set; }
 
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]

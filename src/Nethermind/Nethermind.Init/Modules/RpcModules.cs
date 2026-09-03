@@ -51,7 +51,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
         builder
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
-            .AddSingleton<RpcAdmissionController>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
             .AddSingleton<IWebSocketsManager, WebSocketsManager>()
 
@@ -97,11 +96,11 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                     .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory, SimulateReadOnlyBlocksProcessingEnvFactory>()
 
             // Proof
-            .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(jsonRpcConfig.GetProofModuleConcurrentInstances(), jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)
                 .AddScoped<IProofRpcModule, ProofRpcModule>()
 
             // Trace
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.GetTraceModuleConcurrentInstances(), jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(2, jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug

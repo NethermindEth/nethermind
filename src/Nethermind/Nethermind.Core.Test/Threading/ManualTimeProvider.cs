@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,21 +9,15 @@ namespace Nethermind.Core.Test.Threading;
 
 public sealed class ManualTimeProvider : TimeProvider
 {
-    private sealed class RecordedTimer(ManualTimeProvider owner, TimerCallback callback, object? state) : ITimer
+    private sealed class NoopTimer : ITimer
     {
-        public TimerCallback Callback => callback;
-        public object? State => state;
         public bool Change(TimeSpan dueTime, TimeSpan period) => true;
-        public void Dispose() => owner.Remove(this);
-        public ValueTask DisposeAsync()
-        {
-            Dispose();
-            return default;
-        }
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => default;
     }
 
+    private static readonly NoopTimer SharedTimer = new();
     private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly List<RecordedTimer> _timers = [];
     private TimerCallback? _timerCallback;
     private object? _timerState;
     private long _elapsedTicks;
@@ -42,14 +35,8 @@ public sealed class ManualTimeProvider : TimeProvider
     {
         _timerCallback = callback;
         _timerState = state;
-        RecordedTimer timer = new(this, callback, state);
-        lock (_timers)
-        {
-            _timers.Add(timer);
-        }
-
         _timerCreated.TrySetResult();
-        return timer;
+        return SharedTimer;
     }
 
     public void Advance(TimeSpan elapsed)
@@ -60,34 +47,9 @@ public sealed class ManualTimeProvider : TimeProvider
 
     public void JumpUtc(TimeSpan delta) => Interlocked.Add(ref _utcTicks, delta.Ticks);
 
-    /// <summary>Advances the clock and fires the most recently created timer, whether or not it is still armed.</summary>
     public void AdvanceAndFireTimer(TimeSpan elapsed)
     {
         Advance(elapsed);
         _timerCallback?.Invoke(_timerState);
-    }
-
-    /// <summary>Advances the clock and fires every timer that is still armed, oldest first.</summary>
-    public void AdvanceAndFireTimers(TimeSpan elapsed)
-    {
-        Advance(elapsed);
-        RecordedTimer[] timers;
-        lock (_timers)
-        {
-            timers = [.. _timers];
-        }
-
-        foreach (RecordedTimer timer in timers)
-        {
-            timer.Callback(timer.State);
-        }
-    }
-
-    private void Remove(RecordedTimer timer)
-    {
-        lock (_timers)
-        {
-            _timers.Remove(timer);
-        }
     }
 }

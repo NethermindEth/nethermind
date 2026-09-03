@@ -62,102 +62,55 @@ namespace Nethermind.JsonRpc.Modules
         }
     }
 
-    /// <summary>
-    /// Module pool with one shared instance for sharable calls and up to <c>exclusiveCapacity</c> exclusive
-    /// instances, all created on first use.
-    /// </summary>
-    /// <remarks>
-    /// Lazy creation keeps the capacity cheap to raise: each instance is a full DI child scope, and a node that never
-    /// receives, say, a <c>trace_*</c> call should not pay for a processor's worth of them at startup. The semaphore
-    /// bounds concurrent exclusive rentals, and every returned instance goes back to the idle queue, so a rental only
-    /// finds the queue empty while fewer than <c>exclusiveCapacity</c> instances exist — the total never exceeds the
-    /// capacity. <see cref="Preload"/> restores eager creation for operators who prefer first-request latency; it is
-    /// meant to run before the first rental, as a rental racing it can create one instance beyond the capacity.
-    /// </remarks>
-    public class BoundedModulePool<T>(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout) : IRpcModulePool<T> where T : IRpcModule
+    public class BoundedModulePool<T> : IRpcModulePool<T> where T : IRpcModule
     {
+        private readonly int _timeout;
+        private readonly T _shared;
+        private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<T> _pool = new();
-        private readonly SemaphoreSlim _semaphore = new(exclusiveCapacity);
-        private readonly Lock _sharedLock = new();
-        // Factories supplied by plugins historically observed serial Create calls. Keep that compatibility while
-        // retaining lazy creation: creations are serialized, so a first burst of N rentals builds N instances one
-        // at a time while each caller holds its slot. Set PreloadRpcModules to pay that cost at startup instead.
-        private readonly Lock _factoryLock = new();
-        // Published under _sharedLock, read lock-free on the rental and return paths.
-        private volatile Task<T>? _sharedAsTask;
-        private int _createdExclusive;
+        private readonly SemaphoreSlim _semaphore;
 
-        public void Preload()
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
         {
-            GetOrCreateShared();
-            int created = Volatile.Read(ref _createdExclusive);
-            while (created < exclusiveCapacity)
+            _timeout = timeout;
+            Factory = factory;
+
+            _semaphore = new SemaphoreSlim(exclusiveCapacity);
+            for (int i = 0; i < exclusiveCapacity; i++)
             {
-                int witnessed = Interlocked.CompareExchange(ref _createdExclusive, created + 1, created);
-                if (witnessed == created)
-                {
-                    _pool.Enqueue(CreateModule());
-                    created++;
-                }
-                else
-                {
-                    created = witnessed;
-                }
+                _pool.Enqueue(Factory.Create());
             }
+
+            _shared = factory.Create();
+            _sharedAsTask = Task.FromResult(_shared);
         }
 
         public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : SlowPath();
 
         private Task<T> SharedPath()
         {
-            // Created before the slot is taken: a failing factory must not consume a slot that is never returned.
-            Task<T> shared = _sharedAsTask ?? GetOrCreateShared();
             RpcLimits.AcquireSharedSlot();
-            return shared;
-        }
-
-        private Task<T> GetOrCreateShared()
-        {
-            lock (_sharedLock)
-            {
-                return _sharedAsTask ??= Task.FromResult(CreateModule());
-            }
+            return _sharedAsTask;
         }
 
         private async Task<T> SlowPath()
         {
             RpcLimits.AcquireQueuedSlot();
 
-            if (!await _semaphore.WaitAsync(timeout))
+            if (!await _semaphore.WaitAsync(_timeout))
             {
                 RpcLimits.DecrementQueuedCalls();
                 throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
             RpcLimits.DecrementQueuedCalls();
-            if (_pool.TryDequeue(out T? result))
-            {
-                return result;
-            }
-
-            try
-            {
-                Interlocked.Increment(ref _createdExclusive);
-                return CreateModule();
-            }
-            catch
-            {
-                Interlocked.Decrement(ref _createdExclusive);
-                _semaphore.Release();
-                throw;
-            }
+            _pool.TryDequeue(out T result);
+            return result;
         }
 
         public void ReturnModule(T module)
         {
-            // Only ever a completed task, so Result is a plain read.
-            Task<T>? shared = _sharedAsTask;
-            if (shared is not null && ReferenceEquals(module, shared.Result))
+            if (ReferenceEquals(module, _shared))
             {
                 RpcLimits.DecrementSharedCalls();
                 return;
@@ -167,14 +120,6 @@ namespace Nethermind.JsonRpc.Modules
             _semaphore.Release();
         }
 
-        public IRpcModuleFactory<T> Factory { get; } = factory;
-
-        private T CreateModule()
-        {
-            lock (_factoryLock)
-            {
-                return Factory.Create();
-            }
-        }
+        public IRpcModuleFactory<T> Factory { get; }
     }
 }

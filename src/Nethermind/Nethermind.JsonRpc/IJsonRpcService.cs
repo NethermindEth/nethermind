@@ -16,6 +16,9 @@ public interface IJsonRpcService
     /// The default implementation preserves source and binary compatibility for out-of-tree service implementations
     /// that predate connection cancellation support.
     /// </remarks>
+    /// <exception cref="System.OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was cancelled before the request produced a response; none is produced then.
+    /// </exception>
     ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken) =>
         SendRequestAsync(request, context);
 
