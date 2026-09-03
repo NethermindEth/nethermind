@@ -241,13 +241,8 @@ jobs:
           if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             # The synthetic 500k cases declare exactly 500000; both harnesses skip only when the declared
             # ceiling is strictly greater than the constant, so a raise above 300000 unlocks them.
-            mempool_markers+=('verify_gas=500000')
+            mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
             flood_markers+=('ceiling=500000')
-            # The heaviest synthetic Groth16 point declares 510000, so it needs the constant at least that
-            # high. Its result key is the ceiling it declares; sweep-500k is only the artifact directory.
-            if (( RAISE_VERIFY_GAS >= 510000 )); then
-              mempool_markers+=('shape=groth16-510k')
-            fi
           fi
 
           # Each harness is attempted even when an earlier one fails, so a run never
