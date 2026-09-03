@@ -120,6 +120,66 @@ public class ArchiveProofTests
         }
     }
 
+    [Test]
+    public void A_verify_only_run_interrupted_inside_a_subtree_resumes_from_its_checkpoint_without_false_mismatches()
+    {
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        CommitmentMetadata metadata = new(_historyColumns);
+
+        using CancellationTokenSource interrupt = new();
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item < 256) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut right after an account subtree's first checkpoint");
+        bool partial = false;
+        for (int item = 0; item < 256 && !partial; item++) partial = metadata.TryGetWalkItemProgress(item, out _);
+        Assert.That(partial, Is.True, "precondition: a subtree left a block-level checkpoint behind");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.Empty,
+            "without a build the depth-2 series is scratch; a resume that deleted it would fold an empty series below the checkpoint and report a state root mismatch at every one of those blocks");
+    }
+
+    [Test]
+    public void Mismatches_of_a_subtree_finished_before_an_interruption_survive_the_restart()
+    {
+        CorruptEveryStorageRow();
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected, Is.Not.Empty, "precondition: corrupt slot rows rebuild to storage roots the account rows do not claim");
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        using CancellationTokenSource interrupt = new();
+        int contractItem = ContractStorageItem;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, interrupt.Token, item => { if (item == contractItem) interrupt.Cancel(); }),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut right after the contract's storage subtree is marked done");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "a finished subtree is skipped on resume, so the mismatches it found must be persisted with its done mark or the resumed verdict passes a corrupt archive");
+    }
+
+    [Test]
+    public void Mismatches_found_before_a_checkpoint_survive_the_restart()
+    {
+        CorruptEveryStorageRow();
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        using CancellationTokenSource interrupt = new();
+        int contractItem = ContractStorageItem;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, progress) => { if (item == contractItem) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut at the storage range's checkpoint right after the contract's group");
+        Assert.That(new CommitmentMetadata(_historyColumns).TryGetWalkItemProgress(contractItem, out _), Is.True, "precondition: the storage range left a group checkpoint behind");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "groups below the checkpoint are not rescanned on resume, so what they found must ride along with the checkpoint");
+    }
+
     [TestCase(1L)]
     [TestCase(40L)]
     public void A_build_leaves_no_scratch_series_behind(long maxRowsPerPartition)
@@ -378,6 +438,14 @@ public class ArchiveProofTests
 
         Assert.That(source.Enabled, Is.False,
             "windowed rows are pre-values behind a retention floor, which a proof resolution cannot replay");
+    }
+
+    private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
+
+    private HistoryWalkVerifier CreateVerifyOnlyVerifier()
+    {
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        return new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null);
     }
 
     private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);

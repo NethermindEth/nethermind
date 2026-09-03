@@ -17,8 +17,7 @@ internal sealed class StorageSubtreeReplayer(
     ISortedKeyValueStore storageHistory,
     HistoryRowFormat rowFormat,
     bool rlpWrapSlots,
-    ILogManager logManager,
-    MismatchSink sink)
+    ILogManager logManager)
 {
     public void Replay(
         in TreePath slotPrefix,
@@ -29,6 +28,7 @@ internal sealed class StorageSubtreeReplayer(
         CommitmentEmitter? emitter,
         SeriesWriter series,
         bool writeSeries,
+        MismatchSink sink,
         WalkProgress progress,
         int item,
         CancellationToken token)
@@ -146,7 +146,6 @@ internal sealed class StorageSubtreeReplayer(
 
                 emitter?.CompleteBlock();
             }
-
 
             foreach (Contract contract in contracts) contract.Finish();
         }

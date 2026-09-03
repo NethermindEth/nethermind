@@ -33,6 +33,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly Dictionary<NodePathKey, ushort> _blockChanged = [];
     private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
+    private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
     private readonly Dictionary<NodePathKey, bool> _exactBranches = [];
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly HashSet<NodePathKey> _touchedThisBlock = [];
@@ -79,6 +80,7 @@ public sealed class CommitmentEmitter : IDisposable
         _blockChanged.Clear();
         _blockDirtyChildren.Clear();
         _blockStorageMaxDepth.Clear();
+        _blockTrieDepths.Clear();
         _touchedThisBlock.Clear();
     }
 
@@ -143,13 +145,26 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void RecordStorageDepthReached(in ValueHash256 accountPath, int depth) => NoteStorageDepth(accountPath, depth);
 
-    public int StorageTrieDepth(in ValueHash256 accountPath) =>
-        _blockStorageMaxDepth.TryGetValue(accountPath, out int reached)
-            ? _metadata.NoteStorageTrieDepth(accountPath, reached)
-            : _metadata.StorageTrieDepth(accountPath);
+    public int StorageTrieDepth(in ValueHash256 accountPath)
+    {
+        if (_blockTrieDepths.TryGetValue(accountPath, out int depth)) return depth;
+
+        depth = _metadata.StorageTrieDepth(accountPath);
+        _blockTrieDepths[accountPath] = depth;
+        return depth;
+    }
+
+    private void PersistStorageDepthsReached()
+    {
+        foreach ((ValueHash256 accountPath, int reached) in _blockStorageMaxDepth)
+        {
+            _blockTrieDepths[accountPath] = _metadata.NoteStorageTrieDepth(accountPath, reached);
+        }
+    }
 
     public void CompleteBlock()
     {
+        PersistStorageDepthsReached();
         foreach ((NodePathKey key, (int offset, int length)) in _blockNodes)
         {
             CommitmentTier tier = key.IsStorage

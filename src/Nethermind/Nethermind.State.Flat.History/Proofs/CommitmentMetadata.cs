@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -29,40 +30,32 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private readonly IDb _storageColumn = history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
     private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
     private readonly object _lock = new();
-
-    private readonly Dictionary<ValueHash256, int> _storageTrieDepths = [];
+    private readonly object _depthWriteLock = new();
+    private readonly ClockCache<ValueHash256, int> _storageTrieDepths = new(StorageTrieDepthCacheEntries);
+    private bool _layoutEnsured;
 
     public object WindowWriteLock { get; } = new();
 
     public int StorageTrieDepth(in ValueHash256 accountPath)
     {
-        lock (_storageTrieDepths)
-        {
-            return StorageTrieDepthLocked(accountPath);
-        }
+        if (_storageTrieDepths.TryGet(accountPath, out int depth)) return depth;
+
+        depth = _storages.ReadStorageTrieDepth(accountPath);
+        _storageTrieDepths.Set(accountPath, depth);
+        return depth;
     }
 
     public int NoteStorageTrieDepth(in ValueHash256 accountPath, int depth)
     {
-        lock (_storageTrieDepths)
+        lock (_depthWriteLock)
         {
-            int known = StorageTrieDepthLocked(accountPath);
+            int known = StorageTrieDepth(accountPath);
             if (depth <= known) return known;
 
             _storages.WriteStorageTrieDepth(accountPath, depth);
-            _storageTrieDepths[accountPath] = depth;
+            _storageTrieDepths.Set(accountPath, depth);
             return depth;
         }
-    }
-
-    private int StorageTrieDepthLocked(in ValueHash256 accountPath)
-    {
-        if (_storageTrieDepths.TryGetValue(accountPath, out int depth)) return depth;
-
-        depth = _storages.ReadStorageTrieDepth(accountPath);
-        if (_storageTrieDepths.Count >= StorageTrieDepthCacheEntries) _storageTrieDepths.Clear();
-        _storageTrieDepths[accountPath] = depth;
-        return depth;
     }
 
     public bool TryReadStamp(CommitmentDepthPolicy policy, out bool matches)
@@ -82,6 +75,8 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     {
         lock (_lock)
         {
+            if (_layoutEnsured) return;
+
             if (TryReadStamp(policy, out bool matches) && !matches)
             {
                 if (!discardMismatched)
@@ -98,6 +93,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
             }
 
             WriteStamp(policy);
+            _layoutEnsured = true;
         }
     }
 
@@ -108,10 +104,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
         last.Fill(0xFF);
         Discard(_column, first, last);
         Discard(_storageColumn, first, last);
-        lock (_storageTrieDepths)
-        {
-            _storageTrieDepths.Clear();
-        }
+        _storageTrieDepths.Clear();
     }
 
     private static void Discard(IDb column, ReadOnlySpan<byte> first, ReadOnlySpan<byte> last)
@@ -206,34 +199,56 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
         return _column.KeyExists(key);
     }
 
-    public void MarkWalkItemDone(int item)
+    public void MarkWalkItemDone(int item, ReadOnlySpan<byte> mismatches)
     {
         Span<byte> key = stackalloc byte[4];
         WriteWalkItemKey(key, item);
         Span<byte> progressKey = stackalloc byte[4];
         WriteWalkItemKey(progressKey, item, WalkItemProgressMarker);
+        byte[] value = new byte[1 + mismatches.Length];
+        value[0] = 1;
+        mismatches.CopyTo(value.AsSpan(1));
         lock (_lock)
         {
-            _column.PutSpan(key, [1]);
+            _column.PutSpan(key, value);
             _column.Remove(progressKey);
         }
     }
 
-    public bool TryGetWalkItemProgress(int item, out ulong progress)
+    public ReadOnlySpan<byte> WalkItemMismatches(int item)
+    {
+        Span<byte> key = stackalloc byte[4];
+        WriteWalkItemKey(key, item);
+        byte[]? value = _column.Get(key);
+        return value is { Length: > 1 } ? value.AsSpan(1) : [];
+    }
+
+    public bool TryGetWalkItemProgress(int item, out ulong progress) => TryGetWalkItemProgress(item, out progress, out _);
+
+    public bool TryGetWalkItemProgress(int item, out ulong progress, out ReadOnlySpan<byte> mismatches)
     {
         Span<byte> key = stackalloc byte[4];
         WriteWalkItemKey(key, item, WalkItemProgressMarker);
         byte[]? value = _column.Get(key);
-        progress = value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
-        return value is { Length: sizeof(ulong) };
+        if (value is not { Length: >= sizeof(ulong) })
+        {
+            progress = 0;
+            mismatches = [];
+            return false;
+        }
+
+        progress = BinaryPrimitives.ReadUInt64BigEndian(value);
+        mismatches = value.AsSpan(sizeof(ulong));
+        return true;
     }
 
-    public void MarkWalkItemProgress(int item, ulong progress)
+    public void MarkWalkItemProgress(int item, ulong progress, ReadOnlySpan<byte> mismatches)
     {
         Span<byte> key = stackalloc byte[4];
         WriteWalkItemKey(key, item, WalkItemProgressMarker);
-        Span<byte> value = stackalloc byte[sizeof(ulong)];
+        byte[] value = new byte[sizeof(ulong) + mismatches.Length];
         BinaryPrimitives.WriteUInt64BigEndian(value, progress);
+        mismatches.CopyTo(value.AsSpan(sizeof(ulong)));
         lock (_lock)
         {
             _column.PutSpan(key, value);
