@@ -10,7 +10,7 @@ on:
         default: false
 
 concurrency:
-  group: bootnode-release-${{ github.ref }}
+  group: bootnode-release
   cancel-in-progress: false
 
 permissions:
@@ -173,7 +173,6 @@ jobs:
               --target "$GITHUB_SHA" \
               -t "$RELEASE_NAME" \
               -d \
-              --latest=false \
               "${prerelease_flag[@]}" \
               -F <(printf '%s' "$relnotes")
           fi
@@ -216,7 +215,7 @@ jobs:
   publish-docker:
     name: Publish to Docker Hub
     runs-on: ubuntu-latest
-    needs: [approval, build, publish-github]
+    needs: [build, publish-github]
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
