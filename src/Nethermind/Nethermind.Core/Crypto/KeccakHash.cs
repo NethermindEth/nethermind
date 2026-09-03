@@ -402,7 +402,9 @@ public sealed partial class KeccakHash
         // fold into a load/store displacement. Only reachable with no vector width, i.e. the guest.
         // The state is ulong-aligned so it stays a ulong ref; the input is a caller-supplied span with
         // no such guarantee, hence ReadUnaligned, which costs nothing (riscv64 emits a plain ld for
-        // both spellings, and every rate block starts on a multiple of eight anyway).
+        // both spellings, and every rate block starts on a multiple of eight anyway). The lanes are
+        // spelled out as read-xor-write rather than `^=` for the reason given at the unrolled loop
+        // below: a compound assignment captures the element address in a temp and blocks folding.
         if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
         {
             ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);

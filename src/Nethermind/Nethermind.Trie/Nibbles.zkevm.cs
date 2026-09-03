@@ -18,6 +18,9 @@ namespace Nethermind.Trie
         /// nibble bytes per lane with shared masks and stored as a single 64-bit write. Byte-wide
         /// stores are among the most expensive memory accesses in the zkVM cost model.
         /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes.
+        /// Little-endian only: the lane order reaches memory as ascending nibbles solely because the
+        /// 64-bit store writes the low byte first. riscv64 is little-endian; the host keeps the plain
+        /// loop in <c>Nibbles.std.cs</c>, which is endian-neutral.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void ExpandNibbles(ref byte bytes, ref byte nibbles, int count)
@@ -48,7 +51,9 @@ namespace Nethermind.Trie
 
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         /// <remarks>Word-at-a-time: the BCL scalar fallback compares byte by byte, and no vector
-        /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit.</remarks>
+        /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit,
+        /// which is the lowest differing address only on a little-endian target.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
         {
             int length = Math.Min(left.Length, right.Length);

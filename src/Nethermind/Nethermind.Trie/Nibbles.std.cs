@@ -13,10 +13,8 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void ExpandNibbles(ref byte bytes, ref byte nibbles, int count)
         {
-            // We use Unsafe here as we have verified all the bounds above and also only go to length
-            // However the loop doesn't start a 0 and the nibbles span access is complex (rather than just i)
-            // so the Jit can't work out if the bounds checks and their if+exceptions can be eliminated.
-            // Because of this using regular array style access causes 3 bounds checks to be inserted.
+            // Raw refs rather than spans: the doubled destination index defeats the JIT's bounds-check
+            // elimination, so span access would cost three bounds checks per iteration.
             for (int i = 0; i < count; i++)
             {
                 int value = Unsafe.Add(ref bytes, i);

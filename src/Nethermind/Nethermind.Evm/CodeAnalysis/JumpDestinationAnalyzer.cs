@@ -172,7 +172,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
             }
             else
             {
-                // 0x5c-0x5f: invalid opcodes, plain single-byte advance.
+                // 0x5c-0x5f (TLOAD/TSTORE/MCOPY/PUSH0): no immediate data, single-byte advance.
                 programCounter++;
             }
         }
