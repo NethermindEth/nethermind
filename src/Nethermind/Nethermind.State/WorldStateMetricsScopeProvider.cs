@@ -44,8 +44,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope() =>
-            baseScope.CreateTrieWarmerScope();
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+            baseScope.CreateTrieWarmupSession();
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
 

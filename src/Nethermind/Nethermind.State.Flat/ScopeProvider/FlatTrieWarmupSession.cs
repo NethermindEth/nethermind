@@ -12,8 +12,8 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-internal sealed class FlatTrieWarmerScope :
-    IWorldStateScopeProvider.ITrieWarmerScope,
+internal sealed class FlatTrieWarmupSession :
+    IWorldStateScopeProvider.ITrieWarmupSession,
     ITrieWarmer.IAddressWarmer
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
@@ -41,7 +41,7 @@ internal sealed class FlatTrieWarmerScope :
         }
     }
 
-    public FlatTrieWarmerScope(
+    public FlatTrieWarmupSession(
         in StateId baseState,
         SnapshotBundle snapshotBundle,
         ITrieNodeCache trieNodeCache,
@@ -232,7 +232,7 @@ internal sealed class FlatTrieWarmerScope :
         }
     }
 
-    private sealed class StateResolver(FlatTrieWarmerScope scope) : AbstractMinimalTrieStore
+    private sealed class StateResolver(FlatTrieWarmupSession scope) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
@@ -249,7 +249,7 @@ internal sealed class FlatTrieWarmerScope :
             address is null ? this : new StorageResolver(scope, address);
     }
 
-    private sealed class StorageResolver(FlatTrieWarmerScope scope, Hash256AsKey address) : AbstractMinimalTrieStore
+    private sealed class StorageResolver(FlatTrieWarmupSession scope, Hash256AsKey address) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
@@ -265,10 +265,10 @@ internal sealed class FlatTrieWarmerScope :
 
     private sealed class StorageWarmer : ITrieWarmer.IStorageWarmer
     {
-        private readonly FlatTrieWarmerScope _scope;
+        private readonly FlatTrieWarmupSession _scope;
         private readonly StorageTree _storageTree;
 
-        public StorageWarmer(FlatTrieWarmerScope scope, Hash256 addressHash, Hash256 storageRoot, ILogManager logManager)
+        public StorageWarmer(FlatTrieWarmupSession scope, Hash256 addressHash, Hash256 storageRoot, ILogManager logManager)
         {
             _scope = scope;
             _storageTree = new StorageTree(new StorageResolver(scope, addressHash), storageRoot, logManager)
