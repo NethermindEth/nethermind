@@ -1337,7 +1337,7 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            UpdateCurrentState((int)programCounter, in gas, stack.Head);
+            UpdateCurrentState((int)programCounter, in gas, (int)stack.Head);
         }
         else
         {
@@ -1410,7 +1410,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackValue.Head)));
+            _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks((int)stackValue.Head)));
         }
 
         if (_txTracer.IsTracingReturnData)
