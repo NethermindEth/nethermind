@@ -112,8 +112,11 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                     if (_logger.IsInfo) _logger.Info($"History walk sized for this machine: {resources}.");
 
                     _retrofit?.Prepare();
-                    ulong from = 0;
+                    ulong from = _retrofit?.FirstBlockToBuild(watermark) ?? 0;
                     ulong to = watermark;
+                    if (from > 0 && _logger.IsInfo) _logger.Info(
+                        $"History walk verification will cover [{from}, {to}] rather than the whole chain: only the most recent commitment epochs are kept, so the blocks below that are neither built nor served, and the walk is a fraction of the work.");
+
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
                     {
                         from = pendingFrom;

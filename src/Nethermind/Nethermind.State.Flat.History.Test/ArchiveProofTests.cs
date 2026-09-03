@@ -362,6 +362,33 @@ public class ArchiveProofTests
             "the epoch is a two-byte key prefix, so too small an epoch runs out of numbers partway up the chain and every later row would throw where nothing names the setting");
 
     [Test]
+    public void A_node_that_keeps_only_recent_epochs_builds_only_those_epochs()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+
+        ulong first = retrofit.FirstBlockToBuild(_chain.Head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(128), "the head sits in the second epoch of 128 blocks, so a node keeping one epoch starts the walk there instead of at genesis, which is the difference between hours and days on a real archive");
+            Assert.That(new CommitmentMetadata(_historyColumns, _policy).RetainedFromEpoch, Is.EqualTo(1), "the floor is recorded before anything is built, so a height below it is refused rather than half-built");
+        }
+
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        retrofit.Prepare();
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(first, _chain.Head, workers: 3, CancellationToken.None);
+        retrofit.PublishCoverage(first, _chain.Head);
+
+        Assert.That(verdict.Mismatches, Is.Empty, "a walk that starts inside the chain builds its start state from the rows at that block and still matches every header from there on");
+        AssertProofMatchesTheTrie(_accounts[3], 135);
+        AssertProofMatchesTheTrie(Contract, 130, ContractSlots);
+        Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(100)), Is.False, "nothing below the floor was built, so nothing below it is served");
+    }
+
+    [Test]
     public void Pruning_is_refused_when_the_commitments_are_built_from_the_tip_alone()
     {
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1, ArchiveProofFineEpochs = 1 };

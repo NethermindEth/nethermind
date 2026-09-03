@@ -32,6 +32,22 @@ public sealed class ArchiveProofRetrofit(
 
     public void PruneBelow(ulong headBlock) => _pruner.PruneBelow(headBlock);
 
+    public ulong FirstBlockToBuild(ulong headBlock)
+    {
+        if (settings.RecentEpochs <= 0) return 0;
+
+        ulong headEpoch = policy.Epoch(headBlock);
+        if (headEpoch + 1 <= (ulong)settings.RecentEpochs) return 0;
+
+        ulong floorEpoch = headEpoch + 1 - (ulong)settings.RecentEpochs;
+        ulong retained = metadata.RetainedFromEpoch;
+        if (floorEpoch <= retained) return policy.EpochStart(retained);
+
+        metadata.SetRetainedFromEpoch(floorEpoch);
+        if (metadata.FineFromEpoch < floorEpoch) metadata.SetFineFromEpoch(floorEpoch);
+        return policy.EpochStart(floorEpoch);
+    }
+
     public void PublishCoverage(ulong fromInclusive, ulong toInclusive)
     {
         if (!metadata.TryPublishVerifiedCoverage(fromInclusive, toInclusive, out ulong coveredFrom, out ulong coveredTo))
