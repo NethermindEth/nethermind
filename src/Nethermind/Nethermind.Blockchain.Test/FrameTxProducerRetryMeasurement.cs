@@ -161,21 +161,9 @@ public class FrameTxProducerRetryMeasurement
     }
 
     /// <summary>
-    /// The campaign's <c>K_retry</c> sweep: how much unpaid verification work a never-approving prefix
-    /// extracts from a producer that evicts it after <paramref name="kRetry"/> failed build attempts.
+    /// Measures the unpaid verification work extracted from a producer by a never-approving prefix
+    /// that is evicted after <paramref name="kRetry"/> failed attempts.
     /// </summary>
-    /// <remarks>
-    /// <c>K_retry</c> is client policy, not a spec rule: <c>ethereum/EIPs#12213</c> proposed a normative
-    /// producer bound and was reframed as guidance to match this sweep. Production is effectively
-    /// <c>K_retry = 1</c>, since <c>EvictUnpaidFrameTx</c> evicts on the first <c>MalformedTransaction</c>.
-    /// The gate here stands in for that eviction, the only thing that ends the series: a prefix that never
-    /// approves never pays, so it never advances its nonce and nothing else removes it.
-    /// <para>
-    /// <c>amplification</c> equals <paramref name="kRetry"/> by construction, since each pass burns the same
-    /// budget and the gate stops the loop on the <c>kRetry</c>-th call. The figure worth reading is
-    /// <c>burn_first_attempt</c> against the ceiling, which is what <c>BudgetBurnFloor</c> assumes elsewhere.
-    /// </para>
-    /// </remarks>
     [TestCase(100_000ul, 1)]
     [TestCase(100_000ul, 8)]
     [TestCase(236_285ul, 1)]
