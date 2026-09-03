@@ -49,8 +49,6 @@ public sealed class KademliaAdapter(
     private const int PacketWorkerCount = 4;
     private const long SentChallengeTtlMilliseconds = 60_000;
     private const long EndpointCheckTtlMilliseconds = 60_000;
-    // Self and relayed records are validated independently of the local listener's reachability.
-    private static readonly IPAddress AnyListenerAddress = IPAddress.IPv6Any;
     private static readonly TimeSpan ChallengeRateLimitWindow = TimeSpan.FromMilliseconds(100);
     private const int ChallengeRateLimitBurstPerIp = 16;
     private const int ChallengeRateLimitFilterSize = 8_192;
@@ -928,7 +926,7 @@ public sealed class KademliaAdapter(
         => routingTable.TryGet(nodeId, out knownNode);
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable)
-        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, AnyListenerAddress, preferredEndpoint: null, out _) &&
+        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, listenerAddress: null, preferredEndpoint: null, out _) &&
             HasExpectedNodeId(record, expectedNodeId);
 
     internal static bool TryGetAcceptableNode(
@@ -965,12 +963,23 @@ public sealed class KademliaAdapter(
     private static bool TryGetAcceptableDiscoveryEndpoint(
         NodeRecord record,
         bool allowNonRoutable,
-        IPAddress localIp,
+        IPAddress? listenerAddress,
         IPEndPoint? preferredEndpoint,
         [NotNullWhen(true)] out IPEndPoint? endpoint)
     {
         Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
-        int count = DiscoveryAddressSupport.GetSupportedFamilies(localIp, preferredEndpoint, addressFamilies);
+        int count;
+        if (listenerAddress is null)
+        {
+            addressFamilies[0] = AddressFamily.InterNetwork;
+            addressFamilies[1] = AddressFamily.InterNetworkV6;
+            count = 2;
+        }
+        else
+        {
+            count = DiscoveryAddressSupport.GetSupportedFamilies(listenerAddress, preferredEndpoint, addressFamilies);
+        }
+
         for (int i = 0; i < count; i++)
         {
             if (record.TryGetDiscoveryEndpoint(addressFamilies[i], out endpoint) &&

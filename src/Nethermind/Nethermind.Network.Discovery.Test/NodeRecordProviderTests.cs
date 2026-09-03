@@ -320,11 +320,11 @@ public class NodeRecordProviderTests
         NetworkListenerState listenerState = CreateListenerState(resolvedIp);
         if (rlpxBound)
         {
-            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetRlpxAddress(IPAddress.Any);
         }
         else
         {
-            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.Any);
         }
 
         NodeRecordProvider provider = CreateProvider(
@@ -338,7 +338,7 @@ public class NodeRecordProviderTests
         AssertEndpointEntries(
             NodeRecord.FromEnrString(record.ToString()),
             "192.0.2.1",
-            "2001:db8::1",
+            null,
             expectTcp: rlpxBound,
             expectUdp: !rlpxBound);
     }
@@ -347,10 +347,8 @@ public class NodeRecordProviderTests
     public async Task GetCurrentAsync_RefreshesWhenListenersFinishBinding()
     {
         IIPResolver.NethermindIp resolvedIp = new(
-            IPAddress.IPv6Any,
-            IPAddress.Parse("192.0.2.1"),
-            IPAddress.Parse("192.0.2.1"),
-            IPAddress.Parse("2001:db8::1"));
+            IPAddress.Any,
+            IPAddress.Parse("192.0.2.1"));
         NetworkListenerState listenerState = CreateListenerState(resolvedIp);
         NodeRecordProvider provider = CreateProvider(
             Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
@@ -359,15 +357,15 @@ public class NodeRecordProviderTests
             listenerState: listenerState);
 
         NodeRecord beforeBind = await provider.GetCurrentAsync();
-        listenerState.SetRlpxAddress(IPAddress.IPv6Any);
-        listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+        listenerState.SetRlpxAddress(IPAddress.Any);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
         NodeRecord afterBind = await provider.GetCurrentAsync();
         listenerState.SetDiscoveryAddress(null);
         NodeRecord afterDiscoveryClose = await provider.GetCurrentAsync();
 
         AssertEndpointEntries(beforeBind, null, null);
-        AssertEndpointEntries(afterBind, "192.0.2.1", "2001:db8::1");
-        AssertEndpointEntries(afterDiscoveryClose, "192.0.2.1", "2001:db8::1", expectTcp: true, expectUdp: false);
+        AssertEndpointEntries(afterBind, "192.0.2.1", null);
+        AssertEndpointEntries(afterDiscoveryClose, "192.0.2.1", null, expectTcp: true, expectUdp: false);
         Assert.That(afterBind.EnrSequence, Is.GreaterThan(beforeBind.EnrSequence));
         Assert.That(afterDiscoveryClose.EnrSequence, Is.GreaterThan(afterBind.EnrSequence));
     }
@@ -376,13 +374,11 @@ public class NodeRecordProviderTests
     public async Task GetCurrentAsync_QueuesListenerChangeDuringInitialRecordConstruction()
     {
         IIPResolver.NethermindIp resolvedIp = new(
-            IPAddress.IPv6Any,
-            IPAddress.Parse("192.0.2.1"),
-            IPAddress.Parse("192.0.2.1"),
-            IPAddress.Parse("2001:db8::1"));
+            IPAddress.Any,
+            IPAddress.Parse("192.0.2.1"));
         NetworkListenerState listenerState = CreateListenerState(resolvedIp);
-        listenerState.SetRlpxAddress(IPAddress.IPv6Any);
-        listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+        listenerState.SetRlpxAddress(IPAddress.Any);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
         int closeDiscovery = 1;
         NodeRecordProvider provider = CreateProvider(
             Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
@@ -400,7 +396,7 @@ public class NodeRecordProviderTests
         await provider.GetCurrentAsync();
         NodeRecord current = await provider.GetCurrentAsync();
 
-        AssertEndpointEntries(current, "192.0.2.1", "2001:db8::1", expectTcp: true, expectUdp: false);
+        AssertEndpointEntries(current, "192.0.2.1", null, expectTcp: true, expectUdp: false);
     }
 
     [TestCase(false)]

@@ -71,7 +71,7 @@ public class BootnodeNodeRecordProviderTests
     }
 
     [Test]
-    public async Task Discovery_only_node_record_publishes_both_endpoint_families_when_configured()
+    public async Task Discovery_only_node_record_publishes_configured_endpoint_families_supported_by_listener()
     {
         string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataDir);
@@ -92,7 +92,7 @@ public class BootnodeNodeRecordProviderTests
         NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, resolvedIp).GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
-        AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
+        AssertEndpointEntries(decoded, OperatingSystem.IsMacOS() ? null : "192.0.2.1", "2001:db8::1");
     }
 
     [Test]

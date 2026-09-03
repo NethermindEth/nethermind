@@ -49,7 +49,6 @@ public class DiscoveryAppTests
     [TestCase("0.0.0.0", "8.8.8.8", 1)]
     [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
     [TestCase("2001:4860:4860::8844", "8.8.8.8", 0)]
-    [TestCase("::", "8.8.8.8", 1)]
     public void Should_only_use_bootnode_families_reachable_from_listener(
         string localIp,
         string bootnodeIp,

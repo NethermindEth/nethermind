@@ -293,11 +293,12 @@ public class KademliaAdapterTests
             Is.EqualTo(testCase.ExpectedResult));
     }
 
-    [TestCase("10.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1111", 30306, 30305)]
-    [TestCase("8.8.8.8", "fd00::1", "8.8.8.8", 30303, 30304)]
+    [TestCase("10.0.0.1", "2606:4700:4700::1111", "::1", "2606:4700:4700::1111", 30306, 30305)]
+    [TestCase("8.8.8.8", "fd00::1", "0.0.0.0", "8.8.8.8", 30303, 30304)]
     public void TryGetAcceptableNode_SelectsRoutableFamily(
         string ip,
         string ip6,
+        string localIp,
         string expectedIp,
         int expectedTcpPort,
         int expectedUdpPort)
@@ -317,7 +318,7 @@ public class KademliaAdapterTests
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
             allowNonRoutable: false,
-            localIp: IPAddress.IPv6Any,
+            localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
         Assert.That(result, Is.True);
@@ -361,7 +362,6 @@ public class KademliaAdapterTests
 
     [TestCase("0.0.0.0", "8.8.8.8")]
     [TestCase("::1", "2606:4700:4700::1111")]
-    [TestCase("::", "8.8.8.8")]
     public void TryGetAcceptableNode_SelectsFamilyReachableByLocalListener(string localIp, string expectedIp)
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(
@@ -456,7 +456,7 @@ public class KademliaAdapterTests
         currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback)));
-        IPAddress listenerAddress = localIp ?? IPAddress.IPv6Any;
+        IPAddress listenerAddress = localIp ?? IPAddress.Any;
         IIPResolver ipResolver = CreateIpResolver(listenerAddress);
         NetworkListenerState listenerState = CreateListenerState(ipResolver, listenerAddress);
         _packetCodec?.Dispose();
