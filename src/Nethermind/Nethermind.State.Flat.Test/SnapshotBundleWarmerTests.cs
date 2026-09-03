@@ -523,25 +523,19 @@ public class SnapshotBundleWarmerTests
 
         SnapshotBundle bundle = NewBundle(content => content.StateNodes[persistedPath] = persistedNode);
 
-        Assert.That(bundle.TryLeaseReadOnlyBundle(), Is.True);
-        try
-        {
-            bundle.Dispose();
+        using ReadOnlySnapshotBundle? readOnlySnapshotBundle = bundle.TryLeaseReadOnlySnapshotBundle();
+        Assert.That(readOnlySnapshotBundle, Is.Not.Null);
+        bundle.Dispose();
 
-            Task<(TrieNode Node, bool ShouldPrewarm)> read = Task.Run(() =>
-                (bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA),
-                    bundle.ShouldQueuePrewarm(TestItem.AddressA)));
+        Task<(TrieNode Node, bool ShouldPrewarm)> read = Task.Run(() =>
+            (bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA),
+                bundle.ShouldQueuePrewarm(TestItem.AddressA)));
 
-            Assert.That(read.Wait(BailOutTimeout), Is.True, "the warmer read did not return on a disposed bundle");
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(read.Result.Node, Is.SameAs(persistedNode));
-                Assert.That(read.Result.ShouldPrewarm, Is.False);
-            }
-        }
-        finally
+        Assert.That(read.Wait(BailOutTimeout), Is.True, "the warmer read did not return on a disposed bundle");
+        using (Assert.EnterMultipleScope())
         {
-            bundle.ReleaseReadOnlyBundleLease();
+            Assert.That(read.Result.Node, Is.SameAs(persistedNode));
+            Assert.That(read.Result.ShouldPrewarm, Is.False);
         }
     }
 
@@ -583,20 +577,15 @@ public class SnapshotBundleWarmerTests
                     while (!Volatile.Read(ref stop))
                     {
                         ChurnEpoch epoch = Volatile.Read(ref published);
-                        if (!epoch.Bundle.TryLeaseReadOnlyBundle()) continue;
-                        try
-                        {
-                            TrieNode node = epoch.Bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
-                            if (!ReferenceEquals(node, epoch.Node)) Interlocked.Increment(ref foreignReads);
-                            Interlocked.Increment(ref leasedReads);
+                        using ReadOnlySnapshotBundle? readOnlySnapshotBundle = epoch.Bundle.TryLeaseReadOnlySnapshotBundle();
+                        if (readOnlySnapshotBundle is null) continue;
 
-                            UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
-                            if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
-                        }
-                        finally
-                        {
-                            epoch.Bundle.ReleaseReadOnlyBundleLease();
-                        }
+                        TrieNode node = epoch.Bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
+                        if (!ReferenceEquals(node, epoch.Node)) Interlocked.Increment(ref foreignReads);
+                        Interlocked.Increment(ref leasedReads);
+
+                        UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
+                        if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
                     }
                 }
                 catch (Exception e)

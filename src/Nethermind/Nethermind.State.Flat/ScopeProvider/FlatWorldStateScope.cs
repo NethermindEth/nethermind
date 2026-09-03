@@ -362,20 +362,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
+            using ReadOnlySnapshotBundle? readOnlySnapshotBundle = _snapshotBundle.TryLeaseReadOnlySnapshotBundle();
+            if (readOnlySnapshotBundle is null) return false;
 
-            try
-            {
-                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-                // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+            // this is just for warming up
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-                return true;
-            }
-            finally
-            {
-                _snapshotBundle.ReleaseReadOnlyBundleLease();
-            }
+            return true;
         }
         finally
         {
