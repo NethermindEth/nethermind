@@ -9,29 +9,20 @@ namespace Nethermind.Network.Test;
 [Parallelizable(ParallelScope.Self)]
 public class NetworkHelperTests
 {
-    [TestCase("0.0.0.0", true, "::")]
-    [TestCase("::", true, "::")]
-    [TestCase("127.0.0.1", true, "127.0.0.1")]
-    [TestCase("192.168.1.5", true, "192.168.1.5")]
-    [TestCase("2001:db8::1", true, "2001:db8::1")]
-    [TestCase("2001:db8::1", false, "2001:db8::1")]
-    [TestCase("0.0.0.0", false, "0.0.0.0")]
-    [TestCase("::", false, "::")]
-    public void GetInboundBindAddress_upgrades_only_the_wildcard_when_dual_stack_is_supported(string localIp, bool supportsDualStack, string expectedIp)
-    {
-        IPAddress result = NetworkHelper.GetInboundBindAddress(IPAddress.Parse(localIp), null, supportsDualStack);
-
-        Assert.That(result, Is.EqualTo(IPAddress.Parse(expectedIp)));
-    }
-
     [TestCase("0.0.0.0", null, true, "::")]
     [TestCase("0.0.0.0", "0.0.0.0", true, "0.0.0.0")]
     [TestCase("0.0.0.0", "0", true, "0.0.0.0")]
     [TestCase("0.0.0.0", " 0.0.0.0 ", true, "0.0.0.0")]
     [TestCase("::", null, true, "::")]
     [TestCase("::", "::", true, "::")]
+    [TestCase("127.0.0.1", null, true, "127.0.0.1")]
+    [TestCase("192.168.1.5", null, true, "192.168.1.5")]
     [TestCase("192.168.1.5", "192.168.1.5", true, "192.168.1.5")]
-    public void GetInboundBindAddress_keeps_explicit_ipv4_wildcard_ipv4_only(string localIp, string? localIpConfig, bool supportsDualStack, string expectedIp)
+    [TestCase("2001:db8::1", null, true, "2001:db8::1")]
+    [TestCase("2001:db8::1", null, false, "2001:db8::1")]
+    [TestCase("0.0.0.0", null, false, "0.0.0.0")]
+    [TestCase("::", null, false, "::")]
+    public void GetInboundBindAddress_honors_explicit_configuration_and_dual_stack_support(string localIp, string? localIpConfig, bool supportsDualStack, string expectedIp)
     {
         IPAddress result = NetworkHelper.GetInboundBindAddress(IPAddress.Parse(localIp), localIpConfig, supportsDualStack);
 

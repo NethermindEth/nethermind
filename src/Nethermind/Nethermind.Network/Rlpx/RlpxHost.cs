@@ -68,8 +68,8 @@ namespace Nethermind.Network.Rlpx
             IIPResolver ipResolver,
             IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
-            IChannelFactory? channelFactory = null,
-            NetworkListenerState? listenerState = null)
+            NetworkListenerState listenerState,
+            IChannelFactory? channelFactory = null)
         {
             ArgumentNullException.ThrowIfNull(serializationService);
             ArgumentNullException.ThrowIfNull(handshakeService);
@@ -93,10 +93,9 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
-            _listenerState = listenerState ?? new NetworkListenerState(networkConfig, ipResolver, logManager);
+            _listenerState = listenerState;
             LocalPort = networkConfig.P2PPort;
-            // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
-            // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
+            // The peer filter needs the resolved external address before it can accept connections.
             IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
@@ -180,7 +179,7 @@ namespace Nethermind.Network.Rlpx
                 };
                 if (endpoint is not null)
                 {
-                    _listenerState.SetRlpxAddress(endpoint.Address);
+                    _ = _listenerState.TrackRlpxAddress(endpoint.Address, channel.CloseCompletion);
                 }
 
                 return channel;
@@ -235,6 +234,7 @@ namespace Nethermind.Network.Rlpx
             Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             try
             {
+                // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
                 socket.ExclusiveAddressUse = true;
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {

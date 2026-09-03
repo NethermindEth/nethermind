@@ -45,9 +45,7 @@ public class DiscoveryConnectionsPoolTests
                     }
                 }),
                 address => CreateChannel(address),
-                0,
-                listenerState.PreferredAddress,
-                listenerState.FallbackAddress);
+                0);
             int port = ((IPEndPoint)channel.LocalAddress).Port;
 
             await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, port);
@@ -96,9 +94,7 @@ public class DiscoveryConnectionsPoolTests
                     }
                 }),
                 bindAddress => CreateChannel(bindAddress),
-                0,
-                listenerState.PreferredAddress,
-                listenerState.FallbackAddress);
+                0);
             int port = ((IPEndPoint)channel.LocalAddress).Port;
 
             if (acceptsIpv4)
@@ -153,9 +149,7 @@ public class DiscoveryConnectionsPoolTests
             await pool.BindAsync(
                 () => CreateBootstrap(eventLoopGroup, () => received.TrySetResult()),
                 _ => CreateChannel(IPAddress.Any, createdChannels),
-                port,
-                IPAddress.IPv6Any,
-                IPAddress.Any);
+                port);
 
             await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, port);
             await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -192,9 +186,7 @@ public class DiscoveryConnectionsPoolTests
                     async () => await pool.BindAsync(
                         () => CreateBootstrap(eventLoopGroup),
                         _ => CreateChannel(IPAddress.Any, createdChannels),
-                        port,
-                        IPAddress.IPv6Any,
-                        IPAddress.Any),
+                        port),
                     Throws.TypeOf<PortInUseException>());
                 Assert.That(listenerState.DiscoveryAddress, Is.Null);
                 Assert.That(createdChannels, Has.Count.EqualTo(2));
@@ -219,7 +211,7 @@ public class DiscoveryConnectionsPoolTests
         }
 
         int port;
-        using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0, exclusiveAddressUse: false))
+        using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
             NetworkListenerState listenerState = CreateListenerState();
@@ -231,9 +223,7 @@ public class DiscoveryConnectionsPoolTests
                     async () => await pool.BindAsync(
                         () => CreateBootstrap(eventLoopGroup),
                         address => CreateChannel(address),
-                        port,
-                        listenerState.PreferredAddress,
-                        listenerState.FallbackAddress),
+                        port),
                     Throws.TypeOf<PortInUseException>());
                 Assert.That(listenerState.DiscoveryAddress, Is.Null);
             }
@@ -260,9 +250,7 @@ public class DiscoveryConnectionsPoolTests
             await pool.BindAsync(
                 () => CreateBootstrap(eventLoopGroup),
                 address => CreateChannel(address),
-                0,
-                listenerState.PreferredAddress,
-                listenerState.FallbackAddress);
+                0);
             Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
 
             await pool.StopAsync();
@@ -275,6 +263,36 @@ public class DiscoveryConnectionsPoolTests
             {
                 await pool.StopAsync();
             }
+            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        }
+    }
+
+    [Test]
+    public async Task ListenerState_ClearsWhenChannelClosesUnexpectedly()
+    {
+        NetworkListenerState listenerState = CreateListenerState("0.0.0.0", IPAddress.Any);
+        DiscoveryConnectionsPool pool = CreatePool(listenerState);
+        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
+        try
+        {
+            IChannel channel = await pool.BindAsync(
+                () => CreateBootstrap(eventLoopGroup),
+                address => CreateChannel(address),
+                0);
+            TaskCompletionSource cleared = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            listenerState.Changed += (_, _) =>
+            {
+                if (listenerState.DiscoveryAddress is null) cleared.TrySetResult();
+            };
+
+            await channel.CloseAsync();
+            await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.That(listenerState.DiscoveryAddress, Is.Null);
+        }
+        finally
+        {
+            await pool.StopAsync();
             await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
         }
     }
@@ -318,12 +336,12 @@ public class DiscoveryConnectionsPoolTests
         await socket.SendToAsync(new byte[] { 1 }, SocketFlags.None, new IPEndPoint(address, port));
     }
 
-    private static Socket CreateUdpListenerSocket(IPAddress address, int port, bool exclusiveAddressUse = true)
+    private static Socket CreateUdpListenerSocket(IPAddress address, int port)
     {
         Socket socket = new(address.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
         try
         {
-            socket.ExclusiveAddressUse = exclusiveAddressUse;
+            socket.ExclusiveAddressUse = true;
             if (address.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 socket.DualMode = false;

@@ -21,8 +21,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class DiscoveryApp : KademliaDiscoveryApp
 {
-    private readonly IPAddress _localIp;
-    private readonly NetworkListenerState? _listenerState;
+    private readonly NetworkListenerState _listenerState;
     private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv4Adapter;
@@ -39,11 +38,10 @@ public class DiscoveryApp : KademliaDiscoveryApp
         IIPResolver ipResolver,
         IProcessExitSource processExitSource,
         ILogManager logManager,
-        Action<ContainerBuilder>? configureDiscv4Services = null,
-        NetworkListenerState? listenerState = null)
+        NetworkListenerState listenerState,
+        Action<ContainerBuilder>? configureDiscv4Services = null)
         : base("discv4", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
-        _localIp = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
         _listenerState = listenerState;
         _bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger, LocalIp);
 
@@ -258,10 +256,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
         await base.Initialize(cancellationToken);
     }
 
-    private IPAddress LocalIp => _listenerState?.DiscoveryAddress ?? _listenerState?.PreferredAddress ?? _localIp;
+    private IPAddress LocalIp => _listenerState.DiscoveryAddress ?? _listenerState.PreferredAddress;
 
     private void ReconcileBootNodes()
     {
+        // Kademlia retains this list by reference, so reconcile it before activation starts enumerating boot nodes.
         for (int i = _bootNodes.Count - 1; i >= 0; i--)
         {
             Node current = _bootNodes[i];

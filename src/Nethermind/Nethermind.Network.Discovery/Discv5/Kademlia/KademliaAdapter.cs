@@ -37,7 +37,7 @@ public sealed class KademliaAdapter(
     ICryptoRandom cryptoRandom,
     IKademliaDistance<ValueHash256> distance,
     ILogManager logManager,
-    NetworkListenerState? listenerState = null) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
+    NetworkListenerState listenerState) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
     private const int MaxEnrsPerNodesMessage = 3;

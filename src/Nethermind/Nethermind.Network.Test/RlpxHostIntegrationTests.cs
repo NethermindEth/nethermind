@@ -221,7 +221,7 @@ public class RlpxHostIntegrationTests
         }
 
         int port;
-        using (Socket blocker = CreateTcpListenerSocket(IPAddress.Any, 0, exclusiveAddressUse: false))
+        using (Socket blocker = CreateTcpListenerSocket(IPAddress.Any, 0))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
             (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(null, IPAddress.Any, port);
@@ -259,6 +259,62 @@ public class RlpxHostIntegrationTests
         }
     }
 
+    [Test]
+    public async Task ListenerState_ClearsWhenChannelClosesUnexpectedly()
+    {
+        int port = GetAvailablePort();
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
+        Ipv4ServerChannelFactory channelFactory = new();
+        (RlpxHost host, _) = CreateListenerHost("0.0.0.0", IPAddress.Any, port, listenerState, channelFactory);
+        try
+        {
+            await host.Init();
+            TaskCompletionSource cleared = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            listenerState.Changed += (_, _) =>
+            {
+                if (listenerState.RlpxAddress is null) cleared.TrySetResult();
+            };
+
+            await channelFactory.CreatedChannels.Single().CloseAsync();
+            await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.That(listenerState.RlpxAddress, Is.Null);
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public async Task ListenerState_DoesNotClearReplacementWhenPreviousChannelCloses(bool rlpx, bool sameAddress)
+    {
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
+        TaskCompletionSource closeCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IPAddress replacementAddress = sameAddress ? IPAddress.Any : IPAddress.IPv6Any;
+        Task closeObserver;
+        if (rlpx)
+        {
+            closeObserver = listenerState.TrackRlpxAddress(IPAddress.Any, closeCompletion.Task);
+            listenerState.SetRlpxAddress(replacementAddress);
+        }
+        else
+        {
+            closeObserver = listenerState.TrackDiscoveryAddress(IPAddress.Any, closeCompletion.Task);
+            listenerState.SetDiscoveryAddress(replacementAddress);
+        }
+
+        closeCompletion.SetResult();
+        await closeObserver;
+
+        Assert.That(
+            rlpx ? listenerState.RlpxAddress : listenerState.DiscoveryAddress,
+            Is.EqualTo(replacementAddress));
+    }
+
     private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
         IPrivilegedIpProvider? privilegedIpProvider = null)
     {
@@ -284,7 +340,8 @@ public class RlpxHostIntegrationTests
             networkConfig,
             ipResolver,
             privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance));
     }
 
     private static (RlpxHost Host, NetworkListenerState ListenerState) CreateListenerHost(
@@ -315,8 +372,8 @@ public class RlpxHostIntegrationTests
             ipResolver,
             Substitute.For<IPrivilegedIpProvider>(),
             LimboLogs.Instance,
-            channelFactory,
-            listenerState: listenerState);
+            listenerState,
+            channelFactory);
         return (host, listenerState);
     }
 
@@ -341,12 +398,12 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static Socket CreateTcpListenerSocket(IPAddress address, int port, bool exclusiveAddressUse = true)
+    private static Socket CreateTcpListenerSocket(IPAddress address, int port)
     {
         Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
         {
-            socket.ExclusiveAddressUse = exclusiveAddressUse;
+            socket.ExclusiveAddressUse = true;
             if (address.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 socket.DualMode = false;

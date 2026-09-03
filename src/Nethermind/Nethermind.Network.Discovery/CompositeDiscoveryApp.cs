@@ -36,16 +36,15 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        IIPResolver ipResolver,
         ILogManager logManager,
         Func<DiscoveryV5App> discoveryV5Factory, // These two are factory because they are optional.
         Func<DiscoveryApp> discoveryV4Factory,
-        IChannelFactory? channelFactory = null,
-        NetworkListenerState? listenerState = null
+        NetworkListenerState listenerState,
+        IChannelFactory? channelFactory = null
     )
     {
         _networkConfig = networkConfig;
-        _listenerState = listenerState ?? new NetworkListenerState(networkConfig, ipResolver, logManager);
+        _listenerState = listenerState;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, _listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
@@ -83,9 +82,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
             await _connections.BindAsync(
                 () => CreateBootstrap(eventLoopGroup),
                 CreateDatagramChannel,
-                _networkConfig.DiscoveryPort,
-                _listenerState.PreferredAddress,
-                _listenerState.FallbackAddress);
+                _networkConfig.DiscoveryPort);
 
             await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
         }
@@ -140,6 +137,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
         try
         {
+            // UDP has no TIME_WAIT state; exclusive ownership keeps collision and fallback behavior deterministic.
             socket.ExclusiveAddressUse = true;
             if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
             {
@@ -198,8 +196,9 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
     }
 
+    // Channels and discovery tasks are stopped first, so their event loop needs no additional quiet period.
     private Task ShutdownEventLoopGroup()
-        => Interlocked.Exchange(ref _eventLoopGroup, null)?.ShutdownGracefullyAsync() ?? Task.CompletedTask;
+        => Interlocked.Exchange(ref _eventLoopGroup, null)?.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero) ?? Task.CompletedTask;
 
     string IStoppableService.Description => "discovery connection";
 

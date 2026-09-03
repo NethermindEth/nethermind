@@ -17,7 +17,7 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = $"The external IP address used for the legacy enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. Its family-specific ENR entry is advertised only when both inbound listeners serve that family. For dual-stack ENR advertisement, keep this address IPv4 (or let it resolve automatically), set `{nameof(ExternalIpV6)}`, and leave `{nameof(LocalIp)}` unset or set it to `::`.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IP address used for the legacy enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries. For dual-stack ENR advertisement, keep this address IPv4 (or let it resolve automatically), set `{nameof(ExternalIpV6)}`, and leave `{nameof(LocalIp)}` unset or set it to `::`.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
     /// <summary>
@@ -28,7 +28,7 @@ public interface INetworkConfig : IConfig
     /// This address is only advertised when the node listens on IPv4. Set this together with
     /// <see cref="ExternalIpV6"/> and leave <see cref="LocalIp"/> unset or set it to <c>::</c> to advertise both families.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise. Only advertised when both inbound listeners serve IPv4. Use with `{nameof(ExternalIpV6)}` and leave `{nameof(LocalIp)}` unset or set it to `::` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries. Use with `{nameof(ExternalIpV6)}` and leave `{nameof(LocalIp)}` unset or set it to `::` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
@@ -36,7 +36,7 @@ public interface INetworkConfig : IConfig
     /// through <c>IIPResolver.Resolve</c>. When unset, the resolved <see cref="ExternalIp"/> is used
     /// if it is an IPv6 address.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when both inbound listeners serve IPv6. Use with `{nameof(ExternalIpV4)}` and leave `{nameof(LocalIp)}` unset or set it to `::` for dual-stack advertisement. On an IPv6-only node, set `{nameof(ExternalIp)}` instead so existing consumers also use IPv6.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries. Use with `{nameof(ExternalIpV4)}` and leave `{nameof(LocalIp)}` unset or set it to `::` for dual-stack advertisement. On an IPv6-only node, set `{nameof(ExternalIp)}` instead so existing consumers also use IPv6.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
 
     /// <remarks>

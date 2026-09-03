@@ -58,10 +58,9 @@ public class DiscoveryV5AppTests
         IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
-        NetworkListenerState? listenerState = null;
+        NetworkListenerState listenerState = new(networkConfig, ipResolver, LimboLogs.Instance);
         if (boundDiscoveryIp is not null)
         {
-            listenerState = new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
             listenerState.SetDiscoveryAddress(boundDiscoveryIp);
         }
         EthereumEcdsa ecdsa = new(0);
@@ -75,10 +74,7 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
         builder.RegisterInstance(enode).As<IEnode>();
         builder.RegisterInstance(ipResolver).As<IIPResolver>();
-        if (listenerState is not null)
-        {
-            builder.RegisterInstance(listenerState);
-        }
+        builder.RegisterInstance(listenerState);
         builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
         builder.RegisterInstance(blockTree).As<IBlockTree>();
@@ -100,8 +96,8 @@ public class DiscoveryV5AppTests
             new DiscoveryConfig { },
             new ProcessExitSource(CancellationToken.None),
             LimboLogs.Instance,
-            configureDiscv5Services,
-            listenerState
+            listenerState,
+            configureDiscv5Services
         );
     }
 

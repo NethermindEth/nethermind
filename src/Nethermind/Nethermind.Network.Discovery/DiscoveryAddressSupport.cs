@@ -47,41 +47,6 @@ public static class DiscoveryAddressSupport
         };
 
     /// <summary>
-    /// Selects the external addresses supported by the local RLPx and discovery listeners.
-    /// </summary>
-    /// <remarks>
-    /// RLPx and discovery each bind a single socket to <paramref name="localIp"/>, so an address family is
-    /// advertised only when that socket can receive it; otherwise peers would dial an endpoint nothing is
-    /// listening on.
-    /// </remarks>
-    /// <param name="localIp">The address used to bind the local RLPx and discovery sockets.</param>
-    /// <param name="externalIpV4">The resolved external IPv4 address.</param>
-    /// <param name="externalIpV6">The resolved external IPv6 address.</param>
-    /// <returns>The supported IPv4 and IPv6 addresses; an unsupported address is returned as <see langword="null"/>.</returns>
-    public static (IPAddress? IPv4, IPAddress? IPv6) SelectAdvertised(
-        IPAddress localIp,
-        IPAddress? externalIpV4,
-        IPAddress? externalIpV6)
-        => (
-            SupportsFamily(localIp, AddressFamily.InterNetwork) ? externalIpV4 : null,
-            SupportsFamily(localIp, AddressFamily.InterNetworkV6) ? externalIpV6 : null);
-
-    /// <summary>
-    /// Selects addresses served by both the RLPx and discovery listeners.
-    /// </summary>
-    internal static (IPAddress? IPv4, IPAddress? IPv6) SelectAdvertised(
-        IPAddress? rlpxAddress,
-        IPAddress? discoveryAddress,
-        IPAddress? externalIpV4,
-        IPAddress? externalIpV6)
-        => (
-            SupportsBoth(rlpxAddress, discoveryAddress, AddressFamily.InterNetwork) ? externalIpV4 : null,
-            SupportsBoth(rlpxAddress, discoveryAddress, AddressFamily.InterNetworkV6) ? externalIpV6 : null);
-
-    private static bool SupportsBoth(IPAddress? first, IPAddress? second, AddressFamily family)
-        => first is not null && second is not null && SupportsFamily(first, family) && SupportsFamily(second, family);
-
-    /// <summary>
     /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.
     /// </summary>
     /// <param name="localIp">The address used to bind the local socket.</param>

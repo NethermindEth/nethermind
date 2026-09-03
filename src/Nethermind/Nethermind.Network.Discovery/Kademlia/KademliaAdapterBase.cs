@@ -14,13 +14,13 @@ public abstract class KademliaAdapterBase(
     string protocolName,
     IIPResolver ipResolver,
     ILogger logger,
-    NetworkListenerState? listenerState = null)
+    NetworkListenerState listenerState)
 {
     protected IIPResolver.NethermindIp ResolvedIp { get; } = ipResolver.Resolve().GetAwaiter().GetResult();
-    protected NetworkListenerState? ListenerState { get; } = listenerState;
+    protected NetworkListenerState ListenerState { get; } = listenerState;
 
     protected ILogger Logger { get; } = logger;
-    protected IPAddress LocalIp => ListenerState?.DiscoveryAddress ?? ListenerState?.PreferredAddress ?? ResolvedIp.LocalIp;
+    protected IPAddress LocalIp => ListenerState.DiscoveryAddress ?? ListenerState.PreferredAddress;
 
     protected abstract ValueTask<NodeRecord?> RequestRemoteRecord(
         Node node,

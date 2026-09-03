@@ -35,11 +35,11 @@ public class KademliaAdapter(
     IProcessExitSource processExitSource,
     IEcdsa ecdsa,
     ILogManager logManager,
-    NetworkListenerState? listenerState = null
+    NetworkListenerState listenerState
 ) : KademliaAdapterBase("discv4", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
-    private const int PeerCandidateChannelCapacity = 64;
     private const int MaxNodesPerNeighborsMsg = 12;
+    private const int PeerCandidateChannelCapacity = 64;
 
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
@@ -258,7 +258,7 @@ public class KademliaAdapter(
     private IPEndPoint GetSourceAddress(AddressFamily family)
     {
         Node currentNode = kademliaConfig.CurrentNodeId;
-        if (ListenerState?.DiscoveryAddress is not { } listenerAddress ||
+        if (ListenerState.DiscoveryAddress is not { } listenerAddress ||
             !DiscoveryAddressSupport.SupportsFamily(listenerAddress, family))
         {
             return currentNode.DiscoveryAddress;
@@ -271,18 +271,13 @@ public class KademliaAdapter(
             _ => null
         };
 
-        if (sourceIp is null && DiscoveryAddressSupport.GetFamily(currentNode.DiscoveryAddress.Address) == family)
-        {
-            sourceIp = currentNode.DiscoveryAddress.Address;
-        }
-
-        sourceIp ??= family == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any;
-        return new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
+        return sourceIp is null
+            ? currentNode.DiscoveryAddress
+            : new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
     }
 
     private int GetSourceTcpPort(AddressFamily family)
-        => ListenerState is null ||
-           ListenerState.RlpxAddress is { } rlpxAddress && DiscoveryAddressSupport.SupportsFamily(rlpxAddress, family)
+        => ListenerState.RlpxAddress is { } rlpxAddress && DiscoveryAddressSupport.SupportsFamily(rlpxAddress, family)
             ? kademliaConfig.CurrentNodeId.Port
             : 0;
 

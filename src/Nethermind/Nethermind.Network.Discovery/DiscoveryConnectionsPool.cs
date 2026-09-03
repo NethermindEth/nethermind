@@ -25,13 +25,11 @@ public sealed class DiscoveryConnectionsPool(
     public async Task<IChannel> BindAsync(
         Func<Bootstrap> bootstrapFactory,
         Func<IPAddress, IChannel> channelFactory,
-        int port,
-        IPAddress preferredAddress,
-        IPAddress fallbackAddress)
+        int port)
     {
         if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
 
-        task = BindWithFallbackAsync(bootstrapFactory, channelFactory, port, preferredAddress, fallbackAddress);
+        task = BindWithFallbackAsync(bootstrapFactory, channelFactory, port);
         _byPort.Add(port, task);
 
         return await task;
@@ -40,10 +38,10 @@ public sealed class DiscoveryConnectionsPool(
     private async Task<IChannel> BindWithFallbackAsync(
         Func<Bootstrap> bootstrapFactory,
         Func<IPAddress, IChannel> channelFactory,
-        int port,
-        IPAddress preferredAddress,
-        IPAddress fallbackAddress)
+        int port)
     {
+        IPAddress preferredAddress = _listenerState.PreferredAddress;
+        IPAddress fallbackAddress = _listenerState.FallbackAddress;
         try
         {
             try
@@ -82,10 +80,9 @@ public sealed class DiscoveryConnectionsPool(
                 IIPEndpointSource source => source.IPEndpoint,
                 _ => null
             };
-            endpoint ??= (channel as IIPEndpointSource)?.IPEndpoint;
             if (endpoint is not null)
             {
-                _listenerState.SetDiscoveryAddress(endpoint.Address);
+                _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, channel.CloseCompletion);
             }
 
             return channel;
