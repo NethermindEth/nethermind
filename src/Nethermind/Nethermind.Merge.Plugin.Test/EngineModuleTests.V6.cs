@@ -1094,7 +1094,7 @@ public partial class EngineModuleTests
         Hash256 currentHeadHash = chain.BlockTree.HeadHash!;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
-        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash);
+        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash, txs.Length);
 
         string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes)).Data.PayloadId!;
 
@@ -1111,7 +1111,14 @@ public partial class EngineModuleTests
         await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => new Hash256(h)), TestItem.KeccakE, []);
 
         ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash!, payload.ExecutionPayload.BlockHash!, payload.ExecutionPayload.BlockHash!);
-        await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+
+        // Without this, the next call's transactions are still unselectable when the one improvement
+        // scheduled for their pool bump runs.
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.ExecutionPayload.BlockHash!);
+        ResultWrapper<ForkchoiceUpdatedV1Result> newFcuResult = await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+        Assert.That(newFcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
+        await txPoolHeadWait;
 
         return payload.ExecutionPayload;
     }
