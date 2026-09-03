@@ -420,5 +420,44 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(results, Is.EquivalentTo(expected));
         }
+
+        [TestCase(null, 1UL)]
+        [TestCase(5UL, 5UL)]
+        public void GetMaxPriorityGasFeeEstimate_IfNoTipAboveIgnoreUnder_DoesNotUseGasPriceEstimate(ulong? lastMaxPriorityFeePerGas, ulong expected)
+        {
+            Transaction[] transactions =
+            {
+                Build.A.Transaction.WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject
+            };
+            Block headBlock = Build.A.Block.Genesis.WithTransactions(transactions).WithBaseFeePerGas(10.GWei).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0UL).Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
+            {
+                _gasPriceEstimation = new(null, 100.GWei),
+                _maxPriorityFeePerGasEstimation = new(null, lastMaxPriorityFeePerGas)
+            };
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo((UInt256)expected));
+        }
+
+        [TestCase(null)]
+        [TestCase(100ul)]
+        public void GetMaxPriorityGasFeeEstimate_EmptyChain_BaseFeeNotIncluded(ulong? minGasPrice)
+        {
+            Block headBlock = Build.A.Block.WithBaseFeePerGas(10.GWei).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0UL).Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance, minGasPrice);
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo(minGasPrice ?? 1.Wei));
+        }
     }
 }

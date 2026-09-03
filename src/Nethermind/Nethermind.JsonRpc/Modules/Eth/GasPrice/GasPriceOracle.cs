@@ -56,7 +56,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
-            static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
+            static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee),
+            baseFeePerGas => FallbackGasPrice(baseFeePerGas));
 
         public virtual UInt256 GetMaxPriorityGasFeeEstimate()
         {
@@ -74,9 +75,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks(headBlock.Number,
                 EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas,
-                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee));
+                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee),
+                _ => _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice);
 
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice;
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
@@ -86,7 +88,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
+        private delegate UInt256 CalculateFallback(UInt256 baseFeePerGas);
+
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction, CalculateFallback calculateFallback)
         {
             IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
             {
@@ -97,10 +101,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 } while (currentBlockNumber-- != 0);
             }
 
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction, calculateFallback);
         }
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction, CalculateFallback calculateFallback)
         {
             int txCount = 0;
 
@@ -130,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 if (txFromCurrentBlock == 0)
                 {
                     blocksToGoBack--;
-                    yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
+                    yield return calculateFallback(currentBlock.BaseFeePerGas);
                 }
 
                 if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
