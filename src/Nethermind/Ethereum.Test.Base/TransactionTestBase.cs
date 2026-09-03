@@ -125,7 +125,6 @@ public abstract class TransactionTestBase
 
     private static readonly System.Collections.Generic.Dictionary<string, string[]> s_exceptionToErrorFragments = new()
     {
-        ["TransactionException.NONCE_OVERFLOW"] = ["NonceTooHigh"],
         ["TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST"] = ["EIP-7702 transaction with empty auth list"],
         ["TransactionException.TYPE_4_INVALID_AUTHORIZATION_FORMAT"] = ["InvalidAuthorityList", .. s_rlpDecodeFragments],
         ["TransactionException.TYPE_4_INVALID_AUTHORITY_SIGNATURE"] = ["InvalidAuthoritySignature", .. s_rlpDecodeFragments],
