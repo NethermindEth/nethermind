@@ -157,6 +157,8 @@ public class FrameTxFloodMeasurement
         }
     }
 
+    private bool _shedding;
+
     private byte[] _frameCalldataPrefix = [];
 
     private TxFrameSignature[] _frameSignatures = [];
@@ -323,6 +325,7 @@ public class FrameTxFloodMeasurement
         bool delivered = offeredRate == 0 || outcome.AchievedRate > offeredRate * MinDeliveredRateFloor;
 
         Emit($"case=production_pass_at_fixed_occupancy ceiling={ceiling} offered_rate={offeredRate} "
+             + $"shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={outcome.ProcessMicros.Count} "
              + $"evictions={rig.EvictionsInWindow} failing_executions={rig.ExecutionsInWindow} "
              + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} flood_shed={outcome.Shed} "
@@ -438,11 +441,16 @@ public class FrameTxFloodMeasurement
     public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("signature-stuffed", ceiling, offeredRate);
 
-    private async Task MeasureFloodDelay(string shape, ulong ceiling, int offeredRate)
+    /// <summary>Pairs the arm above with the node's admission budget left on, pricing the mitigation.</summary>
+    [TestCaseSource(nameof(CeilingRateCases))]
+    public async Task Block_processing_delay_under_admission_flood_with_shedding(ulong ceiling, int offeredRate) =>
+        await MeasureFloodDelay("keccak-wide", ceiling, offeredRate, shedding: true);
+
+    private async Task MeasureFloodDelay(string shape, ulong ceiling, int offeredRate, bool shedding = false)
     {
         SkipUnlessSingleCore();
         if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain(shape, ceiling);
+        await BuildChain(shape, ceiling, shedding);
 
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
         FloodOutcome flooded = MeasureUnderFlood(offeredRate, RejectionCounterFor(shape));
@@ -464,7 +472,8 @@ public class FrameTxFloodMeasurement
         bool lagBounded = offeredRate == 0 || flooded.MaxLagUs <= lagBudgetUs;
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
 
-        Emit($"case=flood_delay shape={shape} ceiling={ceiling} {Groth16FitField(shape)}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+        Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+             + $"{Groth16FitField(shape)}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + $"W0_after_p50_us={w0After:F1} baseline_drift_pct={baselineDriftPct:F1} "
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
@@ -576,7 +585,8 @@ public class FrameTxFloodMeasurement
             bool sustained = rateHeld && lagBounded;
             double w = Percentile(outcome.ProcessMicros, 0.50);
 
-            Emit($"case={rateCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
+            Emit($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+                 + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
                  + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
                  + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
                  + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
@@ -608,7 +618,8 @@ public class FrameTxFloodMeasurement
 
         double capacityUpper = censored ? double.PositiveInfinity : firstFailedRate;
 
-        Emit($"case={summaryCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+        Emit($"case={summaryCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+             + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + $"capacity_sustained_tx_per_s={lastSustained:F1} capacity_lower={lastSustained:F1} "
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
@@ -693,15 +704,19 @@ public class FrameTxFloodMeasurement
         }
 
         long windowEnd = Stopwatch.GetTimestamp();
-        int submittedInWindow = Volatile.Read(ref generator.Submitted) - submittedAtStart;
+
+        // Every counter is read after the join. Reading them while the generator still submits lets a
+        // transaction land between two reads and be counted by one but not the other, which breaks the
+        // accounting the rows assert on.
+        Assert.That(generator.Stop(cts), Is.True,
+            "the generator did not stop, so its counters would be read while it still writes them");
+
+        int submittedInWindow = generator.Submitted - submittedAtStart;
         int rejectedInWindow = rejectionCounter is null
-            ? Volatile.Read(ref generator.Rejected) - rejectedAtStart
+            ? generator.Rejected - rejectedAtStart
             : (int)(rejectionCounter() - rejectionCounterAtStart);
         int pendingPoolGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
         int shedInWindow = (int)(ShedCount() - shedAtStart);
-
-        Assert.That(generator.Stop(cts), Is.True,
-            "the generator did not stop, so its counters are being read while it still writes them");
 
         double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
         double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
@@ -736,12 +751,13 @@ public class FrameTxFloodMeasurement
     /// Builds the production-wired pool and block processor, seeding both state views with identical attacker
     /// code because simulation and block processing intentionally use separate world-state scopes.
     /// </summary>
-    private async Task BuildChain(string shape, ulong ceiling)
+    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false)
     {
         byte[] attackCode = LoadAttackCode(shape, ceiling);
 
+        _shedding = shedding;
         ulong verifyGasCeiling = shape == "signature-stuffed" ? ceiling : 0;
-        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, builder =>
+        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, shedding, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
@@ -963,17 +979,25 @@ public class FrameTxFloodMeasurement
     private sealed class FloodTestBlockchain : BasicTestBlockchain
     {
         private ulong _verifyGasCeiling;
+        private bool _shedding;
 
         public static async Task<FloodTestBlockchain> CreateFlood(
-            ulong verifyGasCeiling, Action<ContainerBuilder>? configurer = null)
+            ulong verifyGasCeiling, bool shedding, Action<ContainerBuilder>? configurer = null)
         {
-            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling };
+            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling, _shedding = shedding };
             await chain.Build(configurer);
             return chain;
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() =>
-            [new BlocksConfig { MinGasPrice = 0 }, new TxPoolConfig { FrameTxMaxVerifyGas = _verifyGasCeiling }];
+        [
+            new BlocksConfig { MinGasPrice = 0 },
+            new TxPoolConfig
+            {
+                FrameTxMaxVerifyGas = _verifyGasCeiling,
+                FrameTxSimulationBudgetPerHeadMs = _shedding ? new TxPoolConfig().FrameTxSimulationBudgetPerHeadMs : int.MaxValue,
+            },
+        ];
     }
 
     /// <summary>Runs a never-approving frame transaction through the production transaction executor.</summary>
