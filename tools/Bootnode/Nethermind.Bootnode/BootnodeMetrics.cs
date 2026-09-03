@@ -61,9 +61,24 @@ internal sealed class BootnodeMetrics
         "Bootnode identity information.",
         new GaugeConfiguration { LabelNames = ["enode", "enr", "seq", "node_id", "address"] });
 
-    public void RecordSeen(string protocol) => DiscoveredNodes.WithLabels(protocol).Inc();
+    private static readonly Counter.Child DiscoveredDiscv4Nodes = DiscoveredNodes.WithLabels("discv4");
+    private static readonly Counter.Child DiscoveredDiscv5Nodes = DiscoveredNodes.WithLabels("discv5");
+    private static readonly Counter.Child RemovedDiscv4Nodes = RemovedNodes.WithLabels("discv4");
+    private static readonly Counter.Child RemovedDiscv5Nodes = RemovedNodes.WithLabels("discv5");
+    private static readonly Gauge.Child ActiveAllNodes = ActiveNodes.WithLabels("all");
+    private static readonly Gauge.Child AllAllNodes = AllNodes.WithLabels("all");
+    private static readonly Gauge.Child ActiveDiscv4Nodes = ActiveNodes.WithLabels("discv4");
+    private static readonly Gauge.Child AllDiscv4Nodes = AllNodes.WithLabels("discv4");
+    private static readonly Gauge.Child ActiveDiscv5Nodes = ActiveNodes.WithLabels("discv5");
+    private static readonly Gauge.Child AllDiscv5Nodes = AllNodes.WithLabels("discv5");
+    private static readonly Gauge.Child ActiveBothNodes = ActiveNodes.WithLabels("both");
+    private static readonly Gauge.Child AllBothNodes = AllNodes.WithLabels("both");
+    private static readonly Gauge.Child ActiveConfiguredNodes = ActiveNodes.WithLabels("configured");
+    private static readonly Gauge.Child AllConfiguredNodes = AllNodes.WithLabels("configured");
 
-    public void RecordRemoved(string protocol) => RemovedNodes.WithLabels(protocol).Inc();
+    public void RecordSeen(string protocol) => GetProtocolCounter(DiscoveredNodes, DiscoveredDiscv4Nodes, DiscoveredDiscv5Nodes, protocol).Inc();
+
+    public void RecordRemoved(string protocol) => GetProtocolCounter(RemovedNodes, RemovedDiscv4Nodes, RemovedDiscv5Nodes, protocol).Inc();
 
     public void SetIdentity(BootnodeIdentity identity)
     {
@@ -83,7 +98,9 @@ internal sealed class BootnodeMetrics
 
             if (_publishedIdentity is { } previous)
             {
-                IdentityInfo.WithLabels(previous.Enode, previous.Enr, previous.EnrSequence, previous.NodeId, previous.Address).Unpublish();
+                Gauge.Child previousIdentity = IdentityInfo.WithLabels(previous.Enode, previous.Enr, previous.EnrSequence, previous.NodeId, previous.Address);
+                previousIdentity.Unpublish();
+                previousIdentity.Remove();
             }
 
             IdentityInfo.WithLabels(key.Enode, key.Enr, key.EnrSequence, key.NodeId, key.Address).Set(1);
@@ -175,9 +192,10 @@ internal sealed class BootnodeMetrics
             {
                 if (!currentBuckets.Contains(publishedBucket))
                 {
-                    KademliaBucketNodes
-                        .WithLabels(publishedBucket.Protocol, publishedBucket.Bucket, publishedBucket.Depth, publishedBucket.Prefix)
-                        .Unpublish();
+                    Gauge.Child previousBucket = KademliaBucketNodes
+                        .WithLabels(publishedBucket.Protocol, publishedBucket.Bucket, publishedBucket.Depth, publishedBucket.Prefix);
+                    previousBucket.Unpublish();
+                    previousBucket.Remove();
                 }
             }
 
@@ -191,17 +209,28 @@ internal sealed class BootnodeMetrics
 
     public void UpdateSnapshot(DiscoverySnapshot snapshot)
     {
-        ActiveNodes.WithLabels("all").Set(snapshot.ActiveCount);
-        AllNodes.WithLabels("all").Set(snapshot.AllCount);
-        ActiveNodes.WithLabels("discv4").Set(snapshot.ActiveDiscv4Count);
-        AllNodes.WithLabels("discv4").Set(snapshot.AllDiscv4Count);
-        ActiveNodes.WithLabels("discv5").Set(snapshot.ActiveDiscv5Count);
-        AllNodes.WithLabels("discv5").Set(snapshot.AllDiscv5Count);
-        ActiveNodes.WithLabels("both").Set(snapshot.ActiveBothCount);
-        AllNodes.WithLabels("both").Set(snapshot.AllBothCount);
-        ActiveNodes.WithLabels("configured").Set(snapshot.ActiveConfiguredCount);
-        AllNodes.WithLabels("configured").Set(snapshot.AllConfiguredCount);
+        ActiveAllNodes.Set(snapshot.ActiveCount);
+        AllAllNodes.Set(snapshot.AllCount);
+        ActiveDiscv4Nodes.Set(snapshot.ActiveDiscv4Count);
+        AllDiscv4Nodes.Set(snapshot.AllDiscv4Count);
+        ActiveDiscv5Nodes.Set(snapshot.ActiveDiscv5Count);
+        AllDiscv5Nodes.Set(snapshot.AllDiscv5Count);
+        ActiveBothNodes.Set(snapshot.ActiveBothCount);
+        AllBothNodes.Set(snapshot.AllBothCount);
+        ActiveConfiguredNodes.Set(snapshot.ActiveConfiguredCount);
+        AllConfiguredNodes.Set(snapshot.AllConfiguredCount);
     }
+
+    private static Counter.Child GetProtocolCounter(
+        Counter counter,
+        Counter.Child discv4Counter,
+        Counter.Child discv5Counter,
+        string protocol) => protocol switch
+        {
+            "discv4" => discv4Counter,
+            "discv5" => discv5Counter,
+            _ => counter.WithLabels(protocol)
+        };
 
     private readonly record struct BucketMetricKey(string Protocol, string Bucket, string Depth, string Prefix);
 

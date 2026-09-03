@@ -20,6 +20,7 @@ using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Discovery.Discv4.Serializers;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -27,6 +28,11 @@ namespace Nethermind.Bootnode;
 
 internal static class DiscoveryContainer
 {
+    internal static void ConfigureNetworkBuffers() =>
+        NethermindBuffers.Default = NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(
+            arenaOrder: 8,
+            arenaCount: 1);
+
     public static async Task<IContainer> BuildAsync(
         BootnodeOptions options,
         ILogManager logManager,

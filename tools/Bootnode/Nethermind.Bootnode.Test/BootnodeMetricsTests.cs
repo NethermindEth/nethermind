@@ -3,6 +3,8 @@
 
 using Nethermind.Network;
 using NUnit.Framework;
+using Prometheus;
+using System.Reflection;
 using System.Text;
 using PrometheusMetrics = Prometheus.Metrics;
 
@@ -102,7 +104,7 @@ public class BootnodeMetricsTests
     }
 
     [Test]
-    public async Task UpdateKademliaBucketStats_unpublishes_removed_buckets()
+    public async Task UpdateKademliaBucketStats_removes_stale_metric_children()
     {
         string id = Guid.NewGuid().ToString("N");
         BootnodeMetrics metrics = new();
@@ -112,18 +114,23 @@ public class BootnodeMetricsTests
             new BootnodeKademliaBucketSnapshot("discv4", 0, 1, $"prefix-old-{id}", 1),
             new BootnodeKademliaBucketSnapshot("discv4", 1, 1, $"prefix-current-{id}", 2)
         ]);
+        Gauge.Child staleChild = GetKademliaBucketMetric("discv4", "0", "1", $"prefix-old-{id}");
         metrics.UpdateKademliaBucketStats(
         [
             new BootnodeKademliaBucketSnapshot("discv4", 1, 1, $"prefix-current-{id}", 3)
         ]);
 
         string scrape = await ScrapeMetrics();
+        Gauge.Child recreatedChild = GetKademliaBucketMetric("discv4", "0", "1", $"prefix-old-{id}");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scrape, Does.Contain($"prefix-current-{id}"));
             Assert.That(scrape, Does.Not.Contain($"prefix-old-{id}"));
+            Assert.That(recreatedChild, Is.Not.SameAs(staleChild));
         }
+
+        recreatedChild.Remove();
     }
 
     [Test]
@@ -148,6 +155,13 @@ public class BootnodeMetricsTests
         using MemoryStream stream = new();
         await PrometheusMetrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static Gauge.Child GetKademliaBucketMetric(string protocol, string bucket, string depth, string prefix)
+    {
+        FieldInfo field = typeof(BootnodeMetrics).GetField("KademliaBucketNodes", BindingFlags.NonPublic | BindingFlags.Static)!;
+        Gauge gauge = (Gauge)field.GetValue(null)!;
+        return gauge.WithLabels(protocol, bucket, depth, prefix);
     }
 
     private sealed class StaticBucketSource(BootnodeKademliaBucketSnapshot bucket) : IBootnodeKademliaBucketSource

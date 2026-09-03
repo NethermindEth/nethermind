@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Crypto;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -150,6 +152,27 @@ public class DiscoveredNodeStoreTests
     }
 
     [Test]
+    public void Retained_node_does_not_keep_discovery_graph_alive()
+    {
+        DiscoveredNodeStore store = new();
+        (WeakReference<Node> nodeReference, WeakReference<NodeRecord> enrReference, string enr) = AddNodeWithEnr(store);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        NodeDto retainedNode = store.GetAllNodes().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeReference.TryGetTarget(out _), Is.False);
+            Assert.That(enrReference.TryGetTarget(out _), Is.False);
+            Assert.That(retainedNode.Enr, Is.EqualTo(enr));
+        }
+
+        GC.KeepAlive(store);
+    }
+
+    [Test]
     public void Removing_one_protocol_keeps_node_active_on_the_other_protocol()
     {
         using PrivateKeyGenerator generator = new();
@@ -202,4 +225,19 @@ public class DiscoveredNodeStoreTests
 
     private static Node CreateNode(PrivateKey privateKey, int port) =>
         new(privateKey.PublicKey, "127.0.0.1", port);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference<Node>, WeakReference<NodeRecord>, string) AddNodeWithEnr(DiscoveredNodeStore store)
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        new NodeRecordSigner(new Ecdsa(), privateKey).Sign(nodeRecord);
+        Node node = new(privateKey.PublicKey, "127.0.0.1", 30303);
+        node.SetVerifiedEnr(nodeRecord);
+        string enr = nodeRecord.ToString();
+        store.AddOrUpdate(node, "discv5", isActive: true);
+        return (new WeakReference<Node>(node), new WeakReference<NodeRecord>(nodeRecord), enr);
+    }
 }
