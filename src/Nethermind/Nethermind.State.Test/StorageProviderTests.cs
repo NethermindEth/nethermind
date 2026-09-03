@@ -1335,7 +1335,11 @@ public class StorageProviderTests(bool useFlat)
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
 
-        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false)
+        public Context(
+            bool useFlat,
+            PreBlockCaches preBlockCaches = null,
+            bool setInitialState = true,
+            bool trackWrittenData = false)
         {
             IWorldStateScopeProvider scopeProvider;
             if (useFlat)
@@ -1351,7 +1355,10 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, new PrewarmerState(preBlockCaches, isPrewarmer: true), LimboLogs.Instance);
+                scopeProvider = new PrewarmerScopeProvider(
+                    scopeProvider,
+                    new PrewarmerState(preBlockCaches, isPrewarmer: true),
+                    LimboLogs.Instance);
             }
 
             if (trackWrittenData)
