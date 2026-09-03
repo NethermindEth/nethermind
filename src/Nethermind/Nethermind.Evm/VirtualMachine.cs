@@ -1303,7 +1303,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// availability into compile-time <see cref="IFlag"/> type arguments.
     /// </summary>
     [SkipLocalsInit]
-    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
+    private CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
@@ -1317,6 +1317,71 @@ public partial class VirtualMachine<TGasPolicy>(
             (false, true) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OnFlag>(ref stack, ref gas),
             (false, false) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OffFlag>(ref stack, ref gas),
         };
+    }
+
+    [SkipLocalsInit]
+    private CallResult RunByteCodeCore<TTracingInst, TCancelable, TShift, TPush0>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where TShift : struct, IFlag
+        where TPush0 : struct, IFlag
+    {
+        ReturnData = null;
+#if DEBUG
+        DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
+#endif
+
+        // May not be zero when resuming after a call.
+        nint programCounter = VmState.ProgramCounter;
+        EvmExceptionType exceptionType =
+            RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(ref stack, ref gas, ref programCounter);
+
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
+        {
+            if (TTracingInst.IsActive)
+                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            UpdateCurrentState((int)programCounter, in gas, stack.Head);
+        }
+        else
+        {
+            goto ReturnFailure;
+        }
+
+        if (exceptionType == EvmExceptionType.Revert)
+            goto Revert;
+        if (ReturnData is not null)
+            goto DataReturn;
+
+#if DEBUG
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+#endif
+        return CallResult.Empty();
+
+    DataReturn:
+#if DEBUG
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+#endif
+        // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
+        // the general helper, while a class one has a specialized fast path. Order them accordingly.
+        if (ReturnData is VmState<TGasPolicy> state)
+        {
+            return new CallResult(state);
+        }
+        else if (ReturnData is byte[] data)
+        {
+            return new CallResult(data, null);
+        }
+        return new CallResult(ReturnDataBuffer, null);
+
+    Revert:
+        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
+
+    ReturnFailure:
+        // EIP-8037: write gas back so RestoreChildStateGasOnHalt can read the child frame's state gas.
+        _currentState.Gas = gas;
+        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }
 
 
