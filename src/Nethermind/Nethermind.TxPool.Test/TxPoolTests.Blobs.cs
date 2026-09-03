@@ -4792,17 +4792,15 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP8141-GAP: this pins a known bypass, not correct behaviour. A reloaded record carries no paymaster,
-        // so it takes no slot; the key cannot be persisted until the light-record trailing-field layout is settled
-        // (two adjacent optional sequences are ambiguous), which is why the fix is not here. Asserted so that a
-        // half-fix encoding the key on write but not on read fails here rather than silently under-counting.
+        // EIP-8141: the cap is summed over the pending set, so a record that survived a restart has to keep
+        // holding its sponsor's slot, and to free it on removal.
         [Test]
-        public void Restored_blob_carrying_frame_tx_bypasses_the_sponsor_cap_until_its_key_is_persisted()
+        public async Task Restored_blob_carrying_frame_tx_keeps_its_sponsor_slot_across_a_restart()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
-            foreach (PrivateKey sender in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD })
+            foreach (PrivateKey sender in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC })
             {
                 EnsureSenderBalance(sender.Address, UInt256.MaxValue);
             }
@@ -4818,17 +4816,20 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
 
+            // The bookkeeping check runs only on a head change, and the restore is the one place a slot is taken
+            // that the accumulator never sees being taken, so the seeded ledger needs a head to be checked at all.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "a new head must not disturb what the cap is read against");
+
             AcceptTxResult afterRestart = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyB), TxHandlingOptions.None);
-            AcceptTxResult beyondTheHole = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
 
             _txPool.RemoveTransaction(restored.Hash);
-            AcceptTxResult afterRestoredRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyD), TxHandlingOptions.None);
+            AcceptTxResult afterRestoredRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.Accepted), "the bypass: the reloaded record has no sponsor to count");
-                Assert.That(beyondTheHole, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the bypass costs one slot per restart rather than being unbounded");
-                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "a record that took no slot must at least not free one");
+                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the reloaded record still holds its sponsor's slot");
+                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.Accepted), "removing it frees the slot it kept");
             }
         }
 

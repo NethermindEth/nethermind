@@ -43,7 +43,7 @@ public class LightTransaction : Transaction
         PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
         // Derived here or the cap never counts a blob-carrying frame tx: the pool holds this frameless
         // record, so the paymaster is no longer recoverable from the frame list once the full tx is gone.
-        PersistedPaymaster = FrameTxValidation.GetPrefixPaymaster(fullTx);
+        PersistedPaymaster = PendingPaymasterCache.KeyFor(fullTx);
         BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
         _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);
         _size = fullTx.GetLength();
@@ -90,7 +90,8 @@ public class LightTransaction : Transaction
         ulong? expiryDeadline = null,
         UInt256[]? nonceKeys = null,
         Address? payerAddress = null,
-        UInt256? payerExposure = null)
+        UInt256? payerExposure = null,
+        Address? paymaster = null)
     {
         Type = type;
         Hash = hash;
@@ -113,6 +114,8 @@ public class LightTransaction : Transaction
         // admission took rather than nothing.
         PayerAddress = payerAddress;
         PayerExposure = payerExposure;
+        // The slot this record already holds against its sponsor, so the cap keeps counting it after a reload.
+        PersistedPaymaster = paymaster;
         _size = size;
     }
 

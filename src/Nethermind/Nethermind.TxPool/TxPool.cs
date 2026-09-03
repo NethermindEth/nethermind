@@ -217,8 +217,8 @@ namespace Nethermind.TxPool
                     TimeProvider.System,
                     RequestCurrentSpecRevalidation)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // Records restored inside the pool's constructor predate the handlers below, so the count and the
-            // payer ledger are seeded before subscribing: UpdatePool evicts during startup, and a removal must
+            // Records restored inside the pool's constructor predate the handlers below, so the count and both
+            // ledgers are seeded before subscribing: UpdatePool evicts during startup, and a removal must
             // release against a ledger that already covers what it removes.
             if (_blobTransactions.Count > 0)
             {
@@ -232,6 +232,12 @@ namespace Nethermind.TxPool
                     if (TryGetPayerReservation(restored, out Address? payer, out UInt256 reserved))
                     {
                         _payerExposure.Restore(payer, reserved);
+                    }
+
+                    // Re-taken rather than re-gated for the same reason, and through the key the release reads.
+                    if (PendingPaymasterCache.KeyFor(restored) is Address paymaster)
+                    {
+                        _pendingPaymasters.Reserve(paymaster);
                     }
                 }
             }
@@ -473,14 +479,6 @@ namespace Nethermind.TxPool
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
 
-        /// <summary>
-        /// The paymaster a pending frame transaction pays through, keying the EIP-8141 non-canonical
-        /// paymaster cap; <c>null</c> when it uses none, or when a reloaded record no longer records one.
-        /// </summary>
-        /// <remarks>Admission and release derive the same key from the record the pool holds, so a slot is
-        /// always returned to the sponsor it was taken from.</remarks>
-        private static Address? GetPaymaster(Transaction tx) => tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) : null;
-
         [Conditional("DEBUG")]
         private void TrackPoolMutation()
         {
@@ -553,8 +551,7 @@ namespace Nethermind.TxPool
         }
 
 #if DEBUG
-        // A restored record's payer is persisted, so it is inside this check's reach. Its paymaster is not:
-        // LightTxDecoder drops it, so GetPaymaster prices null here and at release alike.
+        // A restored record's payer and paymaster are both persisted, so it is inside this check's reach.
         private static void AccumulateFrameTxBookkeeping(
             Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring)
         {
@@ -562,7 +559,7 @@ namespace Nethermind.TxPool
             {
                 if (HasExpiryDeadline(tx)) expiring++;
 
-                if (GetPaymaster(tx) is Address paymaster)
+                if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)
                 {
                     paymasters[paymaster] = paymasters.TryGetValue(paymaster, out int pending) ? pending + 1 : 1;
                 }
@@ -1328,7 +1325,7 @@ namespace Nethermind.TxPool
                 // The cap counts ahead of the filters that follow it, so anything leaving the transaction
                 // unpooled — a later rejection or a throw — hands the slot back; AddCore clears the flag
                 // once the pool owns it or has released it itself.
-                if (state.PaymasterReserved && GetPaymaster(tx) is Address paymaster)
+                if (state.PaymasterReserved && PendingPaymasterCache.KeyFor(tx) is Address paymaster)
                 {
                     _pendingPaymasters.Decrement(paymaster);
                 }
@@ -1544,7 +1541,7 @@ namespace Nethermind.TxPool
                 _payerExposure.Subtract(payer, maxCost);
             }
 
-            if (GetPaymaster(tx) is Address paymaster)
+            if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)
             {
                 _pendingPaymasters.Decrement(paymaster);
             }

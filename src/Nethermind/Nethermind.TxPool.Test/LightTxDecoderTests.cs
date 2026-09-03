@@ -327,8 +327,85 @@ public class LightTxDecoderTests
         }
     }
 
-    // The group is written only for a payer, so a keys-only record keeps the flat list every earlier build
-    // writes — and stays readable by one, which a nested form would not be.
+    // The pool holds a frameless record, so the sponsor the cap counts is recoverable only from the record
+    // itself. A paymaster with no resolved payer leaves slot 1 empty, which is the shape that has to survive —
+    // including behind a populated keys list, which a keyed transaction admitted without simulation produces.
+    [TestCase(false, false, TestName = "paymaster alone")]
+    [TestCase(true, false, TestName = "paymaster behind a payer")]
+    [TestCase(false, true, TestName = "paymaster behind keys, no payer")]
+    [TestCase(true, true, TestName = "paymaster behind keys and a payer")]
+    public void Round_trip_carries_the_paymaster(bool withPayer, bool withKeys)
+    {
+        // Two keys, each 20 bytes wide: the shape byte-identical to an address plus a scalar.
+        UInt256[] keys = withKeys ? [UInt256.One << 152, (UInt256.One << 152) + 1] : null;
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys, paymaster: TestItem.AddressC);
+        if (withPayer)
+        {
+            tx.PayerAddress = TestItem.AddressB;
+            tx.PayerExposure = 12_345;
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
+            Assert.That(FrameTxValidation.GetPrefixPaymaster(decoded), Is.EqualTo(TestItem.AddressC));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
+    // Downgrade readability is why the trailing fields are one nested group: a build predating a later slot
+    // must still read the record, losing that field rather than the whole record.
+    [Test]
+    public void A_group_carrying_a_slot_this_build_does_not_know_still_decodes()
+    {
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, one slot this build has no name for]
+        byte[] group = [0xD9, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x01];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // Slot 3 tolerates the placeholder for the reason slot 1 does: behind a later slot an absent paymaster is
+    // written out rather than omitted, so the strict read would throw on a record a newer build wrote.
+    [Test]
+    public void A_group_whose_paymaster_slot_is_empty_decodes_as_unsponsored()
+    {
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // [keys: [], payer: absent, exposure: 0, paymaster: absent, one slot this build has no name for]
+        byte[] group = [0xC5, 0xC0, 0x80, 0x80, 0x80, 0x01];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
+
+        Assert.That(decoded.PersistedPaymaster, Is.Null);
+    }
+
+    // A paymaster on its own opens the group, so it costs the header, the empty keys list, the empty payer
+    // slot, a zero reservation and the address. Measured off two frameless records that differ in nothing
+    // else: carrying the sponsor in a pay frame instead would also move the two persisted size fields.
+    [Test]
+    public void A_paymaster_alone_grows_the_record_by_the_group_and_the_address()
+    {
+        static LightTransaction Record(Address paymaster) => new(
+            timestamp: 42, TestItem.AddressA, nonce: 7, TestItem.KeccakA, value: 5, gasLimit: 1_000_000,
+            gasPrice: 1, maxFeePerGas: 2, maxFeePerBlobGas: 3, [new byte[32]], poolIndex: 11, size: 100,
+            ProofVersion.V1, BlobCellMask.Full, sparseBlobNetworkSize: 100, TxType.FrameTx, paymaster: paymaster);
+
+        int grownBy = LightTxDecoder.Encode(Record(TestItem.AddressC)).Length - LightTxDecoder.Encode(Record(null)).Length;
+
+        Assert.That(grownBy, Is.EqualTo(1 + 1 + 1 + 1 + 21));
+    }
+
+    // The group is written only for a payer or a paymaster, so a keys-only record keeps the flat list every
+    // earlier build writes — and stays readable by one, which a nested form would not be.
     [Test]
     public void A_keys_only_record_keeps_the_flat_list()
     {
@@ -362,7 +439,7 @@ public class LightTxDecoderTests
         Assert.That(grownBy, Is.EqualTo(1 + 1 + 21 + 1));
     }
 
-    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null, Address paymaster = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -385,7 +462,9 @@ public class LightTxDecoderTests
 
         if (type == TxType.FrameTx)
         {
-            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
+            tx.Frames = paymaster is null
+                ? [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)]
+                : [FrameTxTestFrames.OnlyVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Pay(paymaster, FrameTxTestFrames.PrefixFrameGas)];
             tx.FrameSignatures = [];
         }
 
