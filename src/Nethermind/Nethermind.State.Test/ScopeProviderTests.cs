@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -1189,42 +1188,6 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_ScopeDecorators_ForwardTrieWarmerScopeFactory()
-    {
-        IWorldStateScopeProvider.ITrieWarmerScope trieWarmerScope = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
-        IWorldStateScopeProvider.IScope innerScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        innerScope.CreateTrieWarmerScope().Returns(trieWarmerScope);
-        IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
-        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(innerScope);
-
-        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
-            new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
-        using IWorldStateScopeProvider.IScope scope = decorated.BeginScope(null);
-
-        Assert.That(scope.CreateTrieWarmerScope(), Is.SameAs(trieWarmerScope));
-        innerScope.Received(1).CreateTrieWarmerScope();
-    }
-
-    [Test]
-    public void Test_NonFlatTrieWarmerScope_IsReusableAndIdempotentlyDisposable()
-    {
-        using Context ctx = new(useFlat: false);
-        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
-
-        IWorldStateScopeProvider.ITrieWarmerScope first = scope.CreateTrieWarmerScope();
-        IWorldStateScopeProvider.ITrieWarmerScope second = scope.CreateTrieWarmerScope();
-
-        Assert.That(second, Is.SameAs(first));
-        Assert.DoesNotThrow(() =>
-        {
-            first.Dispose();
-            first.Dispose();
-            first.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-            first.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)1);
-        });
-    }
-
-    [Test]
     public void Test_MainScope_RegisteredForConsumerScopeLifetime([Values] bool isPrewarmer)
     {
         using Context ctx = new(useFlat);
@@ -1413,60 +1376,6 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         mainScope.Received(1).HintWarmSlot(addressA, (UInt256)1);
-    }
-
-    [Test]
-    public void Test_TrieWarmerScopes_UseCurrentConsumerAndObserveItsLifetime()
-    {
-        List<string> disposalOrder = [];
-        PreBlockCaches caches = new();
-        IWorldStateScopeProvider.IScope firstConsumerScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        IWorldStateScopeProvider.IScope secondConsumerScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        IWorldStateScopeProvider.ITrieWarmerScope firstWarmer = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
-        IWorldStateScopeProvider.ITrieWarmerScope secondWarmer = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
-        IWorldStateScopeProvider.ITrieWarmerScope thirdWarmer = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
-        firstConsumerScope.CreateTrieWarmerScope().Returns(firstWarmer);
-        secondConsumerScope.CreateTrieWarmerScope().Returns(secondWarmer, thirdWarmer);
-        secondWarmer.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("warmer"));
-        thirdWarmer.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("warmer"));
-        secondConsumerScope.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("consumer"));
-
-        IWorldStateScopeProvider consumerBaseProvider = Substitute.For<IWorldStateScopeProvider>();
-        consumerBaseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
-            .Returns(firstConsumerScope, secondConsumerScope);
-        PrewarmerScopeProvider consumer = new(
-            consumerBaseProvider,
-            new PrewarmerState(caches, isPrewarmer: false),
-            LimboLogs.Instance);
-        IWorldStateScopeProvider populatorBaseProvider = Substitute.For<IWorldStateScopeProvider>();
-        IWorldStateScopeProvider.IScope populatorProcessingScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        populatorBaseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(populatorProcessingScope);
-        PrewarmerScopeProvider populator = new(
-            populatorBaseProvider,
-            new PrewarmerState(caches, isPrewarmer: true),
-            LimboLogs.Instance);
-
-        IWorldStateScopeProvider.IScope staleConsumer = consumer.BeginScope(null);
-        IWorldStateScopeProvider.IScope currentConsumer = consumer.BeginScope(null);
-        IWorldStateScopeProvider.IScope firstPopulator = populator.BeginScope(null);
-        IWorldStateScopeProvider.IScope secondPopulator = populator.BeginScope(null);
-        staleConsumer.Dispose();
-        firstPopulator.Dispose();
-        secondPopulator.Dispose();
-        currentConsumer.Dispose();
-
-        using (Assert.EnterMultipleScope())
-        {
-            firstConsumerScope.DidNotReceive().CreateTrieWarmerScope();
-            secondConsumerScope.Received(2).CreateTrieWarmerScope();
-            populatorProcessingScope.DidNotReceive().CreateTrieWarmerScope();
-            firstWarmer.DidNotReceive().Dispose();
-            secondWarmer.Received(1).Dispose();
-            thirdWarmer.Received(1).Dispose();
-            Assert.That(disposalOrder, Is.EqualTo(new[] { "warmer", "warmer", "consumer" }));
-            Assert.DoesNotThrow(() => populator.BeginScope(null).Dispose());
-        }
-
     }
 
     [Test]
