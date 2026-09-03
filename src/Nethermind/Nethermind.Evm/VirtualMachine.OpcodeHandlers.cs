@@ -455,8 +455,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct ExtCodeSizeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionExtCodeSize<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            OpcodeResult result = EvmInstructions.InstructionExtCodeSize<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, programCounter);
+            programCounter = result.ProgramCounter;
+            return result.Exception;
+        }
     }
 
     private readonly struct ExtCodeCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
