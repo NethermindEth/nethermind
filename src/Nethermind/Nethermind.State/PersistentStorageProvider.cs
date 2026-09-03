@@ -351,9 +351,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
+    /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
+    /// <remarks>
+    /// Recycling is safe here because a block that detached its changes left an empty map behind: the states it held
+    /// belong to the snapshot, which returns them itself once written.
+    /// </remarks>
     public void ClearStorageMap()
     {
-        _storages.Clear();
+        _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
 
