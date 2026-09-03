@@ -290,6 +290,51 @@ namespace Nethermind.Db.Test
             Assert.That(didShutDown, Is.True);
         }
 
+        [TestCase(false, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
+        [TestCase(true, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
+        public void Corrupted_exception_on_get_writes_marker_and_shuts_down(bool callerBuffer)
+        {
+            IDbConfig config = new DbConfig();
+            byte[] key = [1, 2, 3];
+            byte[] value = new byte[4096];
+            value.AsSpan().Fill(0xA5);
+
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
+            {
+                db.PutSpan(key, value, WriteFlags.None);
+                db.Flush();
+            }
+
+            string[] sstFiles = Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories);
+            Assert.That(sstFiles, Has.Length.EqualTo(1));
+            byte[] sst = File.ReadAllBytes(sstFiles[0]);
+            Assert.That(sst, Is.Not.Empty);
+            sst[0] ^= byte.MaxValue;
+            File.WriteAllBytes(sstFiles[0], sst);
+
+            bool didShutDown = false;
+
+            using FatalShutdownTrackingDbOnTheRocks corruptedDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                _rocksdbConfigFactory, LimboLogs.Instance, () => didShutDown = true);
+
+            IReadOnlyKeyValueStore keyValueStore = corruptedDb;
+            Action read = () =>
+            {
+                if (callerBuffer)
+                {
+                    keyValueStore.Get(key, new byte[value.Length]);
+                }
+                else
+                {
+                    keyValueStore.Get(key);
+                }
+            };
+
+            Assert.That(read, Throws.InstanceOf<RocksDbException>());
+            Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
+            Assert.That(didShutDown, Is.True);
+        }
+
         // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption, so it
         // must NOT write the marker (that would run the lossy repair on a healthy DB on restart),
         // but it must still fast-shut down so partial writes aren't built upon.
@@ -1351,5 +1396,17 @@ namespace Nethermind.Db.Test
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, fileSystem: fileSystem)
     {
         protected override void RepairDb(DbOptions dbOptions, string path) => onRepair();
+    }
+
+    class FatalShutdownTrackingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        Action onFatalShutdown
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        protected override void FatalShutdown() => onFatalShutdown();
     }
 }

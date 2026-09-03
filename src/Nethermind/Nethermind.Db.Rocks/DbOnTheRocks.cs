@@ -821,8 +821,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private DisposableLazy<IteratorManager> CreateLazyIteratorManager(IColumnFamilyHandle? cf, ReadOptions readOptions) =>
         new(() => new IteratorManager(_db, cf, readOptions));
 
-    internal byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions) =>
-        _db.Get(key, cf, readOptions);
+    internal byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
+    {
+        try
+        {
+            return _db.Get(key, cf, readOptions);
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
 
     /// <summary>
     /// iterator.Next() is about 10 to 20 times faster than iterator.Seek().
@@ -977,8 +987,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         UpdateReadMetrics();
 
-        int length = _db.Get(key, output, cf, readOptions);
-        return length < 0 ? 0 : length;
+        try
+        {
+            int length = _db.Get(key, output, cf, readOptions);
+            return length < 0 ? 0 : length;
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
     }
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags) =>
