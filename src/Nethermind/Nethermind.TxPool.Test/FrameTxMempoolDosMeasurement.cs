@@ -123,6 +123,38 @@ public class FrameTxMempoolDosMeasurement
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
+    private static IEnumerable<TestCaseData> BudgetBurningCases()
+    {
+        foreach (string shape in new string[] { "jump", "keccak" })
+        {
+            foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling300k, Ceiling500k })
+            {
+                yield return new TestCaseData(shape, ceiling);
+            }
+        }
+
+        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling236k, Ceiling300k, Ceiling500k })
+        {
+            yield return new TestCaseData("keccak-wide", ceiling);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> Groth16Cases()
+    {
+        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        {
+            yield return new TestCaseData(shape);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CeilingCases()
+    {
+        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling236k, Ceiling300k, Ceiling500k })
+        {
+            yield return new TestCaseData(ceiling);
+        }
+    }
+
     private long _lastPairingCallGas;
 
     private ILogManager _logManager = null!;
@@ -172,16 +204,7 @@ public class FrameTxMempoolDosMeasurement
     /// Measures rejection of prefixes that exhaust their frame budget. Shapes vary CPU work per unit
     /// of gas while keeping their behavior stable across ceilings.
     /// </summary>
-    [TestCase("jump", Ceiling100k)]
-    [TestCase("jump", Ceiling300k)]
-    [TestCase("jump", Ceiling500k)]
-    [TestCase("keccak", Ceiling100k)]
-    [TestCase("keccak", Ceiling300k)]
-    [TestCase("keccak", Ceiling500k)]
-    [TestCase("keccak-wide", Ceiling100k)]
-    [TestCase("keccak-wide", Ceiling236k)]
-    [TestCase("keccak-wide", Ceiling300k)]
-    [TestCase("keccak-wide", Ceiling500k)]
+    [TestCaseSource(nameof(BudgetBurningCases))]
     public void Reject_cost_of_a_budget_burning_prefix(string shape, ulong ceiling) => MeasureFrameRejection(shape, ceiling);
 
     /// <summary>Measures immediate rejection caused by a banned validation-prefix opcode.</summary>
@@ -189,10 +212,7 @@ public class FrameTxMempoolDosMeasurement
     public void Reject_cost_of_a_banned_opcode_prefix(ulong ceiling) => MeasureFrameRejection("banned-opcode", ceiling);
 
     /// <summary>Measures rejection after a complete Groth16 verification with an invalid proof or input.</summary>
-    [TestCase("groth16-236k")]
-    [TestCase("groth16-300k")]
-    [TestCase("groth16-500k")]
-    [TestCase("groth16-soispoke")]
+    [TestCaseSource(nameof(Groth16Cases))]
     public void Reject_cost_of_a_groth16_verifier_prefix(string shape) =>
         MeasureFrameRejection(shape, Groth16Sweeps[shape].Ceiling);
 
@@ -373,10 +393,7 @@ public class FrameTxMempoolDosMeasurement
             .Op(Instruction.STOP)
             .Done;
 
-    [TestCase(Ceiling100k)]
-    [TestCase(Ceiling236k)]
-    [TestCase(Ceiling300k)]
-    [TestCase(Ceiling500k)]
+    [TestCaseSource(nameof(CeilingCases))]
     public void Reject_cost_of_a_signature_stuffed_prefix(ulong ceiling)
     {
         int count = StuffedSignatureCount(ceiling);
@@ -733,13 +750,15 @@ public class FrameTxMempoolDosMeasurement
 
         AssertSeededCodeIsVisibleAtHead(head.Header, senderCode);
 
+        TxPoolConfig txPoolConfig = new() { GasLimit = BlockGasLimit, FrameTxMaxVerifyGas = verifyGasCeiling };
         _realSimulator = new FrameTxPrefixSimulator(
             new HarnessEnvFactory(_worldStateManager, _specProvider, _logManager),
             _blockTree,
             _specProvider,
+            txPoolConfig,
             _logManager);
 
-        _txPool = CreatePool(new TimingSimulator(_realSimulator, _simulateMicros), verifyGasCeiling);
+        _txPool = CreatePool(new TimingSimulator(_realSimulator, _simulateMicros), txPoolConfig);
     }
 
     /// <summary>Confirms that both pool and EVM views contain the sender code before measurement.</summary>
@@ -759,7 +778,7 @@ public class FrameTxMempoolDosMeasurement
         }
     }
 
-    private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator, ulong verifyGasCeiling = 0)
+    private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator, TxPoolConfig txPoolConfig)
     {
         ChainHeadInfoProvider headInfo = new(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
@@ -770,7 +789,7 @@ public class FrameTxMempoolDosMeasurement
             _ethereumEcdsa,
             new BlobTxStorage(),
             headInfo,
-            new TxPoolConfig { GasLimit = BlockGasLimit, FrameTxMaxVerifyGas = verifyGasCeiling },
+            txPoolConfig,
             new TxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
@@ -811,12 +830,16 @@ public class FrameTxMempoolDosMeasurement
     /// <summary>Times the real simulator without modifying production code.</summary>
     private sealed class TimingSimulator(IFrameTxPrefixSimulator inner, List<double> samples) : IFrameTxPrefixSimulator
     {
-        public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
+        public FrameTxSimulationResult Simulate(
+            Transaction tx,
+            bool signaturesPreValidated = false,
+            CancellationToken token = default,
+            bool local = false)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated, token);
+                return inner.Simulate(tx, signaturesPreValidated, token, local);
             }
             finally
             {

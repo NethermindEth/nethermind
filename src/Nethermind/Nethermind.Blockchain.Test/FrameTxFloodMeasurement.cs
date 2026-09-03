@@ -97,6 +97,81 @@ public class FrameTxFloodMeasurement
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000),
     };
 
+    private static IEnumerable<TestCaseData> AdmissionShapes()
+    {
+        foreach (string shape in new string[]
+                 {
+                     "keccak-wide", "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke",
+                     "signature-stuffed"
+                 })
+        {
+            yield return new TestCaseData(shape);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ProductionDelayCases()
+    {
+        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        {
+            int[] retries = ceiling == 100_000 ? [1, 2, 4, 8] : [1, 8];
+            foreach (int kRetry in retries)
+            {
+                yield return new TestCaseData(ceiling, kRetry, 0);
+                yield return new TestCaseData(ceiling, kRetry, 100);
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CeilingRateCases()
+    {
+        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        {
+            foreach (int rate in new int[] { 50, 100, 150, 200 })
+            {
+                yield return new TestCaseData(ceiling, rate);
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> Groth16RateCases()
+    {
+        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        {
+            foreach (int rate in new int[] { 50, 100, 150, 200 })
+            {
+                yield return new TestCaseData(shape, rate);
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CeilingCases()
+    {
+        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        {
+            yield return new TestCaseData(ceiling);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> Groth16Cases()
+    {
+        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        {
+            yield return new TestCaseData(shape);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> RetryCases()
+    {
+        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        {
+            int[] retries = ceiling == 100_000 ? [1, 2, 4, 8] : [1, 8];
+            foreach (int kRetry in retries)
+            {
+                yield return new TestCaseData(ceiling, kRetry);
+            }
+        }
+    }
+
     private byte[] _frameCalldataPrefix = [];
 
     private TxFrameSignature[] _frameSignatures = [];
@@ -204,12 +279,7 @@ public class FrameTxFloodMeasurement
     public void TearDown() => _chain?.Dispose();
 
     /// <summary>Verifies that each flood shape reaches its intended rejection stage before timing.</summary>
-    [TestCase("keccak-wide")]
-    [TestCase("groth16-236k")]
-    [TestCase("groth16-300k")]
-    [TestCase("groth16-500k")]
-    [TestCase("groth16-soispoke")]
-    [TestCase("signature-stuffed")]
+    [TestCaseSource(nameof(AdmissionShapes))]
     public async Task Admission_flood_actually_reaches_the_simulator(string shape)
     {
         bool isSignatureStuffed = shape == "signature-stuffed";
@@ -248,26 +318,7 @@ public class FrameTxFloodMeasurement
     }
 
     /// <summary>Measures producer delay while admission competes with bounded prefix retries.</summary>
-    [TestCase(100_000ul, 1, 0)]
-    [TestCase(100_000ul, 2, 0)]
-    [TestCase(100_000ul, 4, 0)]
-    [TestCase(100_000ul, 8, 0)]
-    [TestCase(100_000ul, 1, 100)]
-    [TestCase(100_000ul, 2, 100)]
-    [TestCase(100_000ul, 4, 100)]
-    [TestCase(100_000ul, 8, 100)]
-    [TestCase(236_285ul, 1, 0)]
-    [TestCase(236_285ul, 8, 0)]
-    [TestCase(236_285ul, 1, 100)]
-    [TestCase(236_285ul, 8, 100)]
-    [TestCase(300_000ul, 1, 0)]
-    [TestCase(300_000ul, 8, 0)]
-    [TestCase(300_000ul, 1, 100)]
-    [TestCase(300_000ul, 8, 100)]
-    [TestCase(500_000ul, 1, 0)]
-    [TestCase(500_000ul, 8, 0)]
-    [TestCase(500_000ul, 1, 100)]
-    [TestCase(500_000ul, 8, 100)]
+    [TestCaseSource(nameof(ProductionDelayCases))]
     public async Task Block_production_delay_under_flood_and_retries(ulong ceiling, int kRetry, int offeredRate)
     {
         SkipUnlessSingleCore();
@@ -388,60 +439,15 @@ public class FrameTxFloodMeasurement
     }
 
     /// <summary>Measures block-processing delay across verification ceilings and offered rates.</summary>
-    [TestCase(100_000ul, 50)]
-    [TestCase(100_000ul, 100)]
-    [TestCase(100_000ul, 150)]
-    [TestCase(100_000ul, 200)]
-    [TestCase(236_285ul, 50)]
-    [TestCase(236_285ul, 100)]
-    [TestCase(236_285ul, 150)]
-    [TestCase(236_285ul, 200)]
-    [TestCase(300_000ul, 50)]
-    [TestCase(300_000ul, 100)]
-    [TestCase(300_000ul, 150)]
-    [TestCase(300_000ul, 200)]
-    [TestCase(500_000ul, 50)]
-    [TestCase(500_000ul, 100)]
-    [TestCase(500_000ul, 150)]
-    [TestCase(500_000ul, 200)]
+    [TestCaseSource(nameof(CeilingRateCases))]
     public async Task Block_processing_delay_under_admission_flood(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("keccak-wide", ceiling, offeredRate);
 
-    [TestCase("groth16-236k", 50)]
-    [TestCase("groth16-236k", 100)]
-    [TestCase("groth16-236k", 150)]
-    [TestCase("groth16-236k", 200)]
-    [TestCase("groth16-300k", 50)]
-    [TestCase("groth16-300k", 100)]
-    [TestCase("groth16-300k", 150)]
-    [TestCase("groth16-300k", 200)]
-    [TestCase("groth16-500k", 50)]
-    [TestCase("groth16-500k", 100)]
-    [TestCase("groth16-500k", 150)]
-    [TestCase("groth16-500k", 200)]
-    [TestCase("groth16-soispoke", 50)]
-    [TestCase("groth16-soispoke", 100)]
-    [TestCase("groth16-soispoke", 150)]
-    [TestCase("groth16-soispoke", 200)]
+    [TestCaseSource(nameof(Groth16RateCases))]
     public async Task Block_processing_delay_under_admission_flood_groth16(string shape, int offeredRate) =>
         await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate);
 
-    [TestCase(100_000ul, 50)]
-    [TestCase(100_000ul, 100)]
-    [TestCase(100_000ul, 150)]
-    [TestCase(100_000ul, 200)]
-    [TestCase(236_285ul, 50)]
-    [TestCase(236_285ul, 100)]
-    [TestCase(236_285ul, 150)]
-    [TestCase(236_285ul, 200)]
-    [TestCase(300_000ul, 50)]
-    [TestCase(300_000ul, 100)]
-    [TestCase(300_000ul, 150)]
-    [TestCase(300_000ul, 200)]
-    [TestCase(500_000ul, 50)]
-    [TestCase(500_000ul, 100)]
-    [TestCase(500_000ul, 150)]
-    [TestCase(500_000ul, 200)]
+    [TestCaseSource(nameof(CeilingRateCases))]
     public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("signature-stuffed", ceiling, offeredRate);
 
@@ -497,24 +503,15 @@ public class FrameTxFloodMeasurement
     }
 
     /// <summary>Bounds the sustainable rejection rate by ramping load until the generator falls behind.</summary>
-    [TestCase(100_000ul)]
-    [TestCase(236_285ul)]
-    [TestCase(300_000ul)]
-    [TestCase(500_000ul)]
+    [TestCaseSource(nameof(CeilingCases))]
     public async Task Sustainable_rejection_rate_by_ramp(ulong ceiling) =>
         await MeasureSustainableRate("keccak-wide", ceiling);
 
-    [TestCase("groth16-236k")]
-    [TestCase("groth16-300k")]
-    [TestCase("groth16-500k")]
-    [TestCase("groth16-soispoke")]
+    [TestCaseSource(nameof(Groth16Cases))]
     public async Task Sustainable_rejection_rate_by_ramp_groth16(string shape) =>
         await MeasureSustainableRate(shape, Groth16Sweeps[shape].Ceiling);
 
-    [TestCase(100_000ul)]
-    [TestCase(236_285ul)]
-    [TestCase(300_000ul)]
-    [TestCase(500_000ul)]
+    [TestCaseSource(nameof(CeilingCases))]
     public async Task Sustainable_rejection_rate_by_ramp_signature_stuffed(ulong ceiling) =>
         await MeasureSustainableRate("signature-stuffed", ceiling);
 
@@ -538,16 +535,7 @@ public class FrameTxFloodMeasurement
             ? () => Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid
             : null;
 
-    [TestCase(100_000ul, 1)]
-    [TestCase(100_000ul, 2)]
-    [TestCase(100_000ul, 4)]
-    [TestCase(100_000ul, 8)]
-    [TestCase(236_285ul, 1)]
-    [TestCase(236_285ul, 8)]
-    [TestCase(300_000ul, 1)]
-    [TestCase(300_000ul, 8)]
-    [TestCase(500_000ul, 1)]
-    [TestCase(500_000ul, 8)]
+    [TestCaseSource(nameof(RetryCases))]
     public async Task Sustainable_rejection_rate_by_ramp_with_retries(ulong ceiling, int kRetry)
     {
         SkipUnlessSingleCore();
