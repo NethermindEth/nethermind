@@ -27,6 +27,8 @@ public enum EvmExceptionType
     Other,
     Revert,
     InvalidCode,
+    /// <summary>Not a failure: the frame yielded a child call/create frame and is suspended until it returns.</summary>
+    Suspend,
 }
 
 public static class EvmExceptionTypeExtensions
@@ -56,6 +58,7 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.Other => nameof(EvmExceptionType.Other),
         EvmExceptionType.Revert => nameof(EvmExceptionType.Revert),
         EvmExceptionType.InvalidCode => nameof(EvmExceptionType.InvalidCode),
+        EvmExceptionType.Suspend => nameof(EvmExceptionType.Suspend),
         _ => ((int)type).ToString(),
     };
 }
