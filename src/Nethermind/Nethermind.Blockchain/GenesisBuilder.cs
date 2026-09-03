@@ -28,7 +28,8 @@ public class GenesisBuilder(
 
     public Block Build()
     {
-        Block genesis = chainSpec.Genesis;
+        Block genesis = chainSpec.Genesis
+            ?? throw new InvalidOperationException("Chain spec genesis is missing.");
         Preallocate(genesis);
 
         foreach (IGenesisPostProcessor postProcessor in postProcessors)
@@ -55,7 +56,9 @@ public class GenesisBuilder(
     private void Preallocate(Block genesis)
     {
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
-        foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations.OrderBy(static a => a.Key))
+        if (chainSpec.Allocations is not { } allocations) return;
+
+        foreach ((Address address, ChainSpecAllocation allocation) in allocations.OrderBy(static a => a.Key))
         {
             stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
 

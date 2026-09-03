@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
@@ -107,6 +108,39 @@ public class Snap2ProtocolHandlerTests
         Deliver(handler, serializer, request, Snap2MessageCode.GetBlockAccessLists);
 
         snapServer.Received(1).GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), requestedBytes, Arg.Any<CancellationToken>());
+    }
+
+    // The interface call is the one BalFetcher makes. It must reach the handler and not ISnapSyncPeer's
+    // default implementation, which is mapped at Snap1ProtocolHandler and answers with an empty list.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void GetBlockAccessLists_sends_a_request_when_called_through_the_interface(bool viaInterface)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetBlockAccessListsMessageSerializer()),
+            SerializerInfo.Create(new BlockAccessListsMessageSerializer()));
+
+        Snap2ProtocolHandler handler = new(
+            session,
+            new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            new SyncConfig(),
+            Substitute.For<ISnapServer>());
+
+        ValueHash256[] hashes = [TestItem.KeccakA.ValueHash256];
+
+        // Not awaited: the request only completes once a peer responds. All that matters here is that the
+        // request frame was put on the wire at all.
+        _ = viaInterface
+            ? ((ISnapSyncPeer)handler).GetBlockAccessLists(hashes, CancellationToken.None)
+            : handler.GetBlockAccessLists(hashes, CancellationToken.None);
+
+        session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
     }
 
     [Test]

@@ -304,16 +304,35 @@ public class SszMiddlewareTests
         _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
-        BitArray custodyColumns = new(128);
-        custodyColumns.Set(0, true);
-        custodyColumns.Set(3, true);
-        custodyColumns.Set(127, true);
+        BitArray custodyColumns = CustodyColumnsFixture();
         DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", BuildForkchoiceV4Request(custodyColumns), fork: "amsterdam");
 
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_forkchoiceUpdatedV4(
+            Arg.Any<ForkchoiceStateV1>(),
+            Arg.Any<PayloadAttributes?>(),
+            Arg.Is<BitArray>(actual => BitsEqual(actual, custodyColumns)));
+    }
+
+    [Test]
+    public async Task Forkchoice_v5_passes_custody_columns()
+    {
+        ForkchoiceUpdatedV2Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+        };
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+
+        BitArray custodyColumns = CustodyColumnsFixture();
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", BuildForkchoiceV5Request(custodyColumns), fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
             Arg.Any<ForkchoiceStateV1>(),
             Arg.Any<PayloadAttributes?>(),
             Arg.Is<BitArray>(actual => BitsEqual(actual, custodyColumns)));
@@ -766,6 +785,28 @@ public class SszMiddlewareTests
             PayloadAttributes = [],
             CustodyColumns = custodyColumns is null ? [] : [new SszCustodyColumns { Bits = custodyColumns }],
         });
+
+    private static byte[] BuildForkchoiceV5Request(BitArray? custodyColumns = null) =>
+        ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero,
+            },
+            PayloadAttributes = [],
+            CustodyColumns = custodyColumns is null ? [] : [new SszCustodyColumns { Bits = custodyColumns }],
+        });
+
+    private static BitArray CustodyColumnsFixture()
+    {
+        BitArray custodyColumns = new(128);
+        custodyColumns.Set(0, true);
+        custodyColumns.Set(3, true);
+        custodyColumns.Set(127, true);
+        return custodyColumns;
+    }
 
     private static bool BitsEqual(BitArray actual, BitArray expected)
     {
@@ -1348,18 +1389,7 @@ public class SszMiddlewareTests
         _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
 
-        byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
-        {
-            ForkchoiceState = new ForkchoiceStateWire
-            {
-                HeadBlockHash = TestItem.KeccakA,
-                SafeBlockHash = TestItem.KeccakB,
-                FinalizedBlockHash = Keccak.Zero
-            },
-            PayloadAttributes = [],
-            CustodyColumns = []
-        });
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body, fork: "bogota");
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", BuildForkchoiceV5Request(), fork: "bogota");
 
         await _middleware.InvokeAsync(ctx);
 
@@ -1382,6 +1412,32 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
         await _engineModule.Received(1).engine_getInclusionListV1();
+    }
+
+    [Test]
+    public async Task GetInclusionList_bogota_forwards_the_parent_block_hash_from_the_path()
+    {
+        InclusionListBytes inclusionList = new(1) { new ArrayPoolList<byte>((ReadOnlySpan<byte>)[0x01, 0x02]) };
+        _engineModule.engine_getInclusionListV1(TestItem.KeccakA)
+            .Returns(ResultWrapper<InclusionListBytes>.Success(inclusionList));
+
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v1/inclusion_list/{TestItem.KeccakA}", fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_getInclusionListV1(TestItem.KeccakA);
+    }
+
+    [Test]
+    public async Task GetInclusionList_bogota_rejects_a_malformed_parent_block_hash()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/inclusion_list/0xdeadbeef", fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        await _engineModule.DidNotReceive().engine_getInclusionListV1(Arg.Any<Hash256?>());
     }
 
     [Test]

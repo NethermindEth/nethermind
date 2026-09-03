@@ -1079,7 +1079,7 @@ namespace Nethermind.Db.Test
         public void Full_enumerations_can_be_repeated_across_batches()
         {
             (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
-            IEnumerable<KeyValuePair<byte[], byte[]?>> all = _db.GetAll(ordered: true);
+            IEnumerable<KeyValuePair<byte[], byte[]>> all = _db.GetAll(ordered: true);
             IEnumerable<byte[]> keys = _db.GetAllKeys(ordered: true);
             IEnumerable<byte[]> values = _db.GetAllValues(ordered: true);
 
@@ -1087,8 +1087,8 @@ namespace Nethermind.Db.Test
             _ = keys.Take(1).Single();
             _ = values.Take(1).Single();
 
-            KeyValuePair<byte[], byte[]?>[] firstAll = all.ToArray();
-            KeyValuePair<byte[], byte[]?>[] secondAll = all.ToArray();
+            KeyValuePair<byte[], byte[]>[] firstAll = all.ToArray();
+            KeyValuePair<byte[], byte[]>[] secondAll = all.ToArray();
             byte[][] firstKeys = keys.ToArray();
             byte[][] secondKeys = keys.ToArray();
             byte[][] firstValues = values.ToArray();

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
 using System.Net;
 using System.Text.Json;
@@ -15,9 +17,11 @@ internal sealed class BootnodeNodeRecordProvider(
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig,
     IIPResolver.NethermindIp resolvedIp,
+    ILogManager logManager,
     string dataDir) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
+    private readonly Nethermind.Logging.ILogger _logger = logManager.GetClassLogger<BootnodeNodeRecordProvider>();
     private readonly string _sequenceStatePath = Path.Combine(dataDir, "enr-state.json");
     private Task<NodeRecord>? _nodeRecordTask;
 
@@ -39,7 +43,7 @@ internal sealed class BootnodeNodeRecordProvider(
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
-        SetEndpointEntries(selfNodeRecord, resolvedIp.ExternalIpV4, resolvedIp.ExternalIpV6);
+        SetEndpointEntries(selfNodeRecord);
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = 0;
         string contentHash = selfNodeRecord.ContentHash.ToString();
@@ -56,8 +60,33 @@ internal sealed class BootnodeNodeRecordProvider(
         return selfNodeRecord;
     }
 
-    private void SetEndpointEntries(NodeRecord selfNodeRecord, IPAddress? externalIpV4, IPAddress? externalIpV6)
+    private void SetEndpointEntries(NodeRecord selfNodeRecord)
     {
+        IPAddress? resolvedExternalIpV4 = resolvedIp.ExternalIpV4;
+        IPAddress? resolvedExternalIpV6 = resolvedIp.ExternalIpV6;
+        (IPAddress? externalIpV4, IPAddress? externalIpV6) = DiscoveryAddressSupport.SelectAdvertised(
+            resolvedIp.LocalIp,
+            resolvedExternalIpV4,
+            resolvedExternalIpV6);
+
+        if (_logger.IsWarn)
+        {
+            if (resolvedExternalIpV4 is not null && externalIpV4 is null)
+            {
+                _logger.Warn("External IPv4 address is available but not advertised because the bootnode does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+            }
+
+            if (resolvedExternalIpV6 is not null && externalIpV6 is null)
+            {
+                _logger.Warn("External IPv6 address is available but not advertised because the bootnode does not listen on IPv6 (set LocalIp to an IPv6 address).");
+            }
+
+            if (externalIpV4 is null && externalIpV6 is null)
+            {
+                _logger.Warn("No external IP address is advertised; the bootnode will not be discoverable by peers.");
+            }
+        }
+
         if (externalIpV4 is not null)
         {
             selfNodeRecord.SetEntry(new IpEntry(externalIpV4));
@@ -72,6 +101,7 @@ internal sealed class BootnodeNodeRecordProvider(
         if (externalIpV6 is not null)
         {
             selfNodeRecord.SetEntry(new Ip6Entry(externalIpV6));
+            // Some ENR consumers do not implement EIP-778's fallback from tcp6/udp6 to tcp/udp.
             if (networkConfig.P2PPort > 0)
             {
                 selfNodeRecord.SetEntry(new Tcp6Entry(networkConfig.P2PPort));
