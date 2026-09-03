@@ -272,7 +272,8 @@ public class FrameTxMempoolDosMeasurement
             : ProbeSyntheticShape(shape, ceiling);
 
         // Immediate rejection spends almost no gas, so normalize it by offered rather than burned gas.
-        ulong burnedGas = shape == "banned-opcode" ? _frameExecutionGasLimit : gas.Burned;
+        bool normalizeByOffered = shape == "banned-opcode";
+        ulong normalizingGas = normalizeByOffered ? _frameExecutionGasLimit : gas.Burned;
 
         long probeFailuresBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
 
@@ -314,7 +315,7 @@ public class FrameTxMempoolDosMeasurement
         simulateMicros.Sort();
         nonEvmMicros.Sort();
 
-        Emit($"case=frame_reject shape={shape} verify_gas={_frameExecutionGasLimit} frame_gas_used={burnedGas} "
+        Emit($"case=frame_reject shape={shape} verify_gas={_frameExecutionGasLimit} "
              + (isGroth16
                  ? $"pairing_call_gas={_lastPairingCallGas} fits_500k={(sweep.ExpectedFrameGas <= Ceiling500k ? "yes" : "no")} "
                  : "")
@@ -327,7 +328,8 @@ public class FrameTxMempoolDosMeasurement
              + $"simulate_max_us={simulateMicros[^1]:F1} "
              + $"nonevm_p50_us={Percentile(nonEvmMicros, 0.50):F1} "
              + $"nonevm_p99_us={Percentile(nonEvmMicros, 0.99):F1} "
-             + $"submit_us_per_Mgas={Percentile(submitMicros, 0.50) * 1_000_000 / burnedGas:F1} "
+             + $"submit_us_per_Mgas={Percentile(submitMicros, 0.50) * 1_000_000 / normalizingGas:F1} "
+             + $"us_per_Mgas_basis={(normalizeByOffered ? "offered" : "burned")} "
              + $"simulation_failures={Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed) - simulationFailuresBefore} "
              + $"reject_reason=\"{probeReason}\"");
     }
