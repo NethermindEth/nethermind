@@ -464,7 +464,10 @@ public class FrameTxFloodMeasurement
         double w0p99 = Percentile(baseline, 0.99);
         double wp99 = Percentile(flooded.ProcessMicros, 0.99);
         double w0After = Percentile(baselineAfter, 0.50);
+        double w0p99After = Percentile(baselineAfter, 0.99);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
+        double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
+        double worstDriftPct = Math.Max(baselineDriftPct, baselineTailDriftPct);
 
         // A generator that fell behind repays the deficit inside the sampled window, which can push the
         // achieved rate above the offered one. The rate floor alone cannot see that; the lag can.
@@ -474,8 +477,9 @@ public class FrameTxFloodMeasurement
 
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
              + $"{Groth16FitField(shape)}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
-             + $"W0_after_p50_us={w0After:F1} baseline_drift_pct={baselineDriftPct:F1} "
-             + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
+             + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
+             + $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
+             + $"valid={(worstDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} shed={flooded.Shed} "
              + $"max_lag_us={flooded.MaxLagUs:F0} lag_budget_us={lagBudgetUs:F0} "
