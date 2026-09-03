@@ -58,22 +58,9 @@ public static class TrieUpdater
         }
 
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (ReferenceEquals(group, activeGroup) || operations.Length == 1)
-            return FoldMutationsInGroup(store, overlay, group, path, expectedHash, operations);
-
-        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        BucketizeByGroupBoundary(operations, group.BitDepth, starts, counts);
-
-        ValueHash256 root = expectedHash;
-        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
-        {
-            int count = counts[bucket];
-            if (count == 0) continue;
-            root = FoldMutationsInGroup(
-                store, overlay, group, path, root, operations.Slice(starts[bucket], count));
-        }
-        return root;
+        if (!ReferenceEquals(group, activeGroup) && operations.Length > 1)
+            BucketizeByGroupBoundary(operations, group.BitDepth);
+        return FoldMutationsInGroup(store, overlay, group, path, expectedHash, operations);
     }
 
     private static ValueHash256 FoldMutationsInGroup(
@@ -212,21 +199,9 @@ public static class TrieUpdater
         if (expectedHash == default) return BuildSubtree(overlay, activeGroup, path, sets);
 
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (ReferenceEquals(group, activeGroup) || sets.Length == 1)
-            return InsertSetsInGroup(overlay, group, path, expectedHash, sets);
-
-        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        BucketizeByGroupBoundary(sets, group.BitDepth, starts, counts);
-
-        ValueHash256 root = expectedHash;
-        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
-        {
-            int count = counts[bucket];
-            if (count == 0) continue;
-            root = InsertSetsInGroup(overlay, group, path, root, sets.Slice(starts[bucket], count));
-        }
-        return root;
+        if (!ReferenceEquals(group, activeGroup) && sets.Length > 1)
+            BucketizeByGroupBoundary(sets, group.BitDepth);
+        return InsertSetsInGroup(overlay, group, path, expectedHash, sets);
     }
 
     private static ValueHash256 InsertSetsInGroup(
@@ -392,24 +367,9 @@ public static class TrieUpdater
         Span<PbtWriteOperation> sets)
     {
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (ReferenceEquals(group, activeGroup) || sets.Length == 1)
-            return BuildSubtreeInGroup(overlay, group, path, sets);
-
-        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        BucketizeByGroupBoundary(sets, group.BitDepth, starts, counts);
-
-        ValueHash256 root = default;
-        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
-        {
-            int count = counts[bucket];
-            if (count == 0) continue;
-            Span<PbtWriteOperation> bucketSets = sets.Slice(starts[bucket], count);
-            root = root == default
-                ? BuildSubtreeInGroup(overlay, group, path, bucketSets)
-                : InsertSetsInGroup(overlay, group, path, root, bucketSets);
-        }
-        return root;
+        if (!ReferenceEquals(group, activeGroup) && sets.Length > 1)
+            BucketizeByGroupBoundary(sets, group.BitDepth);
+        return BuildSubtreeInGroup(overlay, group, path, sets);
     }
 
     private static ValueHash256 BuildSubtreeInGroup(
@@ -480,13 +440,10 @@ public static class TrieUpdater
         return partition;
     }
 
-    private static void BucketizeByGroupBoundary(
-        Span<PbtWriteOperation> operations,
-        int groupDepth,
-        Span<int> starts,
-        Span<int> counts)
+    private static void BucketizeByGroupBoundary(Span<PbtWriteOperation> operations, int groupDepth)
     {
-        counts.Clear();
+        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
         for (int index = 0; index < operations.Length; index++)
             counts[BoundarySlot(operations[index].Key, groupDepth)]++;
 
