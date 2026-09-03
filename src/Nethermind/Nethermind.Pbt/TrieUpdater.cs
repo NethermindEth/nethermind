@@ -35,7 +35,7 @@ public static class TrieUpdater
         GroupOverlay overlay = new(store, metrics);
         try
         {
-            return FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan(), true);
+            return FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan());
         }
         finally
         {
@@ -49,15 +49,8 @@ public static class TrieUpdater
         GroupFrame? activeGroup,
         PbtNodePath path,
         in ValueHash256 expectedHash,
-        Span<PbtWriteOperation> operations,
-        bool writeLeaves = false)
+        Span<PbtWriteOperation> operations)
     {
-        if (writeLeaves)
-        {
-            foreach (PbtWriteOperation operation in operations)
-                if (operation.Kind == PbtWriteOperationKind.Set) store.SetLeaf(operation.Key, operation.Value);
-        }
-
         if (expectedHash == default)
         {
             int setCount = RetainSets(operations);
@@ -112,6 +105,7 @@ public static class TrieUpdater
                 }
                 else
                 {
+                    store.SetLeaf(operation.Key, operation.Value);
                     surviving = new PbtLeafNode(operation.Key, operation.Value.Bytes.ToArray());
                 }
                 break;
@@ -279,6 +273,7 @@ public static class TrieUpdater
 
         if (differingBit == int.MaxValue)
         {
+            overlay.SetLeaf(sets[0]);
             PbtLeafNode replacement = new(sets[0].Key, sets[0].Value.Bytes.ToArray());
             overlay.Store(group, path, replacement);
             return replacement.Hash;
@@ -426,6 +421,7 @@ public static class TrieUpdater
         if (sets.Length == 1)
         {
             PbtWriteOperation operation = sets[0];
+            overlay.SetLeaf(operation);
             PbtLeafNode leaf = new(operation.Key, operation.Value.Bytes.ToArray());
             overlay.Store(group, path, leaf);
             return leaf.Hash;
@@ -553,6 +549,8 @@ public static class TrieUpdater
     private sealed class GroupOverlay(IPbtStore store, TrieUpdaterMetrics? metrics = null) : IDisposable
     {
         private readonly Dictionary<PbtNodePath, GroupFrame> _groups = [];
+
+        internal void SetLeaf(PbtWriteOperation operation) => store.SetLeaf(operation.Key, operation.Value);
 
         internal PbtNode Load(
             GroupFrame? activeGroup,
