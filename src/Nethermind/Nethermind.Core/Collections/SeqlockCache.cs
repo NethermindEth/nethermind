@@ -133,7 +133,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe bool TryGetValue(in TKey key, out TValue? value)
+    public bool TryGetValue(in TKey key, out TValue? value)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & _setMask;
@@ -144,12 +144,6 @@ public sealed class SeqlockCache<TKey, TValue>
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
-
-        // Prefetch way 1 while we check way 0 — hides L2/L3 latency for skew layout.
-        if (Sse.IsSupported)
-        {
-            Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));
-        }
 
         // === Way 0 ===
         ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
@@ -250,17 +244,12 @@ public sealed class SeqlockCache<TKey, TValue>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private unsafe bool TryGetValueCore(in TKey key, int idx0, int idx1, long hashPart, out TValue? value)
+    private bool TryGetValueCore(in TKey key, int idx0, int idx1, long hashPart, out TValue? value)
     {
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
-
-        if (Sse.IsSupported)
-        {
-            Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));
-        }
 
         // Way 0
         ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
