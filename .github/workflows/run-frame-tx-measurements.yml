@@ -48,7 +48,7 @@ jobs:
   measure:
     name: Measure the frame-transaction validation prefix
     runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 210
+    timeout-minutes: 120
     steps:
       # One source of truth for the output path: the `runner` context is not
       # available in a job-level `env`, so it is exported here instead. It runs
