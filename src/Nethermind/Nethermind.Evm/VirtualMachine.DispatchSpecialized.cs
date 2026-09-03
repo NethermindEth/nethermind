@@ -69,8 +69,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ThrowOperationCanceledException();
 
             // Reading past non-empty code yields the zero byte, so trace its implicit STOP.
-            TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, Instruction.STOP, VmState.Env.CallDepth);
-            TraceImplicitStop(_txTracer, TGasPolicy.GetRemainingGas(in gas), programCounter, stack.Head);
+            TGasPolicy.OnBeforeInstructionTrace(in gas, (int)programCounter, Instruction.STOP, VmState.Env.CallDepth);
+            TraceImplicitStop(_txTracer, TGasPolicy.GetRemainingGas(in gas), (int)programCounter, stack.Head);
             TGasPolicy.OnAfterInstructionTrace(in gas);
             tracedImplicitStop = true;
         }
