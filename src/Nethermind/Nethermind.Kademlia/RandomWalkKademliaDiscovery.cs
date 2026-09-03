@@ -16,6 +16,8 @@ namespace Nethermind.Kademlia;
 /// is healthy, each job backs off to <see cref="MaximumProductiveIterationDuration"/> while nodes are still being
 /// admitted and to <see cref="MaximumIterationDuration"/> when idle. Periodic bootstrap and bucket refresh in
 /// <see cref="IKademlia{TKey,TNode}.Run"/> are unaffected.
+/// Routing-table occupancy deliberately controls this protocol-independent loop because it cannot observe whether
+/// downstream consumers accept emitted nodes or establish peer connections.
 /// </remarks>
 public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     IKademlia<TKey, TNode> kademlia,
@@ -35,8 +37,9 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     /// Longest interval used while a healthy routing table is still admitting nodes.
     /// </summary>
     /// <remarks>
-    /// At the default ten jobs this keeps one active random walk starting about every three seconds, while preventing
-    /// ordinary routing churn from pinning every job at the one-second bootstrap pace.
+    /// At the default <c>Discovery.ConcurrentDiscoveryJob</c> of ten jobs this keeps one active random walk starting
+    /// about every three seconds, while preventing ordinary routing churn from pinning every job at the one-second
+    /// bootstrap pace.
     /// </remarks>
     private static readonly TimeSpan MaximumProductiveIterationDuration = TimeSpan.FromSeconds(30);
 
