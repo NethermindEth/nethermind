@@ -27,8 +27,7 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        IIPResolver ipResolver = CreateIpResolver();
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, ipResolver, processExitSource, CreateListenerState(ipResolver), 10);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), 10);
         TaskCompletionSource nodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => nodeAdded.TrySetResult());
 
@@ -47,8 +46,7 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        IIPResolver ipResolver = CreateIpResolver();
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, ipResolver, processExitSource, CreateListenerState(ipResolver), 10);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), 10);
         TaskCompletionSource expectedNodesAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int addedNodes = 0;
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ =>
@@ -78,8 +76,7 @@ public class NodeSourceToDiscV4FeederTests
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
         source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
-        IIPResolver ipResolver = CreateIpResolver();
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, ipResolver, processExitSource, CreateListenerState(ipResolver), 0);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), 0);
 
         await feeder.Run().WaitAsync(token);
 
@@ -94,8 +91,7 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        IIPResolver ipResolver = CreateIpResolver();
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, ipResolver, processExitSource, CreateListenerState(ipResolver), 1);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), 1);
         TaskCompletionSource validNodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => validNodeAdded.TrySetResult());
         Task feederTask = feeder.Run();
@@ -119,13 +115,11 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        IIPResolver ipResolver = CreateIpResolver(IPAddress.Parse("2001:db8::5"));
         NodeSourceToDiscV4Feeder feeder = new(
             source,
             discoveryApp,
-            ipResolver,
             processExitSource,
-            CreateListenerState(ipResolver),
+            CreateListenerState(IPAddress.Parse("2001:db8::5")),
             1);
         NodeRecord record = CreateAsymmetricDualStackRecord();
         Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
@@ -150,10 +144,8 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        IIPResolver ipResolver = CreateIpResolver(IPAddress.IPv6Any);
-        NetworkListenerState listenerState = new(new NetworkConfig { LocalIp = "::" }, ipResolver, LimboLogs.Instance);
-        listenerState.SetDiscoveryAddress(IPAddress.Any);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, ipResolver, processExitSource, listenerState, 1);
+        NetworkListenerState listenerState = CreateListenerState(IPAddress.IPv6Any, IPAddress.Any);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, listenerState, 1);
         Task feederTask = feeder.Run();
         Node ipv6Node = new(TestItem.PublicKeyA, "2001:db8::1", 30303, 30304);
         Node ipv4Node = new(TestItem.PublicKeyB, "192.0.2.1", 30303, 30304);
@@ -166,6 +158,21 @@ public class NodeSourceToDiscV4FeederTests
         discoveryApp.Received(1).AddNodeToDiscovery(Arg.Is<Node>(node => ReferenceEquals(node, ipv4Node)));
     }
 
+    [Test]
+    public async Task Test_ShouldNotFeedNodesWithoutBoundDiscoveryListener()
+    {
+        TestNodeSource source = new();
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        NetworkListenerState listenerState = CreateListenerState(setBoundAddress: false);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, listenerState, 1);
+        source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+
+        await feeder.Run();
+
+        discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Any<Node>());
+    }
+
     private static IIPResolver CreateIpResolver(IPAddress? localIp = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
@@ -174,10 +181,18 @@ public class NodeSourceToDiscV4FeederTests
         return ipResolver;
     }
 
-    private static NetworkListenerState CreateListenerState(IIPResolver ipResolver)
+    private static NetworkListenerState CreateListenerState(
+        IPAddress? localIp = null,
+        IPAddress? boundAddress = null,
+        bool setBoundAddress = true)
     {
+        IIPResolver ipResolver = CreateIpResolver(localIp);
         NetworkListenerState listenerState = new(new NetworkConfig(), ipResolver, LimboLogs.Instance);
-        listenerState.SetDiscoveryAddress(listenerState.PreferredAddress);
+        if (setBoundAddress)
+        {
+            listenerState.SetDiscoveryAddress(boundAddress ?? listenerState.PreferredAddress);
+        }
+
         return listenerState;
     }
 

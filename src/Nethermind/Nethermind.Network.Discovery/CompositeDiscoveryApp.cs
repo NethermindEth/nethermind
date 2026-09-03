@@ -25,7 +25,7 @@ namespace Nethermind.Network.Discovery;
 public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
-    private readonly IConnectionsPool _connections;
+    private readonly DiscoveryConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
@@ -42,15 +42,39 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         NetworkListenerState listenerState,
         IChannelFactory? channelFactory = null
     )
+        : this(
+            networkConfig,
+            discoveryConfig,
+            logManager,
+            listenerState,
+            CreateDiscoveryApps(discoveryConfig, discoveryV4Factory, discoveryV5Factory),
+            channelFactory)
+    {
+    }
+
+    internal CompositeDiscoveryApp(
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager,
+        NetworkListenerState listenerState,
+        IDiscoveryApp[] discoveryApps,
+        IChannelFactory? channelFactory = null)
     {
         _networkConfig = networkConfig;
         _listenerState = listenerState;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, _listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
+        _discoveryApps = discoveryApps;
+        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
+    }
 
+    private static IDiscoveryApp[] CreateDiscoveryApps(
+        IDiscoveryConfig discoveryConfig,
+        Func<DiscoveryApp> discoveryV4Factory,
+        Func<DiscoveryV5App> discoveryV5Factory)
+    {
         List<IDiscoveryApp> discoveryApps = new(2);
-
         if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
         {
             discoveryApps.Add(discoveryV4Factory());
@@ -61,8 +85,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
             discoveryApps.Add(discoveryV5Factory());
         }
 
-        _discoveryApps = [.. discoveryApps];
-        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
+        return [.. discoveryApps];
     }
 
     public void InitializeChannel(IChannel channel)
@@ -90,27 +113,18 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         {
             try
             {
-                await Task.WhenAll(
-                    _connections.StopAsync(),
-                    WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StopAsync()));
+                await StopAsync();
             }
             catch (Exception e)
             {
                 if (_logger.IsWarn) _logger.Warn($"Error stopping discovery after startup failed. {e}");
             }
 
-            try
-            {
-                await ShutdownEventLoopGroup();
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Error shutting down the discovery event loop after startup failed. {e}");
-            }
-
             throw;
         }
     }
+
+    internal bool HasEventLoopGroup => Volatile.Read(ref _eventLoopGroup) is not null;
 
     private Bootstrap CreateBootstrap(IEventLoopGroup eventLoopGroup)
     {
@@ -141,7 +155,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
             socket.ExclusiveAddressUse = true;
             if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
             {
-                socket.DualMode = localIp.Equals(IPAddress.IPv6Any) || localIp.IsIPv4MappedToIPv6;
+                socket.DualMode = DiscoveryAddressSupport.SupportsFamily(localIp, AddressFamily.InterNetwork);
             }
 
             return socket;

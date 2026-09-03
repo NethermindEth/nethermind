@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,13 +55,6 @@ namespace Nethermind.Network.Rlpx
                 context.WriteAndFlushAsync(buffer);
                 Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
             }
-            else
-            {
-                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
-                _session.RemoteHost = ipEndPoint.Address.NormalizeMappedIPv4().ToString();
-                _session.RemotePort = ipEndPoint.Port;
-            }
-
             _ = CheckHandshakeInitTimeout();
         }
 

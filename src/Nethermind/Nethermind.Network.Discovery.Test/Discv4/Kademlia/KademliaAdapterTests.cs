@@ -356,14 +356,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 m.FarAddress!.Equals(_receiver.Address)));
         }
 
-        [TestCase("0.0.0.0", 30303, "192.0.2.10")]
-        [TestCase("::1", 0, "192.0.2.10")]
-        [TestCase("0.0.0.0", 30303, null)]
+        [TestCase("0.0.0.0", 30303, "192.0.2.10", "0.0.0.0", "192.0.2.10")]
+        [TestCase("::1", 0, "192.0.2.10", "0.0.0.0", "192.0.2.10")]
+        [TestCase("0.0.0.0", 30303, null, "0.0.0.0", null)]
+        [TestCase("0.0.0.0", 30303, null, "192.0.2.20", "192.0.2.20")]
         [CancelAfter(10000)]
-        public async Task Ping_UsesActualListenerFamilyInWireSource(
+        public async Task Ping_UsesOnlyBoundAndAdvertisedSourceFamily(
             string rlpxAddress,
             int expectedTcpPort,
             string? externalIpv4Text,
+            string discoveryAddress,
+            string? expectedSourceText,
             CancellationToken token)
         {
             await _adapter.DisposeAsync();
@@ -373,7 +376,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 new IIPResolver.NethermindIp(IPAddress.IPv6Any, externalIpv6, externalIpv4, externalIpv6)));
             _kademliaConfig.CurrentNodeId = new Node(TestItem.PublicKeyA, externalIpv6.ToString(), 30303, 30304);
             NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
-            listenerState.SetDiscoveryAddress(IPAddress.Any);
+            listenerState.SetDiscoveryAddress(IPAddress.Parse(discoveryAddress));
             listenerState.SetRlpxAddress(IPAddress.Parse(rlpxAddress));
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
             PingMsg? wirePing = null;
@@ -383,12 +386,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.True);
-                IPEndPoint expectedSource = externalIpv4 is null
-                    ? _kademliaConfig.CurrentNodeId.DiscoveryAddress
-                    : new IPEndPoint(externalIpv4, 30304);
-                Assert.That(wirePing?.SourceAddress, Is.EqualTo(expectedSource));
-                Assert.That(wirePing?.SourceTcpPort, Is.EqualTo(expectedTcpPort));
+                Assert.That(result, Is.EqualTo(expectedSourceText is not null));
+                Assert.That(wirePing?.SourceAddress, Is.EqualTo(expectedSourceText is null ? null : new IPEndPoint(IPAddress.Parse(expectedSourceText), 30304)));
+                Assert.That(wirePing?.SourceTcpPort, Is.EqualTo(expectedSourceText is null ? null : expectedTcpPort));
             }
         }
 
@@ -435,7 +435,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.DisposeAsync();
             _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
                 new IIPResolver.NethermindIp(ipv6, IPAddress.IPv6Loopback)));
-            _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
             _receiver = new Node(TestItem.PublicKeyB, ipv6.ToString(), 30303);
             NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
                 2,

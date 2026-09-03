@@ -3,7 +3,6 @@
 
 using System;
 using System.Net;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -482,7 +481,8 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
         NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(copy);
-        Assert.That(deserialized.Nodes.Single().DiscoveryAddress, Is.EqualTo(node.DiscoveryAddress));
+        Assert.That(deserialized.Nodes, Has.Count.EqualTo(1));
+        Assert.That(deserialized.Nodes[0].DiscoveryAddress, Is.EqualTo(node.DiscoveryAddress));
     }
 
     [Test]
@@ -510,9 +510,11 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void NeighborsMessage_MaxIpv6Batch_StaysWithinPacketSizeLimit()
     {
-        Node[] nodes = Enumerable.Range(0, 12)
-            .Select(i => new Node(TestItem.PublicKeys[i], $"2001:db8::{i + 1}", 30303, 30304))
-            .ToArray();
+        Node[] nodes = new Node[12];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            nodes[i] = new Node(TestItem.PublicKeys[i], $"2001:db8::{i + 1}", 30303, 30304);
+        }
         NeighborsMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, nodes)
             {
@@ -601,10 +603,13 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void NeighborsMessage_Rejects_Too_Many_Nodes()
     {
-        NeighborsMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
-            Enumerable.Range(0, 17)
-                .Select(i => new Node(TestItem.PublicKeys[i], $"192.168.1.{i + 2}", i + 1))
-                .ToArray())
+        Node[] nodes = new Node[17];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            nodes[i] = new Node(TestItem.PublicKeys[i], $"192.168.1.{i + 2}", i + 1);
+        }
+
+        NeighborsMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, nodes)
         {
             FarAddress = _farAddress
         };

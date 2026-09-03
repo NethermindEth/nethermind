@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -10,7 +11,7 @@ namespace Nethermind.Network.Discovery;
 /// <summary>
 /// Describes which remote address families a local listener can serve.
 /// </summary>
-public static class DiscoveryAddressSupport
+internal static class DiscoveryAddressSupport
 {
     /// <summary>
     /// Returns whether a socket bound to <paramref name="localIp"/> can send to and receive from <paramref name="remoteIp"/>.
@@ -30,7 +31,7 @@ public static class DiscoveryAddressSupport
     /// </summary>
     /// <param name="address">The address whose effective family is required.</param>
     /// <returns>The effective IPv4 or IPv6 address family.</returns>
-    public static AddressFamily GetFamily(IPAddress address)
+    internal static AddressFamily GetFamily(IPAddress address)
         => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
 
     internal static bool SupportsFamily(IPAddress localIp, AddressFamily addressFamily)
@@ -39,7 +40,7 @@ public static class DiscoveryAddressSupport
             AddressFamily.InterNetwork =>
                 localIp.AddressFamily == AddressFamily.InterNetwork ||
                 localIp.IsIPv4MappedToIPv6 ||
-                localIp.Equals(IPAddress.IPv6Any),
+                localIp.Equals(IPAddress.IPv6Any) && Socket.OSSupportsIPv6 && !OperatingSystem.IsMacOS(),
             AddressFamily.InterNetworkV6 =>
                 localIp.AddressFamily == AddressFamily.InterNetworkV6 &&
                 !localIp.IsIPv4MappedToIPv6,

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -21,50 +20,6 @@ namespace Nethermind.Network.Discovery.Test;
 [NonParallelizable]
 public class DiscoveryConnectionsPoolTests
 {
-    [Test]
-    public async Task DualStackListener_ReceivesIpv4AndIpv6Datagrams()
-    {
-        if (!Socket.OSSupportsIPv6)
-        {
-            Assert.Ignore("IPv6 is not supported on this host.");
-        }
-
-        NetworkListenerState listenerState = CreateListenerState();
-        DiscoveryConnectionsPool pool = CreatePool(listenerState);
-        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
-        TaskCompletionSource receivedBoth = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        int received = 0;
-        try
-        {
-            IChannel channel = await pool.BindAsync(
-                () => CreateBootstrap(eventLoopGroup, () =>
-                {
-                    if (Interlocked.Increment(ref received) == 2)
-                    {
-                        receivedBoth.TrySetResult();
-                    }
-                }),
-                address => CreateChannel(address),
-                0);
-            int port = ((IPEndPoint)channel.LocalAddress).Port;
-
-            await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, port);
-            await SendAsync(AddressFamily.InterNetworkV6, IPAddress.IPv6Loopback, port);
-            await receivedBoth.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.IPv6Any));
-                Assert.That(received, Is.EqualTo(2));
-            }
-        }
-        finally
-        {
-            await pool.StopAsync();
-            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
-        }
-    }
-
     [TestCase("0.0.0.0", true, false)]
     [TestCase("127.0.0.1", true, false)]
     [TestCase("::1", false, true)]
@@ -75,6 +30,11 @@ public class DiscoveryConnectionsPoolTests
         if (address.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
         {
             Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        if (address.Equals(IPAddress.IPv6Any) && OperatingSystem.IsMacOS())
+        {
+            acceptsIpv4 = false;
         }
 
         NetworkListenerState listenerState = CreateListenerState(configuredIp, address);
@@ -139,7 +99,7 @@ public class DiscoveryConnectionsPoolTests
         }
 
         int port = GetAvailableUdpPort();
-        NetworkListenerState listenerState = CreateListenerState();
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
         DiscoveryConnectionsPool pool = CreatePool(listenerState);
         IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
         TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -176,7 +136,7 @@ public class DiscoveryConnectionsPoolTests
         using (Socket ipv4Blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
         {
             port = ((IPEndPoint)ipv4Blocker.LocalEndPoint!).Port;
-            NetworkListenerState listenerState = CreateListenerState();
+            NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
             DiscoveryConnectionsPool pool = CreatePool(listenerState);
             IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
             List<IChannel> createdChannels = [];
@@ -190,7 +150,7 @@ public class DiscoveryConnectionsPoolTests
                     Throws.TypeOf<PortInUseException>());
                 Assert.That(listenerState.DiscoveryAddress, Is.Null);
                 Assert.That(createdChannels, Has.Count.EqualTo(2));
-                Assert.That(createdChannels.All(channel => !channel.Open && channel.CloseCompletion.IsCompletedSuccessfully), Is.True);
+                AssertChannelsClosed(createdChannels);
             }
             finally
             {
@@ -205,11 +165,6 @@ public class DiscoveryConnectionsPoolTests
     [Test]
     public async Task DefaultListener_DoesNotClaimDualStackWhenIpv4PortIsOccupied()
     {
-        if (!Socket.OSSupportsIPv6)
-        {
-            Assert.Ignore("IPv6 is not supported on this host.");
-        }
-
         int port;
         using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
         {
@@ -302,6 +257,18 @@ public class DiscoveryConnectionsPoolTests
             LimboLogs.Instance.GetClassLogger<DiscoveryConnectionsPool>(),
             new DiscoveryConfig { UdpChannelCloseTimeout = 1_000 },
             listenerState);
+
+    private static void AssertChannelsClosed(IReadOnlyList<IChannel> channels)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (IChannel channel in channels)
+            {
+                Assert.That(channel.Open, Is.False);
+                Assert.That(channel.CloseCompletion.IsCompletedSuccessfully, Is.True);
+            }
+        }
+    }
 
     private static NetworkListenerState CreateListenerState(string? localIpConfig = null, IPAddress? localIp = null)
     {

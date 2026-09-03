@@ -55,25 +55,25 @@ public sealed class NetworkListenerState
 
     /// <summary>Publishes the address currently bound by the RLPx listener.</summary>
     /// <param name="address">The bound address, or <see langword="null"/> when no RLPx listener is active.</param>
-    public void SetRlpxAddress(IPAddress? address) => SetBinding(ref _rlpxBinding, address is null ? null : new(address));
+    internal void SetRlpxAddress(IPAddress? address) => SetBinding(ref _rlpxBinding, address is null ? null : new(address));
 
     /// <summary>Publishes the address currently bound by the discovery listener.</summary>
     /// <param name="address">The bound address, or <see langword="null"/> when no discovery listener is active.</param>
-    public void SetDiscoveryAddress(IPAddress? address) => SetBinding(ref _discoveryBinding, address is null ? null : new(address));
+    internal void SetDiscoveryAddress(IPAddress? address) => SetBinding(ref _discoveryBinding, address is null ? null : new(address));
 
     /// <summary>Publishes an RLPx binding and clears it when that same binding closes.</summary>
     /// <param name="address">The successfully bound address.</param>
     /// <param name="closeCompletion">The completion that signals the listener channel has closed.</param>
     /// <returns>A task that completes after the channel completion has been observed.</returns>
     /// <remarks>A replacement binding is not cleared by completion of an older channel, even when both use the same address.</remarks>
-    public Task TrackRlpxAddress(IPAddress address, Task closeCompletion) => TrackBinding(address, closeCompletion, isRlpx: true);
+    internal Task TrackRlpxAddress(IPAddress address, Task closeCompletion) => TrackBinding(address, closeCompletion, isRlpx: true);
 
     /// <summary>Publishes a discovery binding and clears it when that same binding closes.</summary>
     /// <param name="address">The successfully bound address.</param>
     /// <param name="closeCompletion">The completion that signals the listener channel has closed.</param>
     /// <returns>A task that completes after the channel completion has been observed.</returns>
     /// <remarks>A replacement binding is not cleared by completion of an older channel, even when both use the same address.</remarks>
-    public Task TrackDiscoveryAddress(IPAddress address, Task closeCompletion) => TrackBinding(address, closeCompletion, isRlpx: false);
+    internal Task TrackDiscoveryAddress(IPAddress address, Task closeCompletion) => TrackBinding(address, closeCompletion, isRlpx: false);
 
     private void SetBinding(ref ListenerBinding? field, ListenerBinding? binding)
     {

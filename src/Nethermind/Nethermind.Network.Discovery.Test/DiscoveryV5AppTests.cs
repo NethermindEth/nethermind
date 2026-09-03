@@ -47,22 +47,21 @@ public class DiscoveryV5AppTests
         IPAddress externalIp,
         Action<ContainerBuilder>? configureDiscv5Services = null,
         IPAddress? localIp = null,
-        IPAddress? boundDiscoveryIp = null)
+        IPAddress? boundDiscoveryIp = null,
+        NetworkNode[]? bootnodes = null)
     {
         NetworkConfig networkConfig = new()
         {
-            Bootnodes = [],
+            Bootnodes = bootnodes ?? [],
             ExternalIp = externalIp.ToString(),
             LocalIp = localIp?.ToString()
         };
         IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
-        NetworkListenerState listenerState = new(networkConfig, ipResolver, LimboLogs.Instance);
-        if (boundDiscoveryIp is not null)
-        {
-            listenerState.SetDiscoveryAddress(boundDiscoveryIp);
-        }
+        NetworkListenerState listenerState = boundDiscoveryIp is not null && localIp is not null
+            ? new NetworkListenerState(boundDiscoveryIp, localIp, LimboLogs.Instance)
+            : new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
         EthereumEcdsa ecdsa = new(0);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         Block head = Build.A.Block.Genesis.TestObject;
@@ -87,7 +86,7 @@ public class DiscoveryV5AppTests
         IContainer container = builder.Build();
         _containers.Add(container);
 
-        return new DiscoveryV5App(
+        DiscoveryV5App discoveryV5App = new(
             container,
             nodeKey,
             enode,
@@ -99,6 +98,12 @@ public class DiscoveryV5AppTests
             listenerState,
             configureDiscv5Services
         );
+        if (boundDiscoveryIp is not null)
+        {
+            listenerState.SetDiscoveryAddress(boundDiscoveryIp);
+        }
+
+        return discoveryV5App;
     }
 
     [TearDown]
@@ -426,6 +431,24 @@ public class DiscoveryV5AppTests
 
         Assert.That(result, Is.False);
         Assert.That(node, Is.Null);
+    }
+
+    [Test]
+    public async Task StartAsync_ShouldRemoveBootnodeOutsideBoundFamilyAfterFallback()
+    {
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        await using DiscoveryV5App fallbackApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>(),
+            localIp: IPAddress.IPv6Any,
+            boundDiscoveryIp: IPAddress.Any,
+            bootnodes: [new NetworkNode(enr.ToString())]);
+
+        await fallbackApp.StartAsync();
+
+        kademlia.Received(1).Remove(Arg.Is<Node>(node => node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
+        kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
     }
 
     [Test]

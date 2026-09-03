@@ -38,7 +38,6 @@ public class DiscoveryAppTests
     [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
     [TestCase("2001:4860:4860::8844", "8.8.8.8", 0)]
     [TestCase("::", "8.8.8.8", 1)]
-    [TestCase("0.0.0.0", "::ffff:192.0.2.1", 0)]
     public void Should_only_use_bootnode_families_reachable_from_listener(
         string localIp,
         string bootnodeIp,
@@ -52,6 +51,20 @@ public class DiscoveryAppTests
             IPAddress.Parse(localIp));
 
         Assert.That(bootNodes, Has.Count.EqualTo(expectedCount));
+    }
+
+    [Test]
+    public void Should_normalize_mapped_bootnode_to_ipv4()
+    {
+        Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("::ffff:192.0.2.1"), 30303);
+
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes(
+            [new NetworkNode(enode)],
+            LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
+            IPAddress.Any);
+
+        Assert.That(bootNodes, Has.Count.EqualTo(1));
+        Assert.That(bootNodes[0].DiscoveryAddress.Address, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
     }
 
     [Test]

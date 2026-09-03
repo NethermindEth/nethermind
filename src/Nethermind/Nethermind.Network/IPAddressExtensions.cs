@@ -15,7 +15,7 @@ public static class IPAddressExtensions
         /// <summary>
         /// Returns the plain IPv4 form of an IPv4-mapped IPv6 address, or the original address otherwise.
         /// </summary>
-        public IPAddress NormalizeMappedIPv4()
+        internal IPAddress NormalizeMappedIPv4()
             => ipAddress.IsIPv4MappedToIPv6 ? ipAddress.MapToIPv4() : ipAddress;
 
         /// <summary>

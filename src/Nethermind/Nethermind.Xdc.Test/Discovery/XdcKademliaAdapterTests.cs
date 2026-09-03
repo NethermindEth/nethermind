@@ -71,6 +71,8 @@ public class XdcKademliaAdapterTests
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
             new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
         NetworkListenerState listenerState = new(new NetworkConfig { LocalIp = "0.0.0.0" }, ipResolver, LimboLogs.Instance);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        listenerState.SetRlpxAddress(IPAddress.Any);
         _nodeStatsManager = Substitute.For<INodeStatsManager>();
         _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 

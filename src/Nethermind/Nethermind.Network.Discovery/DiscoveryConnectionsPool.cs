@@ -15,7 +15,7 @@ namespace Nethermind.Network.Discovery;
 public sealed class DiscoveryConnectionsPool(
     ILogger logger,
     IDiscoveryConfig discoveryConfig,
-    NetworkListenerState listenerState) : IConnectionsPool
+    NetworkListenerState listenerState)
 {
     private readonly ILogger _logger = logger;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
@@ -56,7 +56,6 @@ public sealed class DiscoveryConnectionsPool(
         }
         catch (Exception e)
         {
-            _listenerState.SetDiscoveryAddress(null);
             _logger.Error($"Error when establishing discovery connection on port {port}", e);
             throw;
         }
@@ -113,15 +112,8 @@ public sealed class DiscoveryConnectionsPool(
 
     public async Task StopAsync()
     {
-        try
-        {
-            foreach ((int port, Task<IChannel> channel) in _byPort)
-                await StopAsync(port, channel);
-        }
-        finally
-        {
-            _listenerState.SetDiscoveryAddress(null);
-        }
+        foreach ((int port, Task<IChannel> channel) in _byPort)
+            await StopAsync(port, channel);
     }
 
     private async Task StopAsync(int port, Task<IChannel> channelTask)

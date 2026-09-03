@@ -19,6 +19,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
@@ -137,7 +138,6 @@ namespace Nethermind.Network.Rlpx
             }
             catch (Exception ex)
             {
-                _listenerState.SetRlpxAddress(null);
                 _logger.Error($"{nameof(Init)} failed.", ex);
                 // Replacing to prevent double dispose which hangs
                 IEventLoopGroup bossGroup = Interlocked.Exchange(ref _bossGroup, null);
@@ -238,7 +238,7 @@ namespace Nethermind.Network.Rlpx
                 socket.ExclusiveAddressUse = true;
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {
-                    socket.DualMode = address.Equals(IPAddress.IPv6Any) || address.IsIPv4MappedToIPv6;
+                    socket.DualMode = DiscoveryAddressSupport.SupportsFamily(address, AddressFamily.InterNetwork);
                 }
 
                 return new TcpServerSocketChannel(socket);
@@ -326,15 +326,13 @@ namespace Nethermind.Network.Rlpx
         /// Rejects inbound connections from IPs already seen within the filter window.
         /// Outgoing connections are filtered earlier by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>.
         /// </summary>
-        private bool ShouldRejectInbound(ISession session, IChannel channel)
+        private bool ShouldRejectInbound(ISession session, IChannel channel, IPAddress? inboundRemoteIp)
         {
-            if (session.Direction == ConnectionDirection.In
-                && channel.RemoteAddress is IPEndPoint remoteEndpoint)
+            if (session.Direction == ConnectionDirection.In && inboundRemoteIp is not null)
             {
-                IPAddress remoteIp = remoteEndpoint.Address.NormalizeMappedIPv4();
-                if (!_privilegedIpProvider.IsPrivileged(remoteIp) && !_nodeFilter.TryAccept(remoteIp))
+                if (!_privilegedIpProvider.IsPrivileged(inboundRemoteIp) && !_nodeFilter.TryAccept(inboundRemoteIp))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteIp}");
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {inboundRemoteIp}");
                     _ = channel.CloseAsync();
                     return true;
                 }
@@ -343,7 +341,7 @@ namespace Nethermind.Network.Rlpx
             return false;
         }
 
-        private void InitializeChannel(IChannel channel, ISession session)
+        private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp = null)
         {
             if (session.Direction == ConnectionDirection.In)
             {
@@ -356,7 +354,7 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
-            if (ShouldRejectInbound(session, channel))
+            if (ShouldRejectInbound(session, channel, inboundRemoteIp))
             {
                 return;
             }
@@ -451,8 +449,6 @@ namespace Nethermind.Network.Rlpx
                     _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
                 }
             }) ?? Task.CompletedTask);
-            _listenerState.SetRlpxAddress(null);
-
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
             Task closingTask = Task.WhenAll(
@@ -594,9 +590,10 @@ namespace Nethermind.Network.Rlpx
             {
                 Session session = new(_rlpxHost.LocalPort, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
                 IPEndPoint? ipEndPoint = channel.RemoteAddress.ToIPEndpoint();
-                session.RemoteHost = ipEndPoint.Address.NormalizeMappedIPv4().ToString();
+                IPAddress remoteIp = ipEndPoint.Address.NormalizeMappedIPv4();
+                session.RemoteHost = remoteIp.ToString();
                 session.RemotePort = ipEndPoint.Port;
-                _rlpxHost.InitializeChannel(channel, session);
+                _rlpxHost.InitializeChannel(channel, session, remoteIp);
             }
         }
 

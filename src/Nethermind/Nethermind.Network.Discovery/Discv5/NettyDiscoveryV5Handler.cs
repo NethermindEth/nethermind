@@ -38,7 +38,7 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
 
         if (_inboundQueue.Writer.TryWrite(queuedPacket))
         {
-            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {NormalizeEndpoint((IPEndPoint)msg.Sender)}, bytes: {msg.Content.ReadableBytes}.");
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {msg.Sender}, bytes: {msg.Content.ReadableBytes}.");
             return;
         }
 

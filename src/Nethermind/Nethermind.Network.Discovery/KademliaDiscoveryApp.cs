@@ -30,7 +30,7 @@ public abstract class KademliaDiscoveryApp(
     private Task? _runningTask;
     private Task? _stopTask;
     private Task? _disposeTask;
-    private readonly object _lifetimeLock = new();
+    private readonly Lock _lifetimeLock = new();
     private int _channelActive;
     private int _initialized;
     private bool _activationStarted;

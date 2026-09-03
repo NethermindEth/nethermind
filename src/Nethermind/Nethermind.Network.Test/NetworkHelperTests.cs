@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
+using System.Net.Sockets;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -27,6 +29,16 @@ public class NetworkHelperTests
         IPAddress result = NetworkHelper.GetInboundBindAddress(IPAddress.Parse(localIp), localIpConfig, supportsDualStack);
 
         Assert.That(result, Is.EqualTo(IPAddress.Parse(expectedIp)));
+    }
+
+    [Test]
+    public void GetInboundBindAddress_uses_automatic_dual_stack_only_where_wildcard_bind_is_exclusive()
+    {
+        IPAddress expected = Socket.OSSupportsIPv6 && !OperatingSystem.IsMacOS()
+            ? IPAddress.IPv6Any
+            : IPAddress.Any;
+
+        Assert.That(NetworkHelper.GetInboundBindAddress(IPAddress.Any, null), Is.EqualTo(expected));
     }
 
     [TestCase("::ffff:192.168.1.5", "192.168.1.5")]

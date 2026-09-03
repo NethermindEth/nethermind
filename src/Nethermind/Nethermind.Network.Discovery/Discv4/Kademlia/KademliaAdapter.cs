@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -231,7 +232,10 @@ public class KademliaAdapter(
     {
         IPEndPoint endpoint = receiver.DiscoveryAddress;
         AddressFamily family = DiscoveryAddressSupport.GetFamily(endpoint.Address);
-        IPEndPoint sourceAddress = GetSourceAddress(family);
+        if (!TryGetSourceAddress(family, out IPEndPoint? sourceAddress))
+        {
+            return null;
+        }
 
         PingMsg msg = new(endpoint, CalculateExpirationTime(), sourceAddress, GetSourceTcpPort(family), 0)
         {
@@ -255,13 +259,14 @@ public class KademliaAdapter(
         }
     }
 
-    private IPEndPoint GetSourceAddress(AddressFamily family)
+    private bool TryGetSourceAddress(AddressFamily family, [NotNullWhen(true)] out IPEndPoint? sourceAddress)
     {
         Node currentNode = kademliaConfig.CurrentNodeId;
         if (ListenerState.DiscoveryAddress is not { } listenerAddress ||
             !DiscoveryAddressSupport.SupportsFamily(listenerAddress, family))
         {
-            return currentNode.DiscoveryAddress;
+            sourceAddress = null;
+            return false;
         }
 
         IPAddress? sourceIp = family switch
@@ -271,9 +276,23 @@ public class KademliaAdapter(
             _ => null
         };
 
-        return sourceIp is null
-            ? currentNode.DiscoveryAddress
-            : new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
+        IPAddress currentAddress = currentNode.DiscoveryAddress.Address;
+        if (sourceIp is null &&
+            !currentAddress.IsWildcardOrNone &&
+            DiscoveryAddressSupport.GetFamily(currentAddress) == family)
+        {
+            sourceIp = currentAddress;
+        }
+
+        if (sourceIp is null &&
+            !listenerAddress.IsWildcardOrNone &&
+            DiscoveryAddressSupport.GetFamily(listenerAddress) == family)
+        {
+            sourceIp = listenerAddress.NormalizeMappedIPv4();
+        }
+
+        sourceAddress = sourceIp is null ? null : new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
+        return sourceAddress is not null;
     }
 
     private int GetSourceTcpPort(AddressFamily family)

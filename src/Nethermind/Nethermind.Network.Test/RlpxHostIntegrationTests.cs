@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -23,7 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
 
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
@@ -113,6 +112,11 @@ public class RlpxHostIntegrationTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
+        if (configuredIp == "::" && OperatingSystem.IsMacOS())
+        {
+            acceptsIpv4 = false;
+        }
+
         int port = GetAvailablePort();
         (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, IPAddress.Parse(configuredIp), port);
         try
@@ -133,25 +137,27 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    public async Task DefaultListener_AcceptsBothFamiliesAndNormalizesIpv4Session()
+    public async Task DefaultListener_UsesSupportedFamiliesAndNormalizesIpv4Session()
     {
-        if (!Socket.OSSupportsIPv6)
-        {
-            Assert.Ignore("IPv6 is not supported on this host.");
-        }
-
         int port = GetAvailablePort();
-        (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(null, IPAddress.Any, port);
+        IPrivilegedIpProvider privilegedIpProvider = Substitute.For<IPrivilegedIpProvider>();
+        (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(
+            null,
+            IPAddress.Any,
+            port,
+            privilegedIpProvider: privilegedIpProvider);
         TaskCompletionSource<string> remoteHost = new(TaskCreationOptions.RunContinuationsAsynchronously);
         host.SessionCreated += (_, args) => remoteHost.TrySetResult(args.Session.RemoteHost);
+        bool acceptsIpv6 = Socket.OSSupportsIPv6 && !OperatingSystem.IsMacOS();
         try
         {
             await host.Init();
 
-            Assert.That(listenerState.RlpxAddress, Is.EqualTo(IPAddress.IPv6Any));
+            Assert.That(listenerState.RlpxAddress, Is.EqualTo(acceptsIpv6 ? IPAddress.IPv6Any : IPAddress.Any));
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
             Assert.That(await remoteHost.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(IPAddress.Loopback.ToString()));
-            Assert.That(await CanConnect(AddressFamily.InterNetworkV6, port), Is.True);
+            privilegedIpProvider.Received().IsPrivileged(Arg.Is<IPAddress>(ip => ip.Equals(IPAddress.Loopback)));
+            Assert.That(await CanConnect(AddressFamily.InterNetworkV6, port), Is.EqualTo(acceptsIpv6));
         }
         finally
         {
@@ -206,7 +212,7 @@ public class RlpxHostIntegrationTests
             Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
             Assert.That(listenerState.RlpxAddress, Is.Null);
             Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
-            Assert.That(channelFactory.CreatedChannels.All(channel => !channel.Open && channel.CloseCompletion.IsCompletedSuccessfully), Is.True);
+            AssertChannelsClosed(channelFactory.CreatedChannels);
         }
 
         using Socket releasedIpv4 = CreateTcpListenerSocket(IPAddress.Any, port);
@@ -215,11 +221,6 @@ public class RlpxHostIntegrationTests
     [Test]
     public async Task DefaultListener_DoesNotClaimDualStackWhenIpv4PortIsOccupied()
     {
-        if (!Socket.OSSupportsIPv6)
-        {
-            Assert.Ignore("IPv6 is not supported on this host.");
-        }
-
         int port;
         using (Socket blocker = CreateTcpListenerSocket(IPAddress.Any, 0))
         {
@@ -275,7 +276,8 @@ public class RlpxHostIntegrationTests
                 if (listenerState.RlpxAddress is null) cleared.TrySetResult();
             };
 
-            await channelFactory.CreatedChannels.Single().CloseAsync();
+            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(1));
+            await channelFactory.CreatedChannels[0].CloseAsync();
             await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.That(listenerState.RlpxAddress, Is.Null);
@@ -349,7 +351,8 @@ public class RlpxHostIntegrationTests
         IPAddress resolvedLocalIp,
         int port,
         NetworkListenerState? listenerState = null,
-        IChannelFactory? channelFactory = null)
+        IChannelFactory? channelFactory = null,
+        IPrivilegedIpProvider? privilegedIpProvider = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -370,7 +373,7 @@ public class RlpxHostIntegrationTests
             NullDisconnectsAnalyzer.Instance,
             networkConfig,
             ipResolver,
-            Substitute.For<IPrivilegedIpProvider>(),
+            privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
             LimboLogs.Instance,
             listenerState,
             channelFactory);
@@ -395,6 +398,18 @@ public class RlpxHostIntegrationTests
         catch (Exception e) when (e is SocketException or OperationCanceledException)
         {
             return false;
+        }
+    }
+
+    private static void AssertChannelsClosed(IReadOnlyList<IChannel> channels)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (IChannel channel in channels)
+            {
+                Assert.That(channel.Open, Is.False);
+                Assert.That(channel.CloseCompletion.IsCompletedSuccessfully, Is.True);
+            }
         }
     }
 
