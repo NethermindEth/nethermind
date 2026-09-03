@@ -104,7 +104,7 @@ public class Eip8297CanonicalTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Reads, Is.Zero);
+            Assert.That(store.Reads, Is.GreaterThanOrEqualTo(1), "the authoritative root group is inspected before the conflict is reported");
             Assert.That(store.Applies, Is.Zero);
         }
     }
@@ -526,6 +526,45 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    public void Empty_batch_returns_supplied_root_without_storage_access()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 suppliedRoot = new([0xEE]);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, suppliedRoot, new PbtWriteBatch());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(suppliedRoot));
+            Assert.That(store.Reads, Is.Zero);
+            Assert.That(store.Applies, Is.Zero);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Non_empty_update_discovers_persisted_root_instead_of_using_stale_current_root(bool useDefaultRoot)
+    {
+        using PbtNodeGroupStore source = new();
+        ValueHash256 actualRoot = TrieUpdater.UpdateRoot(source, default, Batch(
+            ([0x12], Value(1)), ([0x92], Value(2)), ([0xF0], Value(3))));
+        PbtPhysicalPayload[] initialPayloads = [.. source.ExportPhysicalPayloads()];
+        ValueHash256 staleRoot = useDefaultRoot ? default : new ValueHash256([0xEE]);
+        PbtWriteBatch changes = Batch(([0x12], Value(4)), ([0xA0], Value(5)));
+
+        using PbtNodeGroupStore staleStore = PbtNodeGroupStore.FromPhysicalPayloads(initialPayloads);
+        using PbtNodeGroupStore actualStore = PbtNodeGroupStore.FromPhysicalPayloads(initialPayloads);
+        ValueHash256 resultFromStaleRoot = TrieUpdater.UpdateRoot(staleStore, staleRoot, changes);
+        ValueHash256 resultFromActualRoot = TrieUpdater.UpdateRoot(actualStore, actualRoot, changes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultFromStaleRoot, Is.EqualTo(resultFromActualRoot));
+            Assert.That(CanonicalRecords(staleStore), Is.EqualTo(CanonicalRecords(actualStore)));
+            Assert.That(PhysicalRecords(staleStore.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(actualStore.ExportPhysicalPayloads())));
+        }
+    }
+
+    [Test]
     public void Same_group_recursion_uses_one_frame_and_suppresses_noop_node_writes()
     {
         CountingPbtStore store = new();
@@ -639,32 +678,22 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Failed_batches_never_apply_or_change_state_for_prefix_missing_or_mismatched_nodes()
+    public void Failed_batches_never_apply_or_change_state_when_a_referenced_node_is_missing()
     {
-        foreach (bool hashMismatch in new[] { false, true })
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1)), ([0x92], Value(2))));
+        PbtPhysicalPayload[] before = [.. store.Inner.ExportPhysicalPayloads()];
+        int appliesBeforeFailure = store.Applies;
+        store.IssuedGroupPayloads.Clear();
+        store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
+
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(3)))));
+
+        using (Assert.EnterMultipleScope())
         {
-            CountingPbtStore store = new();
-            ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
-            PbtPhysicalPayload[] before = [.. store.Inner.ExportPhysicalPayloads()];
-            int appliesBeforeFailure = store.Applies;
-            store.OverrideNode = hashMismatch
-                ? static _ => PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey([0xEE]), Value(9)))
-                : static _ => null;
-
-            PbtWriteBatch changes = hashMismatch
-                ? Batch(([0x12], Value(2)))
-                : Batch(([0x12], null), ([0x34], Value(2)), ([0x34, 0x56], Value(3)));
-            if (hashMismatch)
-                Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, changes));
-            else
-                Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, changes));
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure), hashMismatch ? "hash mismatch" : "missing node");
-                    Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
-                Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
-            }
+            Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure));
+            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
+            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
     }
 
@@ -733,6 +762,14 @@ public class Eip8297CanonicalTreeTests
             else batch.Set(fullKey, new ValueHash256(value));
         }
         return batch;
+    }
+
+    private static string[] CanonicalRecords(PbtNodeGroupStore store)
+    {
+        List<string> records = [];
+        foreach (PbtNodeRecord record in store.EnumerateRecords())
+            records.Add(Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span));
+        return [.. records];
     }
 
     private static string[] PhysicalRecords(PbtTreeHarness tree) => PhysicalRecords(tree.PhysicalPayloads);

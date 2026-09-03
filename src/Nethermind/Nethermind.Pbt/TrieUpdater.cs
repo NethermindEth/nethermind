@@ -32,13 +32,11 @@ public static class TrieUpdater
         // PbtWriteBatch supplies unique keys with deletions preceding writes.
         PbtWriteOperation[] operations = [.. changes.Operations];
 
-        if (currentRoot == default)
-            return FoldMutations(store, metrics, null, RootPath, currentRoot, operations.AsSpan());
-
-        using GroupFrame rootGroup = Resolve(store, metrics, null, RootPath, out _);
+        using GroupFrameCache cache = new(store, metrics);
+        GroupFrame rootGroup = cache.Resolve(RootPath, out _);
         if (operations.Length > 1)
             BucketizeByGroupBoundary(operations, rootGroup.BitDepth);
-        return FoldMutationsInGroup(store, metrics, rootGroup, RootPath, currentRoot, operations.AsSpan());
+        return FoldMutationsInGroup(store, metrics, rootGroup, RootPath, operations.AsSpan(), allowAbsent: true);
     }
 
     private static ValueHash256 FoldMutations(
@@ -46,22 +44,23 @@ public static class TrieUpdater
         TrieUpdaterMetrics? metrics,
         GroupFrame? activeGroup,
         PbtNodePath path,
-        in ValueHash256 expectedHash,
         Span<PbtWriteOperation> operations)
     {
-        if (expectedHash == default)
-        {
-            int setCount = RetainSets(operations);
-            return setCount == 0 ? default : BuildSubtree(store, metrics, activeGroup, path, operations[..setCount]);
-        }
-
         if (activeGroup is not null && activeGroup.TryGetPosition(path, out _))
-            return FoldMutationsInGroup(store, metrics, activeGroup, path, expectedHash, operations);
+            return FoldMutationsInGroup(store, metrics, activeGroup, path, operations);
 
-        using GroupFrame group = Resolve(store, metrics, null, path, out _);
-        if (operations.Length > 1)
-            BucketizeByGroupBoundary(operations, group.BitDepth);
-        return FoldMutationsInGroup(store, metrics, group, path, expectedHash, operations);
+        GroupFrame group = Resolve(store, metrics, activeGroup, path, out _);
+        bool ownsGroup = OwnsGroup(group, activeGroup);
+        try
+        {
+            if (operations.Length > 1)
+                BucketizeByGroupBoundary(operations, group.BitDepth);
+            return FoldMutationsInGroup(store, metrics, group, path, operations);
+        }
+        finally
+        {
+            if (ownsGroup) group.Dispose();
+        }
     }
 
     private static ValueHash256 FoldMutationsInGroup(
@@ -69,16 +68,17 @@ public static class TrieUpdater
         TrieUpdaterMetrics? metrics,
         GroupFrame group,
         PbtNodePath path,
-        in ValueHash256 expectedHash,
-        Span<PbtWriteOperation> operations)
+        Span<PbtWriteOperation> operations,
+        bool allowAbsent = false)
     {
-        if (expectedHash == default)
+        PbtNode? currentNode = allowAbsent ? group.TryLoad(path) : group.Load(path);
+        if (currentNode is null)
         {
             int setCount = RetainSets(operations);
             return setCount == 0 ? default : BuildSubtreeInGroup(store, metrics, group, path, operations[..setCount]);
         }
 
-        PbtNode current = group.Load(path, expectedHash);
+        PbtNode current = currentNode;
         if (current is PbtLeafNode leaf)
         {
             PbtNode? surviving = leaf;
@@ -130,9 +130,9 @@ public static class TrieUpdater
         ValueHash256 leftHash = branch.LeftHash;
         ValueHash256 rightHash = branch.RightHash;
         if (partition > 0)
-            leftHash = FoldMutations(store, metrics, group, leftPath, leftHash, matchingOperations[..partition]);
+            leftHash = FoldMutations(store, metrics, group, leftPath, matchingOperations[..partition]);
         if (partition < matchingOperations.Length)
-            rightHash = FoldMutations(store, metrics, group, rightPath, rightHash, matchingOperations[partition..]);
+            rightHash = FoldMutations(store, metrics, group, rightPath, matchingOperations[partition..]);
 
         ValueHash256 reconciledHash = CanonicalizeBranch(store, metrics, group, path, branch.Prefix, leftPath, leftHash, rightPath, rightHash);
         int divergentSetCount = RetainSets(operations[matchingCount..]);
@@ -141,11 +141,11 @@ public static class TrieUpdater
         if (reconciledHash == default)
             return BuildSubtree(store, metrics, group, path, divergentSets);
         GroupFrame reconciledGroup = Resolve(store, metrics, group, path, out _);
-        bool ownsReconciledGroup = !ReferenceEquals(reconciledGroup, group);
+        bool ownsReconciledGroup = OwnsGroup(reconciledGroup, group);
         PbtNode reconciled;
         try
         {
-            reconciled = reconciledGroup.Load(path, reconciledHash);
+            reconciled = reconciledGroup.Load(path);
         }
         catch
         {
@@ -199,13 +199,12 @@ public static class TrieUpdater
 
         int remainingDirection = leftHash != default ? 0 : 1;
         PbtNodePath remainingPath = remainingDirection == 0 ? leftPath : rightPath;
-        ValueHash256 remainingHash = remainingDirection == 0 ? leftHash : rightHash;
         GroupFrame remainingGroup = Resolve(store, metrics, group, remainingPath, out _);
-        bool ownsRemainingGroup = !ReferenceEquals(remainingGroup, group);
+        bool ownsRemainingGroup = OwnsGroup(remainingGroup, group);
         PbtNode remaining;
         try
         {
-            remaining = remainingGroup.Load(remainingPath, remainingHash);
+            remaining = remainingGroup.Load(remainingPath);
         }
         catch
         {
@@ -232,18 +231,23 @@ public static class TrieUpdater
         TrieUpdaterMetrics? metrics,
         GroupFrame? activeGroup,
         PbtNodePath path,
-        in ValueHash256 expectedHash,
         Span<PbtWriteOperation> sets)
     {
-        if (expectedHash == default) return BuildSubtree(store, metrics, activeGroup, path, sets);
-
         if (activeGroup is not null && activeGroup.TryGetPosition(path, out _))
-            return InsertSetsInGroup(store, metrics, activeGroup, path, expectedHash, sets);
+            return InsertSetsInGroup(store, metrics, activeGroup, path, sets);
 
-        using GroupFrame group = Resolve(store, metrics, null, path, out _);
-        if (sets.Length > 1)
-            BucketizeByGroupBoundary(sets, group.BitDepth);
-        return InsertSetsInGroup(store, metrics, group, path, expectedHash, sets);
+        GroupFrame group = Resolve(store, metrics, activeGroup, path, out _);
+        bool ownsGroup = OwnsGroup(group, activeGroup);
+        try
+        {
+            if (sets.Length > 1)
+                BucketizeByGroupBoundary(sets, group.BitDepth);
+            return InsertSetsInGroup(store, metrics, group, path, sets);
+        }
+        finally
+        {
+            if (ownsGroup) group.Dispose();
+        }
     }
 
     private static ValueHash256 InsertSetsInGroup(
@@ -251,10 +255,9 @@ public static class TrieUpdater
         TrieUpdaterMetrics? metrics,
         GroupFrame group,
         PbtNodePath path,
-        in ValueHash256 expectedHash,
         Span<PbtWriteOperation> sets)
     {
-        PbtNode current = group.Load(path, expectedHash);
+        PbtNode current = group.Load(path);
         return InsertSetsIntoNode(store, metrics, group, path, current, sets);
     }
 
@@ -306,7 +309,7 @@ public static class TrieUpdater
         PbtNodePath rightPath = path.Append(common, 1);
         PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
         GroupFrame existingGroup = Store(store, metrics, group, existingPath, leaf);
-        bool ownsExistingGroup = !ReferenceEquals(existingGroup, group);
+        bool ownsExistingGroup = OwnsGroup(existingGroup, group);
         try
         {
             ValueHash256 leftHash;
@@ -370,7 +373,7 @@ public static class TrieUpdater
             PbtNodePath rightPath = path.Append(common, 1);
             PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
             GroupFrame existingGroup = Store(store, metrics, group, existingPath, relocated);
-            bool ownsExistingGroup = !ReferenceEquals(existingGroup, group);
+            bool ownsExistingGroup = OwnsGroup(existingGroup, group);
             try
             {
                 ValueHash256 leftHash;
@@ -407,12 +410,12 @@ public static class TrieUpdater
         if (childPartition > 0)
         {
             PbtNodePath leftPath = path.Append(branch.Prefix, 0);
-            replacementLeft = InsertSets(store, metrics, group, leftPath, replacementLeft, sets[..childPartition]);
+            replacementLeft = InsertSets(store, metrics, group, leftPath, sets[..childPartition]);
         }
         if (childPartition < sets.Length)
         {
             PbtNodePath rightPath = path.Append(branch.Prefix, 1);
-            replacementRight = InsertSets(store, metrics, group, rightPath, replacementRight, sets[childPartition..]);
+            replacementRight = InsertSets(store, metrics, group, rightPath, sets[childPartition..]);
         }
 
         PbtBranchNode replacement = new(branch.Prefix, replacementLeft, replacementRight);
@@ -430,10 +433,18 @@ public static class TrieUpdater
         if (activeGroup is not null && activeGroup.TryGetPosition(path, out _))
             return BuildSubtreeInGroup(store, metrics, activeGroup, path, sets);
 
-        using GroupFrame group = Resolve(store, metrics, null, path, out _);
-        if (sets.Length > 1)
-            BucketizeByGroupBoundary(sets, group.BitDepth);
-        return BuildSubtreeInGroup(store, metrics, group, path, sets);
+        GroupFrame group = Resolve(store, metrics, activeGroup, path, out _);
+        bool ownsGroup = OwnsGroup(group, activeGroup);
+        try
+        {
+            if (sets.Length > 1)
+                BucketizeByGroupBoundary(sets, group.BitDepth);
+            return BuildSubtreeInGroup(store, metrics, group, path, sets);
+        }
+        finally
+        {
+            if (ownsGroup) group.Dispose();
+        }
     }
 
     private static ValueHash256 BuildSubtreeInGroup(
@@ -575,13 +586,22 @@ public static class TrieUpdater
         PbtNodePath path,
         out int position)
     {
-        if (activeGroup is not null && activeGroup.TryGetPosition(path, out position)) return activeGroup;
+        if (activeGroup is not null)
+        {
+            if (activeGroup.TryGetPosition(path, out position)) return activeGroup;
+            return activeGroup.Cache is GroupFrameCache cache
+                ? cache.Resolve(path, out position)
+                : Resolve(store, metrics, null, path, out position);
+        }
 
         PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
         position = location.Position;
         metrics?.IncrementGroupCacheProbes();
         return new GroupFrame(store, location.GroupKey, metrics);
     }
+
+    private static bool OwnsGroup(GroupFrame group, GroupFrame? activeGroup) =>
+        !ReferenceEquals(group, activeGroup) && group.Cache is null;
 
     private static GroupFrame Store(
         IPbtStore store,
@@ -598,7 +618,7 @@ public static class TrieUpdater
         }
         catch
         {
-            if (!ReferenceEquals(group, activeGroup)) group.Dispose();
+            if (OwnsGroup(group, activeGroup)) group.Dispose();
             throw;
         }
     }
@@ -609,9 +629,32 @@ public static class TrieUpdater
         activeGroup.Remove(position);
     }
 
-    private sealed class GroupFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics) : IDisposable
+    private sealed class GroupFrameCache(IPbtStore store, TrieUpdaterMetrics? metrics) : IDisposable
+    {
+        private readonly Dictionary<PbtNodePath, GroupFrame> _frames = [];
+
+        internal GroupFrame Resolve(PbtNodePath path, out int position)
+        {
+            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
+            position = location.Position;
+            metrics?.IncrementGroupCacheProbes();
+            if (_frames.TryGetValue(location.GroupKey, out GroupFrame? frame)) return frame;
+            frame = new GroupFrame(store, location.GroupKey, metrics, this);
+            _frames.Add(location.GroupKey, frame);
+            return frame;
+        }
+
+        public void Dispose()
+        {
+            foreach (GroupFrame frame in _frames.Values) frame.Dispose();
+            _frames.Clear();
+        }
+    }
+
+    private sealed class GroupFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics, GroupFrameCache? cache = null) : IDisposable
     {
         internal int BitDepth => groupKey.BitDepth;
+        internal GroupFrameCache? Cache => cache;
 
         private readonly int[] _offsets = new int[PbtNodeGroupCodec.PositionCount];
         private readonly int[] _lengths = new int[PbtNodeGroupCodec.PositionCount];
@@ -634,27 +677,32 @@ public static class TrieUpdater
             return true;
         }
 
-        internal PbtNode Load(PbtNodePath path, in ValueHash256 expectedHash)
+        internal PbtNode? TryLoad(PbtNodePath path)
         {
             TryGetPosition(path, out int position);
-            PbtNode node = Load(position);
-            if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
-            return node;
+            EnsurePositionKnown(position);
+            return _states[position] switch
+            {
+                SlotState.Absent => null,
+                SlotState.Persisted => _nodes[position] ??= PbtNodeCodec.Decode(
+                    _payload!.Span.Slice(_offsets[position], _lengths[position])),
+                SlotState.Staged => _nodes[position],
+                SlotState.Tombstone => throw new InvalidDataException("A referenced PBT node is missing."),
+                _ => throw new ArgumentOutOfRangeException(nameof(path)),
+            };
         }
 
-        private PbtNode Load(int position)
+        internal PbtNode Load(PbtNodePath path)
         {
+            TryGetPosition(path, out int position);
             EnsurePositionKnown(position);
-            switch (_states[position])
+            return _states[position] switch
             {
-                case SlotState.Persisted:
-                    return _nodes[position] ??= PbtNodeCodec.Decode(
-                        _payload!.Span.Slice(_offsets[position], _lengths[position]));
-                case SlotState.Staged:
-                    return _nodes[position]!;
-                default:
-                    throw new InvalidDataException("A referenced PBT node is missing.");
-            }
+                SlotState.Persisted => _nodes[position] ??= PbtNodeCodec.Decode(
+                    _payload!.Span.Slice(_offsets[position], _lengths[position])),
+                SlotState.Staged => _nodes[position]!,
+                _ => throw new InvalidDataException("A referenced PBT node is missing."),
+            };
         }
 
         internal void Store(int position, PbtNode node)
