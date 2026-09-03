@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.ZkEvm.Test;
@@ -93,6 +94,7 @@ public class GuestNibblesTests
         byte[] right = (byte[])left.Clone();
 
         Assert.That(Nibbles.CommonPrefixLength(left, right), Is.EqualTo(length));
+        Assert.That(Nibbles.CommonPrefixLength(left, right), Is.EqualTo(((ReadOnlySpan<byte>)left).CommonPrefixLength(right)));
     }
 
     /// <remarks>
@@ -160,5 +162,5 @@ public class GuestNibblesTests
         return nibbles;
     }
 
-    private static ref byte Ref(byte[] bytes) => ref System.Runtime.InteropServices.MemoryMarshal.GetArrayDataReference(bytes);
+    private static ref byte Ref(byte[] bytes) => ref MemoryMarshal.GetArrayDataReference(bytes);
 }

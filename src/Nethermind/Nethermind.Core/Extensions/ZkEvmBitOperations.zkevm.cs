@@ -35,11 +35,7 @@ public static partial class ZkEvmBitOperations
     public static ulong Bswap64(ulong x)
     {
         ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
-        ulong m8 = masks;
-        ulong m16 = Unsafe.Add(ref masks, 1);
-        x = ((x & m8) << 8) | ((x >> 8) & m8);
-        x = ((x & m16) << 16) | ((x >> 16) & m16);
-        return (x << 32) | (x >> 32);
+        return Swap(x, masks, Unsafe.Add(ref masks, 1));
     }
 
     /// <summary>Writes <paramref name="value"/> to <paramref name="destination"/> with all 32 bytes reversed.</summary>
