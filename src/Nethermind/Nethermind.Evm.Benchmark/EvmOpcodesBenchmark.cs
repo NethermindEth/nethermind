@@ -29,7 +29,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using BenchmarkVirtualMachine = Nethermind.Evm.VirtualMachine<Nethermind.Evm.GasPolicy.EthereumGasPolicy>;
 using DispatchState = Nethermind.Evm.VirtualMachine<Nethermind.Evm.GasPolicy.EthereumGasPolicy>.DispatchState;
 
 namespace Nethermind.Evm.Benchmark;
@@ -47,8 +46,8 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
 
-    private delegate*<BenchmarkVirtualMachine, ref EvmStack, ref EthereumGasPolicy, ref DispatchState, EvmExceptionType>[] _opcodeHandlers = null!;
-    private delegate*<BenchmarkVirtualMachine, ref EvmStack, ref EthereumGasPolicy, ref DispatchState, EvmExceptionType>* _continuationHandlers;
+    private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, EvmExceptionType>[] _opcodeHandlers = null!;
+    private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, EvmExceptionType>* _continuationHandlers;
     private GCHandle _continuationHandlersHandle;
     private BenchmarkVm _vm = null!;
     private byte[] _opcodeCode = null!;
@@ -226,15 +225,15 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         _opcodeHandlers = _vm.GetOpcodeHandlers<OffFlag, OffFlag>();
-        delegate*<BenchmarkVirtualMachine, ref EvmStack, ref EthereumGasPolicy, ref DispatchState, EvmExceptionType>[] continuationHandlers =
-            new delegate*<BenchmarkVirtualMachine, ref EvmStack, ref EthereumGasPolicy, ref DispatchState, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, EvmExceptionType>[] continuationHandlers =
+            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, EvmExceptionType>[byte.MaxValue + 1];
         for (int i = 0; i < continuationHandlers.Length; i++)
             continuationHandlers[i] = &CompleteOpcode;
 
         _continuationHandlersHandle = GCHandle.Alloc(continuationHandlers, GCHandleType.Pinned);
         // Safety: the handle pins the complete table until GlobalCleanup, and every entry has the
         // exact managed function-pointer signature expected by the production tail dispatcher.
-        _continuationHandlers = (delegate*<BenchmarkVirtualMachine, ref EvmStack, ref EthereumGasPolicy, ref DispatchState, EvmExceptionType>*)
+        _continuationHandlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, EvmExceptionType>*)
             _continuationHandlersHandle.AddrOfPinnedObject();
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
@@ -691,6 +690,7 @@ public unsafe class EvmOpcodesBenchmark
     private DispatchState CreateDispatchState() => new()
     {
         OpcodeHandlers = _continuationHandlers,
+        Vm = _vm,
         CallDepth = 0,
     };
 
@@ -698,18 +698,15 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeHandler(
         ref EvmStack stack,
         ref EthereumGasPolicy gas,
-        ref DispatchState state)
-    {
-        state.ProgramCounter = 0;
-        return _opcodeHandlers[(int)Opcode](_vm, ref stack, ref gas, ref state);
-    }
+        ref DispatchState state) =>
+        _opcodeHandlers[(int)Opcode](ref stack, ref gas, ref state, 0);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static EvmExceptionType CompleteOpcode(
-        BenchmarkVirtualMachine vm,
         ref EvmStack stack,
         ref EthereumGasPolicy gas,
-        ref DispatchState state) => EvmExceptionType.None;
+        ref DispatchState state,
+        nint programCounter) => EvmExceptionType.None;
 
     private void DisposeNestedReturnFrame()
     {
