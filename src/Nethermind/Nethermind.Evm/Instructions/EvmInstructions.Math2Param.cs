@@ -47,6 +47,7 @@ public static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
