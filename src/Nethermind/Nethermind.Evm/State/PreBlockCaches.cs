@@ -40,6 +40,8 @@ public class PreBlockCaches
 
     internal PreBlockCaches() : this(new PreBlockCachesConfig(), PrecompileCaches.Empty) { }
 
+    internal PreBlockCaches(PreBlockCachesConfig config) : this(config, PrecompileCaches.Empty) { }
+
     public PreBlockCaches(PreBlockCachesConfig config, PrecompileCaches precompileCaches)
     {
         _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
