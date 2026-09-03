@@ -33,7 +33,7 @@ namespace Nethermind.Evm.State;
 /// so cheap frequent calls cannot starve expensive-to-compute results.
 /// The surviving tier is shared, so it gives no such guarantee.
 /// </remarks>
-public sealed class PrecompileCaches
+public sealed class PrecompileCaches : IDisposable
 {
     /// <summary> Accounting weight charged per entry, on top of its key and output bytes, as a container cost estimate. </summary>
     public const int EntryOverheadBytes = 160;
@@ -138,6 +138,8 @@ public sealed class PrecompileCaches
     /// <summary> Empties the per-block tier. Callers must join any concurrent warming first. </summary>
     public void ClearBlockCache()
     {
+        SampleBlock();
+
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
             partition.Value.Clear();
     }
@@ -155,6 +157,110 @@ public sealed class PrecompileCaches
 
         return addresses;
     }
+
+    #region TESTING
+
+    // Benchmark instrumentation for the precompile-cache A/B (block tier vs surviving tier).
+    // Testing branch only - never merge to master.
+
+    /// <summary> Set to <c>false</c> to build an occupancy-only image: the JIT folds every counter guard away. </summary>
+    private const bool TrackHits = true;
+
+    /// <summary> Blocks buffered before the sampled rows go out in a single write. </summary>
+    private const int FlushEveryBlocks = 128;
+
+    private const int SampleFields = 3;
+
+    // Sampling state is touched only from the block-processing thread, which runs ClearBlockCache inline
+    // and serialized per block (BranchProcessor.QueueClearCaches), so it needs no synchronisation.
+    private readonly long[] _samples = new long[FlushEveryBlocks * SampleFields];
+    private KeyValuePair<AddressAsKey, Partition>[]? _partitionList;
+    private int _blocks;
+
+    /// <summary> Indexed view of <see cref="_partitions"/>, so the per-block loop skips the frozen-dictionary enumerator. </summary>
+    private KeyValuePair<AddressAsKey, Partition>[] PartitionList
+    {
+        get
+        {
+            if (_partitionList is null)
+            {
+                _partitionList = new KeyValuePair<AddressAsKey, Partition>[_partitions.Count];
+                ((ICollection<KeyValuePair<AddressAsKey, Partition>>)_partitions).CopyTo(_partitionList, 0);
+            }
+
+            return _partitionList;
+        }
+    }
+
+    /// <summary> Records the block's peak occupancy, then flushes once a full batch has accumulated. </summary>
+    /// <remarks> Called before the clear, so the partitions still hold what the block put in them. </remarks>
+    private void SampleBlock()
+    {
+        KeyValuePair<AddressAsKey, Partition>[] partitions = PartitionList;
+        if (partitions.Length == 0) return;
+
+        long peakBytes = 0;
+        int peakIndex = -1;
+        for (int i = 0; i < partitions.Length; i++)
+        {
+            long used = partitions[i].Value.UsedBytes;
+            if (used > peakBytes)
+            {
+                peakBytes = used;
+                peakIndex = i;
+            }
+        }
+
+        int slot = (_blocks % FlushEveryBlocks) * SampleFields;
+        _samples[slot] = peakBytes;
+        _samples[slot + 1] = peakIndex;
+        _samples[slot + 2] = _survivingCache.Count;
+
+        if (++_blocks % FlushEveryBlocks == 0) FlushSamples(FlushEveryBlocks);
+    }
+
+    /// <summary> Writes the buffered rows and the cumulative counter table in one stdout write. </summary>
+    private void FlushSamples(int count)
+    {
+        KeyValuePair<AddressAsKey, Partition>[] partitions = PartitionList;
+        if (count == 0 || partitions.Length == 0) return;
+
+        int firstBlock = _blocks - count;
+        System.Text.StringBuilder sb = new(count * 64 + partitions.Length * 128);
+
+        for (int i = 0; i < count; i++)
+        {
+            int slot = i * SampleFields;
+            int peakIndex = (int)_samples[slot + 1];
+            sb.Append("PCACHE blk=").Append(firstBlock + i)
+                .Append(" peak=").Append(_samples[slot])
+                .Append(" peakOn=").Append(peakIndex < 0 ? "none" : partitions[peakIndex].Key.Value.ToString())
+                .Append(" surv=").Append(_samples[slot + 2])
+                .Append('\n');
+        }
+
+        sb.Append("PCACHE-TOTALS blocks=").Append(_blocks).Append(" survEntries=").Append(_survivingCache.Count);
+        foreach (KeyValuePair<AddressAsKey, Partition> partition in partitions)
+        {
+            sb.Append("\nPCACHE-PART ").Append(partition.Key.Value)
+                .Append(" max=").Append(partition.Value.MaxBytes);
+
+            if (TrackHits)
+            {
+                sb.Append(" hitBlock=").Append(partition.Value.Tally(Partition.Tier.Block))
+                    .Append(" hitSurv=").Append(partition.Value.Tally(Partition.Tier.Surviving))
+                    .Append(" miss=").Append(partition.Value.Tally(Partition.Tier.Miss))
+                    .Append(" refused=").Append(partition.Value.Tally(Partition.Tier.Refused));
+            }
+        }
+
+        Console.Out.Write(sb.Append('\n').ToString());
+    }
+
+    /// <summary> Flushes the rows buffered since the last full batch, so a run's tail is not lost. </summary>
+    public void Dispose() => FlushSamples(_blocks % FlushEveryBlocks);
+
+    #endregion
 
     /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>
     /// <remarks>
@@ -190,8 +296,14 @@ public sealed class PrecompileCaches
         }
 
         /// <summary> Looks <paramref name="key"/> up in this partition, then in the surviving tier. </summary>
-        public bool TryGet(in Key key, out Result<byte[]> result) =>
-            _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
+        public bool TryGet(in Key key, out Result<byte[]> result)
+        {
+            if (_entries.TryGetValue(key, out result)) { Track(Tier.Block); return true; }
+            if (_survivingCache.TryGet(key, out result)) { Track(Tier.Surviving); return true; }
+
+            Track(Tier.Miss);
+            return false;
+        }
 
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
         /// <remarks> Reserves before checking, so a concurrent reservation near the limit can refuse an entry the partition had room for. </remarks>
@@ -203,6 +315,7 @@ public sealed class PrecompileCaches
             if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
             {
                 Interlocked.Add(ref _bytes, -reservation);
+                Track(Tier.Refused);
                 return false;
             }
 
@@ -224,6 +337,25 @@ public sealed class PrecompileCaches
             _entries.NoLockClear();
             Volatile.Write(ref _bytes, 0);
         }
+
+        #region TESTING
+
+        /// <summary> Where a lookup landed, or that admission was refused by the byte budget. </summary>
+        internal enum Tier { Block, Surviving, Miss, Refused }
+
+        // Striped so the increment stays core-local: a shared counter word would cost more than the
+        // cache hit it counts, and would land in proportion to the hit rate under test.
+        private readonly Nethermind.Core.Threading.StripedLong[] _counters = [new(), new(), new(), new()];
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Track(Tier tier)
+        {
+            if (TrackHits) _counters[(int)tier].Increment();
+        }
+
+        internal long Tally(Tier tier) => _counters[(int)tier].Sum;
+
+        #endregion
     }
 
     /// <summary> Key combining precompile address, its effective input, and the fork it ran under. </summary>
