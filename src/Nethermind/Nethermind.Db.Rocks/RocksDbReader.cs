@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -96,6 +99,29 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
+    }
+
+    /// <inheritdoc/>
+    public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    {
+        Span<byte> span = GetSpan(key, flags);
+        if (span.IsNull()) return null;
+
+        if (span.IsEmpty)
+        {
+            _mainDb.DangerousReleaseMemory(span);
+            return null;
+        }
+
+        try
+        {
+            return new DbSpanMemoryManager(_mainDb, span);
+        }
+        catch
+        {
+            _mainDb.DangerousReleaseMemory(span);
+            throw;
+        }
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);

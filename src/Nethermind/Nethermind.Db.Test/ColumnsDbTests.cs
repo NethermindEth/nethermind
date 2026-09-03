@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -146,6 +147,27 @@ public class ColumnsDbTests
 
         Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
             .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+    }
+
+    [Test]
+    public void Snapshot_owned_memory_survives_snapshot_disposal()
+    {
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] original = TestItem.KeccakA.BytesToArray();
+        column.PutSpan(TestItem.KeccakA.Bytes, original);
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        long baseline = _db._allocatedSpan.Value;
+        MemoryManager<byte>? owned = snapshot.GetColumn(ReceiptsColumns.Blocks).GetOwnedMemory(TestItem.KeccakA.Bytes);
+        Assert.That(owned, Is.Not.Null);
+        Assert.That(_db._allocatedSpan.Value, Is.EqualTo(baseline + 1));
+
+        column.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes);
+        snapshot.Dispose();
+
+        Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(original));
+        ((IDisposable)owned).Dispose();
+        Assert.That(_db._allocatedSpan.Value, Is.EqualTo(baseline));
     }
 
     [Test]

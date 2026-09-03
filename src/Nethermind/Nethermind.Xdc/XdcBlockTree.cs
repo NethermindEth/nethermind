@@ -44,8 +44,7 @@ internal class XdcBlockTree(
 
         if (finalizedBlockInfo.BlockNumber >= header.Number)
         {
-            // During sync, already-finalized blocks may be re-suggested (e.g. gap filling).
-            // Accept them as AlreadyKnown instead of treating them as invalid reorg attempts.
+            // Sync can re-suggest finalized blocks while filling gaps.
             return IsKnownBlock(header.Number, header.Hash) && (BestSuggestedHeader?.Number ?? 0) >= header.Number
                 ? AddBlockResult.AlreadyKnown
                 : AddBlockResult.InvalidBlock;
@@ -86,9 +85,7 @@ internal class XdcBlockTree(
 
     public override bool IsBetterThanHead(BlockHeader? header)
     {
-        // Base falls back to comparing hashes on an equal-TD tie, which is meaningless for XDPoS
-        // (every proposal at a height ties on TD) and would let an arbitrary hash ordering override
-        // the round-based tie-break below. Decide equal-TD ties between two XDC headers here first.
+        // XDPoS equal-TD proposals require a round-based tie-break, not base hash ordering.
         if (header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
             newBlock.TotalDifficulty == headBlock.TotalDifficulty)
             return IsSameTdButPreferred(newBlock, headBlock);

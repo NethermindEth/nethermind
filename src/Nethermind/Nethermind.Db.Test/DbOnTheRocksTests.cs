@@ -921,7 +921,41 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SnapshotDisposeCleansUp()
+        public void GetOwnedMemory_holds_snapshot_value_until_disposed()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] snapshotValue = [4, 5, 6];
+            _db.PutSpan(key, snapshotValue);
+
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+            MemoryManager<byte>? owned = snapshot.GetOwnedMemory(key);
+            Assert.That(owned, Is.Not.Null);
+
+            _db.PutSpan(key, [7, 8, 9]);
+            snapshot.Dispose();
+
+            Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(snapshotValue));
+            Assert.That(AllocatedSpan, Is.EqualTo(1));
+
+            ((IDisposable)owned).Dispose();
+            Assert.That(AllocatedSpan, Is.Zero);
+        }
+
+        [Test]
+        public void GetOwnedMemory_missing_or_empty_returns_null_without_tracked_allocation()
+        {
+            _db.PutSpan([1], []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_db.GetOwnedMemory([1]), Is.Null);
+                Assert.That(_db.GetOwnedMemory([2]), Is.Null);
+                Assert.That(AllocatedSpan, Is.Zero);
+            }
+        }
+
+        [Test]
+        public void Snapshot_dispose_cleans_up_read_options()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
 
