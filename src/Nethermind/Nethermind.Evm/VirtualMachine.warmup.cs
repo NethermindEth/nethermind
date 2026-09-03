@@ -158,7 +158,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         // This drives RunByteCode directly, so it resolves the table itself rather than through a transaction.
-        vm.PrepareOpcodes<TTracingInst, TCancelable>(vm.Spec);
+        vm.PrepareOpcodes<TTracingInst, TCancelable>();
         byte[] code = new byte[EvmStack.WordSize + 2];
         vmState.InitializeStacks(txTracer, code, out EvmStack stack);
 
