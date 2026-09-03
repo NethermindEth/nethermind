@@ -11,15 +11,16 @@ public sealed class CommitmentDepthPolicy
     public const int MaxTrieDepth = 64;
     public const int MaxStampedDepth = 15;
     public const int DefaultAccountExactDepth = 2;
-    public const int DefaultAccountCheckpointDepth = 7;
+    public const int DefaultAccountCheckpointDepth = 5;
     public const int DefaultStorageExactDepth = 2;
     public const int DefaultStorageCheckpointDepth = 4;
     public const int DefaultLargeTrieSignalDepth = 6;
+    public const int DefaultStorageRowsSignalDepth = 4;
     public const int DefaultIntervalLog2 = 9;
     public const int MinIntervalLog2 = 6;
     public const int MaxIntervalLog2 = 12;
     public const int FullVectorEvery = 256;
-    public const int StampLength = 4;
+    public const int StampLength = 5;
 
     public static readonly CommitmentDepthPolicy Default = new(DefaultIntervalLog2);
 
@@ -27,11 +28,11 @@ public sealed class CommitmentDepthPolicy
         config.ArchiveProofCheckpointIntervalLog2 <= 0 ? Default : new CommitmentDepthPolicy(config.ArchiveProofCheckpointIntervalLog2);
 
     public CommitmentDepthPolicy(int intervalLog2)
-        : this(intervalLog2, DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth)
+        : this(intervalLog2, DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth, DefaultStorageRowsSignalDepth)
     {
     }
 
-    public CommitmentDepthPolicy(int intervalLog2, int accountExactDepth, int accountCheckpointDepth, int storageExactDepth, int storageCheckpointDepth, int largeTrieSignalDepth)
+    public CommitmentDepthPolicy(int intervalLog2, int accountExactDepth, int accountCheckpointDepth, int storageExactDepth, int storageCheckpointDepth, int largeTrieSignalDepth, int storageRowsSignalDepth)
     {
         if (intervalLog2 is < MinIntervalLog2 or > MaxIntervalLog2)
         {
@@ -51,12 +52,18 @@ public sealed class CommitmentDepthPolicy
             throw new InvalidConfigurationException($"Storage commitment depths exact<={storageExactDepth}, checkpoint<={storageCheckpointDepth}, large-trie signal {largeTrieSignalDepth} are not ordered or exceed the stamped maximum {MaxStampedDepth}.", -1);
         }
 
+        if (storageRowsSignalDepth < 1 || storageRowsSignalDepth > largeTrieSignalDepth)
+        {
+            throw new InvalidConfigurationException($"The storage rows signal depth {storageRowsSignalDepth} must lie in 1..{largeTrieSignalDepth} (the large-trie signal).", -1);
+        }
+
         IntervalLog2 = intervalLog2;
         AccountExactDepth = accountExactDepth;
         AccountCheckpointDepth = accountCheckpointDepth;
         StorageExactDepth = storageExactDepth;
         StorageCheckpointDepth = storageCheckpointDepth;
         LargeTrieSignalDepth = largeTrieSignalDepth;
+        StorageRowsSignalDepth = storageRowsSignalDepth;
     }
 
     public int IntervalLog2 { get; }
@@ -73,6 +80,8 @@ public sealed class CommitmentDepthPolicy
 
     public int LargeTrieSignalDepth { get; }
 
+    public int StorageRowsSignalDepth { get; }
+
     public bool IsExactAccountDepth(int depth) => depth <= AccountExactDepth;
 
     internal CommitmentTier AccountTier(int depth) =>
@@ -83,13 +92,17 @@ public sealed class CommitmentDepthPolicy
             _ => CommitmentTier.Recomputed,
         };
 
-    internal CommitmentTier StorageTier(int depth, bool largeTrie) =>
+    internal CommitmentTier StorageTier(int depth, int trieDepthReached) =>
         depth switch
         {
-            _ when largeTrie && depth <= StorageExactDepth => CommitmentTier.PerChange,
-            _ when depth <= StorageCheckpointDepth => CommitmentTier.Checkpoint,
+            _ when trieDepthReached >= LargeTrieSignalDepth && depth <= StorageExactDepth => CommitmentTier.PerChange,
+            _ when trieDepthReached >= StorageRowsSignalDepth && depth <= StorageCheckpointDepth => CommitmentTier.Checkpoint,
             _ => CommitmentTier.Recomputed,
         };
+
+    public bool StorageTrieHasRows(int trieDepthReached) => trieDepthReached >= StorageRowsSignalDepth;
+
+    public bool StorageTrieHasExactRows(int trieDepthReached) => trieDepthReached >= LargeTrieSignalDepth;
 
     public ulong WindowAtOrBelow(ulong block) => block >> IntervalLog2;
 
@@ -105,6 +118,7 @@ public sealed class CommitmentDepthPolicy
         destination[1] = (byte)((AccountExactDepth << 4) | AccountCheckpointDepth);
         destination[2] = (byte)((StorageExactDepth << 4) | StorageCheckpointDepth);
         destination[3] = (byte)LargeTrieSignalDepth;
+        destination[4] = (byte)StorageRowsSignalDepth;
     }
 
     public bool MatchesStamp(ReadOnlySpan<byte> stamp)
@@ -117,5 +131,5 @@ public sealed class CommitmentDepthPolicy
     }
 
     public override string ToString() =>
-        $"K=2^{IntervalLog2}, accounts exact<={AccountExactDepth} checkpoint<={AccountCheckpointDepth}, storage exact<={StorageExactDepth} (once a trie has reached depth {LargeTrieSignalDepth}) checkpoint<={StorageCheckpointDepth}";
+        $"K=2^{IntervalLog2}, accounts exact<={AccountExactDepth} checkpoint<={AccountCheckpointDepth}, storage rows once a trie has reached depth {StorageRowsSignalDepth}: exact<={StorageExactDepth} (once depth {LargeTrieSignalDepth}) checkpoint<={StorageCheckpointDepth}";
 }

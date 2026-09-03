@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
@@ -20,27 +23,46 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private const byte WalkItemProgressMarker = 0x06;
     public const int MaxWalkItems = 1 << 16;
 
+    private const int StorageTrieDepthCacheEntries = 1 << 16;
+
     private readonly IDb _column = history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+    private readonly IDb _storageColumn = history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+    private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
     private readonly object _lock = new();
 
-    private readonly HashSet<ValueHash256> _largeStorageTries = [];
+    private readonly Dictionary<ValueHash256, int> _storageTrieDepths = [];
 
     public object WindowWriteLock { get; } = new();
 
-    public bool IsKnownLargeStorageTrie(in ValueHash256 accountPath)
+    public int StorageTrieDepth(in ValueHash256 accountPath)
     {
-        lock (_largeStorageTries)
+        lock (_storageTrieDepths)
         {
-            return _largeStorageTries.Contains(accountPath);
+            return StorageTrieDepthLocked(accountPath);
         }
     }
 
-    public void RememberLargeStorageTrie(in ValueHash256 accountPath)
+    public int NoteStorageTrieDepth(in ValueHash256 accountPath, int depth)
     {
-        lock (_largeStorageTries)
+        lock (_storageTrieDepths)
         {
-            _largeStorageTries.Add(accountPath);
+            int known = StorageTrieDepthLocked(accountPath);
+            if (depth <= known) return known;
+
+            _storages.WriteStorageTrieDepth(accountPath, depth);
+            _storageTrieDepths[accountPath] = depth;
+            return depth;
         }
+    }
+
+    private int StorageTrieDepthLocked(in ValueHash256 accountPath)
+    {
+        if (_storageTrieDepths.TryGetValue(accountPath, out int depth)) return depth;
+
+        depth = _storages.ReadStorageTrieDepth(accountPath);
+        if (_storageTrieDepths.Count >= StorageTrieDepthCacheEntries) _storageTrieDepths.Clear();
+        _storageTrieDepths[accountPath] = depth;
+        return depth;
     }
 
     public bool TryReadStamp(CommitmentDepthPolicy policy, out bool matches)
@@ -54,6 +76,48 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
 
         matches = stamp.Length == CommitmentDepthPolicy.StampLength + 1 && stamp[0] == FormatVersion && policy.MatchesStamp(stamp.AsSpan(1));
         return true;
+    }
+
+    public void EnsureLayout(CommitmentDepthPolicy policy, bool discardMismatched, ILogger logger)
+    {
+        lock (_lock)
+        {
+            if (TryReadStamp(policy, out bool matches) && !matches)
+            {
+                if (!discardMismatched)
+                {
+                    throw new InvalidConfigurationException(
+                        "The archive proof commitment columns were written under a different layout than this node is " +
+                        $"configured for ({policy}). Rows from the two layouts cannot be read together: set " +
+                        "FlatDb.ArchiveProofDiscardMismatchedLayout to delete them and rebuild, or restore the previous FlatDb.ArchiveProof settings.", -1);
+                }
+
+                DiscardAll();
+                if (logger.IsWarn) logger.Warn(
+                    $"Archive proof commitment columns written under a different layout were deleted (FlatDb.ArchiveProofDiscardMismatchedLayout); they rebuild from scratch under {policy}.");
+            }
+
+            WriteStamp(policy);
+        }
+    }
+
+    private void DiscardAll()
+    {
+        Span<byte> last = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];
+        last.Fill(0xFF);
+        Discard(_column, last);
+        Discard(_storageColumn, last);
+        lock (_storageTrieDepths)
+        {
+            _storageTrieDepths.Clear();
+        }
+    }
+
+    private static void Discard(IDb column, ReadOnlySpan<byte> last)
+    {
+        IRangeRemovableKeyValueStore removable = (IRangeRemovableKeyValueStore)column;
+        removable.RemoveRange([], last);
+        removable.ReclaimRange([], last);
     }
 
     public void WriteStamp(CommitmentDepthPolicy policy)

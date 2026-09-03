@@ -41,6 +41,7 @@ public class ArchiveProofTests
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _chain = new ArchiveProofTestChain(_historyColumns);
         _accounts = BuildAddresses(AccountCount);
+        _policy = TestPolicy;
         BuildChain();
     }
 
@@ -172,6 +173,20 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_small_storage_trie_gets_no_storage_rows_under_the_default_policy_and_still_proves()
+    {
+        _policy = new CommitmentDepthPolicy(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2);
+        BuildCommitments();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys(), Is.Empty,
+                "a trie of a handful of slots never reaches the rows signal depth; its whole rebuild is one range scan, so rows for it would only duplicate the slot history");
+            foreach (ulong block in (ulong[])[3, 64, 100, Blocks]) AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
+    [Test]
     public void A_proof_resolves_from_history_rows_alone_when_no_commitments_were_built()
     {
         AssertProofMatchesTheTrie(_accounts[3], block: 5);
@@ -296,6 +311,28 @@ public class ArchiveProofTests
             "rows written under two layouts cannot be read together, so the second build must refuse rather than interleave them");
     }
 
+    [Test]
+    public void A_layout_change_discards_the_old_columns_and_rebuilds_when_the_operator_asks()
+    {
+        BuildCommitments();
+        CommitmentDepthPolicy other = new(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
+        Assert.That(CreateSource(other).CanServe(_chain.StateIdAt(6)), Is.False, "precondition: the old columns are unreadable under the new layout");
+
+        CreateRetrofit(other, discardMismatchedLayout: true).Prepare();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys(), Is.Empty, "every storage row of the old layout is gone");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().Count(), Is.EqualTo(1), "only the new stamp remains: rows, coverage and walk marks of the old layout are gone");
+            Assert.That(CreateSource(other).CanServe(_chain.StateIdAt(6)), Is.False, "nothing is served until the new build publishes");
+        }
+
+        _policy = other;
+        BuildCommitments();
+        AssertProofMatchesTheTrie(_accounts[0], 6);
+        AssertProofMatchesTheTrie(Contract, 100, ContractSlots);
+    }
+
     [TestCase(5, TestName = "BelowRange")]
     [TestCase(13, TestName = "AboveRange")]
     public void A_checkpoint_interval_outside_the_supported_range_is_refused(int intervalLog2) =>
@@ -343,7 +380,9 @@ public class ArchiveProofTests
             "windowed rows are pre-values behind a retention floor, which a proof resolution cannot replay");
     }
 
-    private static CommitmentDepthPolicy TestPolicy { get; } = new(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2);
+    private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
+
+    private CommitmentDepthPolicy _policy = null!;
 
     private void BuildChain()
     {
@@ -372,7 +411,7 @@ public class ArchiveProofTests
 
     private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
-        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
         retrofit.Prepare();
 
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
@@ -388,9 +427,9 @@ public class ArchiveProofTests
         retrofit.PublishCoverage(0, _chain.Head);
     }
 
-    private ArchiveProofRetrofit CreateRetrofit(CommitmentDepthPolicy policy)
+    private ArchiveProofRetrofit CreateRetrofit(CommitmentDepthPolicy policy, bool discardMismatchedLayout = false)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true };
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         return new ArchiveProofRetrofit(_historyColumns, policy, new CommitmentMetadata(_historyColumns), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
     }
@@ -414,7 +453,7 @@ public class ArchiveProofTests
     private AccountProof ProveFromArchive(Address address, ulong block, params UInt256[] storageKeys)
     {
         AccountProofCollector collector = new(address, storageKeys);
-        CreateSource(TestPolicy).RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
+        CreateSource(_policy).RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
         return collector.BuildResult();
     }
 

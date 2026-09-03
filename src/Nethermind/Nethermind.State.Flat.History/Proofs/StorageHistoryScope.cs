@@ -26,10 +26,11 @@ internal sealed class StorageHistoryScope(
     private const int IdentitySuffixLength = CommitmentKeyLayout.IdentityLength - IdentityPrefixLength;
 
     private readonly byte[] _identity = accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].ToArray();
+    private readonly int _trieDepth = commitments.ReadStorageTrieDepth(accountPath);
 
-    public override bool HasCommitmentRows(int depth) => depth <= Policy.StorageCheckpointDepth;
+    public override bool HasCommitmentRows(int depth) => Policy.StorageTrieHasRows(_trieDepth) && depth <= Policy.StorageCheckpointDepth;
 
-    public override bool MayHaveExactRows(int depth) => depth <= Policy.StorageExactDepth;
+    public override bool MayHaveExactRows(int depth) => Policy.StorageTrieHasExactRows(_trieDepth) && depth <= Policy.StorageExactDepth;
 
     public override int WriteCommitmentPrefix(Span<byte> destination, in TreePath path, bool exact) =>
         CommitmentKeyLayout.WriteScopedPathPrefix(destination, _identity, path, exact);

@@ -52,4 +52,12 @@ internal static class CommitmentKeyLayout
 
     public static void WriteIdentity(Span<byte> destination, in ValueHash256 accountPath) =>
         accountPath.Bytes[..IdentityLength].CopyTo(destination);
+
+    public static void WriteStorageTrieDepthKey(Span<byte> destination, in ValueHash256 accountPath)
+    {
+        WriteIdentity(destination, accountPath);
+        destination[IdentityLength] = StorageTrieDepthFlag;
+    }
+
+    public const byte StorageTrieDepthFlag = 0xFF;
 }

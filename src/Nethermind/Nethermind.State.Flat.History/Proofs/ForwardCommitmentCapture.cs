@@ -138,7 +138,12 @@ public sealed class ForwardCommitmentCapture
 
     private void AddStorage(CapturedBlock captured, in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp)
     {
-        if (path.Length >= _policy.LargeTrieSignalDepth) (captured.DeepStorageTries ??= []).Add(accountPath);
+        if (path.Length >= _policy.StorageRowsSignalDepth)
+        {
+            Dictionary<ValueHash256, int> depths = captured.StorageDepths ??= [];
+            depths[accountPath] = Math.Max(depths.GetValueOrDefault(accountPath), path.Length);
+        }
+
         if (rlp.Length < Hash256.Size || path.Length > _policy.StorageCheckpointDepth + 1) return;
 
         captured.Storages.Add(new NodeChange(accountPath, path, rlp.ToArray()));
@@ -178,7 +183,11 @@ public sealed class ForwardCommitmentCapture
             foreach ((ulong block, CapturedBlock captured) in _buffered)
             {
                 emitter.BeginBlock(block);
-                if (captured.DeepStorageTries is { } deep) foreach (ValueHash256 account in deep) emitter.RecordStorageDepthReached(account, _policy.LargeTrieSignalDepth);
+                if (captured.StorageDepths is { } depths)
+                {
+                    foreach ((ValueHash256 account, int depth) in depths) emitter.RecordStorageDepthReached(account, depth);
+                }
+
                 foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, change.Rlp);
                 foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, change.Rlp);
                 emitter.CompleteBlock();
@@ -190,24 +199,13 @@ public sealed class ForwardCommitmentCapture
             $"Archive proof commitments at the tip resume at block {first} after a gap; the series restarts there and the gap is left to the retrofit walk.");
     }
 
-    private void EnsureStamp()
-    {
-        if (_metadata.TryReadStamp(_policy, out bool matches))
-        {
-            if (matches) return;
-
-            throw new InvalidConfigurationException(
-                $"The archive proof commitment columns were written under a different layout than this node is configured for ({_policy}).", -1);
-        }
-
-        _metadata.WriteStamp(_policy);
-    }
+    private void EnsureStamp() => _metadata.EnsureLayout(_policy, _settings.DiscardMismatchedLayout, _logger);
 
     private sealed class CapturedBlock
     {
         public readonly List<NodeChange> Accounts = [];
         public readonly List<NodeChange> Storages = [];
-        public HashSet<ValueHash256>? DeepStorageTries;
+        public Dictionary<ValueHash256, int>? StorageDepths;
         public long Bytes;
     }
 

@@ -61,6 +61,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Checkpoint interval for the archive proof commitments, as a power of two blocks, the same at every trie depth. Smaller means faster cold proofs and more disk. Accepted range 6..12. Changing it invalidates commitments already built. 0 uses the built-in default of 2^9.", DefaultValue = "0")]
     int ArchiveProofCheckpointIntervalLog2 { get; set; }
 
+    [ConfigItem(Description = "Delete the archive proof commitment columns and rebuild them when they were written under a different layout than this node is configured for (another checkpoint interval, or an older release). Off refuses to build and keeps the rows; on discards rows nothing can read any more. Nothing is deleted while the layout matches, so it is harmless to leave on.", DefaultValue = "false")]
+    bool ArchiveProofDiscardMismatchedLayout { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

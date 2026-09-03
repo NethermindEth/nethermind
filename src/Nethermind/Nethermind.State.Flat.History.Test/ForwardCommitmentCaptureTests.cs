@@ -20,6 +20,7 @@ public class ForwardCommitmentCaptureTests
 {
     private static readonly TreePath PerChangePath = TreePath.FromHexString("a");
     private static readonly TreePath CheckpointedPath = TreePath.FromHexString("abc");
+    private static readonly CommitmentDepthPolicy Policy = new(CommitmentDepthPolicy.DefaultIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
     private static readonly TreePath StoragePath = TreePath.FromHexString("7f");
     private static readonly ValueHash256 StorageAccount = TestItem.KeccakB.ValueHash256;
 
@@ -43,7 +44,7 @@ public class ForwardCommitmentCaptureTests
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         _metadata = new CommitmentMetadata(_historyColumns);
-        ForwardCommitmentCapture capture = new(_historyColumns, CommitmentDepthPolicy.Default, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+        ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
     }
 
@@ -132,14 +133,12 @@ public class ForwardCommitmentCaptureTests
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.FromHexString("7"), exact: true);
         using CommitmentStore.RowChain exact = store.OpenAtOrBelow(prefix[..prefixLength], 0);
-        Span<byte> flag = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
-        CommitmentEmitter.WriteLargeTrieFlagKey(flag, StorageAccount);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exact.MoveNext() && exact.CurrentSuffix == 0, Is.True,
                 "a node at the signal depth in the captured round marks the trie large, so its top gets an exact row from the capture path as well as from the walk");
-            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).KeyExists(flag), Is.True, "the decision is persisted so later rounds stay large");
+            Assert.That(store.ReadStorageTrieDepth(StorageAccount), Is.EqualTo(CommitmentDepthPolicy.DefaultLargeTrieSignalDepth), "the decision is persisted so later rounds stay large");
         }
     }
 
@@ -197,7 +196,7 @@ public class ForwardCommitmentCaptureTests
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ForwardCommitmentCapture bounded = new(
-            _historyColumns, CommitmentDepthPolicy.Default, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes);
+            _historyColumns, Policy, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes);
         return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
     }
 

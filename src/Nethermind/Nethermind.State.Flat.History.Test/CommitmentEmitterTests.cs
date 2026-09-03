@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class CommitmentEmitterTests
 {
-    private static readonly CommitmentDepthPolicy Policy = new(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2);
+    private static readonly CommitmentDepthPolicy Policy = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
     private static readonly TreePath CheckpointedPath = TreePath.FromHexString("abc");
     private static readonly TreePath StorageTop = TreePath.FromHexString("7");
     private static readonly ValueHash256 StorageAccount = TestItem.KeccakB.ValueHash256;
@@ -72,7 +72,7 @@ public class CommitmentEmitterTests
     [Test]
     public void A_node_one_level_below_the_deepest_checkpoint_marks_its_parents_changed_child()
     {
-        TreePath deepest = TreePath.FromHexString("abcdefa");
+        TreePath deepest = TreePath.FromHexString("abcde");
         using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
         {
             walk.BeginBlock(1);
@@ -243,11 +243,70 @@ public class CommitmentEmitterTests
         }
     }
 
-    [TestCase(1, 16, 2, 4, 6, TestName = "AccountCheckpointDepth")]
-    [TestCase(1, 7, 2, 16, 20, TestName = "StorageCheckpointDepth")]
-    public void A_depth_that_does_not_fit_the_stamp_is_refused(int accountExact, int accountCheckpoint, int storageExact, int storageCheckpoint, int signal) =>
-        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, accountExact, accountCheckpoint, storageExact, storageCheckpoint, signal), Throws.InstanceOf<InvalidConfigurationException>(),
+    [TestCase(1, 16, 2, 4, 6, 4, TestName = "AccountCheckpointDepth")]
+    [TestCase(1, 7, 2, 16, 20, 4, TestName = "StorageCheckpointDepth")]
+    [TestCase(1, 5, 2, 4, 6, 7, TestName = "StorageRowsSignalAboveTheLargeTrieSignal")]
+    [TestCase(1, 5, 2, 4, 6, 0, TestName = "StorageRowsSignalZero")]
+    public void A_depth_that_does_not_fit_the_stamp_is_refused(int accountExact, int accountCheckpoint, int storageExact, int storageCheckpoint, int signal, int rowsSignal) =>
+        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, accountExact, accountCheckpoint, storageExact, storageCheckpoint, signal, rowsSignal), Throws.InstanceOf<InvalidConfigurationException>(),
             "the layout stamp packs depths into nibbles; a depth above 15 would collide with another layout and defeat the mixing guard");
+
+    [Test]
+    public void An_account_node_below_the_checkpoint_depth_writes_no_row()
+    {
+        TreePath checkpointed = TreePath.FromHexString("abcde");
+        TreePath below = checkpointed.Append(0xf);
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            walk.RecordAccountNode(checkpointed, BranchRlp.Encode(Children(0xf)));
+            walk.RecordAccountNode(below, BranchRlp.Encode(Children(1, 2)));
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(WindowRow(checkpointed, Policy.WindowClosingAt(1)), Is.Not.Null, "the deepest checkpointed depth keeps its window row");
+            Assert.That(WindowRow(below, Policy.WindowClosingAt(1)), Is.Null,
+                "a node one level below covers a few accounts; rebuilding it from their rows is one range scan, cheaper than the rows it would otherwise cost at every window");
+        }
+    }
+
+    [Test]
+    public void A_storage_trie_writes_rows_only_once_it_has_reached_the_rows_signal_depth()
+    {
+        CommitmentDepthPolicy policy = new(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2);
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            walk.RecordStorageNode(StorageAccount, StorageTop, BranchRlp.Encode(Children(0xa, 0xb)));
+            walk.RecordStorageNode(StorageAccount, TreePath.FromHexString("7a"), LeafRlp());
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        Assert.That(column.GetAllKeys(), Is.Empty, "a small trie rebuilds whole from its slot rows in one scan; rows for it would only duplicate the history");
+
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, policy, _metadata))
+        {
+            walk.BeginBlock(2);
+            walk.RecordStorageNode(StorageAccount, StorageTop, BranchRlp.Encode(Children(0xa, 0xc)));
+            walk.RecordStorageNode(StorageAccount, TreePath.FromHexString("7abc"), LeafRlp());
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        CommitmentStore store = new(column);
+        Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], StorageTop, exact: false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetExact(prefix[..prefixLength], policy.WindowClosingAt(2)), Is.Not.Null, "once the trie is deep enough that a whole rebuild is no longer one cheap scan, its top gets checkpoint rows");
+            Assert.That(store.ReadStorageTrieDepth(StorageAccount), Is.EqualTo(CommitmentDepthPolicy.DefaultStorageRowsSignalDepth), "the depth reached is persisted so the read side and later emitters agree");
+        }
+    }
 
     private byte[]? WindowRow(in TreePath path, ulong window)
     {

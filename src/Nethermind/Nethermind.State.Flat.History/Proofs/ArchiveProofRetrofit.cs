@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -26,15 +25,7 @@ public sealed class ArchiveProofRetrofit(
 
     public void Prepare()
     {
-        if (metadata.TryReadStamp(policy, out bool matches) && !matches)
-        {
-            throw new InvalidConfigurationException(
-                "The archive proof commitment columns were written under a different layout than this node is " +
-                $"configured for ({policy}). Rows from the two layouts cannot be read together: delete the " +
-                "flatHistory commitment columns and rebuild, or restore the previous FlatDb.ArchiveProof settings.", -1);
-        }
-
-        metadata.WriteStamp(policy);
+        metadata.EnsureLayout(policy, settings.DiscardMismatchedLayout, _logger);
         if (_logger.IsInfo) _logger.Info($"Archive proof commitments will be emitted along the history walk ({policy}).");
     }
 

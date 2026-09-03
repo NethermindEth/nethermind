@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,7 +15,6 @@ public sealed class CommitmentEmitter : IDisposable
 {
     public const int DefaultMaxOpenWindowNodes = 200_000;
     public const int WalkMaxOpenWindowNodes = 50_000;
-    public const byte LargeTrieFlag = 0xFF;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
     private const int EmptyRecord = -1;
@@ -25,7 +23,6 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly CommitmentDepthPolicy _policy;
     private readonly CommitmentStore _accounts;
     private readonly CommitmentStore _storages;
-    private readonly IDb _storageColumn;
     private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
     private readonly bool _writeThrough;
@@ -36,7 +33,6 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly Dictionary<NodePathKey, ushort> _blockChanged = [];
     private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
-    private readonly Dictionary<ValueHash256, bool> _largeTries = [];
     private readonly Dictionary<NodePathKey, bool> _exactBranches = [];
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly HashSet<NodePathKey> _touchedThisBlock = [];
@@ -58,8 +54,7 @@ public sealed class CommitmentEmitter : IDisposable
         _writeThrough = writeThrough;
         _maxOpenWindowNodes = maxOpenWindowNodes;
         _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
-        _storageColumn = history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
-        _storages = new CommitmentStore(_storageColumn);
+        _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
     }
 
     public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
@@ -132,6 +127,7 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void RecordStorageNode(in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp, ushort changedChildren)
     {
+        NoteStorageDepth(accountPath, path.Length);
         if (path.Length > _policy.StorageCheckpointDepth) return;
 
         Record(NodePathKey.ForStorage(accountPath, path), rlp, changedChildren);
@@ -139,6 +135,7 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void RecordStorageEmpty(in ValueHash256 accountPath, in TreePath path)
     {
+        NoteStorageDepth(accountPath, path.Length);
         if (path.Length > _policy.StorageCheckpointDepth) return;
 
         RecordEmpty(NodePathKey.ForStorage(accountPath, path));
@@ -146,31 +143,17 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void RecordStorageDepthReached(in ValueHash256 accountPath, int depth) => NoteStorageDepth(accountPath, depth);
 
-    public bool IsLargeStorageTrie(in ValueHash256 accountPath)
-    {
-        if (_blockStorageMaxDepth.TryGetValue(accountPath, out int depth) && depth >= _policy.LargeTrieSignalDepth)
-        {
-            MarkLarge(accountPath);
-            return true;
-        }
-
-        if (_metadata.IsKnownLargeStorageTrie(accountPath)) return true;
-        if (_largeTries.TryGetValue(accountPath, out bool large)) return large;
-
-        Span<byte> flagKey = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
-        WriteLargeTrieFlagKey(flagKey, accountPath);
-        large = _storageColumn.KeyExists(flagKey);
-        _largeTries[accountPath] = large;
-        if (large) _metadata.RememberLargeStorageTrie(accountPath);
-        return large;
-    }
+    public int StorageTrieDepth(in ValueHash256 accountPath) =>
+        _blockStorageMaxDepth.TryGetValue(accountPath, out int reached)
+            ? _metadata.NoteStorageTrieDepth(accountPath, reached)
+            : _metadata.StorageTrieDepth(accountPath);
 
     public void CompleteBlock()
     {
         foreach ((NodePathKey key, (int offset, int length)) in _blockNodes)
         {
             CommitmentTier tier = key.IsStorage
-                ? _policy.StorageTier(key.Depth, IsLargeStorageTrie(key.Scope))
+                ? _policy.StorageTier(key.Depth, StorageTrieDepth(key.Scope))
                 : _policy.AccountTier(key.Depth);
 
             ReadOnlySpan<byte> rlp = length == EmptyRecord ? ReadOnlySpan<byte>.Empty : _blockArena.Slice(offset, length);
@@ -221,12 +204,6 @@ public sealed class CommitmentEmitter : IDisposable
         ChildVector.Return(_merged);
     }
 
-    public static void WriteLargeTrieFlagKey(Span<byte> destination, in ValueHash256 accountPath)
-    {
-        CommitmentKeyLayout.WriteIdentity(destination, accountPath);
-        destination[CommitmentKeyLayout.IdentityLength] = LargeTrieFlag;
-    }
-
     private void Record(in NodePathKey key, ReadOnlySpan<byte> rlp, ushort? changed)
     {
         _blockNodes[key] = (_blockArena.Append(rlp), rlp.Length);
@@ -242,24 +219,10 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void NoteStorageDepth(in ValueHash256 accountPath, int depth)
     {
-        if (depth < _policy.LargeTrieSignalDepth) return;
+        if (depth < _policy.StorageRowsSignalDepth) return;
 
-        _blockStorageMaxDepth[accountPath] = Math.Max(_blockStorageMaxDepth.GetValueOrDefault(accountPath), depth);
-    }
-
-    private void MarkLarge(in ValueHash256 accountPath)
-    {
-        if (_metadata.IsKnownLargeStorageTrie(accountPath)) return;
-
-        _largeTries[accountPath] = true;
-        _metadata.RememberLargeStorageTrie(accountPath);
-        Span<byte> flagKey = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
-        WriteLargeTrieFlagKey(flagKey, accountPath);
-        if (_storageColumn.KeyExists(flagKey)) return;
-
-        Span<byte> since = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(since, _block);
-        _storageColumn.PutSpan(flagKey, since);
+        int capped = Math.Min(depth, _policy.LargeTrieSignalDepth);
+        _blockStorageMaxDepth[accountPath] = Math.Max(_blockStorageMaxDepth.GetValueOrDefault(accountPath), capped);
     }
 
     private void WriteExact(in NodePathKey key, ReadOnlySpan<byte> rlp, bool isEmpty)

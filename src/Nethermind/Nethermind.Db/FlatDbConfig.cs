@@ -22,6 +22,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int ArchiveProofFanOut { get; set; } = 8;
     public long ArchiveProofMaxScannedRows { get; set; } = 0;
     public int ArchiveProofCheckpointIntervalLog2 { get; set; } = 0;
+    public bool ArchiveProofDiscardMismatchedLayout { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

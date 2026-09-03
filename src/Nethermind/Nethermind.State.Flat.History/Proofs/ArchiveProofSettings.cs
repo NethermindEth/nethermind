@@ -16,6 +16,7 @@ public sealed class ArchiveProofSettings
         BuildEnabled = config.ArchiveProofBuildEnabled && supported;
         ServeEnabled = config.ArchiveProofServeEnabled && supported;
         RetrofitEnabled = BuildEnabled && config.HistoryVerifyEveryBlock;
+        DiscardMismatchedLayout = config.ArchiveProofDiscardMismatchedLayout;
 
         if (!supported && (config.ArchiveProofBuildEnabled || config.ArchiveProofServeEnabled) && logger.IsWarn)
         {
@@ -37,4 +38,6 @@ public sealed class ArchiveProofSettings
     public bool ServeEnabled { get; }
 
     public bool RetrofitEnabled { get; }
+
+    public bool DiscardMismatchedLayout { get; }
 }
