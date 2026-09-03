@@ -103,6 +103,7 @@ namespace Nethermind.Serialization.Json
                 TypeInfoResolver = BuildTypeInfoResolver(additionalResolvers),
                 Converters =
                 {
+                    new SpanKeyedDictionaryConverter(),
                     new LongConverter(strictQuantity),
                     new UInt256Converter(strictQuantity),
                     new EvmWordConverter(),

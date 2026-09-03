@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -16,6 +17,10 @@ namespace Nethermind.Evm;
 public static class StateOverridesExtensions
 {
     private static readonly UInt256 MaxNonce = ulong.MaxValue;
+    // Simulation traffic overrides the same contracts request after request; sharing the analysed code by hash
+    // keeps one jump-destination bitmap per distinct bytecode instead of one per request.
+    private const int OverrideCodeInfoCacheSize = 1024;
+    private static readonly ClockCache<ValueHash256, CodeInfo> _overrideCodeInfos = new(OverrideCodeInfoCacheSize);
 
     public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
@@ -107,13 +112,25 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            CodeInfoRepository.InsertCode(stateProvider, accountOverride.Code, address, currentSpec, out ValueHash256 codeHash);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                GetOrCreateOverrideCodeInfo(in codeHash, accountOverride.Code));
         }
+    }
+
+    private static CodeInfo GetOrCreateOverrideCodeInfo(in ValueHash256 codeHash, byte[] code)
+    {
+        if (_overrideCodeInfos.TryGet(codeHash, out CodeInfo? codeInfo))
+        {
+            return codeInfo;
+        }
+
+        codeInfo = new CodeInfo(code) { CodeHash = codeHash };
+        _overrideCodeInfos.Set(codeHash, codeInfo);
+        return codeInfo;
     }
 
     private static void UpdateNonce(

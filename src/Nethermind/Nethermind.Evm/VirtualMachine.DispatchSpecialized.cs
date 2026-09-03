@@ -90,10 +90,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             return new CallResult(data, null);
         }
+        else if (ReturnData is PooledReturnData pooled)
+        {
+            return new CallResult(pooled.Memory, null, pooledOutput: pooled.Array);
+        }
         return new CallResult(ReturnDataBuffer, null);
 
     Revert:
-        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
+        return ReturnData is PooledReturnData pooledRevert
+            ? new CallResult(pooledRevert.Memory, null, shouldRevert: true, exceptionType, pooledRevert.Array)
+            : new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
 
     ReturnFailure:
         // EIP-8037: write gas back so RestoreChildStateGasOnHalt can read the child frame's state gas.

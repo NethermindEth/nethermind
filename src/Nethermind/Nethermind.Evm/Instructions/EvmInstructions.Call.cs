@@ -211,7 +211,7 @@ public static partial class EvmInstructions
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.SetReturnDataBuffer(default);
             EvmExceptionType pushResult = stack.PushZero<TTracingInst>();
 
             // Optionally report memory changes for refund tracing.
@@ -244,7 +244,7 @@ public static partial class EvmInstructions
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
-            vm.ReturnDataBuffer = default;
+            vm.SetReturnDataBuffer(default);
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             if (pushResult != EvmExceptionType.None) return pushResult;
@@ -426,7 +426,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.ReturnData = returnData.ToArray();
+        vm.ReturnData = vm.TryPoolReturnData(returnData, out PooledReturnData? pooled) ? pooled : returnData.ToArray();
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.

@@ -49,7 +49,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumePrecompileGas(ref childGas, precompile, callData, spec))
         {
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.SetReturnDataBuffer(default);
             vm.ReturnData = null;
             result = stack.PushZero<TTracingInst>();
             return true;
@@ -59,7 +59,7 @@ public static partial class EvmInstructions
         {
             TGasPolicy.SetOutOfGas(ref childGas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.SetReturnDataBuffer(default);
             vm.ReturnData = null;
             result = stack.PushZero<TTracingInst>();
             return true;
@@ -70,7 +70,7 @@ public static partial class EvmInstructions
         TGasPolicy.Refund(ref gas, in childGas);
 
         ReadOnlyMemory<byte> outputData = output.Data;
-        vm.ReturnDataBuffer = outputData;
+        vm.SetReturnDataBuffer(outputData);
 
         int copyLength = outputData.Length;
         if (outputLength < (UInt256)copyLength)

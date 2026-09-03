@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -104,6 +105,8 @@ public partial class VirtualMachine<TGasPolicy>(
     private ICodeInfoRepository _codeInfoRepository;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
+    private byte[]? _pooledReturnDataBuffer;
+    private bool _poolReturnData;
     protected VmState<TGasPolicy> _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -114,7 +117,7 @@ public partial class VirtualMachine<TGasPolicy>(
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
-    public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
+    public ReadOnlyMemory<byte> ReturnDataBuffer => _returnDataBuffer;
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
@@ -166,6 +169,9 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
+        // Nested-call outputs may be recycled only when nothing outside the VM can hold on to them: RPC-style
+        // (cancelable) executions whose tracer neither reports actions nor return data.
+        _poolReturnData = txTracer.IsCancelable && !_isTracingActionsCached && !txTracer.IsTracingReturnData && !txTracer.IsTracingInstructions;
         _worldState = worldState;
 
         _shouldRestoreRipemdTouch = false;
@@ -189,7 +195,7 @@ public partial class VirtualMachine<TGasPolicy>(
             // For non-continuation frames, clear any previously stored return data.
             if (!_currentState.IsContinuation)
             {
-                ReturnDataBuffer = Array.Empty<byte>();
+                SetReturnDataBuffer(default);
             }
 
             Exception? failure;
@@ -386,21 +392,60 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 vm.DisposeActiveFrames(topLevel);
             }
+
+            vm.SetReturnDataBuffer(default);
         }
+    }
+
+    // Below this a fresh array is cheaper than a pool round trip; above it, nested-call outputs were the single
+    // largest allocation of a simulation-style eth_call.
+    private const int PooledReturnDataMinLength = 512;
+
+    /// <summary>
+    /// Replaces the return data visible to RETURNDATASIZE/RETURNDATACOPY and recycles the buffer it replaces when
+    /// that one was pooled.
+    /// </summary>
+    public void SetReturnDataBuffer(ReadOnlyMemory<byte> returnData, byte[]? pooledArray = null)
+    {
+        byte[]? previous = _pooledReturnDataBuffer;
+        _returnDataBuffer = returnData;
+        _pooledReturnDataBuffer = pooledArray;
+        if (previous is not null)
+        {
+            SafeArrayPool<byte>.Shared.Return(previous);
+        }
+    }
+
+    /// <summary>
+    /// Copies a nested frame's output into a pooled buffer when no tracer can retain it and the top-level result
+    /// (which outlives the execution) is not affected.
+    /// </summary>
+    internal bool TryPoolReturnData(ReadOnlyMemory<byte> returnData, [NotNullWhen(true)] out PooledReturnData? pooled)
+    {
+        if (!_poolReturnData || returnData.Length < PooledReturnDataMinLength || VmState.Env.CallDepth == 0 || VmState.ExecutionType.IsAnyCreate())
+        {
+            pooled = null;
+            return false;
+        }
+
+        byte[] array = SafeArrayPool<byte>.Shared.Rent(returnData.Length);
+        returnData.Span.CopyTo(array);
+        pooled = new PooledReturnData(array, returnData.Length);
+        return true;
     }
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ReadOnlySpan<byte> previousCallOutput)
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes.ToArray();
         _previousCallOutputDestination = UInt256.Zero;
-        ReturnDataBuffer = Array.Empty<byte>();
+        SetReturnDataBuffer(default);
         previousCallOutput = ReadOnlySpan<byte>.Empty;
     }
 
     protected ReadOnlySpan<byte> HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
         where TTracingInst : struct, IFlag
     {
-        ReturnDataBuffer = callResult.Output;
+        SetReturnDataBuffer(callResult.Output, callResult.PooledOutput);
         _previousCallResult = callResult.PrecompileSuccess.HasValue
             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
             : StatusCode.SuccessBytes;
@@ -574,7 +619,7 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlyMemory<byte> outputBytes = callResult.Output;
 
         // Set the return data buffer to the output bytes from the failed call.
-        ReturnDataBuffer = outputBytes;
+        SetReturnDataBuffer(outputBytes, callResult.PooledOutput);
 
         _previousCallResult = StatusCode.FailureBytes;
 
@@ -662,7 +707,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
-        ReturnDataBuffer = Array.Empty<byte>();
+        SetReturnDataBuffer(default);
         previousCallOutput = ReadOnlySpan<byte>.Empty;
 
         PopAndRestoreParentState();
@@ -790,7 +835,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _previousCallResult = null;
 
         // Reset the return data buffer to ensure no residual data persists across call frames.
-        ReturnDataBuffer = Array.Empty<byte>();
+        SetReturnDataBuffer(default);
 
         // Clear the previous call output, preparing for new output data in the next call frame.
         previousCallOutput = ReadOnlySpan<byte>.Empty;
@@ -847,7 +892,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
-        ReturnDataBuffer = Array.Empty<byte>();
+        SetReturnDataBuffer(default);
         previousCallOutput = ReadOnlySpan<byte>.Empty;
 
         PopAndRestoreParentState();

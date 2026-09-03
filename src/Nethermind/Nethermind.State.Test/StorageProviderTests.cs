@@ -62,15 +62,16 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
-    [Test]
+    // Returned per-contract states keep a table that grew moderately past the pooled capacity (512), so the
+    // next heavy call does not regrow it; only far larger tables are trimmed back.
+    [TestCase(1_024, false)]
+    [TestCase(4_096, true)]
     [NonParallelizable]
-    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
+    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned(int changeCount, bool trimmed)
     {
-        const int ChangeCount = 1_024;
-
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        for (int i = 0; i < ChangeCount; i++)
+        for (int i = 0; i < changeCount; i++)
         {
             provider.Set(new StorageCell(ctx.Address1, (UInt256)i), _values[1]);
         }
@@ -85,7 +86,7 @@ public class StorageProviderTests(bool useFlat)
         {
             Assert.That(capacityBeforeReturn, Is.GreaterThan(512));
             Assert.That(GetCapacity(blockChange), Is.GreaterThan(0));
-            Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReturn));
+            Assert.That(GetCapacity(blockChange), trimmed ? Is.LessThan(capacityBeforeReturn) : Is.EqualTo(capacityBeforeReturn));
         }
     }
 
@@ -96,20 +97,21 @@ public class StorageProviderTests(bool useFlat)
 
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        object[] collections =
+        (object Collection, int Oversized)[] collections =
         [
-            GetPrivateField(provider._stateProvider, "_intraTxCache"),
-            GetPrivateField(provider._stateProvider, "_committedThisRound"),
-            GetPrivateField(provider._stateProvider, "_nullAccountReads"),
-            GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
-            GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"),
-            GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
+            (GetPrivateField(provider._stateProvider, "_intraTxCache"), OversizedCapacity),
+            (GetPrivateField(provider._stateProvider, "_committedThisRound"), OversizedCapacity),
+            (GetPrivateField(provider._stateProvider, "_nullAccountReads"), OversizedCapacity),
+            // The original-value cache is allowed to stay large between calls; only a far larger table is trimmed.
+            (GetPrivateField(provider._persistentStorageProvider, "_originalValues"), PersistentStorageProvider.OriginalValuesTrimAboveCapacity + 1),
+            (GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"), OversizedCapacity),
+            (GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"), OversizedCapacity),
         ];
         int[] capacitiesBeforeReset = new int[collections.Length];
         for (int i = 0; i < collections.Length; i++)
         {
-            EnsureCapacity(collections[i], OversizedCapacity);
-            capacitiesBeforeReset[i] = GetCollectionCapacity(collections[i]);
+            EnsureCapacity(collections[i].Collection, collections[i].Oversized);
+            capacitiesBeforeReset[i] = GetCollectionCapacity(collections[i].Collection);
         }
 
         provider.Reset();
@@ -118,9 +120,9 @@ public class StorageProviderTests(bool useFlat)
         {
             for (int i = 0; i < collections.Length; i++)
             {
-                Assert.That(capacitiesBeforeReset[i], Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
-                Assert.That(GetCollectionCapacity(collections[i]), Is.GreaterThan(0));
-                Assert.That(GetCollectionCapacity(collections[i]), Is.LessThan(capacitiesBeforeReset[i]));
+                Assert.That(capacitiesBeforeReset[i], Is.GreaterThanOrEqualTo(collections[i].Oversized));
+                Assert.That(GetCollectionCapacity(collections[i].Collection), Is.GreaterThan(0));
+                Assert.That(GetCollectionCapacity(collections[i].Collection), Is.LessThan(capacitiesBeforeReset[i]));
             }
         }
     }

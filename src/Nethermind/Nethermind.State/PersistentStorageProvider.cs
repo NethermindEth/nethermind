@@ -50,9 +50,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
+    // Simulation-style calls read thousands of distinct slots; trimming the cache back to the default
+    // capacity after every call made the next call regrow it through several large-object-heap resizes.
+    internal const int OriginalValuesTrimAboveCapacity = 32768;
+    private const int OriginalValuesTrimToCapacity = 8192;
+
     private void EndOriginalsRound()
     {
-        _originalValues.ClearAndTrim();
+        _originalValues.ClearAndTrim(OriginalValuesTrimAboveCapacity, OriginalValuesTrimToCapacity);
         if (++_originalsRound == 0) _originalsRound = 1;
     }
 
@@ -691,6 +696,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
 
+        // A pooled contract state keeps a dictionary that grew moderately beyond the pooled capacity: trimming
+        // it back on every return allocates the smaller table and then regrows it on the next heavy call.
+        private const int RetainedCapacityMultiplier = 4;
+
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
@@ -700,7 +709,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _spare = null;
-            _dictionary.ClearAndTrim(capacity, capacity);
+            _dictionary.ClearAndTrim(capacity * RetainedCapacityMultiplier, capacity);
         }
         public void ClearAndSetMissingAsDefault()
         {

@@ -74,7 +74,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             if (child.NewAccountCharged)
                 CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
             child.Dispose();
-            ReturnDataBuffer = Array.Empty<byte>();
+            SetReturnDataBuffer(default);
             return stack.PushZero<TTracingInst>();
         }
 
@@ -94,7 +94,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
         }
 
-        ReturnDataBuffer = callResult.Output;
+        SetReturnDataBuffer(callResult.Output, callResult.PooledOutput);
         EvmExceptionType push = stack.PushBytes<TTracingInst>(
             (reverted ? StatusCode.FailureBytes : StatusCode.SuccessBytes).Span);
 
