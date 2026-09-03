@@ -581,21 +581,11 @@ public sealed class SnapshotBundle : IDisposable
         new FlatTrieWarmupSession(baseState, this, _trieNodeCache, trieWarmer, logManager);
 
     /// <summary>
-    /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
+    /// Leases the stable read-only bundle independently of the transient resource.
     /// </summary>
-    /// <remarks>
-    /// Warmer jobs race scope disposal by design; the managed fallout is caught in the warmer, but a read that is
-    /// already inside the persistence reader when the last lease is released would touch a freed native RocksDB
-    /// snapshot and crash the process. Holding a lease per in-flight traversal defers that release until the job ends.
-    /// </remarks>
-    /// <returns><c>false</c> when the bundle is already fully disposed; the caller must skip the traversal.</returns>
-    internal bool TryLeaseReadOnlyBundle() => _readOnlySnapshotBundle.TryLease();
-
+    /// <returns>The leased bundle, or <see langword="null"/> when this bundle is fully disposed.</returns>
     internal ReadOnlySnapshotBundle? TryLeaseReadOnlySnapshotBundle() =>
         _readOnlySnapshotBundle.TryLease() ? _readOnlySnapshotBundle : null;
-
-    /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
-    internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
