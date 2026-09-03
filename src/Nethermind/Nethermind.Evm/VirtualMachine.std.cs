@@ -19,7 +19,4 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
 
     public object ReturnData { get; set; }
-
-    protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 }

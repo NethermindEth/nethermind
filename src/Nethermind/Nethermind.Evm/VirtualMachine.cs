@@ -18,6 +18,8 @@ using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
 namespace Nethermind.Evm;
 
 using Int256;
@@ -1298,35 +1300,13 @@ public partial class VirtualMachine<TGasPolicy>(
         return new(EvmExceptionType.OutOfGas);
     }
 
-    /// <summary>
-    /// Runs the frame's bytecode through the build-specific dispatch loop, lifting fork-dependent opcode
-    /// availability into compile-time <see cref="IFlag"/> type arguments.
-    /// </summary>
+    /// <summary>Runs the frame's bytecode through the opcode dispatch loop.</summary>
     [SkipLocalsInit]
     private CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
-    {
-        IReleaseSpec spec = Spec;
-        return (spec.ShiftOpcodesEnabled, spec.IncludePush0Instruction) switch
-        {
-            (true, true) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OnFlag>(ref stack, ref gas),
-            (true, false) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OffFlag>(ref stack, ref gas),
-            (false, true) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OnFlag>(ref stack, ref gas),
-            (false, false) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OffFlag>(ref stack, ref gas),
-        };
-    }
-
-    [SkipLocalsInit]
-    private CallResult RunByteCodeCore<TTracingInst, TCancelable, TShift, TPush0>(
-        scoped ref EvmStack stack,
-        scoped ref TGasPolicy gas)
-        where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag
-        where TShift : struct, IFlag
-        where TPush0 : struct, IFlag
     {
         ReturnData = null;
 #if DEBUG
@@ -1336,7 +1316,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // May not be zero when resuming after a call.
         nint programCounter = VmState.ProgramCounter;
         EvmExceptionType exceptionType =
-            RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(ref stack, ref gas, ref programCounter);
+            RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {

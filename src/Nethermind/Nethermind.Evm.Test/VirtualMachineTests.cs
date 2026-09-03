@@ -57,6 +57,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Warm_up_opcode_handlers_does_not_throw() =>
+        Assert.That(
+            () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
+            Throws.Nothing);
+
+    [Test]
     public void Tail_call_opcode_table_dispatch_executes_maximum_length_code_without_growing_the_managed_stack()
     {
         byte[] code = new byte[CodeSizeConstants.MaxCodeSizeEip170];

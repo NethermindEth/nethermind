@@ -21,9 +21,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     // Poll cancellation every 1024 opcodes (low bits of the per-frame op counter).
     private const int CancellationCheckMask = 1023;
 
-    private struct ThreadedState
+    internal struct DispatchState
     {
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>* OpcodeHandlers;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>* OpcodeHandlers;
         public nint ProgramCounter;
         public int OpCodeCount;
         public int CallDepth;
@@ -33,28 +33,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[]
+        GetOpcodeHandlers<TTracingInst, TCancelable>()
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(Spec);
+
     private sealed unsafe class OpcodeTable
     {
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedNoTrace;
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedNoTraceCancelable;
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedTraced;
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedTracedCancelable;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[]? NoTrace;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[]? NoTraceCancelable;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[]? Traced;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[]? TracedCancelable;
 
-        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]
-            GetThreaded<TTracingInst, TCancelable>(IReleaseSpec spec)
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[]
+            GetHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
             where TTracingInst : struct, IFlag
             where TCancelable : struct, IFlag
         {
             if (TTracingInst.IsActive)
             {
                 return TCancelable.IsActive
-                    ? ThreadedTracedCancelable ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec)
-                    : ThreadedTraced ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec);
+                    ? TracedCancelable ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec)
+                    : Traced ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
             }
 
             return TCancelable.IsActive
-                ? ThreadedNoTraceCancelable ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec)
-                : ThreadedNoTrace ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec);
+                ? NoTraceCancelable ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec)
+                : NoTrace ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
         }
     }
 
@@ -62,27 +69,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
     /// <returns>The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts.</returns>
     [SkipLocalsInit]
-    private EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
+    private EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ref nint programCounter)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
-        where TShift : struct, IFlag
-        where TPush0 : struct, IFlag
     {
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        OpcodeTable opcodeTable = GetOpcodeTable();
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[] handlers =
-            opcodeTable.GetThreaded<TTracingInst, TCancelable>(Spec);
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>[] handlers =
+            GetOpcodeHandlers<TTracingInst, TCancelable>();
 
         // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every
         // bytecode read is preceded by a program-counter bounds check, and a byte is a valid table index.
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>* opcodeHandlers = &handlers[0])
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref DispatchState, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
-            ThreadedState state = new()
+            DispatchState state = new()
             {
                 OpcodeHandlers = opcodeHandlers,
                 ProgramCounter = programCounter,
@@ -102,12 +106,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvmExceptionType ExecuteThreadedOpcode<TOpcode, TTracingInst, TCancelable>(
+    private static EvmExceptionType ExecuteOpcode<TOpcode, TTracingInst, TCancelable>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref ThreadedState state)
-        where TOpcode : struct, IThreadedOpcode
+        ref DispatchState state)
+        where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -186,7 +190,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             TypeRef.Type<VirtualMachine<TGasPolicy>>(),
             TypeRef.Type<EvmStack>().MakeByRefType(),
             TypeRef.Type<TGasPolicy>().MakeByRefType(),
-            TypeRef.Type<ThreadedState>().MakeByRefType()));
+            TypeRef.Type<DispatchState>().MakeByRefType()));
         IL.Emit.Ret();
         throw IL.Unreachable();
     }
