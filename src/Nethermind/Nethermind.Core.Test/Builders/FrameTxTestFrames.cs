@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -26,6 +30,25 @@ public static class FrameTxTestFrames
     /// <summary>A secp256k1 entry of the right shape, carrying placeholder signature bytes.</summary>
     public static TxFrameSignature Secp256k1Signature(Address signer) =>
         new(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
+
+    /// <summary>Installs a single secp256k1 entry over <paramref name="tx"/>'s canonical signature hash.</summary>
+    /// <remarks>compute_sig_hash covers the entry's scheme, signer and msg, so a placeholder is installed and
+    /// replaced rather than returned for the caller to install.</remarks>
+    public static void SignSecp256k1(Transaction tx, PrivateKey key, Address? signer)
+    {
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx)));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, raw)];
+    }
+
+    /// <summary>A signature in the EIP-8141 <c>v || r || s</c> encoding, <c>v</c> being the 0/1 recovery id.</summary>
+    public static byte[] Secp256k1SignatureBytes(Signature signature)
+    {
+        byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        bytes[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(bytes.AsSpan(1));
+        return bytes;
+    }
 
     public static TxFrame SelfVerify(ulong gasLimit = 1_000) =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
