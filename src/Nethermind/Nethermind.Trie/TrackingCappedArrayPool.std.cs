@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
+#pragma warning disable NETH003 // Build variant: only one of TrackingCappedArrayPool.std.cs / TrackingCappedArrayPool.zkevm.cs is compiled per build
 /// <summary>
 /// Track every rented CappedArray<byte> and return them all at once
 /// </summary>

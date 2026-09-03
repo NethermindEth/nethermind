@@ -941,9 +941,25 @@ namespace Nethermind.Core.Extensions
                 data = data[i..];
             }
 
-            for (int i = 0; i < data.Length; i++)
+            // Word-at-a-time tail. This is the whole loop on targets without vector acceleration
+            // (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
+            // intrinsic gas calculation.
+            ref byte tail = ref MemoryMarshal.GetReference(data);
+            int offset = 0;
+            for (; offset <= data.Length - sizeof(ulong); offset += sizeof(ulong))
             {
-                if (data[i] == 0)
+                ulong word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref tail, offset));
+                // Sets 0x80 in every zero byte. The shorter `(w - 0x01..) & ~w & 0x80..` form is not
+                // usable here: it only reports whether *some* byte is zero, because a borrow out of
+                // one byte corrupts its neighbour's flag. This form carries within each byte only.
+                ulong zeroFlags = ~((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) | 0x7F7F7F7F7F7F7F7FUL);
+                // Sum the flags without PopCount, which lacks a hardware instruction on some targets.
+                totalZeros += (int)((zeroFlags >> 7) * 0x0101010101010101UL >> 56);
+            }
+
+            for (; offset < data.Length; offset++)
+            {
+                if (Unsafe.Add(ref tail, offset) == 0)
                 {
                     totalZeros++;
                 }

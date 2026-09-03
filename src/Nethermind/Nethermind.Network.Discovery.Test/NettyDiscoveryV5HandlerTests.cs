@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -13,6 +14,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
@@ -81,6 +83,26 @@ namespace Nethermind.Network.Discovery.Test
             {
                 ReferenceCountUtil.Release(packet);
             }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AddressNotAvailableSendFailureIsTraceOnly(bool traceEnabled)
+        {
+            TestLogger logger = new() { IsDebug = true, IsTrace = traceEnabled };
+            IChannel channel = Substitute.For<IChannel>();
+            channel.WriteAndFlushAsync(Arg.Any<object>())
+                .Returns(Task.FromException(new SocketException((int)SocketError.AddressNotAvailable)));
+            NettyDiscoveryV5Handler handler = new(new OneLoggerLogManager(new ILogger(logger)), channel);
+            IPEndPoint destination = new(IPAddress.Parse("2001:db8::1"), 30303);
+
+            Assert.ThrowsAsync<SocketException>(
+                async () => await handler.SendAsync([1, 2, 3], destination, CancellationToken.None));
+
+            if (traceEnabled)
+                Assert.That(logger.LogList, Has.Some.EqualTo($"TRACE/ERROR: Failed to send discv5 UDP packet to {destination}"));
+            else
+                Assert.That(logger.LogList, Is.Empty);
         }
 
         [Test]

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,9 +8,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-public class Hash256KademliaDistanceTests
+public class ValueHash256KademliaDistanceTests
 {
-    private static readonly Hash256KademliaDistance Distance = Hash256KademliaDistance.Instance;
+    private static readonly ValueHash256KademliaDistance Distance = ValueHash256KademliaDistance.Instance;
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000",
               "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -53,23 +53,23 @@ public class Hash256KademliaDistanceTests
               "0x000000000000000000000000000000000000000000000000000000000001000f", 17)]
     public void TestDistance(string hash1, string hash2, string xosString, int expectedDistance)
     {
-        Hash256 xor = XorDistance(new(hash1), new(hash2));
+        ValueHash256 xor = XorDistance(new(hash1), new(hash2));
         Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
-        Assert.That(Distance.CalculateLogDistance(new Hash256(hash1), new Hash256(hash2)), Is.EqualTo(expectedDistance));
-        Assert.That(Distance.CalculateLogDistance(new Hash256(hash2), new Hash256(hash1)), Is.EqualTo(expectedDistance));
+        Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)), Is.EqualTo(expectedDistance));
+        Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)), Is.EqualTo(expectedDistance));
     }
 
     [Test]
-    public void TestGetRandomHash()
+    public void RandomHashAtDistance_HasRequestedDistance()
     {
         Random rand = new(0);
-        Span<byte> randomizedBytes = stackalloc byte[Hash256.Size];
+        Span<byte> randomizedBytes = stackalloc byte[ValueHash256.MemorySize];
         rand.NextBytes(randomizedBytes);
-        Hash256 randomized = new(randomizedBytes);
+        ValueHash256 randomized = new(randomizedBytes);
 
         void TestForDistance(int distance)
         {
-            Hash256 randHash = Distance.GetRandomHashAtDistance(randomized, distance, rand);
+            ValueHash256 randHash = ValueHash256TestHelper.CreateRandomHashAtDistance(randomized, distance, rand);
             Assert.That(Distance.CalculateLogDistance(randomized, randHash), Is.EqualTo(distance));
         }
 
@@ -86,26 +86,57 @@ public class Hash256KademliaDistanceTests
 
     [TestCase(-1)]
     [TestCase(257)]
-    public void GetRandomHashAtDistance_ShouldRejectInvalidDistance(int distance)
+    public void RandomHashAtDistance_RejectsInvalidDistance(int distance)
     {
-        Hash256 hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Assert.That(() => Distance.GetRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
+        Assert.That(() => ValueHash256TestHelper.CreateRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
-    [TestCase]
+    [Test]
     public void TestDistanceCompare()
     {
-        Hash256 h1 = new("0x0010000000000000000000000000000000000000000000000000000000000000");
-        Hash256 h2 = new("0x0110000000000000000000000000000000000000000000000000000000000000");
-        Hash256 h3 = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 h1 = new("0x0010000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 h2 = new("0x0110000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 target = h2;
+        ValueHash256 bothNonZeroH2 = new("0x0012000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 bothNonZeroTarget = new("0x0011000000000000000000000000000000000000000000000000000000000000");
 
-        Assert.That(Distance.Compare(h1, h2, h3), Is.LessThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Distance.Compare(h1, h2, target), Is.GreaterThan(0));
+            Assert.That(Distance.Compare(h2, h1, target), Is.LessThan(0));
+            Assert.That(Distance.Compare(h1, h1, target), Is.Zero);
+            Assert.That(Distance.Compare(h1, bothNonZeroH2, bothNonZeroTarget), Is.LessThan(0));
+            Assert.That(Distance.Compare(bothNonZeroH2, h1, bothNonZeroTarget), Is.GreaterThan(0));
+        }
     }
 
-    private static Hash256 XorDistance(Hash256 left, Hash256 right)
+    [Test]
+    public void ValueHash_bit_operations_cover_the_full_key_space()
     {
-        Span<byte> result = stackalloc byte[Hash256.Size];
+        Assert.That(Distance.Zero, Is.EqualTo(default(ValueHash256)));
+
+        Span<byte> expectedBytes = stackalloc byte[ValueHash256.MemorySize];
+        for (int index = 0; index < Distance.MaxDistance; index++)
+        {
+            expectedBytes.Clear();
+            expectedBytes[index / 8] = (byte)(1 << (7 - (index % 8)));
+            ValueHash256 expected = new(expectedBytes);
+            ValueHash256 actual = Distance.SetBit(default, index);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That(Distance.GetBit(actual, index), Is.True);
+                Assert.That(Distance.CalculateLogDistance(default, actual), Is.EqualTo(Distance.MaxDistance - index));
+            }
+        }
+    }
+
+    private static ValueHash256 XorDistance(ValueHash256 left, ValueHash256 right)
+    {
+        Span<byte> result = stackalloc byte[ValueHash256.MemorySize];
         ReadOnlySpan<byte> leftBytes = left.Bytes;
         ReadOnlySpan<byte> rightBytes = right.Bytes;
         for (int i = 0; i < result.Length; i++)
@@ -113,6 +144,6 @@ public class Hash256KademliaDistanceTests
             result[i] = (byte)(leftBytes[i] ^ rightBytes[i]);
         }
 
-        return new Hash256(result);
+        return new ValueHash256(result);
     }
 }

@@ -25,7 +25,7 @@ namespace Nethermind.Core.Threading;
 /// existing slots). Reads are O(stripes) and torn only across slots: fine for metrics, not for
 /// invariants.
 /// </remarks>
-public sealed class StripedLong
+public sealed partial class StripedLong
 {
     // 16 longs = 128 bytes between live slots.
     private const int SlotStride = 16;

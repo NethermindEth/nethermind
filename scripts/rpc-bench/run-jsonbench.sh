@@ -39,6 +39,11 @@ JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-${CORPUS_DIR:-/data/expb-dat
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
 JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"   # k6 exits 0 even at 100% failures
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
+# A warm-up and the measured cell that follows it prepare the same tool twice. With true, a
+# preparation left by the previous invocation (same repo, ref and corpus file) is reused and this
+# one is left in place, so the measured cell — and a profile started just before it — begins within
+# seconds of the profilers instead of after a re-clone, image rebuild and corpus re-conversion.
+JB_REUSE_PREPARED="${JB_REUSE_PREPARED:-false}"
 CONTAINER_NAME="${JB_CONTAINER_NAME:-jsonbench-bench}"
 
 [[ -n "$JB_MODE" ]] || JB_MODE="$([[ -n "$REFERENCE_RPC_URL" ]] && echo compare || echo benchmark)"
@@ -64,41 +69,67 @@ mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 work="$SCRATCH_ROOT/jsonbench"
+tag_ref="${JB_REF//[^a-zA-Z0-9_.-]/-}"
+image_tag="jsonbench-runner:${tag_ref:0:24}"
+corpus_fixtures="$work/src/rpc-calls/corpus"
+
+# What a reusable preparation consists of; written last, so one that died halfway is never reused.
+prepared_marker="$work/prepared"
+reuse_prepared=false
+if [[ "$JB_REUSE_PREPARED" == "true" ]]; then
+  # Keyed on the commit the ref resolves to, not its name: a branch that moved upstream since a hard-cancelled
+  # job left a marker behind would otherwise match both the marker and the image tag (derived from the same
+  # name) and be reused silently. ls-remote lists nothing for a raw commit sha, which is already exact.
+  resolved_ref="$(GIT_TERMINAL_PROMPT=0 git ls-remote "$JB_REPO" "$JB_REF" | awk 'NR == 1 { print $1 }')" \
+    || die "failed to reach $JB_REPO to resolve $JB_REF"
+  prepared_id="$JB_REPO@${resolved_ref:-$JB_REF}"
+  # Size and mtime rather than a digest: corpora are swapped, not edited in place, and hashing one costs about
+  # as much as converting it.
+  [[ "$JB_ETH_CALL_CORPUS" != "true" ]] || prepared_id+=" corpus=$(realpath -e -- "$JB_ETH_CALL_CORPUS_FILE") $(stat -c '%s %Y' -- "$JB_ETH_CALL_CORPUS_FILE")"
+  if [[ -f "$prepared_marker" && "$(cat "$prepared_marker")" == "$prepared_id" ]] \
+      && docker image inspect "$image_tag" >/dev/null 2>&1 \
+      && [[ "$JB_ETH_CALL_CORPUS" != "true" || -s "$corpus_fixtures/classes.json" ]]; then
+    reuse_prepared=true
+    log "Reusing the json-bench checkout, runner image and fixture prepared by the previous invocation ($prepared_id)"
+  fi
+fi
+# Only the previous outputs go: a leftover summary.json would be published as this run's.
 as_root rm -rf "$work/io"
 mkdir -p "$work/io/out"
 
-# A sweep calls this script once per cell, so re-fetching the tool per cell cost ~100 authenticated
-# fetches of a private repo per run, which the server eventually refuses mid-sweep. Reuse a checkout
-# already parked at the requested commit, restored to pristine (cells write fixtures under it).
-# A non-sha ref cannot be compared this way and still re-fetches, as before.
-parked_head="$(git -C "$work/src" rev-parse HEAD 2>&1 || true)"
-if [[ "$parked_head" == "$JB_REF" ]]; then
-  log "Reusing the $JB_REPO@$JB_REF checkout at $work/src"
-  git -C "$work/src" clean -qfdx || die "failed to restore the json-bench checkout to a pristine state"
-else
-  log "Cloning $JB_REPO@$JB_REF (parked checkout: ${parked_head:-none})..."
-  as_root rm -rf "$work/src"
-  git init -q "$work/src"
-  git -C "$work/src" remote add origin "$JB_REPO"
-  # Anonymous fetches from github.com get throttled with a 401 partway through a sweep; the job token
-  # reads public repos without that limit, and a transient failure is retried before the cell is lost.
-  fetch_auth=()
-  [[ -n "${GH_TOKEN:-}" ]] && fetch_auth=(-c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)")
-  fetched=false
-  for attempt in 1 2 3; do
-    if GIT_TERMINAL_PROMPT=0 git "${fetch_auth[@]+"${fetch_auth[@]}"}" -C "$work/src" fetch -q --depth 1 origin "$JB_REF"; then fetched=true; break; fi
-    log "fetch attempt $attempt of $JB_REF failed; retrying in $((attempt * 5))s"
-    sleep $((attempt * 5))
-  done
-  [[ "$fetched" == "true" ]] || die "failed to fetch $JB_REF from $JB_REPO"
-  git -C "$work/src" checkout -q FETCH_HEAD
+if [[ "$reuse_prepared" != "true" ]]; then
+  rm -f "$prepared_marker"
+  # A sweep calls this script once per cell, so re-fetching the tool per cell cost ~100 authenticated
+  # fetches of a private repo per run, which the server eventually refuses mid-sweep. Reuse a checkout
+  # already parked at the requested commit, restored to pristine (cells write fixtures under it).
+  # A non-sha ref cannot be compared this way and still re-fetches, as before.
+  parked_head="$(git -C "$work/src" rev-parse HEAD 2>&1 || true)"
+  if [[ "$parked_head" == "$JB_REF" ]]; then
+    log "Reusing the $JB_REPO@$JB_REF checkout at $work/src"
+    git -C "$work/src" clean -qfdx || die "failed to restore the json-bench checkout to a pristine state"
+  else
+    log "Cloning $JB_REPO@$JB_REF (parked checkout: ${parked_head:-none})..."
+    as_root rm -rf "$work/src"
+    git init -q "$work/src"
+    git -C "$work/src" remote add origin "$JB_REPO"
+    # Anonymous fetches from github.com get throttled with a 401 partway through a sweep; the job token
+    # reads public repos without that limit, and a transient failure is retried before the cell is lost.
+    fetch_auth=()
+    [[ -n "${GH_TOKEN:-}" ]] && fetch_auth=(-c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)")
+    fetched=false
+    for attempt in 1 2 3; do
+      if GIT_TERMINAL_PROMPT=0 git "${fetch_auth[@]+"${fetch_auth[@]}"}" -C "$work/src" fetch -q --depth 1 origin "$JB_REF"; then fetched=true; break; fi
+      log "fetch attempt $attempt of $JB_REF failed; retrying in $((attempt * 5))s"
+      sleep $((attempt * 5))
+    done
+    [[ "$fetched" == "true" ]] || die "failed to fetch $JB_REF from $JB_REPO"
+    git -C "$work/src" checkout -q FETCH_HEAD
+  fi
+  runner_dockerfile="$work/src/runner/Dockerfile"
+  [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
+  log "Building $image_tag from runner/Dockerfile..."
+  docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null || die "failed to build the json-bench runner image"
 fi
-runner_dockerfile="$work/src/runner/Dockerfile"
-[[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
-tag_ref="${JB_REF//[^a-zA-Z0-9_.-]/-}"
-image_tag="jsonbench-runner:${tag_ref:0:24}"
-log "Building $image_tag from runner/Dockerfile..."
-docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null || die "failed to build the json-bench runner image"
 
 clients_yaml="$work/io/clients.yaml"
 {
@@ -137,10 +168,14 @@ if [[ "$JB_MODE" == "benchmark" ]]; then
   fi
   corpus_dir=""
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
-    corpus_dir="$work/src/rpc-calls/corpus"
-    mkdir -p "$corpus_dir"
-    log "Splitting eth_call corpus $(basename "$JB_ETH_CALL_CORPUS_FILE") into selector-class fixtures (contents stay on this machine)..."
-    python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_dir" || die "failed to convert the eth_call corpus"
+    corpus_dir="$corpus_fixtures"
+    if [[ "$reuse_prepared" == "true" ]]; then
+      log "Reusing the eth_call corpus fixtures prepared by the previous invocation"
+    else
+      mkdir -p "$corpus_dir"
+      log "Splitting eth_call corpus $(basename "$JB_ETH_CALL_CORPUS_FILE") into selector-class fixtures (contents stay on this machine)..."
+      python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_dir" || die "failed to convert the eth_call corpus"
+    fi
   fi
   JB_SRC_BENCH="$src_bench" JB_PRIMARY_LABEL="$LABEL" JB_REF_LABEL="${REFERENCE_RPC_URL:+$REFERENCE_LABEL}" \
   JB_CORPUS_CLASSES="${corpus_dir:+$corpus_dir/classes.json}" \
@@ -192,6 +227,7 @@ PY
   bench_cfg="/io/benchmark.yaml"
 fi
 
+[[ "$JB_REUSE_PREPARED" != "true" ]] || printf '%s\n' "$prepared_id" > "$prepared_marker"
 chmod -R a+rwX "$work/io"   # the runner image runs as uid 1001
 read -ra extra_args_arr <<< "$JB_EXTRA_ARGS"
 docker_common=(--rm --name "$CONTAINER_NAME" --network host -w /jb -v "$work/src:/jb:ro" -v "$work/io:/io")
@@ -233,7 +269,9 @@ elif [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   docker run "${docker_common[@]}" "$image_tag" benchmark \
     --config "$bench_cfg" --clients /io/clients.yaml --output /io/out \
     ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 || tool_failed=1
-  rm -rf "$corpus_dir"
+  # Kept for the next invocation under JB_REUSE_PREPARED, which stretches the retention window for the converted
+  # call bodies from "until the tool exits" to "until job cleanup" (cleanup.sh wipes scratch, and runs if: always()).
+  [[ "$JB_REUSE_PREPARED" == "true" ]] || rm -rf "$corpus_dir"
   [[ "$tool_failed" == "0" ]] || die "json-bench exited non-zero — tool log retained on the runner at $work/jsonbench-tool.log"
 else
   html=()

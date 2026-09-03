@@ -180,7 +180,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         Substitute.For<IGossipPolicy>(),
                         LimboLogs.Instance);
 
-                    StatusMessage statusMessage = new();
+                    StatusMessage statusMessage = new()
+                    {
+                        BestHash = Keccak.Zero,
+                        GenesisHash = Keccak.Zero
+                    };
                     Packet statusPacket =
                         new("eth", Eth62MessageCode.Status, _statusMessageSerializer.Serialize(statusMessage));
                     _protocolHandler.HandleMessage(statusPacket);

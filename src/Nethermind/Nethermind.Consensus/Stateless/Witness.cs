@@ -41,7 +41,7 @@ public static class WitnessExtensions
             foreach (byte[] stateElement in witness.State)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                db.PutSpan(hash, stateElement);
+                db.Set(hash, stateElement);
             }
 
             return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
@@ -53,7 +53,7 @@ public static class WitnessExtensions
             foreach (byte[] code in witness.Codes)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
-                db.PutSpan(hash, code);
+                db.Set(hash, code);
             }
 
             return db;
