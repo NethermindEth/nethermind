@@ -93,7 +93,7 @@ public sealed class PrecompileCaches
         {
             if (logger.IsWarn)
             {
-                logger.Warn($"Precompile result caching is effectively off: the budget leaves {partitionSize / 1024} KB per precompile. "
+                logger.Warn($"The per-block tier of the precompile result cache is effectively off: the budget leaves {partitionSize / 1024} KB per precompile. "
                     + $"Raise {nameof(IBlocksConfig.PrecompileCacheMaxKilobytes)}, or set it to -1 to disable caching explicitly.");
             }
         }
@@ -158,8 +158,8 @@ public sealed class PrecompileCaches
 
     /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>
     /// <remarks>
-    /// Admission stops at the limit instead of evicting: the worst case is that caching stops helping for the
-    /// rest of the block, which is the behaviour of not caching at all.
+    /// Admission stops at the limit instead of evicting: once a partition is full, the per-block tier stops
+    /// helping for the rest of the block and lookups fall back to the surviving tier.
     /// </remarks>
     public sealed class Partition
     {
@@ -193,29 +193,33 @@ public sealed class PrecompileCaches
         public bool TryGet(in Key key, out Result<byte[]> result) =>
             _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
 
-        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
+        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/> </summary>
         /// <remarks> Reserves before checking, so a concurrent reservation near the limit can refuse an entry the partition had room for. </remarks>
         public bool TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
 
+            // we need to rebuild the key with data copy as the data can be changed by VM processing
+            // effective-input bounds are expected to remain the same
+            Key copiedKey = key.WithCopiedData();
+
+            // always populate surviving tier LRU
+            if (entryBytes <= MaxSurvivingEntryBytes) _survivingCache.Set(copiedKey, result);
+
+            // add to block tier only if enough space
             if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 return false;
             }
 
-            // we need to rebuild the key with data copy as the data can be changed by VM processing
-            // effective-input bounds are expected to remain the same
-            Key copiedKey = key.WithCopiedData();
             if (!_entries.TryAdd(copiedKey, result))
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 return false;
             }
 
-            if (entryBytes <= MaxSurvivingEntryBytes) _survivingCache.Set(copiedKey, result);
             return true;
         }
 
