@@ -119,8 +119,7 @@ public class FrameTxMempoolDosMeasurement
     {
         ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190, Groth16Failure.RevertsProofInvalid),
         ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 299_256, Groth16Failure.RevertsProofInvalid),
-        // The result key records the actual ceiling; sweep-500k is the generator's artifact name.
-        ["groth16-510k"] = new Groth16Sweep("sweep-500k", 510_000, 501_141, Groth16Failure.RevertsProofInvalid),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 494_586, Groth16Failure.RevertsProofInvalid),
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
@@ -142,7 +141,7 @@ public class FrameTxMempoolDosMeasurement
 
     private static IEnumerable<TestCaseData> Groth16Cases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-510k", "groth16-soispoke" })
+        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
         {
             yield return new TestCaseData(shape);
         }
@@ -316,9 +315,7 @@ public class FrameTxMempoolDosMeasurement
         nonEvmMicros.Sort();
 
         Emit($"case=frame_reject shape={shape} verify_gas={_frameExecutionGasLimit} "
-             + (isGroth16
-                 ? $"pairing_call_gas={_lastPairingCallGas} fits_500k={(sweep.ExpectedFrameGas <= Ceiling500k ? "yes" : "no")} "
-                 : "")
+             + (isGroth16 ? $"pairing_call_gas={_lastPairingCallGas} " : "")
              + $"frame_gas_available={gas.Available} frame_gas_burned={gas.Burned} frame_ops={gas.Ops} samples={Samples} "
              + $"submit_p50_us={Percentile(submitMicros, 0.50):F1} "
              + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} "
