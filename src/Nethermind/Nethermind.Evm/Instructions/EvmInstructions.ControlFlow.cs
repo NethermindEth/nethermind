@@ -97,8 +97,9 @@ public static partial class EvmInstructions
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
-        if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
-        SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, ref programCounter);
+        nint destination = JumpDestination(result, vm.VmState.Env);
+        if (destination < 0) goto InvalidJumpDestination;
+        programCounter = SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination);
         // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
         PrefetchCodeAtDestination(ref stack, programCounter);
 
@@ -155,8 +156,9 @@ public static partial class EvmInstructions
         if (isOverflow) goto StackUnderflow;
         if (shouldJump)
         {
-            if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
-            SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, ref programCounter);
+            nint destination = JumpDestination(result, vm.VmState.Env);
+            if (destination < 0) goto InvalidJumpDestination;
+            programCounter = SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination);
             // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
         }
@@ -169,8 +171,9 @@ public static partial class EvmInstructions
         return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
     }
 
+    /// <summary>Charges the landed-on <c>JUMPDEST</c> and steps past it, returning the counter.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, ref nint programCounter)
+    private static nint SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
     {
@@ -181,6 +184,8 @@ public static partial class EvmInstructions
             TGasPolicy.Consume<JumpDestGasCost>(ref gas);
             programCounter++;
         }
+
+        return programCounter;
     }
 
     [SkipLocalsInit]
@@ -364,33 +369,18 @@ public static partial class EvmInstructions
     /// <c>true</c> if the destination is valid and the program counter is updated; otherwise, <c>false</c>.
     /// </returns>
     [SkipLocalsInit]
-    private static bool Jump(in UInt256 jumpDestination, ref nint programCounter, ExecutionEnvironment env)
-    {
-        // Check if the jump destination exceeds the maximum allowed integer value.
-        if (jumpDestination > int.MaxValue)
-        {
-            return false;
-        }
+    /// <summary>Validates a jump destination, returning it, or <c>-1</c> when it is not a jump marker.</summary>
+    /// <remarks>
+    /// The destination is returned rather than written through a reference so the caller's counter stays in
+    /// a register: taking its address pins it to a stack slot for the whole of the calling instruction.
+    /// </remarks>
+    private static nint JumpDestination(in UInt256 jumpDestination, ExecutionEnvironment env) =>
+        // Above int.MaxValue no destination can be a jump marker, and the low limb would not hold it.
+        jumpDestination > int.MaxValue ? -1 : JumpDestination((int)jumpDestination.u0, env);
 
-        // Extract the jump destination from the lowest limb of the UInt256.
-        return Jump((int)jumpDestination.u0, ref programCounter, env);
-    }
-
-    private static bool Jump(int jumpDestination, ref nint programCounter, ExecutionEnvironment env)
-    {
-        // Validate that the jump destination corresponds to a valid jump marker in the code.
-        if (!env.CodeInfo.ValidateJump(jumpDestination))
-        {
-            return false;
-        }
-        else
-        {
-            // Update the program counter to the valid jump destination.
-            programCounter = jumpDestination;
-        }
-
-        return true;
-    }
+    /// <inheritdoc cref="JumpDestination(in UInt256, ExecutionEnvironment)"/>
+    private static nint JumpDestination(int jumpDestination, ExecutionEnvironment env) =>
+        env.CodeInfo.ValidateJump(jumpDestination) ? jumpDestination : -1;
 
     /// <summary>
     /// Prefetches the cache line at the given program counter location.
