@@ -440,10 +440,19 @@ public class FrameTxFloodMeasurement
     public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("signature-stuffed", ceiling, offeredRate);
 
-    /// <summary>Pairs the arm above with the node's admission budget left on, pricing the mitigation.</summary>
+    /// <summary>Pairs each arm above with the node's admission budget left on, pricing the mitigation.</summary>
     [TestCaseSource(nameof(CeilingRateCases))]
     public async Task Block_processing_delay_under_admission_flood_with_shedding(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("keccak-wide", ceiling, offeredRate, shedding: true);
+
+    [TestCaseSource(nameof(Groth16RateCases))]
+    public async Task Block_processing_delay_under_admission_flood_groth16_with_shedding(string shape, int offeredRate) =>
+        await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate, shedding: true);
+
+    /// <summary>Signature failures are refused before the simulator, so this arm must shed nothing.</summary>
+    [TestCaseSource(nameof(CeilingRateCases))]
+    public async Task Block_processing_delay_under_admission_flood_signature_stuffed_with_shedding(ulong ceiling, int offeredRate) =>
+        await MeasureFloodDelay("signature-stuffed", ceiling, offeredRate, shedding: true);
 
     private async Task MeasureFloodDelay(string shape, ulong ceiling, int offeredRate, bool shedding = false)
     {
