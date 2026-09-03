@@ -49,10 +49,16 @@ public class SlotsAndProofsTests
     }
 
     [Test]
-    public void Dispose_with_null_fields_does_not_throw()
+    public void Null_fields_are_normalized_to_empty_owned_lists()
     {
         SlotsAndProofs sut = new() { PathsAndSlots = null!, Proofs = null };
-        Assert.DoesNotThrow(sut.Dispose);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sut.PathsAndSlots, Is.Empty);
+            Assert.That(sut.Proofs, Is.Empty);
+            Assert.DoesNotThrow(sut.Dispose);
+        }
     }
 
     private sealed class TrackingOwnedList(Action onDispose) : IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>

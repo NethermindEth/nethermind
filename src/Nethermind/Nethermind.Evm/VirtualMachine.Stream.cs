@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -430,6 +431,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return new CallResult(ReturnDataBuffer, null);
 
     Revert:
+        Debug.Assert(ReturnData is byte[], "REVERT must provide return data.");
         return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
 
     OutOfGas:

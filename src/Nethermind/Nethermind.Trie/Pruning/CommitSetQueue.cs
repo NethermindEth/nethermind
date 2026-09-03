@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -39,37 +40,52 @@ public class CommitSetQueue
         }
     }
 
+    internal bool TryGetBounds(out ulong minBlockNumber, out ulong maxBlockNumber)
+    {
+        lock (_queue)
+        {
+            if (_queue.Min is not { } min || _queue.Max is not { } max)
+            {
+                minBlockNumber = default;
+                maxBlockNumber = default;
+                return false;
+            }
+
+            minBlockNumber = min.BlockNumber;
+            maxBlockNumber = max.BlockNumber;
+            return true;
+        }
+    }
+
     public void Enqueue(BlockCommitSet set)
     {
         lock (_queue) _queue.Add(set);
     }
 
-    public bool TryPeek(out BlockCommitSet? blockCommitSet)
+    public bool TryPeek([NotNullWhen(true)] out BlockCommitSet? blockCommitSet)
     {
         lock (_queue)
         {
-            if (_queue.Count == 0)
+            blockCommitSet = _queue.Min;
+            if (blockCommitSet is null)
             {
-                blockCommitSet = null;
                 return false;
             }
 
-            blockCommitSet = _queue.Min;
             return true;
         }
     }
 
-    public bool TryDequeue(out BlockCommitSet? blockCommitSet)
+    public bool TryDequeue([NotNullWhen(true)] out BlockCommitSet? blockCommitSet)
     {
         lock (_queue)
         {
-            if (_queue.Count == 0)
+            blockCommitSet = _queue.Min;
+            if (blockCommitSet is null)
             {
-                blockCommitSet = null;
                 return false;
             }
 
-            blockCommitSet = _queue.Min;
             _queue.Remove(blockCommitSet);
             return true;
         }
@@ -95,9 +111,8 @@ public class CommitSetQueue
         lock (_queue)
         {
             ArrayPoolListRef<BlockCommitSet> result = new();
-            while (_queue.Count > 0)
+            while (_queue.Min is { } min)
             {
-                BlockCommitSet min = _queue.Min;
                 if (min.BlockNumber > blockNumber) break;
                 result.Add(min);
                 _queue.Remove(min);

@@ -12,7 +12,8 @@ namespace Nethermind.Evm;
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private static long _txCount;
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] _opcodeMethods;
+    // Initialized by PrepareOpcodes before either interpreter can dispatch an opcode.
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] _opcodeMethods = null!;
 
     // Per-spec opcode dispatch tables; only a handful of specs are ever active (at head, the current and
     // next fork). std-only: the zkEVM guest runs a single fork and caches in plain statics (see .zkevm).
@@ -26,7 +27,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     // process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
 
-    public object ReturnData { get; set; }
+    public object? ReturnData { get; set; }
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {

@@ -492,6 +492,43 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_NullStorageCacheEntry_FallsBackToBackingTree()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storage.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        StorageCell cell = new(TestItem.AddressA, 1);
+        caches.StorageCache.Set(in cell, null);
+        LocalMetrics metrics = new();
+        PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+
+        using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, metrics);
+        byte[] value = readScope.CreateStorageTree(TestItem.AddressA).Get(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(new byte[] { 10, 20 }));
+            Assert.That(metrics.PreBlockStorageHits, Is.Zero);
+            Assert.That(metrics.PreBlockStorageMisses, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Test_PopulatorStorageCapture_SkipsBackingReadWithoutCachingSpeculativeValue()
     {
         using Context ctx = new(useFlat);

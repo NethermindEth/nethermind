@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,8 +37,10 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 
     public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
     {
+        Hash256 rootHash = range.RootHash
+            ?? throw new InvalidOperationException("A storage range request must have a root hash before it is dispatched.");
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proof) = snapServer.GetStorageRanges(
-            range.RootHash,
+            rootHash,
             range.Accounts,
             range.StartingHash,
             range.LimitHash,
@@ -47,7 +50,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         return Task.FromResult(new SlotsAndProofs()
         {
             PathsAndSlots = slots,
-            Proofs = proof!,
+            Proofs = proof ?? EmptyByteArrayList.Instance,
         });
     }
 
@@ -63,17 +66,23 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         for (int i = 0; i < request.Paths.Count; i++)
         {
             AccountWithStorageStartingHash path = request.Paths[i];
-            groups[i] = new PathGroup { Group = [path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes] };
+            PathWithAccount pathAndAccount = path.PathAndAccount
+                ?? throw new InvalidOperationException("An account refresh request must have an account path before it is dispatched.");
+            groups[i] = new PathGroup { Group = [pathAndAccount.Path.Bytes.ToArray(), _emptyBytes] };
         }
 
         using RlpPathGroupList encoded = PathGroup.EncodeToRlpPathGroupList(groups);
-        IByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
-        return Task.FromResult(res!);
+        Hash256 rootHash = request.RootHash
+            ?? throw new InvalidOperationException("An account refresh request must have a root hash before it is dispatched.");
+        IByteArrayList? res = snapServer.GetTrieNodes(encoded, rootHash, token);
+        return Task.FromResult(res ?? EmptyByteArrayList.Instance);
     }
 
     public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
-        IByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-        return Task.FromResult(res!);
+        Hash256 rootHash = request.RootHash
+            ?? throw new InvalidOperationException("A trie nodes request must have a root hash before it is dispatched.");
+        IByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, rootHash, token);
+        return Task.FromResult(res ?? EmptyByteArrayList.Instance);
     }
 }
