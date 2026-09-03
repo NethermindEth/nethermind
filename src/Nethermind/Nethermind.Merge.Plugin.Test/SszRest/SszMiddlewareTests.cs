@@ -377,6 +377,105 @@ public class SszMiddlewareTests
         await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
     }
 
+    [Test]
+    public async Task GetBlobsV4_accepts_indices_with_fewer_set_bits_than_hashes()
+    {
+        Hash256[] requestHashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE];
+        System.Collections.BitArray indices = new(BlobCellMask.CellCount);
+        indices.Set(0, true);
+        indices.Set(2, true);
+        indices.Set(4, true);
+
+        byte[][]? forwardedHashes = null;
+        System.Collections.BitArray? forwardedIndices = null;
+        _engineModule.engine_getBlobsV4(
+                Arg.Do<byte[][]>(h => forwardedHashes = h),
+                Arg.Do<System.Collections.BitArray>(i => forwardedIndices = i))
+            .Returns(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(new BlobCellsAndProofs?[requestHashes.Length]));
+
+        byte[] body = GetBlobsV4RequestWire.Encode(new GetBlobsV4RequestWire
+        {
+            BlobVersionedHashes = requestHashes,
+            IndicesBitarray = indices
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs/v4", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
+        Assert.That(forwardedHashes, Is.Not.Null);
+        Assert.That(forwardedIndices, Is.Not.Null);
+        GetBlobsV4ResponseWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out GetBlobsV4ResponseWire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forwardedHashes!, Is.EqualTo(requestHashes.Select(h => h.Bytes.ToArray()).ToArray()),
+                "hashes must reach the engine verbatim");
+            Assert.That(BitsEqual(forwardedIndices!, indices), Is.True,
+                "indices must reach the engine verbatim");
+            Assert.That(decoded.Entries, Has.Length.EqualTo(requestHashes.Length),
+                "the encoder must emit exactly one entry per engine-result element");
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_response_entries_mirror_request_with_unavailable_entries()
+    {
+        System.Collections.BitArray indices = new(BlobCellMask.CellCount);
+        indices.Set(0, true);
+
+        BlobCellsAndProofs available = new()
+        {
+            Available = true,
+            BlobCells = [new byte[SszBlobCell.BlobCellLength]],
+            Proofs = [new byte[SszKzgCommitment.KzgCommitmentLength]],
+            RequestedMask = BlobCellMask.FromIndices([0])
+        };
+
+        _engineModule.engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>())
+            .Returns(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(new BlobCellsAndProofs?[] { available, null }));
+
+        byte[] body = GetBlobsV4RequestWire.Encode(new GetBlobsV4RequestWire
+        {
+            BlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
+            IndicesBitarray = indices
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs/v4", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        GetBlobsV4ResponseWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out GetBlobsV4ResponseWire decoded);
+        BlobV4EntryWire[]? entries = decoded.Entries;
+        Assert.That(entries, Has.Length.EqualTo(2),
+            "the encoder must emit exactly one entry per engine-result element");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries![0].Available, Is.True);
+            Assert.That(entries[1].Available, Is.False, "missing blob surfaces as available=false, not a dropped entry");
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_truncated_body_returns_400_decode_error_without_reaching_engine()
+    {
+        byte[] body = GetBlobsV4RequestWire.Encode(new GetBlobsV4RequestWire
+        {
+            BlobVersionedHashes = [TestItem.KeccakA],
+            IndicesBitarray = new System.Collections.BitArray(BlobCellMask.CellCount)
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs/v4", body[..^1]);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest),
+            "a malformed V4 body is a 400 ssz-decode-error like on every other SSZ endpoint");
+        Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("ssz-decode-error"));
+        await _engineModule.DidNotReceive().engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
+    }
+
     private static readonly TestCaseData[] BodiesByHashRoutingCases =
     [
         new TestCaseData(EngineApiVersions.PayloadBodiesByHash.V1, "shanghai").SetName("BodiesByHash_shanghai_routes_to_V1"),
