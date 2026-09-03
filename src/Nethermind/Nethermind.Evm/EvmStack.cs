@@ -48,7 +48,13 @@ public ref partial struct EvmStack
     private readonly ITxTracer _tracer;
     private readonly ref byte _stack;
     internal readonly ref byte Code;
-    public int Head;
+    /// <summary>The index of the next free stack slot.</summary>
+    /// <remarks>
+    /// Native width for the same reason as <see cref="CodeLength"/>, and more so: this is read and
+    /// written by every push and pop, and the zkEVM guest bills a 4-byte read-modify-write at roughly
+    /// ten times an aligned one. It occupies padding the struct already had, so nothing grows.
+    /// </remarks>
+    public nint Head;
     /// <summary>The length of <see cref="Code"/>.</summary>
     /// <remarks>
     /// Native width rather than <see cref="int"/>: the dispatch tests the program counter against it on
@@ -1560,7 +1566,7 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopLimbo()
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return false;
@@ -1583,7 +1589,7 @@ public ref partial struct EvmStack
     {
         Unsafe.SkipInit(out result);
         ref byte baseRef = ref _stack;
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return false;
@@ -1628,8 +1634,8 @@ public ref partial struct EvmStack
         Unsafe.SkipInit(out a);
         Unsafe.SkipInit(out b);
 
-        int head = Head;
-        int newHead = head - 2;
+        nint head = Head;
+        nint newHead = head - 2;
         if (newHead < 0)
         {
             return false;
@@ -1689,8 +1695,8 @@ public ref partial struct EvmStack
         Unsafe.SkipInit(out b);
         Unsafe.SkipInit(out c);
 
-        int head = Head;
-        int newHead = head - 3;
+        nint head = Head;
+        nint newHead = head - 3;
         if (newHead < 0)
         {
             return false;
@@ -1760,8 +1766,8 @@ public ref partial struct EvmStack
         Unsafe.SkipInit(out c);
         Unsafe.SkipInit(out d);
 
-        int head = Head;
-        int newHead = head - 4;
+        nint head = Head;
+        nint newHead = head - 4;
         if (newHead < 0)
         {
             return false;
@@ -1823,7 +1829,7 @@ public ref partial struct EvmStack
     public readonly bool PeekUInt256IsZero()
     {
         ref byte baseRef = ref _stack;
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return false;
@@ -1836,7 +1842,7 @@ public ref partial struct EvmStack
     public readonly ref byte PeekBytesByRef()
     {
         ref byte baseRef = ref _stack;
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return ref Unsafe.NullRef<byte>();
@@ -1846,7 +1852,7 @@ public ref partial struct EvmStack
 
     public readonly Span<byte> PeekWord256()
     {
-        int head = Head;
+        nint head = Head;
         if (head-- == 0)
         {
             ThrowEvmStackUnderflowException();
@@ -1857,7 +1863,7 @@ public ref partial struct EvmStack
 
     public Address? PopAddress()
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0) return null;
         Head = head;
         return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
@@ -1868,7 +1874,7 @@ public ref partial struct EvmStack
     /// </summary>
     public Address? PopAddress(PoppedAddressCache cache)
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0) return null;
         Head = head;
         return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
@@ -1876,7 +1882,7 @@ public ref partial struct EvmStack
 
     public bool PopAddress(out Address address)
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             address = null;
@@ -1988,7 +1994,7 @@ public ref partial struct EvmStack
     public bool PopUInt256AndWord256(out UInt256 a, out Span<byte> word)
     {
         Unsafe.SkipInit(out a);
-        int newHead = Head - 2;
+        nint newHead = Head - 2;
         if (newHead < 0)
         {
             word = default;
@@ -2003,7 +2009,7 @@ public ref partial struct EvmStack
 
     public bool PopWord256(out Span<byte> word)
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             word = default;
@@ -2016,7 +2022,7 @@ public ref partial struct EvmStack
 
     public int PopByte()
     {
-        int head = Head;
+        nint head = Head;
         if (head == 0) goto Underflow;
 
         Head = head - 1;
@@ -2033,7 +2039,7 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryPopSmallIndex(out uint value)
     {
-        int head = Head;
+        nint head = Head;
         if (head == 0)
         {
             value = 0;
@@ -2084,7 +2090,7 @@ public ref partial struct EvmStack
     public EvmExceptionType Dup<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
-        int head = Head;
+        nint head = Head;
         if (head < depth)
         {
             return EvmExceptionType.StackUnderflow;
@@ -2118,7 +2124,7 @@ public ref partial struct EvmStack
     public readonly EvmExceptionType Swap<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
-        int head = Head;
+        nint head = Head;
         if (head < depth)
         {
             return EvmExceptionType.StackUnderflow;
