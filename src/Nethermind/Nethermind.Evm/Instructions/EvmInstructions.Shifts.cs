@@ -41,7 +41,6 @@ public static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpShift">The specific shift operation (e.g. left or right shift).</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is updated by the operation's cost.</param>
     /// <returns>
@@ -49,7 +48,7 @@ public static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
@@ -90,7 +89,6 @@ public static partial class EvmInstructions
     /// and performs an arithmetic right shift.
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
-    /// <param name="vm">The virtual machine instance (unused in the operation logic).</param>
     /// <param name="stack">The EVM stack used for operands and result storage.</param>
     /// <param name="gas">The gas state which is updated by the operation's cost.</param>
     /// <returns>
@@ -98,7 +96,7 @@ public static partial class EvmInstructions
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

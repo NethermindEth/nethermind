@@ -131,7 +131,7 @@ public static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
