@@ -252,8 +252,7 @@ jobs:
             fi
             latest_release_version=$(printf '%s\n' "$release_versions" | sort -V | tail -n 1)
             if [[ -z "$latest_release_version" ]]; then
-              echo "::error::No published Bootnode release was found."
-              exit 1
+              echo "::warning::Skipping Docker latest: no published Bootnode release was found."
             elif [[ "$RELEASE_VERSION" != "$latest_release_version" ]]; then
               echo "::warning::Skipping Docker latest: it tracks the highest published Bootnode version ($latest_release_version), not $RELEASE_VERSION."
             else
