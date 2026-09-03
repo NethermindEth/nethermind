@@ -38,238 +38,91 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 /// <summary>
-/// Measures <c>t_reject</c>: the wall-clock time a node spends validating and rejecting one invalid
-/// EIP-8141 frame transaction at mempool admission, reported as p50 and p99 over raw samples.
+/// Measures mempool rejection latency for invalid EIP-8141 frame transactions using a real
+/// EVM-backed simulator and TxPool. Reports raw-sample p50/p99 for total admission and simulation.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The only harness that runs a real EVM-backed <see cref="IFrameTxPrefixSimulator"/> inside a real
-/// <see cref="TxPool"/>; every other test passes a mock, so the expensive half of admission goes untimed
-/// elsewhere. <c>Nethermind.Evm.Test/FrameTxVerifyDosMeasurement</c> times the right work at the wrong layer
-/// (raw <see cref="ITransactionProcessor"/>, no pool, no filters), and
-/// <see cref="FrameTxPrefixRetryMeasurement"/> exercises the right layer with no simulator wired at all.
-/// </para>
-/// <para>
-/// Two spans are timed per run: the outer <see cref="TxPool.SubmitTx"/> call (operator-visible rejection
-/// latency) and the inner <see cref="IFrameTxPrefixSimulator.Simulate"/> call (the EVM stage). Their
-/// difference is what admission costs outside the EVM.
-/// </para>
-/// <para>
-/// Every sample is kept; percentiles are nearest-rank over one sorted array, not the median-of-medians
-/// <c>FrameTxVerifyDosMeasurement</c> reports, which discards the tail a p99 is made of. The two harnesses'
-/// numbers still aren't comparable: admission runs the prefix under <c>FrameTxValidationTracer</c>, which
-/// traces instructions, stack and storage, so the EVM takes its instrumented specialisation, while the Phase 1
-/// harness times the same budget under <c>NullTxTracer</c> — a penalty that falls on dispatch-bound shapes,
-/// not ones whose gas buys real work.
-/// </para>
-/// <para>
-/// Results are appended as <c>RESULT key=value</c> lines to the path in <c>FRAME_MEMPOOL_DOS_OUT</c> (then
-/// <c>FRAME_RETRY_OUT</c>, then <c>frame-mempool-dos.txt</c> under the temp directory) — Microsoft.Testing.Platform
-/// swallows console writers, so nothing written here reaches stdout. Delete the file before a run; it is
-/// appended, not overwritten.
-/// </para>
+/// Unlike the other measurement harnesses, this exercises the complete admission path with a real
+/// simulator. Simulation uses <c>FrameTxValidationTracer</c>, so its timings are not directly comparable
+/// with EVM-only measurements using <c>NullTxTracer</c>.
+///
+/// Results are appended as <c>RESULT key=value</c> lines to <c>FRAME_MEMPOOL_DOS_OUT</c>, then
+/// <c>FRAME_RETRY_OUT</c>, or <c>frame-mempool-dos.txt</c> in the temp directory.
 /// </remarks>
 [TestFixture]
 [Explicit("measurement harness")]
 [NonParallelizable]
 public class FrameTxMempoolDosMeasurement
 {
-    /// <summary>
-    /// Submissions discarded before sampling, enough to promote the instrumented interpreter for this shape.
-    /// </summary>
-    /// <remarks>
-    /// The tiered JIT promotes the traced specialisation only after a shape's opcodes have run enough times,
-    /// and charges that promotion to whichever case of the shape runs first — always the lowest ceiling, which
-    /// is the sweep's control point. Sized too low, it reports raising the ceiling as making rejection
-    /// *cheaper* per gas.
-    /// </remarks>
+    /// <summary>Untimed submissions used to warm the instrumented interpreter.</summary>
     private const int Warmup = 600;
     private const int Samples = 1_000;
     private const long BlockGasLimit = 30_000_000;
     private const long HeadNumber = 1;
     private const ulong HeadTimestamp = 1_700_000_000;
 
-    /// <summary>
-    /// The per-frame budget the processor actually enforces. <see cref="Eip8141Constants.MaxVerifyGas"/> is a
-    /// <c>const</c> that <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> does not move, so declaring exactly this much
-    /// means the frame is never capped and the whole budget is available to burn.
-    /// </summary>
+    /// <summary>Maximum per-frame verification budget enforced by the processor.</summary>
     private const ulong VerifyGas = Eip8141Constants.MaxVerifyGas;
 
-    /// <summary>
-    /// The campaign's ceiling sweep, as declared execution gas limits on the synthetic shapes' single frame.
-    /// </summary>
-    /// <remarks>
-    /// <c>CapFrameGas</c> bounds a prefix frame at the lesser of its declared limit and what remains of
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/>, so anything at or under the constant needs no source edit
-    /// and the declared limit is the budget. <see cref="Ceiling500k"/> is over the constant on this branch and
-    /// is skipped unless the constant was raised and the tree rebuilt — a clamped run would otherwise report
-    /// the constant's numbers under this ceiling's label. 236,285 is the plan's point, not a round number.
-    /// </remarks>
     private const ulong Ceiling100k = 100_000;
     private const ulong Ceiling236k = 236_285;
     private const ulong Ceiling300k = 300_000;
     private const ulong Ceiling500k = 500_000;
 
-    /// <summary>Frame budget for the signature shape: well-formed, and small enough that the declared total is
-    /// signature gas. The frame never executes, so this only has to clear the 100-gas entry charge; 400 leaves
-    /// margin above it without materially moving the declared total, which at the 300,000 ceiling is 0.13% of
-    /// the budget and costs the attacker no entries.</summary>
+    /// <summary>Small frame budget reserved by the signature-stuffing shape.</summary>
     private const ulong MinimalFrameGas = 400;
 
-    /// <summary>
-    /// The most secp256k1 entries <paramref name="ceiling"/> admits once <see cref="MinimalFrameGas"/> is
-    /// reserved for the frame. EIP-8141 rule 6 charges
-    /// <see cref="Eip8141Constants.Secp256k1VerificationGasCost"/> per entry against the same budget the
-    /// validation prefix draws from, so this is the whole ceiling spent on recovery instead of on execution,
-    /// which is what makes it comparable to a burn shape at the same ceiling.
-    /// </summary>
+    /// <summary>Maximum secp256k1 entries that fit after reserving <see cref="MinimalFrameGas"/>.</summary>
     private static int StuffedSignatureCount(ulong ceiling) =>
         (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
 
-    /// <summary>
-    /// Fraction of a locally timed recovery below which the per-signature admission cost cannot be real curve
-    /// work.
-    /// </summary>
-    /// <remarks>
-    /// This was a fixed 25 us, justified from an isolated <c>RecoverAddress</c> costing 47 to 51 us here. That
-    /// compared the wrong quantities: the guarded value is whole-admission p50 over the entry count, which is
-    /// <c>fixed_overhead / count + recovery</c>, and it varies with count rather than being a per-recovery
-    /// figure. On a reviewer's machine the four cases read 27.0, 40.4, 32.1 and 40.6, putting the 100k control
-    /// point 8% above the floor in Debug. Release and a faster runner both push it down, so the guard fired on
-    /// faster hardware, which is backwards for a floor.
-    /// <para>
-    /// Calibrating against a recovery timed in the same process makes it hardware-relative. The guarded value
-    /// is always at least one recovery, so half of one leaves margin for noise while a memoised path, which
-    /// collapses to <c>fixed_overhead / count</c>, still falls far below.
-    /// </para>
-    /// </remarks>
+    /// <summary>Hardware-relative floor used to detect accidentally cached signature recovery.</summary>
     private const double MinRecoveryFractionForCredibleWork = 0.5;
 
-    /// <summary>Recoveries timed to calibrate the floor. Enough to outlast tiering on a native call.</summary>
     private const int RecoveryCalibrationSamples = 200;
 
-    /// <summary>
-    /// The share of its granted budget a burn shape must consume for the run to count as a burn.
-    /// </summary>
+    /// <summary>Minimum fraction of available gas a budget-burning shape must consume.</summary>
     private const double BudgetBurnFloor = 0.99;
 
-    /// <summary>
-    /// How far below its declared ceiling a frame may enter the EVM before the ceiling is treated as clamped.
-    /// </summary>
-    /// <remarks>
-    /// The frame pays its target's account access out of its own limit — 2,600 cold, 100 warm — so entry gas
-    /// is legitimately a little under the declared limit. The failure this guards is a <c>CapFrameGas</c> clamp
-    /// down to <see cref="Eip8141Constants.MaxVerifyGas"/>, which is wrong by hundreds of thousands of gas, not
-    /// by hundreds.
-    /// </remarks>
+    /// <summary>Allowed difference between declared frame gas and EVM entry gas.</summary>
     private const ulong MaxFrameEntryCharge = 3_000;
 
-    /// <summary>
-    /// Environment variable naming the directory that holds the Groth16 sweep artifacts.
-    /// </summary>
-    /// <remarks>
-    /// Required rather than defaulted: the artifacts are generated outside this repository, so any built-in
-    /// path is one machine's. Unset, the Groth16 cases skip — which is why the variable must be set
-    /// deliberately rather than silently falling back to somewhere that happens to exist.
-    /// </remarks>
     private const string Groth16ArtifactRootVariable = "FRAME_GROTH16_ARTIFACTS";
 
-    /// <summary>The revert selector a gnark BN254 verifier raises once the pairing equation evaluates to zero.</summary>
     private static readonly byte[] ProofInvalidSelector = [0x7f, 0xcd, 0xd1, 0xf4];
 
-    /// <summary>
-    /// How far the measured frame gas may sit from <c>gas.txt</c>, as a fraction of the expected figure.
-    /// </summary>
-    /// <remarks>
-    /// <c>gas.txt</c> was measured under Foundry, calling a deployed verifier through a <c>staticcall</c>;
-    /// a frame runs the same bytecode in a different environment, so this is a cross-check that the payload
-    /// is the shipped one, not an equality. The load-bearing proof that the whole proof ran is
-    /// <see cref="ProofInvalidSelector"/> plus <see cref="MinPairingCallGas"/>, not this bound.
-    /// </remarks>
+    /// <summary>Tolerance when cross-checking Groth16 frame gas against <c>gas.txt</c>.</summary>
     private const double Groth16GasTolerance = 0.02;
 
-    /// <summary>
-    /// Floor for recognising the <c>ecPairing</c> call in the probe's <c>STATICCALL</c> costs. A 4-pair check
-    /// is 45,000 + 4 x 34,000 = 181,000 under EIP-1108; the per-input <c>ecMul</c> and <c>ecAdd</c> calls cost
-    /// 6,100 and 250, so any threshold between those bands identifies the pairing unambiguously.
-    /// </summary>
+    /// <summary>Threshold distinguishing the Groth16 pairing call from ecMul/ecAdd calls.</summary>
     private const long MinPairingCallGas = 150_000;
 
-    /// <summary>What a Groth16 verifier's <c>ecPairing</c> call costs: 45,000 base plus 34,000 per pair, four
-    /// pairs, under EIP-1108. Independent of how much gas was available, which is what separates it from an
-    /// errored call.</summary>
     private const long Bn254FourPairPrice = 181_000;
 
-    /// <summary>Band around the priced pairing. Measured spread across the three points is 178,980 to 181,100,
-    /// and an errored call at these ceilings lands near 184,000.</summary>
     private const long PairingPriceTolerance = 3_000;
 
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly UInt256 SenderBalance = 1_000.Ether;
 
-    /// <summary>
-    /// One Groth16 sweep point: the artifact directory, the ceiling its frame declares, and the frame gas
-    /// <c>gas.txt</c> measured for the shipped invalid payload.
-    /// </summary>
-    /// <remarks>
-    /// The ceiling is what the frame declares as its execution gas limit, and
-    /// <c>TransactionProcessorBase.CapFrameGas</c> bounds the frame at the lesser of that and what remains of
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/> — so a declared ceiling under the constant is the whole
-    /// budget without touching the constant. 500k is the exception: the 49-input verifier costs 501,141, over
-    /// its own nominal label, so its ceiling clears the workload rather than restating the sweep name, and the
-    /// case only runs against a build whose constant was raised to match.
-    /// </remarks>
     private readonly record struct Groth16Sweep(
         string Directory, ulong Ceiling, ulong ExpectedFrameGas, Groth16Failure Failure);
 
-    /// <summary>How a Groth16 verifier reports a proof that fails the pairing equation.</summary>
-    /// <remarks>
-    /// Not cosmetic: it changes which assertion proves the pairing actually ran. A gnark verifier reverts
-    /// <c>ProofInvalid()</c>, so the frame reverts and the selector is the proof. A snarkjs verifier returns
-    /// <c>false</c>, so the frame <em>succeeds</em> and the prefix is rejected for never calling
-    /// <c>APPROVE</c> instead. Both are real rejections and both burn the full verification; only the
-    /// evidence differs.
-    /// </remarks>
     private enum Groth16Failure
     {
         RevertsProofInvalid,
         ReturnsFalse,
     }
 
-    /// <summary>
-    /// What the validation prefix's outermost frame was actually given and actually did, read back out of the
-    /// EVM before anything is timed.
-    /// </summary>
-    /// <param name="Available">Gas the frame entered the EVM with, after <c>CapFrameGas</c> and the target access charge.</param>
-    /// <param name="Burned">Gas the frame consumed. The µs/Mgas denominator for every shape that spends what it offers.</param>
-    /// <param name="Ops">Instructions the outermost frame executed — the unit the pool's tracing overhead is charged in.</param>
     private readonly record struct FrameGasReadout(ulong Available, ulong Burned, int Ops);
 
-    /// <summary>
-    /// The campaign's Groth16 sweep points, three synthetic and one real.
-    /// </summary>
-    /// <remarks>
-    /// The three synthetic points' public inputs are 6-bit integers, which reconstruct the gas shape correctly
-    /// — <c>ecMul</c> is priced flat at 6,000 gas regardless of the scalar — but understate the CPU, which is
-    /// proportional to the scalar's bit length. Measured A/B at identical gas, one case per process: +53% CPU
-    /// at 8 public inputs (<c>groth16-236k</c>) and +72% at 18 (<c>groth16-300k</c>); no figure was measured
-    /// for the 49-input point. <c>groth16-soispoke</c> carries full-width scalars from a real proof and is not
-    /// subject to this understatement.
-    /// </remarks>
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
         ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190, Groth16Failure.RevertsProofInvalid),
         ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 299_256, Groth16Failure.RevertsProofInvalid),
         ["groth16-500k"] = new Groth16Sweep("sweep-500k", 510_000, 501_141, Groth16Failure.RevertsProofInvalid),
-        // The plan's named workload, not a synthetic stand-in: soispoke's real spend verifier at ten public
-        // signals, carrying a real proof with one bit of the one-time authorizer flipped. It declares 300,000
-        // because its 248,437 clears the constant, so this is the one privacy point a stock build can measure.
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
-    /// <summary>Largest <c>STATICCALL</c> the last Groth16 probe made, which is the <c>ecPairing</c> call.
-    /// Emitted so a rig run can settle whether the pairing ran or errored; see the note at the guard.</summary>
     private long _lastPairingCallGas;
 
     private ILogManager _logManager = null!;
@@ -283,13 +136,10 @@ public class FrameTxMempoolDosMeasurement
     private FrameTxPrefixSimulator? _realSimulator;
     private List<double> _simulateMicros = null!;
 
-    /// <summary>What the frame under measurement declares as its execution gas limit.</summary>
     private ulong _frameExecutionGasLimit = VerifyGas;
 
-    /// <summary>Signature entries the attacker transaction carries. Empty for every synthetic EVM shape.</summary>
     private TxFrameSignature[] _frameSignatures = [];
 
-    /// <summary>Payload the frame's calldata starts with, before the per-sample salt. Empty for the burn shapes.</summary>
     private byte[] _frameCalldataPrefix = [];
 
     private IReleaseSpec Spec => _specProvider.GenesisSpec;
@@ -305,8 +155,6 @@ public class FrameTxMempoolDosMeasurement
         _frameCalldataPrefix = [];
         _frameSignatures = [];
 
-        // The fixture is one instance for all its tests, so a case that skips before BuildHarness would
-        // otherwise leave the previous case's already-disposed objects for TearDown to dispose again.
         _txPool = null!;
         _realSimulator = null;
         _dbProvider = null!;
@@ -321,19 +169,9 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>
-    /// Case 1: a validation prefix that burns its whole per-frame budget and then fails out-of-gas, swept
-    /// across the campaign's four ceilings. Three shapes, because gas buys wildly different amounts of CPU:
-    /// <c>jump</c> buys interpreter dispatches, <c>keccak</c> buys hashing of one word, <c>keccak-wide</c>
-    /// buys hashing of 4 KiB per iteration at six gas a word.
+    /// Measures rejection of prefixes that exhaust their frame budget. Shapes vary CPU work per unit
+    /// of gas while keeping their behavior stable across ceilings.
     /// </summary>
-    /// <remarks>
-    /// The ceiling is the axis this sweep exists to test. At the EVM layer µs/Mgas is flat across ceilings
-    /// within a shape, but admission runs the prefix under <c>FrameTxValidationTracer</c>, whose overhead is
-    /// per opcode rather than per gas, so flatness there does not imply flatness here. Every loop holds its
-    /// opcodes-per-gas ratio constant across ceilings, so that per-opcode overhead cannot bend µs/Mgas within a
-    /// shape; <see cref="Warmup"/> is sized to absorb the tiered JIT's promotion of the instrumented
-    /// interpreter, which is otherwise charged to whichever ceiling runs first.
-    /// </remarks>
     [TestCase("jump", Ceiling100k)]
     [TestCase("jump", Ceiling300k)]
     [TestCase("jump", Ceiling500k)]
@@ -346,29 +184,11 @@ public class FrameTxMempoolDosMeasurement
     [TestCase("keccak-wide", Ceiling500k)]
     public void Reject_cost_of_a_budget_burning_prefix(string shape, ulong ceiling) => MeasureFrameRejection(shape, ceiling);
 
-    /// <summary>
-    /// Case 2: a prefix that trips the validation tracer on its first instruction. It rejects orders of
-    /// magnitude faster than case 1, and having both modes in the campaign is what makes a p99 mean
-    /// something rather than restating the p50 of a single-mode distribution.
-    /// </summary>
-    /// <remarks>
-    /// Swept across the same ceilings even though it never gets near one: this shape offers the gas and does
-    /// not spend it, so what the sweep moves is the denominator, and its µs/Mgas is the price of the gas an
-    /// attacker only has to <em>claim</em>.
-    /// </remarks>
+    /// <summary>Measures immediate rejection caused by a banned validation-prefix opcode.</summary>
     [TestCase(Ceiling100k)]
     public void Reject_cost_of_a_banned_opcode_prefix(ulong ceiling) => MeasureFrameRejection("banned-opcode", ceiling);
 
-    /// <summary>
-    /// Case 1b: the motivating workload rather than a synthetic one. A gnark BN254 Groth16 verifier checked
-    /// against a wrong public input, so every <c>ecMul</c>, both <c>ecAdd</c>s and all four Miller loops run
-    /// and only then does the pairing equation evaluate to zero and the verifier revert <c>ProofInvalid()</c>.
-    /// </summary>
-    /// <remarks>
-    /// The three sweep points differ only in public-input count (8, 18, 49), which is what moves the cost.
-    /// Unlike the burn shapes this one does not exhaust its budget — it reverts partway — so the reported
-    /// µs/Mgas is against the gas the frame actually consumed, not against the declared ceiling.
-    /// </remarks>
+    /// <summary>Measures rejection after a complete Groth16 verification with an invalid proof or input.</summary>
     [TestCase("groth16-236k")]
     [TestCase("groth16-300k")]
     [TestCase("groth16-500k")]
@@ -376,14 +196,7 @@ public class FrameTxMempoolDosMeasurement
     public void Reject_cost_of_a_groth16_verifier_prefix(string shape) =>
         MeasureFrameRejection(shape, Groth16Sweeps[shape].Ceiling);
 
-    /// <summary>
-    /// Case 3: the cost of rejecting an ordinary, non-frame transaction — one secp256k1 recovery plus the
-    /// cheap state filters — as the denominator for the campaign's "ratio versus a normal rejection".
-    /// </summary>
-    /// <remarks>
-    /// The guard here is the mirror image of the frame cases: the simulator must record <em>no</em> samples,
-    /// proving the baseline never enters the EVM.
-    /// </remarks>
+    /// <summary>Measures ordinary transaction rejection as the non-frame admission baseline.</summary>
     [Test]
     public void Reject_cost_of_an_ordinary_transaction()
     {
@@ -432,23 +245,16 @@ public class FrameTxMempoolDosMeasurement
 
         BuildHarness(code);
 
-        // Never assumed, always read back out of the EVM. A ceiling above Eip8141Constants.MaxVerifyGas is
-        // silently clamped, and a target whose code is missing runs default verify code instead of the shape;
-        // both report the same rejection string the intended work reports.
+        // Probe outside the timed loop to verify that the intended workload entered the EVM.
         FrameGasReadout gas = isGroth16
             ? AssertGroth16FailsAfterThePairing(sweep)
             : ProbeSyntheticShape(shape, ceiling);
 
-        // banned-opcode aborts on its first instruction instead of spending, so its cost is normalised
-        // against the gas it offered — which is what the sweep moves. Every other shape is normalised
-        // against the gas it actually burned.
+        // Immediate rejection spends almost no gas, so normalize it by offered rather than burned gas.
         ulong burnedGas = shape == "banned-opcode" ? _frameExecutionGasLimit : gas.Burned;
 
         long probeFailuresBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
 
-        // The guard. Without it a harness whose transaction is dropped by a cheaper upstream filter, or
-        // whose payer resolves natively, times an empty admission path and reports healthy-looking numbers
-        // for work that never happened.
         Transaction probe = FrameTx(0);
         AcceptTxResult probeResult = _txPool.SubmitTx(probe, TxHandlingOptions.None);
         string probeReason = probeResult.ToString();
@@ -469,7 +275,6 @@ public class FrameTxMempoolDosMeasurement
         Transaction[] samples = BuildFrameSamples(1 + Warmup, Samples);
         _simulateMicros.Clear();
 
-        // Taken after the probe and the warmup, so the emitted count covers the sampled submissions alone.
         long simulationFailuresBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
 
         List<double> submitMicros = TimeSamples(samples,
@@ -479,8 +284,7 @@ public class FrameTxMempoolDosMeasurement
         Assert.That(_simulateMicros, Has.Count.EqualTo(Samples),
             "one simulation per submission is what makes the two spans comparable");
 
-        // Paired, so the difference is a real per-sample residue rather than a difference of two
-        // independently ordered distributions.
+        // Samples are paired, so subtraction gives the non-EVM cost for each submission.
         List<double> nonEvmMicros = new(Samples);
         for (int i = 0; i < Samples; i++) nonEvmMicros.Add(submitMicros[i] - _simulateMicros[i]);
 
@@ -505,10 +309,7 @@ public class FrameTxMempoolDosMeasurement
              + $"reject_reason=\"{probeReason}\"");
     }
 
-    /// <summary>
-    /// Nearest-rank percentile over an already sorted list — no interpolation, no smoothing, so a reported
-    /// p99 is an observation that actually occurred.
-    /// </summary>
+    // Nearest-rank keeps every reported percentile tied to an observed sample.
     private static double Percentile(List<double> sorted, double quantile)
     {
         if (sorted.Count == 0) return double.NaN;
@@ -516,15 +317,11 @@ public class FrameTxMempoolDosMeasurement
         return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
     }
 
-    /// <summary>Discards each of <paramref name="warmup"/>'s results — enough traffic to promote the tiered
-    /// JIT's instrumented specialisation before the timed samples run.</summary>
     private void SubmitWarmup(Transaction[] warmup)
     {
         for (int i = 0; i < warmup.Length; i++) _txPool.SubmitTx(warmup[i], TxHandlingOptions.None);
     }
 
-    /// <summary>Times each of <paramref name="samples"/>' submissions, asserting every one satisfies
-    /// <paramref name="isExpected"/> before recording it.</summary>
     private List<double> TimeSamples(
         Transaction[] samples, Func<AcceptTxResult, bool> isExpected, Func<int, AcceptTxResult, string> describeFailure)
     {
@@ -539,7 +336,6 @@ public class FrameTxMempoolDosMeasurement
         return submitMicros;
     }
 
-    /// <summary>Cheapest gas per interpreter dispatch: a bare jump loop.</summary>
     private static byte[] JumpLoop() =>
         Prepare.EvmCode
             .Op(Instruction.JUMPDEST)
@@ -547,7 +343,6 @@ public class FrameTxMempoolDosMeasurement
             .Op(Instruction.JUMP)
             .Done;
 
-    /// <summary>Hashing loop: real work behind each unit of gas.</summary>
     private static byte[] KeccakLoop() =>
         Prepare.EvmCode
             .Op(Instruction.JUMPDEST)
@@ -559,7 +354,6 @@ public class FrameTxMempoolDosMeasurement
             .Op(Instruction.JUMP)
             .Done;
 
-    /// <summary>Memory-expanding hashing loop: the worst realtime-per-gas shape reachable cheaply.</summary>
     private static byte[] KeccakWideLoop() =>
         Prepare.EvmCode
             .Op(Instruction.JUMPDEST)
@@ -571,11 +365,7 @@ public class FrameTxMempoolDosMeasurement
             .Op(Instruction.JUMP)
             .Done;
 
-    /// <summary>
-    /// One banned opcode and stop. <c>TIMESTAMP</c> is legal only inside the canonical expiry verifier, so
-    /// <c>FrameTxValidationTracer</c> records the violation on the first instruction and the simulator
-    /// rejects on that alone.
-    /// </summary>
+    // TIMESTAMP is rejected immediately outside the canonical expiry verifier.
     private static byte[] BannedOpcode() =>
         Prepare.EvmCode
             .Op(Instruction.TIMESTAMP)
@@ -583,28 +373,6 @@ public class FrameTxMempoolDosMeasurement
             .Op(Instruction.STOP)
             .Done;
 
-    /// <summary>
-    /// The ceiling spent on per-signature recovery instead of on frame execution. Rule 6 charges both against
-    /// <c>MAX_VERIFY_GAS</c>, so this is the same budget bought differently, and the comparison against the
-    /// burn shapes is CPU per unit of declared budget.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Cannot share <see cref="MeasureFrameRejection"/>: this shape is refused at the signature filter, so the
-    /// EVM never runs, there is no burned frame gas to divide by, and the assertions there invert. The
-    /// denominator is <see cref="FrameTxValidation.ValidationWorkGas"/>, the declared budget the pool charged.
-    /// secp256k1 only — P256 costs more per signature but is priced 2.4x higher, so it buys less CPU per unit
-    /// of budget and is not the worst case.
-    /// </para>
-    /// <para>
-    /// Swept over the same ceilings as the burn shapes. <see cref="Ceiling500k"/> needs no patched build here,
-    /// because <see cref="Eip8141Constants.MaxVerifyGas"/> bounds simulation and a signature refusal never
-    /// reaches the simulator — but it does need a <em>configured</em> 500,000: the declared-gas precheck at
-    /// filter stage 7 reads <c>ITxPoolConfig.FrameTxMaxVerifyGas</c>, whose default is 300,000, so a default
-    /// node refuses this transaction for free. The pool is configured at the ceiling under test, so the row
-    /// describes "no patched build", not "stock node".
-    /// </para>
-    /// </remarks>
     [TestCase(Ceiling100k)]
     [TestCase(Ceiling236k)]
     [TestCase(Ceiling300k)]
@@ -613,9 +381,6 @@ public class FrameTxMempoolDosMeasurement
     {
         int count = StuffedSignatureCount(ceiling);
 
-        // The frame never executes, so its code is irrelevant; only its declared limit enters the budget.
-        // The pool is configured at the ceiling under test, so stage 7 enforces the budget this row is
-        // labelled with rather than the 300,000 default.
         BuildHarness(PrefixCode("banned-opcode"), ceiling);
         _frameExecutionGasLimit = MinimalFrameGas;
         _frameSignatures = BuildSecp256k1Signatures(count);
@@ -625,8 +390,6 @@ public class FrameTxMempoolDosMeasurement
             "the declared budget must fit the ceiling it claims, or the row is labelled with a budget the "
             + "transaction never asked for");
 
-        // `count` is only the attacker's optimum if one more entry does not fit. Proving it against the live
-        // filter also proves the filter is enforcing this ceiling, which is what makes the row honest.
         long gasRefusalsBefore = Metrics.PendingTransactionsFrameTxVerifyGasTooHigh;
         _frameSignatures = BuildSecp256k1Signatures(count + 1);
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
@@ -652,8 +415,6 @@ public class FrameTxMempoolDosMeasurement
             result => result != AcceptTxResult.Accepted,
             (i, _) => $"sample {i} was admitted");
 
-        // Without this the row's `samples=` and `evm_ran=no` rest on the single probe above, and any sample
-        // short-circuited upstream would be timed as if it had done the curve work.
         Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
             Is.EqualTo(sampledFailuresBefore + Samples),
             "every timed submission must have been refused by the signature filter");
@@ -661,13 +422,8 @@ public class FrameTxMempoolDosMeasurement
 
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);
-        // Whole-admission p50 over the entry count, so the ~20 other filters' cost is charged to
-        // signatures. An independently timed EthereumEcdsa.RecoverAddress puts the residue at a few percent,
-        // but the name has to say admission, not recovery.
         double admissionPerSignature = p50 / count;
 
-        // The failure this shape is most exposed to: a memoised verification would collapse the cost and still
-        // emit a plausible row. A public-key recovery cannot be this cheap.
         double recoveryMicros = TimeOneRecovery();
         Assert.That(admissionPerSignature, Is.GreaterThan(recoveryMicros * MinRecoveryFractionForCredibleWork),
             $"{admissionPerSignature:F1} us per signature against a locally timed recovery of "
@@ -680,15 +436,7 @@ public class FrameTxMempoolDosMeasurement
              + $"submit_us_per_Mgas={p50 / declaredGas * 1_000_000:F1} basis=declared_prefix_gas evm_ran=no");
     }
 
-    /// <summary>
-    /// <paramref name="count"/> secp256k1 entries, every one of which the pool fully recovers. The last signs a
-    /// different digest, so recovery runs and only then fails the signer compare; a wrong length or a
-    /// non-canonical <c>s</c> would be refused before any curve work and measure nothing.
-    /// </summary>
-    /// <summary>
-    /// Median cost of one <c>secp256k1</c> public-key recovery on this machine, timed through the same call
-    /// the signature filter makes, so the credibility floor scales with the hardware instead of a constant.
-    /// </summary>
+    /// <summary>Times median secp256k1 recovery cost using the admission implementation.</summary>
     private double TimeOneRecovery()
     {
         Hash256 digest = new(ValueKeccak.Compute("calibration"u8).ToByteArray());
@@ -708,6 +456,9 @@ public class FrameTxMempoolDosMeasurement
         return Percentile(micros, 0.50);
     }
 
+    /// <summary>
+    /// Builds secp256k1 entries that all require recovery, with the final entry failing signer validation.
+    /// </summary>
     private TxFrameSignature[] BuildSecp256k1Signatures(int count)
     {
         TxFrameSignature[] entries = new TxFrameSignature[count];
@@ -737,12 +488,6 @@ public class FrameTxMempoolDosMeasurement
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
     };
 
-    /// <summary>The rejection each shape must produce, so a run cannot silently measure a different failure.</summary>
-    /// <remarks>
-    /// A shape that runs to completion without approving is rejected for the missing payer, not for a revert.
-    /// That is how a snarkjs verifier fails: it returns <c>false</c> rather than reverting, so the frame
-    /// succeeds and the prefix is refused one step later. Same rejection, same burned gas, different string.
-    /// </remarks>
     private static string ExpectedRejectionReason(string shape) => shape switch
     {
         "banned-opcode" => "banned opcode TIMESTAMP",
@@ -752,17 +497,6 @@ public class FrameTxMempoolDosMeasurement
         _ => "validation prefix frame reverted"
     };
 
-    /// <summary>
-    /// Skips a sweep point the running binary cannot measure, rather than measuring something else under its
-    /// name.
-    /// </summary>
-    /// <remarks>
-    /// <c>CapFrameGas</c> silently bounds a prefix frame at what remains of
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/>, and the resulting out-of-gas is indistinguishable at the
-    /// pool from the intended one — so a 500k case on an unpatched build would report the constant's numbers
-    /// under a 500k label. The constant is <c>const</c>, so no configuration moves it and
-    /// <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> gates a different check.
-    /// </remarks>
     private static void AssertCeilingIsReachable(string label, ulong ceiling)
     {
         if (ceiling > Eip8141Constants.MaxVerifyGas)
@@ -774,19 +508,9 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>
-    /// Proves a synthetic shape got the budget its ceiling claims and did with it what the shape says it does.
+    /// Probes a synthetic shape outside the timed path and verifies that it received and consumed the gas
+    /// its measurement claims.
     /// </summary>
-    /// <returns>The frame's entry gas, the gas it consumed, and how many instructions it ran.</returns>
-    /// <remarks>
-    /// Two silent failures are ruled out here, neither visible from the pool, which reports the same
-    /// <c>"validation prefix frame reverted"</c> string in all three cases: a ceiling over
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/> clamped to the constant and run out of gas there, or a
-    /// target missing its code running EIP-8141 default verify code, which reverts on the empty signature list
-    /// without entering the EVM at all. Same construction as
-    /// <see cref="AssertGroth16FailsAfterThePairing"/>: a direct processing scope built exactly as the
-    /// simulator builds its own, with an action-tracing probe the pool's <c>FrameTxValidationTracer</c> leaves
-    /// no room for — not timed, and deliberately outside the sample loop.
-    /// </remarks>
     private FrameGasReadout ProbeSyntheticShape(string shape, ulong ceiling)
     {
         FrameGasReadout readout = ProbeFrame();
@@ -798,7 +522,6 @@ public class FrameTxMempoolDosMeasurement
 
         if (shape == "banned-opcode")
         {
-            // It offers the ceiling and spends none of it; anything else means the sample is a different shape.
             Assert.That(readout.Burned, Is.LessThan(MaxFrameEntryCharge),
                 $"{shape} burned {readout.Burned} gas, so it did not abort on its first instruction and the "
                 + "sample is not the shape it claims to be");
@@ -814,14 +537,9 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>
-    /// Runs the frame under measurement once through a direct processing scope, tracing actions and
-    /// instructions, and reports what the outermost frame did.
+    /// Executes one validation-prefix transaction with action and instruction tracing, returning top-level
+    /// frame gas and instruction counts.
     /// </summary>
-    /// <remarks>
-    /// Action tracing is the only readout the prefix path offers, since <c>SimulateFrameValidationPrefix</c>
-    /// keeps the substate and the frame's gas to itself and returns a bare string. Action tracing is not what
-    /// admission runs, which is why this sits outside the timed loop.
-    /// </remarks>
     private FrameGasReadout ProbeFrame(FrameGasProbeTracer? tracer = null)
     {
         BlockHeader head = _blockTree.Head!.Header;
@@ -841,15 +559,7 @@ public class FrameTxMempoolDosMeasurement
         return new FrameGasReadout(probe.TopLevelFrameGasAvailable, probe.TopLevelFrameGas, probe.TopLevelOps);
     }
 
-    /// <summary>
-    /// Installs one Groth16 sweep point: the deployed runtime bytecode becomes the sender's code and the
-    /// shipped invalid calldata becomes the frame's payload.
-    /// </summary>
-    /// <returns>The verifier's runtime bytecode, for the caller to seed as the sender's code.</returns>
-    /// <remarks>
-    /// Both files are read at run time and neither is re-encoded: <c>calldata-invalid.hex</c> already carries
-    /// the 4-byte selector, which differs per sweep point because the signature carries the input count.
-    /// </remarks>
+    /// <summary>Loads runtime bytecode and invalid calldata for one Groth16 sweep point.</summary>
     private byte[] LoadGroth16Sweep(Groth16Sweep sweep)
     {
         AssertCeilingIsReachable(sweep.Directory, sweep.Ceiling);
@@ -874,17 +584,9 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>
-    /// Proves the timed samples are the Groth16 workload: the verifier's own code ran, it reverted
-    /// <c>ProofInvalid()</c>, and it burned what <c>gas.txt</c> says the pairing costs.
+    /// Verifies that the Groth16 workload reached a correctly priced four-pair BN254 pairing and consumed
+    /// approximately the expected gas.
     /// </summary>
-    /// <returns>The gas the frame consumed, which is the denominator for this shape's µs/Mgas.</returns>
-    /// <remarks>
-    /// Same reasoning as <see cref="ProbeSyntheticShape"/>: the pool reports the same
-    /// <c>"validation prefix frame reverted"</c> string whether the frame failed here, ran default verify
-    /// code for a codeless target, or exhausted a declared ceiling below the constant. So the shape is pinned
-    /// on a direct processing scope built exactly as the simulator builds its own — not timed, and
-    /// deliberately outside the sample loop.
-    /// </remarks>
     private FrameGasReadout AssertGroth16FailsAfterThePairing(Groth16Sweep sweep)
     {
         FrameGasProbeTracer probe = new();
@@ -902,14 +604,10 @@ public class FrameTxMempoolDosMeasurement
         }
         else
         {
-            // snarkjs returns false instead of reverting, so the frame runs to completion and the prefix is
-            // rejected for never approving. A revert here would mean it failed somewhere it should not.
             Assert.That(probe.TopLevelRevertOutput, Is.Null.Or.Empty,
                 "this verifier returns false rather than reverting, so a revert means the frame failed for "
                 + "some reason other than the pairing equation");
         }
-        // The pairing is the expensive half and the whole point of the workload. Assert it ran, from the call
-        // costs, rather than inferring it from a total that another environment produced.
         Assert.That(probe.CallCosts, Has.Some.GreaterThan(MinPairingCallGas),
             $"{sweep.Directory} made no ecPairing-sized call, so the prefix failed before the pairing and the "
             + "measurement describes an early exit rather than the full-cost workload");
@@ -919,12 +617,6 @@ public class FrameTxMempoolDosMeasurement
             if (cost > _lastPairingCallGas) _lastPairingCallGas = cost;
         }
 
-        // A call cost above the price is the failure mode that matters, and the size threshold above cannot
-        // see it: BN254PairingCheckPrecompile returns Errors.Failed for malformed or off-curve input, and an
-        // erroring precompile consumes every unit forwarded, so an early exit is charged MORE than a real
-        // pairing. That burn tracks whatever gas remained, which at these ceilings is near 184,000, while a
-        // real 4-pair check is priced 45,000 + 34,000 x 4 whatever is available. Measured 2 Sep: 180,310,
-        // 178,980 and 181,100 across the three points, so the band separates them by roughly 3,000 either way.
         Assert.That(_lastPairingCallGas, Is.EqualTo(Bn254FourPairPrice).Within(PairingPriceTolerance),
             $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against a priced "
             + $"{Bn254FourPairPrice}. Above the band means ecPairing errored and burned the gas forwarded to "
@@ -966,26 +658,9 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>
-    /// The cheapest transaction that forces a simulation: one <c>self_verify</c> frame with a null target,
-    /// no frame signatures, against a sender carrying code.
+    /// Builds a frame transaction with a fixed nonce and varying calldata salt, keeping rejected samples at
+    /// the next nonce while giving each a distinct hash.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <c>FrameTxPayerResolver</c> returns <c>RequiresSimulation</c> unconditionally once the sender has code,
-    /// carrying the transaction past the two EVM-free fast paths in <c>FrameTxSimulationFilter</c>; an empty
-    /// signature list also short-circuits <c>FrameTxSignatureFilter</c>, so the attack costs no
-    /// elliptic-curve work either.
-    /// </para>
-    /// <para>
-    /// The nonce cannot vary: a rejected transaction never enters the pool, so every sample must still be the
-    /// sender's next nonce or <c>GapNonceFilter</c> would reject it before the EVM. Distinctness comes from the
-    /// frame's calldata instead — what an attacker would vary anyway — or <c>AlreadyKnownTxFilter</c> would
-    /// short-circuit the whole run after the first sample. The salt trails
-    /// <see cref="_frameCalldataPrefix"/>, so a Groth16 payload keeps its selector and arguments byte-for-byte;
-    /// that the verifier's surplus read is free is checked, not assumed —
-    /// <see cref="AssertGroth16FailsAfterThePairing"/> verifies the burned gas against <c>gas.txt</c>.
-    /// </para>
-    /// </remarks>
     private Transaction FrameTx(int salt)
     {
         byte[] data = new byte[_frameCalldataPrefix.Length + 32];
@@ -1008,10 +683,6 @@ public class FrameTxMempoolDosMeasurement
         return tx;
     }
 
-    /// <summary>
-    /// An ordinary EIP-1559 transfer from an unfunded account, left unresolved so the pool pays for the
-    /// secp256k1 recovery exactly as it does for a gossiped transaction.
-    /// </summary>
     private Transaction OrdinaryTx(int nonce) =>
         Build.A.Transaction
             .WithType(TxType.EIP1559)
@@ -1026,21 +697,8 @@ public class FrameTxMempoolDosMeasurement
             .TestObject;
 
     /// <summary>
-    /// Wires a real <see cref="TxPool"/> to a real EVM-backed simulator over a state seeded identically in
-    /// both stores the admission path reads.
+    /// Creates a TxPool and real frame simulator backed by equivalent pool-state and EVM-state views.
     /// </summary>
-    /// <remarks>
-    /// The two stores must agree. The pool sees the chain head through a <see cref="TestReadOnlyStateProvider"/>
-    /// that has no EVM and needs only a non-empty code hash for <c>HasCode</c>; the simulator needs a real
-    /// <see cref="IWorldState"/> holding the actual bytes. Seeding order matters in the first of them:
-    /// <c>CreateAccount</c> replaces the whole account and wipes the code hash, while <c>InsertCode</c>
-    /// preserves nonce and balance, so balance goes first and code second. The EVM store's code is the
-    /// load-bearing half, and its absence is silent — a codeless target makes the VERIFY frame run default
-    /// verify code, reverting on the empty signature list in microseconds and reporting the same rejection an
-    /// exhausted budget does — so the seeded head is read back through the same resettable world state the
-    /// simulator will build, and the assertion below is what stands between a measurement and a plausible
-    /// number for work that never happened.
-    /// </remarks>
     private void BuildHarness(byte[] senderCode, ulong verifyGasCeiling = 0)
     {
         _dbProvider = TestMemDbProvider.Init();
@@ -1084,10 +742,7 @@ public class FrameTxMempoolDosMeasurement
         _txPool = CreatePool(new TimingSimulator(_realSimulator, _simulateMicros), verifyGasCeiling);
     }
 
-    /// <summary>
-    /// Reads the seeded head back through a resettable world state built exactly as the simulator builds its
-    /// own, so both halves of the two-store seeding are proven before anything is timed.
-    /// </summary>
+    /// <summary>Confirms that both pool and EVM views contain the sender code before measurement.</summary>
     private void AssertSeededCodeIsVisibleAtHead(BlockHeader head, byte[] senderCode)
     {
         if (senderCode.Length == 0) return;
@@ -1104,15 +759,6 @@ public class FrameTxMempoolDosMeasurement
         }
     }
 
-    /// <remarks>
-    /// <paramref name="verifyGasCeiling"/> is what a node operator would configure. <c>0</c> disables the
-    /// static declared-gas precheck at filter stage 7 entirely, which is what the burn shapes want: they are
-    /// bounded by the <see cref="Eip8141Constants.MaxVerifyGas"/> <c>const</c> in the processor regardless, so
-    /// leaving the precheck on would only add a second bound at the same 300,000 and hide which one bit.
-    /// Shapes refused <em>before</em> the simulator must pass the ceiling instead — for those, <c>0</c> would
-    /// measure a transaction no configured node accepts, and the emitted <c>ceiling=</c> field would name a
-    /// budget nothing enforced.
-    /// </remarks>
     private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator, ulong verifyGasCeiling = 0)
     {
         ChainHeadInfoProvider headInfo = new(
@@ -1135,7 +781,7 @@ public class FrameTxMempoolDosMeasurement
             frameTxPrefixSimulator);
     }
 
-    /// <summary>The Groth16 artifact directory, or a skip when the campaign's artifacts were not supplied.</summary>
+    /// <summary>Returns the externally generated artifact root; no machine-specific fallback is valid.</summary>
     private static string Groth16ArtifactRoot()
     {
         string? root = Environment.GetEnvironmentVariable(Groth16ArtifactRootVariable);
@@ -1150,7 +796,6 @@ public class FrameTxMempoolDosMeasurement
         return root!;
     }
 
-    /// <summary>Writes a diagnostic line, kept out of the RESULT stream so that stays parseable as key=value.</summary>
     private static void Diagnostic(string line) => TestContext.Out.WriteLine($"DEBUG {line}");
 
     private static void Emit(string line)
@@ -1163,11 +808,7 @@ public class FrameTxMempoolDosMeasurement
         File.AppendAllText(path, record + Environment.NewLine);
     }
 
-    /// <summary>
-    /// Times the EVM stage from the outside, so the inner span is measured without touching production code.
-    /// </summary>
-    /// <remarks>Shaped after <c>WorldStateMetricsScopeProvider</c>: record in a <c>finally</c>, so a throwing
-    /// simulation still contributes a sample instead of silently shortening the distribution.</remarks>
+    /// <summary>Times the real simulator without modifying production code.</summary>
     private sealed class TimingSimulator(IFrameTxPrefixSimulator inner, List<double> samples) : IFrameTxPrefixSimulator
     {
         public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
@@ -1184,16 +825,7 @@ public class FrameTxMempoolDosMeasurement
         }
     }
 
-    /// <summary>
-    /// Records what the validation prefix's outermost frame did: how much gas it burned, and how it ended.
-    /// </summary>
-    /// <remarks>
-    /// Action tracing is the only readout the prefix path offers, since <c>SimulateFrameValidationPrefix</c>
-    /// keeps the substate and the frame's gas to itself and returns a bare string. Nested frames — every
-    /// precompile the verifier calls — report actions too, so entry and exit are paired by depth. A frame that
-    /// never enters the EVM at all, which is what EIP-8141 default verify code does, reports nothing, and that
-    /// is exactly the silent failure worth catching.
-    /// </remarks>
+    /// <summary>Traces the outermost validation frame to record gas, instructions, calls, and termination.</summary>
     private sealed class FrameGasProbeTracer : TxTracer
     {
         private int _depth;
@@ -1229,23 +861,14 @@ public class FrameTxMempoolDosMeasurement
             _pendingOp = null;
         }
 
-        /// <summary>Instructions the outermost frame executed, which is what the pool's tracing overhead is charged per.</summary>
         public int TopLevelOps { get; private set; }
 
-        /// <summary>How many outermost frames entered the EVM. Zero means default verify code ran instead.</summary>
         public int TopLevelFrames { get; private set; }
 
-        /// <summary>Gas the outermost frame consumed, excluding the target access its caller pays for.</summary>
         public ulong TopLevelFrameGas { get; private set; }
 
-        /// <summary>
-        /// Gas the outermost frame entered the EVM with: what <c>CapFrameGas</c> granted, less the target's
-        /// account access. Below the declared ceiling by hundreds means the access charge; by hundreds of
-        /// thousands means the ceiling was clamped to <c>Eip8141Constants.MaxVerifyGas</c>.
-        /// </summary>
         public ulong TopLevelFrameGasAvailable { get; private set; }
 
-        /// <summary>Revert data of the outermost frame, or empty if it did not revert.</summary>
         public byte[] TopLevelRevertOutput { get; private set; } = [];
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -1268,7 +891,6 @@ public class FrameTxMempoolDosMeasurement
             Leave(gas);
         }
 
-        /// <remarks>An erroring frame keeps nothing, so the remaining gas it never reports is zero.</remarks>
         public override void ReportActionError(EvmExceptionType evmExceptionType) => Leave(0);
 
         private void Leave(ulong remainingGas)
@@ -1278,11 +900,7 @@ public class FrameTxMempoolDosMeasurement
         }
     }
 
-    /// <summary>
-    /// The DI-free equivalent of <c>AutoReadOnlyTxProcessingEnvFactory</c>: one resettable world state and a
-    /// real transaction processor over it, rebuilt per <c>Build</c> against the head's state root exactly as
-    /// production does.
-    /// </summary>
+    /// <summary>Minimal read-only environment matching the production transaction-processing setup.</summary>
     private sealed class HarnessEnvFactory(
         IWorldStateManager worldStateManager,
         ISpecProvider specProvider,
@@ -1303,9 +921,6 @@ public class FrameTxMempoolDosMeasurement
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 new ReadOnlyTxProcessingScope(processor, worldState.BeginScope(baseBlock), worldState);
 
-            /// <remarks><see cref="IWorldState"/> is not disposable and the processor holds no unmanaged
-            /// resource, so the scope each <see cref="Build"/> opens is the only thing with a lifetime, and
-            /// its caller already disposes it.</remarks>
             public void Dispose() { }
         }
     }

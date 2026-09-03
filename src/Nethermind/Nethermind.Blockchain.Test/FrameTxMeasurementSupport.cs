@@ -12,17 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-/// <summary>
-/// Skips a ceiling the running binary cannot grant, rather than reporting
-/// <see cref="Eip8141Constants.MaxVerifyGas"/>'s numbers under that ceiling's label.
-/// </summary>
-/// <remarks>
-/// <c>TransactionProcessorBase.CapFrameGas</c> bounds every prefix frame at the lesser of its declared limit
-/// and what remains of the constant, unconditionally on the frame-processing path — so this guard applies
-/// equally to a harness that submits through <c>TxPool</c> and one that drives
-/// <c>BlockProductionTransactionsExecutor</c> directly, which is why it is shared here rather than kept
-/// local to one harness.
-/// </remarks>
+/// <summary>Skips runs whose requested ceiling would be clamped by the compiled EIP-8141 limit.</summary>
 internal static class Eip8141MeasurementGuards
 {
     public static void SkipIfCeilingUnreachable(ulong ceiling)
@@ -36,24 +26,8 @@ internal static class Eip8141MeasurementGuards
     }
 }
 
-/// <summary>
-/// Counts the transactions a block-production executor actually hands to the processor, and the gas each
-/// one burned inside its frame.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Shared by the EIP-8141 measurement harnesses because a pass counter cannot stand in for it: a producer
-/// that stopped re-executing a failing prefix would still run its passes, so a guard built on passes holds
-/// while the measurement describes an ordinary empty block.
-/// </para>
-/// <para>
-/// <paramref name="measureBurn"/> is opt-out because <see cref="BudgetProbe"/> sets
-/// <c>IsTracingInstructions</c>, which <c>CompositeTxTracer</c> ORs into the tracer the processor sees — so
-/// an execution that would otherwise run untraced takes the EVM's instrumented specialisation instead. A
-/// caller timing that execution must not pay it; production block building does not trace instructions.
-/// </para>
-/// </remarks>
-/// <param name="measureBurn">Whether to attach the gas probe. Leave off when the execution is being timed.</param>
+/// <summary>Counts production attempts and optionally measures their frame-gas burn.</summary>
+/// <remarks>Burn tracing is disabled for timed paths because it selects the instrumented EVM path.</remarks>
 internal sealed class CountingAdapter(ITransactionProcessorAdapter inner, bool measureBurn = true)
     : ITransactionProcessorAdapter
 {
@@ -76,7 +50,7 @@ internal sealed class CountingAdapter(ITransactionProcessorAdapter inner, bool m
         inner.SetBlockExecutionContext(in blockExecutionContext);
 }
 
-/// <summary>Records the gas span a frame actually ran through, so a burn is measured rather than inferred.</summary>
+/// <summary>Measures gas consumed from the observed instruction span rather than the declared limit.</summary>
 internal sealed class BudgetProbe : TxTracer
 {
     public BudgetProbe() => IsTracingInstructions = true;
