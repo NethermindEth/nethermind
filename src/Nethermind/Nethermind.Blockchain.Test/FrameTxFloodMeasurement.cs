@@ -249,7 +249,7 @@ public class FrameTxFloodMeasurement
         int Submitted,
         int Rejected,
         double MaxLagUs,
-        int QueueGrowth,
+        int PendingPoolGrowth,
         List<double> ProcessMicros);
 
     [SetUp]
@@ -461,7 +461,7 @@ public class FrameTxFloodMeasurement
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} max_lag_us={flooded.MaxLagUs:F0} "
-             + $"queue_growth={flooded.QueueGrowth} "
+             + $"pending_pool_growth={flooded.PendingPoolGrowth} "
              + $"saturated={(flooded.AchievedRate < offeredRate * RateHeldFloor ? "yes" : "no")} "
              + $"delta_per_achieved_tx_us={(flooded.AchievedRate > 0 ? (w - w0) / flooded.AchievedRate : 0):F2} "
              + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
@@ -511,7 +511,7 @@ public class FrameTxFloodMeasurement
         double w0 = Percentile(baseline, 0.50);
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        RunRateRamp(ceiling, shape, "rate_ramp", "r_max", Groth16FitField(shape), w0,
+        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", Groth16FitField(shape), w0,
             rate => MeasureUnderFlood(rate, rejectionCounter));
     }
 
@@ -534,7 +534,7 @@ public class FrameTxFloodMeasurement
         rig.RunFor(WarmupWindow);
         double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
 
-        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_r_max", extraFields: "", w0,
+        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_capacity", extraFields: "", w0,
             rate => MeasureProductionUnderFlood(rig, rate));
     }
 
@@ -555,16 +555,16 @@ public class FrameTxFloodMeasurement
             bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
             bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
 
-            bool queueStable = outcome.QueueGrowth == 0;
-            bool sustained = rateHeld && lagBounded && queueStable;
+            bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
+            bool sustained = rateHeld && lagBounded && pendingPoolStable;
             double w = Percentile(outcome.ProcessMicros, 0.50);
 
             Emit($"case={rateCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
                  + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
                  + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
                  + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
-                 + $"queue_stable={(queueStable ? "yes" : "no")} "
-                 + $"submitted={outcome.Submitted} queue_growth={outcome.QueueGrowth} "
+                 + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
+                 + $"submitted={outcome.Submitted} pending_pool_growth={outcome.PendingPoolGrowth} "
                  + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
 
             Assert.That(outcome.Rejected, Is.EqualTo(outcome.Submitted).Within(1),
@@ -585,11 +585,11 @@ public class FrameTxFloodMeasurement
 
         bool censored = sustainedEveryRate;
 
-        double rMaxUpper = censored ? double.PositiveInfinity : firstFailedRate;
+        double capacityUpper = censored ? double.PositiveInfinity : firstFailedRate;
 
         Emit($"case={summaryCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
-             + $"r_max_sustained_tx_per_s={lastSustained:F1} r_max_lower={lastSustained:F1} "
-             + $"r_max_upper={(censored ? "unbounded" : rMaxUpper.ToString("F1"))} "
+             + $"capacity_sustained_tx_per_s={lastSustained:F1} capacity_lower={lastSustained:F1} "
+             + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
              + $"basis=no_backlog_and_bounded_lag note=B_not_fixed");
 
@@ -675,7 +675,7 @@ public class FrameTxFloodMeasurement
         int rejectedInWindow = rejectionCounter is null
             ? Volatile.Read(ref generator.Rejected) - rejectedAtStart
             : (int)(rejectionCounter() - rejectionCounterAtStart);
-        int queueGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
+        int pendingPoolGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
 
         Assert.That(generator.Stop(cts), Is.True,
             "the generator did not stop, so its counters are being read while it still writes them");
@@ -683,7 +683,7 @@ public class FrameTxFloodMeasurement
         double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
         double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
 
-        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs, queueGrowth, sampleMicros);
+        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs, pendingPoolGrowth, sampleMicros);
     }
 
     private static void WaitUntil(long dueTimestamp, CancellationToken token)
