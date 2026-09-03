@@ -400,27 +400,30 @@ public sealed partial class KeccakHash
         // A full rate block is the overwhelmingly common absorb and is exactly seventeen lanes.
         // Spelling them out drops the loop bound and residue handling entirely and lets every offset
         // fold into a load/store displacement. Only reachable with no vector width, i.e. the guest.
+        // The state is ulong-aligned so it stays a ulong ref; the input is a caller-supplied span with
+        // no such guarantee, hence ReadUnaligned, which costs nothing (riscv64 emits a plain ld for
+        // both spellings, and every rate block starts on a multiple of eight anyway).
         if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
         {
             ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);
             ref byte inRef = ref MemoryMarshal.GetReference(input);
-            Unsafe.Add(ref st, 0) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
-            Unsafe.Add(ref st, 1) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
-            Unsafe.Add(ref st, 2) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
-            Unsafe.Add(ref st, 3) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
-            Unsafe.Add(ref st, 4) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
-            Unsafe.Add(ref st, 5) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
-            Unsafe.Add(ref st, 6) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
-            Unsafe.Add(ref st, 7) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
-            Unsafe.Add(ref st, 8) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
-            Unsafe.Add(ref st, 9) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
-            Unsafe.Add(ref st, 10) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
-            Unsafe.Add(ref st, 11) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
-            Unsafe.Add(ref st, 12) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
-            Unsafe.Add(ref st, 13) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
-            Unsafe.Add(ref st, 14) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
-            Unsafe.Add(ref st, 15) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
-            Unsafe.Add(ref st, 16) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+            Unsafe.Add(ref st, 0) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
+            Unsafe.Add(ref st, 1) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
+            Unsafe.Add(ref st, 2) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
+            Unsafe.Add(ref st, 3) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
+            Unsafe.Add(ref st, 4) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
+            Unsafe.Add(ref st, 5) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
+            Unsafe.Add(ref st, 6) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
+            Unsafe.Add(ref st, 7) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
+            Unsafe.Add(ref st, 8) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
+            Unsafe.Add(ref st, 9) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
+            Unsafe.Add(ref st, 10) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
+            Unsafe.Add(ref st, 11) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
+            Unsafe.Add(ref st, 12) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
+            Unsafe.Add(ref st, 13) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
+            Unsafe.Add(ref st, 14) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
+            Unsafe.Add(ref st, 15) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
+            Unsafe.Add(ref st, 16) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
             return;
         }
         if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
@@ -490,16 +493,16 @@ public sealed partial class KeccakHash
             {
                 ref ulong s0 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
                 ref byte in0 = ref Unsafe.Add(ref inputRef, i);
-                s0 ^= Unsafe.As<byte, ulong>(ref in0);
-                Unsafe.Add(ref s0, 1) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
-                Unsafe.Add(ref s0, 2) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
-                Unsafe.Add(ref s0, 3) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
+                s0 ^= Unsafe.ReadUnaligned<ulong>(ref in0);
+                Unsafe.Add(ref s0, 1) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
+                Unsafe.Add(ref s0, 2) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
+                Unsafe.Add(ref s0, 3) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
             }
 
             for (; i < ulongLength; i += sizeof(ulong))
             {
                 ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
-                ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                ulong input64 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i));
                 state64 ^= input64;
             }
 

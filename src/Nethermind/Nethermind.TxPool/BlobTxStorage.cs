@@ -14,11 +14,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -37,6 +38,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     private readonly IDb _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
     private readonly IDb _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     private readonly IDb _processedBlobTxsDb = database.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<BlobTxStorage>();
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
@@ -59,6 +61,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         if (elidedBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+            if (transaction is null)
+            {
+                return false;
+            }
+
             transaction.SenderAddress = sender;
             return true;
         }
@@ -103,13 +110,45 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
+    /// <summary>Enumerates all stored light blob transactions.</summary>
+    /// <remarks>
+    /// Undecodable records are skipped so that a single corrupt entry cannot abort restoration of the whole pool at
+    /// startup. Both counts and the first failure are reported once when enumeration ends, so that losing one record
+    /// and losing every record — which a layout change does — stay distinguishable without logging per record.
+    /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
-        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
+        int skipped = 0;
+        int restored = 0;
+        string? firstFailure = null;
+
+        try
         {
-            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
+            foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
             {
-                yield return transaction!;
+                LightTransaction transaction;
+                try
+                {
+                    transaction = LightTxDecoder.Decode(txBytes);
+                }
+                // A truncated record surfaces from RlpReader's unchecked Span.Slice, not as an RlpException, so the
+                // filter spans every root a corrupt record is known to decode into.
+                catch (Exception e) when (e is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+                {
+                    skipped++;
+                    firstFailure ??= $"{e.GetType().Name}: {e.Message}";
+                    continue;
+                }
+
+                restored++;
+                yield return transaction;
+            }
+        }
+        finally
+        {
+            if (skipped > 0 && _logger.IsWarn)
+            {
+                _logger.Warn($"Skipped {skipped} of {skipped + restored} blob transaction record(s) as unreadable while restoring the blob transaction pool. First failure: {firstFailure}");
             }
         }
     }
@@ -346,14 +385,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
     }
 
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
         byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
 
         if (bytes is not null)
         {
             RlpReader ctx = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
             return true;
         }
 
@@ -368,29 +407,22 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         byte[]? txBytes,
         Address sender,
         in UInt256 timestamp,
-        out Transaction? transaction)
+        [NotNullWhen(true)] out Transaction? transaction)
     {
         if (txBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            if (transaction is null)
+            {
+                return false;
+            }
+
             transaction.SenderAddress = sender;
             transaction.Timestamp = timestamp;
             return true;
         }
 
         transaction = default;
-        return false;
-    }
-
-    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
-    {
-        if (txBytes is not null)
-        {
-            lightTx = LightTxDecoder.Decode(txBytes);
-            return true;
-        }
-
-        lightTx = default;
         return false;
     }
 

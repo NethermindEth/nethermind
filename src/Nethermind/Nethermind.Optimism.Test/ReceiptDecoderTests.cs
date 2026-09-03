@@ -11,6 +11,89 @@ namespace Nethermind.Optimism.Test;
 
 public class ReceiptDecoderTests
 {
+    [Test]
+    public void Null_receipt_roundtrips()
+    {
+        OptimismReceiptMessageDecoder decoder = new();
+        Rlp encoded = decoder.Encode((TxReceipt?)null);
+        RlpReader reader = new(encoded.Bytes);
+
+        Assert.That(decoder.Decode(ref reader), Is.Null);
+    }
+
+    [Test]
+    public void Optimism_receipt_message_encoding_rejects_null_logs()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            Logs = null
+        };
+
+        OptimismReceiptMessageDecoder decoder = new();
+
+        Assert.That(
+            () => decoder.Encode(receipt),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Optimism_compact_receipt_storage_encoding_rejects_null_logs()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            Logs = null
+        };
+
+        OptimismCompactReceiptStorageDecoder decoder = new();
+
+        Assert.That(
+            () => decoder.Encode(receipt),
+            Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Optimism_receipt_message_decoding_rejects_null_bloom()
+    {
+        byte[] encoded = EncodeReceiptWithNullBloom();
+        OptimismReceiptMessageDecoder decoder = new();
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(encoded);
+            decoder.Decode(ref reader);
+        }
+    }
+
+    [Test]
+    public void Optimism_compact_receipt_storage_decoding_skips_empty_log_entry()
+    {
+        byte[] encoded = EncodeCompactReceiptWithNullLogEntry();
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        RlpReader reader = new(encoded);
+
+        TxReceipt receipt = decoder.DecodeGuardNotNull(ref reader);
+
+        Assert.That(receipt.Logs, Is.Empty);
+    }
+
+    [Test]
+    public void Optimism_compact_receipt_storage_struct_ref_decoding_returns_default_for_empty_log_entry()
+    {
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        RlpReader reader = new(Rlp.OfEmptyList.Bytes);
+
+        decoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
+            Assert.That(logEntry.Data.Length, Is.Zero);
+            Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
+        }
+    }
+
     [TestCaseSource(nameof(DepositTxReceiptsSerializationTestCases))]
     public void Test_tx_network_form_receipts_properly_encoded_for_trie(byte[] rlp, bool includesNonce, bool includesVersion, bool shouldIncludeNonceAndVersionForTxTrie)
     {
@@ -18,7 +101,7 @@ public class ReceiptDecoderTests
         {
             OptimismReceiptMessageDecoder decoder = new();
             RlpReader ctx = new(rlp);
-            OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
             byte[] encodedBytes = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
             RlpWriter writer = new(encodedBytes);
@@ -43,7 +126,7 @@ public class ReceiptDecoderTests
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             RlpReader reader = new(encodedRlp);
-            OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {
@@ -63,7 +146,7 @@ public class ReceiptDecoderTests
             trieDecoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             RlpReader trieReader = new(encodedTrieRlp);
-            OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.Decode(ref trieReader, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.DecodeGuardNotNull(ref trieReader, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {
@@ -91,7 +174,7 @@ public class ReceiptDecoderTests
         Rlp rlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts);
 
         RlpReader reader = new(rlp.Bytes);
-        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts);
+        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
 
         Assert.That(decoded.Sender, Is.Null);
     }
@@ -102,7 +185,7 @@ public class ReceiptDecoderTests
         OptimismReceiptMessageDecoder decoder = new();
         byte[] receiptRlp = CreateReceiptWithLegacyBloom();
         RlpReader reader = new(receiptRlp);
-        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
 
         Assert.That(decoded.Bloom, Is.EqualTo(Bloom.Empty));
     }
@@ -185,5 +268,39 @@ public class ReceiptDecoderTests
                 TestName = "Canyon receipt"
             };
         }
+    }
+
+    private static byte[] EncodeReceiptWithNullBloom()
+    {
+        int contentLength = Rlp.LengthOf((byte)1)
+            + Rlp.LengthOf(1UL)
+            + 1
+            + Rlp.LengthOfSequence(0);
+        byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(encoded);
+        writer.StartSequence(contentLength);
+        writer.Encode((byte)1);
+        writer.Encode(1UL);
+        writer.EncodeEmptyByteArray();
+        writer.StartSequence(0);
+        return encoded;
+    }
+
+    private static byte[] EncodeCompactReceiptWithNullLogEntry()
+    {
+        int logsContentLength = Rlp.LengthOfSequence(0);
+        int contentLength = Rlp.LengthOf((byte)1)
+            + Rlp.LengthOf(Address.Zero)
+            + Rlp.LengthOf(1UL)
+            + Rlp.LengthOfSequence(logsContentLength);
+        byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(encoded);
+        writer.StartSequence(contentLength);
+        writer.Encode((byte)1);
+        writer.Encode(Address.Zero);
+        writer.Encode(1UL);
+        writer.StartSequence(logsContentLength);
+        writer.EncodeNullObject();
+        return encoded;
     }
 }

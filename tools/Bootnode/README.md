@@ -91,7 +91,7 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
   --external-ip-v6 2001:db8::10
 ```
 
-`--external-ip-v4` writes the ENR `ip`/`udp` entries, `--external-ip-v6` writes `ip6`/`udp6`, and using both publishes both families in the same ENR. `--external-ip` remains available for a single primary address and for backward-compatible simple setups.
+`--external-ip-v4` writes the ENR `ip`/`udp` entries when the listener enables IPv4, and `--external-ip-v6` writes `ip6`/`udp6` when it enables IPv6. Use both with `--local-ip ::` to publish both families in the same ENR. On an IPv6-only host, use `--external-ip` so existing consumers also use IPv6. `--external-ip` remains available for other single-address and backward-compatible setups.
 
 ## Options
 
@@ -102,8 +102,8 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 | `--addr` | unset | Bootnode-compatible UDP listen address such as `:30303`, `0.0.0.0:30303`, or `[::]:30303`; overrides `--local-ip` and `--discovery-port` parts that are present. |
 | `--local-ip` | auto-detected (`0.0.0.0` in Docker) | Local IP address to bind the UDP discovery socket. |
 | `--external-ip` | auto-detected | Single advertised external IP address. |
-| `--external-ip-v4` | unset | Advertised external IPv4 address for ENR `ip`/`udp`. |
-| `--external-ip-v6` | unset | Advertised external IPv6 address for ENR `ip6`/`udp6`. |
+| `--external-ip-v4` | unset | External IPv4 address for ENR `ip`/`udp`; advertised only when the listener enables IPv4. |
+| `--external-ip-v6` | unset | External IPv6 address for ENR `ip6`/`udp6`; advertised only when the listener enables IPv6. |
 | `--protocols` | `all` | Discovery protocols to enable: `v4`, `v5`, or `all`. |
 | `--bootnode`, `--bootnodes` | none | Bootstrap enode/ENR values; may be repeated or comma-separated. |
 | `--use-default-discv5-bootnodes` | `true` | Use Nethermind's embedded well-known discv5 bootnodes in addition to configured bootnodes. |

@@ -100,8 +100,8 @@ public static class EthereumEcdsaExtensions
 
     private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
     {
-        bool cacheable = tx.Type != TxType.Legacy && tx.Hash is not null;
-        if (cacheable && _senderCache.TryGet(tx.Hash!.ValueHash256, out Address cached))
+        Hash256? txHash = tx.Type == TxType.Legacy ? null : tx.Hash;
+        if (txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
         {
             return cached;
         }
@@ -109,9 +109,9 @@ public static class EthereumEcdsaExtensions
         ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
-        if (cacheable && recovered is not null)
+        if (txHash is not null && recovered is not null)
         {
-            _senderCache.Set(tx.Hash!.ValueHash256, recovered);
+            _senderCache.Set(txHash.ValueHash256, recovered);
         }
 
         return recovered;
@@ -143,9 +143,11 @@ public static class EthereumEcdsaExtensions
                            || signature.V == CalculateV(ecdsa.ChainId, true);
         ulong chainId = tx.Type switch
         {
-            TxType.Legacy when useSignatureChainId => signature.ChainId.Value,
+            TxType.Legacy when useSignatureChainId => signature.ChainId
+                ?? throw new InvalidDataException("Cannot recover signature hash from a legacy EIP-155 signature without a chain id."),
             TxType.Legacy => ecdsa.ChainId,
-            _ => tx.ChainId!.Value,
+            _ => tx.ChainId
+                ?? throw new InvalidDataException("Cannot recover signature hash from a typed transaction without a chain id."),
         };
 
         KeccakRlpWriter writer = new();

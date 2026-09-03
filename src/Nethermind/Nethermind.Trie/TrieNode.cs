@@ -145,7 +145,7 @@ namespace Nethermind.Trie
 
         public Hash256? Keccak { get; internal set; }
 
-        public bool HasRlp => Volatile.Read(ref _rlpArray) is not null;
+        public bool HasRlp => ReadRlpArray() is not null;
 
         public CappedArray<byte> FullRlp => ReadRlp();
 

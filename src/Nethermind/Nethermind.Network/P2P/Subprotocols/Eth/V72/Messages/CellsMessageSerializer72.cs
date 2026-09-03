@@ -74,7 +74,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int checkPosition = ctx.Position + sequenceLength;
         long requestId = ctx.DecodeLong();
 
-        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
+        using ArrayPoolList<Hash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
 
         int cellsSequenceLength = ctx.ReadSequenceLength();
         if (cellsSequenceLength > Eth72ProtocolHandler.MaxCellsMessageBytes)
@@ -111,8 +111,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         return new CellsMessage72(requestId, hashes.AsSpan().ToArray(), cellsByTx.ToArray(), cellMask);
     }
 
-    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) =>
-        ctx.DecodeKeccak() ?? throw new RlpException($"Null transaction hash in {nameof(CellsMessage72)}.");
+    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeKeccak();
 
     public int GetLength(CellsMessage72 message, out int contentLength)
     {
