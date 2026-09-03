@@ -12,6 +12,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
+#if DEBUG
+using Nethermind.Evm.Tracing.Debugger;
+#endif
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 
@@ -65,6 +68,18 @@ public static class VirtualMachineStatics
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
     internal static readonly Address Ripemd160Address = Address.FromNumber(3);
+
+    /// <summary>
+    /// Whether the dispatch loop must leave the frame after an instruction: the handler returned a status
+    /// other than <see cref="EvmExceptionType.None"/>, or the gas policy ran out of gas.
+    /// </summary>
+    /// <remarks>
+    /// This folds both conditions into one branch on the per-opcode hot path. The exit path checks the gas
+    /// policy first so out-of-gas retains priority over a handler status.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool ShouldExitFrame(EvmExceptionType status, bool outOfGas) =>
+        ((int)status | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
 
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
@@ -1316,7 +1331,7 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
 
-        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
