@@ -290,7 +290,7 @@ public class TrieReassemblerTests
         foreach (FlatDbColumns col in new[] { FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes })
         {
             IDb db = _columnsDb.GetColumnDb(col);
-            foreach (KeyValuePair<byte[], byte[]?> kvp in db.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> kvp in db.GetAll())
             {
                 if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
@@ -404,7 +404,7 @@ public class TrieReassemblerTests
         {
             IDb columnDb = _columnsDb.GetColumnDb(col);
             List<byte[]> toDelete = [];
-            foreach (KeyValuePair<byte[], byte[]?> kvp in columnDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> kvp in columnDb.GetAll())
             {
                 if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
@@ -419,7 +419,7 @@ public class TrieReassemblerTests
         {
             IDb fallbackDb = _columnsDb.GetColumnDb(FlatDbColumns.FallbackNodes);
             List<byte[]> toDelete = [];
-            foreach (KeyValuePair<byte[], byte[]?> kvp in fallbackDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> kvp in fallbackDb.GetAll())
             {
                 if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
@@ -441,7 +441,7 @@ public class TrieReassemblerTests
         {
             IDb columnDb = _columnsDb.GetColumnDb(FlatDbColumns.StorageNodes);
             List<byte[]> toDelete = [];
-            foreach (KeyValuePair<byte[], byte[]?> kvp in columnDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> kvp in columnDb.GetAll())
             {
                 if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
@@ -456,7 +456,7 @@ public class TrieReassemblerTests
         {
             IDb fallbackDb = _columnsDb.GetColumnDb(FlatDbColumns.FallbackNodes);
             List<byte[]> toDelete = [];
-            foreach (KeyValuePair<byte[], byte[]?> kvp in fallbackDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> kvp in fallbackDb.GetAll())
             {
                 if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
