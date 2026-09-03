@@ -36,7 +36,7 @@ namespace Nethermind.Evm.State;
 public sealed class PrecompileCaches
 {
     /// <summary> Accounting weight charged per entry, on top of its key and output bytes, as a container cost estimate. </summary>
-    public const int EntryOverheadBytes = 160;
+    internal const int EntryOverheadBytes = 160;
 
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
     private const int MaxSurvivingEntryBytes = 2048;

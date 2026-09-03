@@ -8,6 +8,7 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
+[assembly: InternalsVisibleTo("Nethermind.State.Test")]
 namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
@@ -22,7 +23,7 @@ public class PreBlockCaches
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
 
-    public PreBlockCaches() : this(new PreBlockCachesConfig(), PrecompileCaches.Empty) { }
+    internal PreBlockCaches() : this(new PreBlockCachesConfig(), PrecompileCaches.Empty) { }
 
     public PreBlockCaches(PreBlockCachesConfig config, PrecompileCaches precompileCaches)
     {
