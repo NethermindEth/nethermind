@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -18,6 +19,7 @@ public class FlatRocksDbConfigAdjusterTests
 {
     private IRocksDbConfigFactory _baseFactory = null!;
     private IFlatDbConfig _flatDbConfig = null!;
+    private IHardwareInfo _hardwareInfo = null!;
     private IDisposableStack _disposeStack = null!;
     private IRocksDbConfig _baseConfig = null!;
 
@@ -26,6 +28,7 @@ public class FlatRocksDbConfigAdjusterTests
     {
         _baseFactory = Substitute.For<IRocksDbConfigFactory>();
         _flatDbConfig = Substitute.For<IFlatDbConfig>();
+        _hardwareInfo = new TestHardwareInfo(64L << 30);
         _disposeStack = Substitute.For<IDisposableStack>();
         _baseConfig = Substitute.For<IRocksDbConfig>();
 
@@ -41,7 +44,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
-        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _hardwareInfo, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase("State0", null);
 
@@ -54,7 +57,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
-        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _hardwareInfo, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Metadata));
 
@@ -69,7 +72,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.FlatInTrie);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
-        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _hardwareInfo, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Metadata));
 
@@ -84,7 +87,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.HistoryRetentionBlocks.Returns(450_000UL);
 
-        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _hardwareInfo, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
 
@@ -98,7 +101,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.HistoryRetentionBlocks.Returns(0UL);
 
-        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _hardwareInfo, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
 
@@ -111,10 +114,24 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
-        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _hardwareInfo, _disposeStack, LimboLogs.Instance);
 
         adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
 
         _baseFactory.Received(1).GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
+    }
+
+    [TestCase(0UL, 4L << 30, 1UL << 30)] // auto: total / 8 clamped up to the 1 GiB floor
+    [TestCase(0UL, 64L << 30, 8UL << 30)] // auto: total / 8
+    [TestCase(0UL, 512L << 30, 32UL << 30)] // auto: total / 8 clamped down to the 32 GiB cap
+    [TestCase(1_000_000_000UL, 512L << 30, 1_000_000_000UL)] // explicit value passes through unchanged
+    [TestCase(48UL << 30, 64L << 30, 48UL << 30)] // explicit value above half of total memory still passes through
+    public void BlockCacheSizeBudget_ResolvesFromConfigAndSystemMemory(ulong configured, long availableMemory, ulong expected)
+    {
+        _flatDbConfig.BlockCacheSizeBudget.Returns(configured);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, new TestHardwareInfo(availableMemory), _disposeStack, LimboLogs.Instance);
+
+        Assert.That(adjuster.BlockCacheSizeBudget, Is.EqualTo(expected));
     }
 }
