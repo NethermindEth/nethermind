@@ -4915,17 +4915,40 @@ namespace Nethermind.TxPool.Test
                 "an expired blob-carrying frame tx must be evicted from the blob pool on a new head");
         }
 
+        // With persistent storage the live pool already holds the frameless light record, not the submitted
+        // transaction, so the sweep reads the deadline the record carried off rather than the frames.
+        [TestCase(1_000UL, 0, TestName = "a live light record behind the head expires")]
+        [TestCase(1_500UL, 1, TestName = "a live light record at the head timestamp survives")]
+        public async Task Expiring_blob_carrying_frame_tx_expires_from_the_persistent_pool_without_a_restart(ulong deadline, int expectedPending)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: new BlobTxStorage());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending),
+                "the pooled light record must carry the deadline its frames held");
+        }
+
         // The deadline lives in the frames, which a reloaded light record does not have — so without it
-        // persisted the sweep cannot see the transaction and it never leaves the pool.
-        [Test]
-        public async Task Expired_blob_carrying_frame_tx_is_evicted_after_a_restart()
+        // persisted the sweep cannot see the transaction and it never leaves the pool. The boundary cases pin
+        // that it comes back as itself: a deadline reloaded a second either side still evicts on the past case.
+        [TestCase(1_000UL, 0, TestName = "a reloaded deadline behind the head still expires")]
+        [TestCase(1_500UL, 1, TestName = "a reloaded deadline equal to the head timestamp survives")]
+        [TestCase(1_501UL, 1, TestName = "a reloaded deadline ahead of the head survives")]
+        public async Task Expired_blob_carrying_frame_tx_is_evicted_after_a_restart(ulong deadline, int expectedPending)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
             // A fresh pool over the same storage stands in for a node restart.
@@ -4934,8 +4957,8 @@ namespace Nethermind.TxPool.Test
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
 
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
-                "a reloaded blob-carrying frame tx must still expire out of the pool");
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending),
+                "a reloaded blob-carrying frame tx must expire on exactly the deadline it was persisted with");
         }
 
         // Restoring the pool evicts as it goes and each eviction decrements the expiry count, so the count must be
