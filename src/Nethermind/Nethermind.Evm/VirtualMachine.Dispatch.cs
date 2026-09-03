@@ -22,15 +22,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* OpcodeHandlers;
         public VirtualMachine<TGasPolicy> Vm;
 
-        /// <summary>Where the chain stopped, and how many opcodes it ran. Written only as it leaves.</summary>
+        /// <summary>Where the chain stopped. Written only as the chain leaves.</summary>
         /// <remarks>
-        /// Both ride the dispatch signature while the chain runs. A counter in the struct would be a
-        /// narrow read-modify-write through a byref on every opcode, which the zkEVM guest charges at
-        /// roughly twenty times an aligned load.
+        /// This and <see cref="OpCodeCount"/> ride the dispatch signature while the chain runs. A counter
+        /// in the struct would be a narrow read-modify-write through a byref on every opcode, which the
+        /// zkEVM guest charges at roughly twenty times an aligned load.
         /// </remarks>
         public nint FinalProgramCounter;
 
-        /// <inheritdoc cref="FinalProgramCounter"/>
+        /// <summary>How many opcodes the chain ran. Written only as the chain leaves.</summary>
         public int OpCodeCount;
     }
 
@@ -66,7 +66,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        // The cache key and the table contents come from one read, so they cannot describe different forks.
+        // The fork comes from Spec here and in GetOpcodeTable, so the cache key and the table contents
+        // cannot describe different forks.
         IReleaseSpec spec = Spec;
         OpcodeTable table = GetOpcodeTable();
 
