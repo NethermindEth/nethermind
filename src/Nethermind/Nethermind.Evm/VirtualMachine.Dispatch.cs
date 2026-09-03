@@ -177,12 +177,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         pc++;
         opCodeCount++;
-        OpcodeResult result = TOpcode.Execute(ref stack, ref gas, vm, pc);
-
-        // Only the handlers that move the counter report one; the rest leave the step taken above.
-        nint programCounter = result.ProgramCounter;
-        if (programCounter >= 0)
-            pc = programCounter;
+        EvmExceptionType exceptionType = TOpcode.Execute(ref stack, ref gas, vm, ref pc);
 
         // The counter is final here, so the target resolves before the halt checks instead of after them.
         // Its load chain then overlaps the rest of the handler. Zero means the counter ran off the end of
@@ -191,7 +186,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)pc < (nuint)stack.CodeLength)
             next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
 
-        if (ShouldExitFrame(result.Exception, TGasPolicy.IsOutOfGas(in gas)))
+        if (ShouldExitFrame(exceptionType, TGasPolicy.IsOutOfGas(in gas)))
             goto Exit;
 
         Debug.Assert(vm.ReturnData is null,
@@ -235,6 +230,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return EvmExceptionType.OutOfGas;
         }
 
-        return result.Exception;
+        return exceptionType;
     }
 }
