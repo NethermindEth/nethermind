@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 
@@ -34,6 +35,23 @@ public static partial class Merkle
         }
 
         return HashPair(in left, in right);
+    }
+
+    /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256.</summary>
+    /// <remarks>Hashes into the result: a <c>byte[32]</c> per merkle node cost the guest ~140 steps
+    /// each, several times the hash itself.</remarks>
+    [SkipLocalsInit]
+    private static UInt256 HashPair(in UInt256 left, in UInt256 right)
+    {
+        Span<UInt256> concatenation = stackalloc UInt256[2];
+        concatenation[0] = left;
+        concatenation[1] = right;
+
+        Unsafe.SkipInit(out UInt256 result);
+        Sha256(
+            MemoryMarshal.AsBytes(concatenation),
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
+        return result;
     }
 
     private static bool IsZeroHash(UInt256 span, int level) => span.Equals(ZeroHashes[level]);

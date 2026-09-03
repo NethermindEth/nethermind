@@ -3,28 +3,14 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public static partial class Merkle
 {
-    /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256.</summary>
-    /// <remarks>Hashes into the result: the <c>byte[32]</c> the wrapper allocated was one allocation
-    /// per merkle node, ~140 guest steps each. See <c>Merkle.std.cs</c> for the host form.</remarks>
-    [SkipLocalsInit]
-    private static UInt256 HashPair(in UInt256 left, in UInt256 right)
-    {
-        Span<UInt256> concatenation = stackalloc UInt256[2];
-        concatenation[0] = left;
-        concatenation[1] = right;
-
-        Unsafe.SkipInit(out UInt256 result);
-        Accelerators.Sha256(
-            MemoryMarshal.AsBytes(concatenation),
-            MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
-        return result;
-    }
+    /// <summary>Hashes <paramref name="data"/> into <paramref name="output"/> with SHA-256.</summary>
+    /// <remarks>The guest has no BCL implementation to fall back on &mdash; SHA-256 is a zkVM accelerator.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Sha256(ReadOnlySpan<byte> data, Span<byte> output) => Accelerators.Sha256(data, output);
 }

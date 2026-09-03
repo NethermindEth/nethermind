@@ -3,28 +3,13 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public static partial class Merkle
 {
-    /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256.</summary>
-    /// <remarks>Hashes into the result rather than through <see cref="SHA256.HashData(ReadOnlySpan{byte})"/>,
-    /// whose <c>byte[32]</c> would be one gen0 allocation per merkle node.</remarks>
-    [SkipLocalsInit]
-    private static UInt256 HashPair(in UInt256 left, in UInt256 right)
-    {
-        Span<UInt256> concatenation = stackalloc UInt256[2];
-        concatenation[0] = left;
-        concatenation[1] = right;
-
-        Unsafe.SkipInit(out UInt256 result);
-        SHA256.HashData(
-            MemoryMarshal.AsBytes(concatenation),
-            MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
-        return result;
-    }
+    /// <summary>Hashes <paramref name="data"/> into <paramref name="output"/> with SHA-256.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Sha256(ReadOnlySpan<byte> data, Span<byte> output) => SHA256.HashData(data, output);
 }
