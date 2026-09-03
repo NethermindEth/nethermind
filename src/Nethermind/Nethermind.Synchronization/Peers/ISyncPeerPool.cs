@@ -125,12 +125,12 @@ namespace Nethermind.Synchronization.Peers
             AllocationContexts allocationContexts,
             CancellationToken cancellationToken)
         {
-            using SyncPeerAllocation allocation = await syncPeerPool.Allocate(
+            using SyncPeerAllocation? allocation = await syncPeerPool.Allocate(
                 peerAllocationStrategy,
                 allocationContexts,
                 timeoutMilliseconds: int.MaxValue,
                 cancellationToken: cancellationToken);
-            if (allocation.Current is null) return default;
+            if (allocation?.Current is null) return default;
             return await func(allocation.Current);
         }
 
