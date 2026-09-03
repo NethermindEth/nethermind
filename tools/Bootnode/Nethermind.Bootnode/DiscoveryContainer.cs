@@ -28,6 +28,14 @@ namespace Nethermind.Bootnode;
 
 internal static class DiscoveryContainer
 {
+    /// <summary>
+    /// Points the general and discovery buffers at one small pooled allocator.
+    /// </summary>
+    /// <remarks>
+    /// A bootnode only serializes discovery traffic, so one arena of 2 MiB chunks replaces the process-wide default's
+    /// per-core 16 MiB arenas. This must run before anything allocates from <see cref="NethermindBuffers.Default"/>, or
+    /// the default allocator's chunks remain reachable.
+    /// </remarks>
     internal static void ConfigureNetworkBuffers() =>
         NethermindBuffers.Default = NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(
             arenaOrder: 8,

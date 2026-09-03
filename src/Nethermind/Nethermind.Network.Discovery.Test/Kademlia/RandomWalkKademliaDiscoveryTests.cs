@@ -121,7 +121,7 @@ public class RandomWalkKademliaDiscoveryTests
     [TestCaseSource(nameof(ProductivePacingCases))]
     [CancelAfter(10000)]
     public async Task DiscoverNodes_should_bound_productive_filled_table_pace(
-        bool admitEveryLookup,
+        int[] admittingLookups,
         int iterations,
         int[] expectedDelaySeconds,
         CancellationToken token)
@@ -131,7 +131,7 @@ public class RandomWalkKademliaDiscoveryTests
         {
             OnLookup = lookup =>
             {
-                if (admitEveryLookup || lookup == 6)
+                if (Array.IndexOf(admittingLookups, lookup) >= 0)
                 {
                     routingTable.RaiseNodeAdded(42);
                 }
@@ -140,7 +140,7 @@ public class RandomWalkKademliaDiscoveryTests
 
         TimeSpan[] delays = await RunIterations(kademlia, routingTable, iterations, token);
 
-        AssertPacedBy(delays, expectedDelaySeconds.Select(value => TimeSpan.FromSeconds(value)).ToArray());
+        AssertPacedBy(delays, Array.ConvertAll(expectedDelaySeconds, static seconds => TimeSpan.FromSeconds(seconds)));
     }
 
     /// <summary>
@@ -185,20 +185,25 @@ public class RandomWalkKademliaDiscoveryTests
 
     /// <summary>Asserts that the first iterations waited for exactly the expected paces.</summary>
     private static void AssertPacedBy(TimeSpan[] delays, TimeSpan[] expected) =>
-        Assert.That(delays.Take(expected.Length).ToArray(), Is.EqualTo(expected));
+        Assert.That(delays[..expected.Length], Is.EqualTo(expected));
 
     private static IEnumerable<TestCaseData> ProductivePacingCases()
     {
         yield return new TestCaseData(
-                false,
+                new[] { 6 },
                 8,
                 new[] { 2, 4, 8, 16, 32, 30, 60 })
             .SetName("DiscoverNodes_returns_to_productive_pace_when_lookup_admits_a_node");
         yield return new TestCaseData(
-                true,
+                new[] { 1, 2, 3, 4, 5, 6, 7 },
                 7,
                 new[] { 2, 4, 8, 16, 30, 30 })
             .SetName("DiscoverNodes_limits_continuously_productive_filled_table_pace");
+        yield return new TestCaseData(
+                new[] { 10 },
+                12,
+                new[] { 2, 4, 8, 16, 32, 64, 128, 256, 300, 30, 60 })
+            .SetName("DiscoverNodes_returns_from_idle_ceiling_to_productive_pace");
     }
 
     private static RandomWalkKademliaDiscovery<int, int, int> CreateDiscovery(

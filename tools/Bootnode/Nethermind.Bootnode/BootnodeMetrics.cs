@@ -51,7 +51,7 @@ internal sealed class BootnodeMetrics
         "Total discovery UDP traffic handled by the bootnode.",
         new CounterConfiguration { LabelNames = ["direction"] });
 
-    private static readonly Gauge KademliaBucketNodes = PrometheusMetrics.CreateGauge(
+    internal static readonly Gauge KademliaBucketNodes = PrometheusMetrics.CreateGauge(
         "nethermind_bootnode_kademlia_bucket_nodes",
         "Number of nodes in each bootnode Kademlia routing-table bucket.",
         new GaugeConfiguration { LabelNames = ["protocol", "bucket", "depth", "prefix"] });
@@ -61,6 +61,7 @@ internal sealed class BootnodeMetrics
         "Bootnode identity information.",
         new GaugeConfiguration { LabelNames = ["enode", "enr", "seq", "node_id", "address"] });
 
+    // These fixed-label children are process-lifetime caches; only uncached dynamic children are removed below.
     private static readonly Counter.Child DiscoveredDiscv4Nodes = DiscoveredNodes.WithLabels("discv4");
     private static readonly Counter.Child DiscoveredDiscv5Nodes = DiscoveredNodes.WithLabels("discv5");
     private static readonly Counter.Child RemovedDiscv4Nodes = RemovedNodes.WithLabels("discv4");

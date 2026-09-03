@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Text;
+using System.Diagnostics;
 using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -18,8 +19,8 @@ internal sealed class DiscoveredNodeStore
     internal const int MaxNodePageSize = 1_000;
 
     private readonly Dictionary<Hash256, TrackedNode> _nodes;
-    private readonly RetentionList _activeRetentionOrder = new();
-    private readonly RetentionList _inactiveRetentionOrder = new();
+    private readonly RetentionList _activeRetentionOrder = new(active: true);
+    private readonly RetentionList _inactiveRetentionOrder = new(active: false);
     private readonly SortedSet<Hash256> _orderedNodes = [];
     private readonly SortedSet<Hash256> _orderedActiveNodes = [];
     private readonly Lock _lock = new();
@@ -42,7 +43,7 @@ internal sealed class DiscoveredNodeStore
         _nodes = new Dictionary<Hash256, TrackedNode>(maxRetainedNodes);
     }
 
-    public DiscoverySnapshot AddOrUpdate(Node node, string protocol, bool isActive)
+    public void AddOrUpdate(Node node, string protocol, bool isActive)
     {
         NodeProtocol parsedProtocol = ParseProtocol(protocol);
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -72,7 +73,6 @@ internal sealed class DiscoveredNodeStore
 
             UpdateRetentionOrder(trackedNode, after);
             PruneRetainedNodes();
-            return CreateSnapshotCore();
         }
     }
 
@@ -90,7 +90,7 @@ internal sealed class DiscoveredNodeStore
         return CreateSnapshot();
     }
 
-    public DiscoverySnapshot Remove(Node node, string protocol)
+    public void Remove(Node node, string protocol)
     {
         NodeProtocol parsedProtocol = ParseProtocol(protocol);
         lock (_lock)
@@ -105,8 +105,6 @@ internal sealed class DiscoveredNodeStore
                 UpdateRetentionOrder(trackedNode, after);
                 PruneRetainedNodes();
             }
-
-            return CreateSnapshotCore();
         }
     }
 
@@ -245,7 +243,6 @@ internal sealed class DiscoveredNodeStore
             GetRetentionOrder(trackedNode.RetainedAsActive).Remove(trackedNode);
         }
 
-        trackedNode.RetainedAsActive = active;
         GetRetentionOrder(active).AddLast(trackedNode);
     }
 
@@ -294,7 +291,11 @@ internal sealed class DiscoveredNodeStore
             SortedSet<Hash256> orderedNodes = activeOnly ? _orderedActiveNodes : _orderedNodes;
             foreach (Hash256 idHash in orderedNodes)
             {
-                TrackedNode trackedNode = _nodes[idHash];
+                if (!_nodes.TryGetValue(idHash, out TrackedNode? trackedNode))
+                {
+                    continue;
+                }
+
                 if (matchedNodes++ < offset)
                 {
                     continue;
@@ -305,6 +306,11 @@ internal sealed class DiscoveredNodeStore
                 {
                     break;
                 }
+            }
+
+            if (resultIndex != resultCount)
+            {
+                Array.Resize(ref nodeViews, resultIndex);
             }
         }
 
@@ -475,6 +481,7 @@ internal sealed class DiscoveredNodeStore
             new(
                 NodeId.AsSpan().ToHexString(withZeroX: false),
                 IdHash.ToString(),
+                // Match Node.Host formatting without retaining the discovery Node graph.
                 Host.IsIPv4MappedToIPv6 ? Host.MapToIPv4().ToString() : Host.ToString(),
                 TcpPort,
                 DiscoveryPort,
@@ -488,7 +495,7 @@ internal sealed class DiscoveredNodeStore
                 SeenCount);
     }
 
-    private sealed class RetentionList
+    private sealed class RetentionList(bool active)
     {
         public TrackedNode? First { get; private set; }
         public TrackedNode? Last { get; private set; }
@@ -496,9 +503,11 @@ internal sealed class DiscoveredNodeStore
 
         public void AddLast(TrackedNode node)
         {
+            Debug.Assert(!node.IsInRetentionOrder);
             node.PreviousRetentionNode = Last;
             node.NextRetentionNode = null;
             node.IsInRetentionOrder = true;
+            node.RetainedAsActive = active;
             if (Last is null)
             {
                 First = node;
@@ -512,8 +521,10 @@ internal sealed class DiscoveredNodeStore
             Count++;
         }
 
+        /// <remarks>The caller must ensure <paramref name="node"/> belongs to this list.</remarks>
         public void Remove(TrackedNode node)
         {
+            Debug.Assert(node.IsInRetentionOrder && node.RetainedAsActive == active);
             if (node.PreviousRetentionNode is null)
             {
                 First = node.NextRetentionNode;

@@ -24,7 +24,8 @@ public class DiscoveredNodeStoreTests
         DiscoveredNodeStore store = new();
 
         DiscoverySnapshot configuredSnapshot = store.AddConfiguredBootnodes([networkNode]);
-        DiscoverySnapshot activeSnapshot = store.AddOrUpdate(node, "discv4", isActive: true);
+        store.AddOrUpdate(node, "discv4", isActive: true);
+        DiscoverySnapshot activeSnapshot = store.CreateSnapshot();
         NodeDto activeNode = store.GetActiveNodes().Single();
 
         using (Assert.EnterMultipleScope())
@@ -78,11 +79,12 @@ public class DiscoveredNodeStoreTests
             store.Remove(secondNode, "discv5");
         }
 
-        DiscoverySnapshot snapshot = store.AddOrUpdate(thirdNode, "discv4", isActive: true);
+        store.AddOrUpdate(thirdNode, "discv4", isActive: true);
+        DiscoverySnapshot snapshot = store.CreateSnapshot();
         NodeDto[] retainedNodes = store.GetAllNodes();
         NodeDto[] activeRetainedNodes = store.GetActiveNodes();
-        string[] retainedNodeIds = retainedNodes.Select(static node => node.NodeId).ToArray();
-        string[] activeRetainedNodeIds = activeRetainedNodes.Select(static node => node.NodeId).ToArray();
+        string[] retainedNodeIds = Array.ConvertAll(retainedNodes, static node => node.NodeId);
+        string[] activeRetainedNodeIds = Array.ConvertAll(activeRetainedNodes, static node => node.NodeId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,7 +118,8 @@ public class DiscoveredNodeStoreTests
 
         store.AddConfiguredBootnodes([configuredNetworkNode]);
         store.AddOrUpdate(firstNode, "discv4", isActive: false);
-        DiscoverySnapshot snapshot = store.AddOrUpdate(secondNode, "discv5", isActive: false);
+        store.AddOrUpdate(secondNode, "discv5", isActive: false);
+        DiscoverySnapshot snapshot = store.CreateSnapshot();
         NodeDto[] retainedNodes = store.GetAllNodes(limit: 2);
         string[] retainedNodeIds = new string[retainedNodes.Length];
         for (int i = 0; i < retainedNodes.Length; i++)
@@ -182,11 +185,13 @@ public class DiscoveredNodeStoreTests
 
         store.AddOrUpdate(node, "discv4", isActive: true);
         store.AddOrUpdate(node, "discv5", isActive: true);
-        DiscoverySnapshot discv4Removed = store.Remove(node, "discv4");
+        store.Remove(node, "discv4");
+        DiscoverySnapshot discv4Removed = store.CreateSnapshot();
         NodeDto[] activeNodes = store.GetActiveNodes();
         Assert.That(activeNodes, Has.Length.EqualTo(1));
         NodeDto retainedNode = activeNodes[0];
-        DiscoverySnapshot discv5Removed = store.Remove(node, "discv5");
+        store.Remove(node, "discv5");
+        DiscoverySnapshot discv5Removed = store.CreateSnapshot();
 
         using (Assert.EnterMultipleScope())
         {
