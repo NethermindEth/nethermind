@@ -62,6 +62,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
+        public IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope() =>
+            innerScope.CreateTrieWarmerScope();
+
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
             new StorageTreeWrapper(innerScope.CreateStorageTree(address), address, scopeId, logger);
 

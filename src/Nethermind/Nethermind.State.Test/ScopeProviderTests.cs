@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -1188,6 +1189,42 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ScopeDecorators_ForwardTrieWarmerScopeFactory()
+    {
+        IWorldStateScopeProvider.ITrieWarmerScope trieWarmerScope = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
+        IWorldStateScopeProvider.IScope innerScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        innerScope.CreateTrieWarmerScope().Returns(trieWarmerScope);
+        IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
+        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(innerScope);
+
+        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
+            new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
+        using IWorldStateScopeProvider.IScope scope = decorated.BeginScope(null);
+
+        Assert.That(scope.CreateTrieWarmerScope(), Is.SameAs(trieWarmerScope));
+        innerScope.Received(1).CreateTrieWarmerScope();
+    }
+
+    [Test]
+    public void Test_NonFlatTrieWarmerScope_IsReusableAndIdempotentlyDisposable()
+    {
+        using Context ctx = new(useFlat: false);
+        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
+
+        IWorldStateScopeProvider.ITrieWarmerScope first = scope.CreateTrieWarmerScope();
+        IWorldStateScopeProvider.ITrieWarmerScope second = scope.CreateTrieWarmerScope();
+
+        Assert.That(second, Is.SameAs(first));
+        Assert.DoesNotThrow(() =>
+        {
+            first.Dispose();
+            first.Dispose();
+            first.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+            first.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)1);
+        });
+    }
+
+    [Test]
     public void Test_MainScope_RegisteredForConsumerScopeLifetime([Values] bool isPrewarmer)
     {
         using Context ctx = new(useFlat);
@@ -1376,6 +1413,41 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         mainScope.Received(1).HintWarmSlot(addressA, (UInt256)1);
+    }
+
+    [Test]
+    public void Test_PopulatorScope_DisposalIsOrderedIdempotentAndConstructionFailureSafe()
+    {
+        List<string> disposalOrder = [];
+        IWorldStateScopeProvider.IScope processingScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        processingScope.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("processing"));
+        IWorldStateScopeProvider processingProvider = Substitute.For<IWorldStateScopeProvider>();
+        processingProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(processingScope);
+        IWorldStateScopeProvider.ITrieWarmerScope trieWarmerScope = Substitute.For<IWorldStateScopeProvider.ITrieWarmerScope>();
+        trieWarmerScope.When(static scope => scope.Dispose()).Do(_ => disposalOrder.Add("prewarmer"));
+        processingScope.CreateTrieWarmerScope().Returns(trieWarmerScope);
+        PrewarmerScopeProvider populator = new(
+            processingProvider,
+            new PrewarmerState(NewCaches(), isPrewarmer: true),
+            LimboLogs.Instance);
+
+        IWorldStateScopeProvider.IScope scope = populator.BeginScope(null);
+        scope.Dispose();
+        scope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposalOrder, Is.EqualTo(new[] { "processing", "prewarmer" }));
+            processingScope.Received(1).Dispose();
+            trieWarmerScope.Received(1).Dispose();
+        }
+
+        disposalOrder.Clear();
+        processingProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
+            .Returns(_ => throw new InvalidOperationException("processing scope failure"));
+
+        Assert.That(() => populator.BeginScope(null), Throws.InvalidOperationException);
+        Assert.That(disposalOrder, Is.EqualTo(new[] { "prewarmer" }));
     }
 
     [Test]

@@ -10,7 +10,10 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(
+    IWorldStateManager worldStateManager,
+    ILogManager logManager,
+    ILifetimeScope parentLifetime)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
@@ -29,6 +32,14 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
         });
 
-        return childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+        try
+        {
+            return childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+        }
+        catch
+        {
+            childScope.Dispose();
+            throw;
+        }
     }
 }

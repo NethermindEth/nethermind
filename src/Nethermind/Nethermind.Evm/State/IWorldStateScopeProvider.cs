@@ -18,6 +18,31 @@ public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
 
+    /// <summary>A single-threaded, hint-only lifetime for warming trie paths.</summary>
+    public interface ITrieWarmerScope : IDisposable
+    {
+        /// <summary>Queues an account path for warm-up.</summary>
+        /// <param name="address">The account address to warm.</param>
+        void HintWarmAccount(in ValueAddress address);
+
+        /// <summary>Queues a storage slot path for warm-up.</summary>
+        /// <param name="address">The account and storage address to warm.</param>
+        /// <param name="index">The storage slot index to warm.</param>
+        void HintWarmSlot(in ValueAddress address, in UInt256 index);
+
+        /// <summary>A reusable no-op scope for backends without trie warm-up support.</summary>
+        public sealed class Noop : ITrieWarmerScope
+        {
+            public static Noop Instance { get; } = new();
+
+            public void HintWarmAccount(in ValueAddress address) { }
+
+            public void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+
+            public void Dispose() { }
+        }
+    }
+
     /// <param name="metrics">
     /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
     /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
@@ -27,6 +52,17 @@ public interface IWorldStateScopeProvider
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
+
+        /// <summary>
+        /// Creates a single-threaded, hint-only trie-warmer scope bound to this scope's state resources.
+        /// </summary>
+        /// <remarks>
+        /// Each returned instance is independently owned and must be disposed by its caller. Multiple instances may
+        /// exist for one ordinary scope, but each instance must only be used from one thread. Backends without trie
+        /// warming return a reusable no-op scope.
+        /// </remarks>
+        /// <returns>An owned trie-warmer scope bound to this scope.</returns>
+        ITrieWarmerScope CreateTrieWarmerScope() => ITrieWarmerScope.Noop.Instance;
 
         void UpdateRootHash();
 
