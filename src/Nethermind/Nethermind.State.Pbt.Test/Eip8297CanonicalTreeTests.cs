@@ -135,7 +135,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Failed_prefix_batch_is_atomic()
+    public void Failed_prefix_batch_is_atomic_after_traversal()
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
@@ -151,8 +151,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.Applies, Is.EqualTo(applies));
             Assert.That(store.Inner.RootHash, Is.EqualTo(root));
             Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
-            Assert.That(store.Reads, Is.Zero, "prefix validation precedes overlay and store access");
-            Assert.That(store.IssuedGroupPayloads, Is.Empty);
+            Assert.That(store.Reads, Is.GreaterThan(0), "prefix conflicts are detected during traversal");
+            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
     }
 
@@ -339,6 +339,103 @@ public class Eip8297CanonicalTreeTests
             Assert.That(code.Bytes[0], Is.EqualTo(1));
             Assert.That(code.Bytes[^1], Is.EqualTo(172));
         }
+    }
+
+    [Test]
+    public void Shuffled_writes_cover_all_first_group_boundary_destinations()
+    {
+        int[] order = [7, 15, 2, 10, 0, 12, 5, 1, 9, 14, 3, 8, 6, 11, 4, 13];
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        foreach (int destination in order)
+            changes.Add(([(byte)(destination << 4), (byte)(0x20 + destination)], Value((byte)(destination + 1))));
+
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, changes);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "first group boundary");
+    }
+
+    [Test]
+    public void Common_first_nibble_covers_all_second_group_boundary_destinations()
+    {
+        int[] order = [13, 1, 8, 3, 15, 0, 6, 11, 4, 14, 2, 10, 7, 5, 12, 9];
+        List<(byte[] Key, byte[]? Value)> initial = [];
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        for (int destination = 0; destination < 16; destination++)
+        {
+            byte[] key = [(byte)(0xA0 | destination), 0x11];
+            initial.Add((key, Value((byte)(destination + 1))));
+            changes.Add((key, Value((byte)(0x40 + destination))));
+        }
+        initial.Add(([0xB1, 0x11], Value(0xEE)));
+        List<(byte[] Key, byte[]? Value)> shuffledChanges = [];
+        foreach (int destination in order) shuffledChanges.Add(changes[destination]);
+
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, initial);
+        ApplyAll(bulk, serial, oracle, shuffledChanges);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "second group boundary");
+    }
+
+    [Test]
+    public void All_second_group_boundary_destinations_fetch_only_touched_groups_once()
+    {
+        CountingPbtStore store = new();
+        PbtWriteBatch initial = new();
+        PbtWriteBatch changes = new();
+        for (int destination = 0; destination < 16; destination++)
+        {
+            PbtFullKey key = new([(byte)(0xA0 | destination), 0x11]);
+            initial.Set(key, new ValueHash256(Value((byte)(destination + 1))));
+            changes.Set(key, new ValueHash256(Value((byte)(0x40 + destination))));
+        }
+        PbtFullKey untouchedKey = new([0xB1, 0x11]);
+        initial.Set(untouchedKey, new ValueHash256(Value(0xEE)));
+
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, initial);
+        store.ResetReads();
+        TrieUpdaterMetrics metrics = new();
+        ValueHash256 changedRoot = TrieUpdater.UpdateRoot(store, root, changes, metrics);
+        PbtNodePath untouchedGroup = new([0xB0], 4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changedRoot, Is.Not.EqualTo(root));
+            Assert.That(store.NodeReads, Is.Zero);
+            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
+            Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False);
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.GroupReads.Count));
+            Assert.That(metrics.GroupParses, Is.EqualTo(store.GroupReads.Count));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(4)]
+    [TestCase(5)]
+    [TestCase(8)]
+    [TestCase(12)]
+    [TestCase(13)]
+    public void Span_partition_divergence_before_on_and_after_compressed_group_boundaries_matches_oracle(int divergenceBit)
+    {
+        byte[] leftKey = [0x00, 0x00];
+        byte[] existingRightKey = [0x00, 0x08];
+        byte[] insertedKey = [0x00, 0x00];
+        insertedKey[divergenceBit >> 3] |= (byte)(1 << (7 - (divergenceBit & 7)));
+        int trailingBit = divergenceBit == 12 ? 13 : divergenceBit + 1;
+        insertedKey[trailingBit >> 3] |= (byte)(1 << (7 - (trailingBit & 7)));
+        (byte[] Key, byte[]? Value)[] initial = [(leftKey, Value(1)), (existingRightKey, Value(2))];
+        (byte[] Key, byte[]? Value)[] changes = [(insertedKey, Value(3)), (existingRightKey, Value(4))];
+
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, [.. initial]);
+        ApplyAll(bulk, serial, oracle, [.. changes]);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, $"divergence bit {divergenceBit}");
     }
 
     [TestCase("insert-only")]
@@ -573,7 +670,7 @@ public class Eip8297CanonicalTreeTests
             if (hashMismatch)
                 Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, changes));
             else
-                Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, changes));
+                Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, changes));
 
             using (Assert.EnterMultipleScope())
             {
@@ -612,6 +709,23 @@ public class Eip8297CanonicalTreeTests
         foreach ((byte[] key, byte[]? value) in changes)
             serial.ApplyBatch([(key, value)]);
         ApplyOracle(oracle, changes);
+    }
+
+    private static void AssertEquivalentAfterReopen(PbtTreeHarness bulk, PbtTreeHarness serial, EipReferenceTree oracle, string scenario)
+    {
+        string[] canonical = bulk.CanonicalRecords();
+        string[] physical = PhysicalRecords(bulk);
+        bulk.Reopen();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bulk.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), scenario);
+            Assert.That(bulk.RootHash, Is.EqualTo(serial.RootHash), "bulk and serial roots");
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()), "bulk and serial canonical records");
+            Assert.That(PhysicalRecords(bulk), Is.EqualTo(PhysicalRecords(serial)), "bulk and serial physical records");
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(canonical), "canonical records survive reopen");
+            Assert.That(PhysicalRecords(bulk), Is.EqualTo(physical), "physical groups survive reopen");
+        }
     }
 
     private static void ApplyOracle(EipReferenceTree oracle, IEnumerable<(byte[] Key, byte[]? Value)> changes)

@@ -12,10 +12,9 @@ public static class TrieUpdater
 
     /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
     /// <remarks>
-    /// The final complete-key set is validated before any node is changed. Effective mutations are
-    /// folded through the tree as traversal-local partitioned ranges, so mutations sharing a path share
-    /// one traversal. All leaf and node writes are staged and handed to <see cref="IPbtStore.Apply"/> only
-    /// after the complete mutation succeeds.
+    /// Effective mutations are folded through the tree as traversal-local partitioned ranges, so mutations
+    /// sharing a path share one traversal. All leaf and node writes are staged and handed to
+    /// <see cref="IPbtStore.Apply"/> only after the complete mutation succeeds.
     /// </remarks>
     public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes) =>
         UpdateRoot(store, currentRoot, changes, null);
@@ -48,18 +47,17 @@ public static class TrieUpdater
             else effectiveOperations[setIndex++] = operation;
         }
 
-        ValidateBatchKeys(effectiveOperations, deleteCount, effectiveOperations.Length, 0);
+        List<PbtLeafMutation> leafMutations = new(effectiveOperations.Length - deleteCount);
+        for (int index = deleteCount; index < effectiveOperations.Length; index++)
+        {
+            PbtWriteOperation operation = effectiveOperations[index];
+            leafMutations.Add(new(operation.Key, operation.Value));
+        }
+
         GroupOverlay overlay = new(store, metrics);
         try
         {
-            for (int index = deleteCount; index < effectiveOperations.Length; index++)
-            {
-                PbtWriteOperation operation = effectiveOperations[index];
-                overlay.SetLeaf(operation.Key, operation.Value);
-            }
-
-            ValueHash256 root = FoldMutations(overlay, null, RootPath, currentRoot, effectiveOperations, 0, effectiveOperations.Length);
-            IReadOnlyList<PbtLeafMutation> leafMutations = overlay.LeafMutations;
+            ValueHash256 root = FoldMutations(overlay, null, RootPath, currentRoot, effectiveOperations.AsSpan(), leafMutations);
             IReadOnlyList<PbtNodeMutation> nodeMutations = overlay.NodeMutations;
             store.Apply(root, leafMutations, nodeMutations);
             return root;
@@ -75,27 +73,59 @@ public static class TrieUpdater
         GroupFrame? activeGroup,
         PbtNodePath path,
         in ValueHash256 expectedHash,
-        PbtWriteOperation[] operations,
-        int start,
-        int end)
+        Span<PbtWriteOperation> operations,
+        List<PbtLeafMutation> leafMutations)
     {
         if (expectedHash == default)
         {
-            int setEnd = RetainSets(operations, start, end);
-            return start == setEnd ? default : BuildSubtree(overlay, activeGroup, path, operations, start, setEnd);
+            int setCount = RetainSets(operations);
+            return setCount == 0 ? default : BuildSubtree(overlay, activeGroup, path, operations[..setCount]);
         }
 
-        PbtNode current = overlay.Load(activeGroup, path, expectedHash, out GroupFrame group);
+        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
+        if (ReferenceEquals(group, activeGroup) || operations.Length == 1)
+            return FoldMutationsInGroup(overlay, group, path, expectedHash, operations, leafMutations);
+
+        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        BucketizeByGroupBoundary(operations, group.BitDepth, starts, counts);
+
+        ValueHash256 root = expectedHash;
+        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+        {
+            int count = counts[bucket];
+            if (count == 0) continue;
+            root = FoldMutationsInGroup(
+                overlay, group, path, root, operations.Slice(starts[bucket], count), leafMutations);
+        }
+        return root;
+    }
+
+    private static ValueHash256 FoldMutationsInGroup(
+        GroupOverlay overlay,
+        GroupFrame group,
+        PbtNodePath path,
+        in ValueHash256 expectedHash,
+        Span<PbtWriteOperation> operations,
+        List<PbtLeafMutation> leafMutations)
+    {
+        if (expectedHash == default)
+        {
+            int setCount = RetainSets(operations);
+            return setCount == 0 ? default : BuildSubtreeInGroup(overlay, group, path, operations[..setCount]);
+        }
+
+        PbtNode current = overlay.Load(group, path, expectedHash, out group);
         if (current is PbtLeafNode leaf)
         {
             PbtNode? surviving = leaf;
-            for (int index = start; index < end; index++)
+            for (int index = 0; index < operations.Length; index++)
             {
                 PbtWriteOperation operation = operations[index];
                 if (!operation.Key.Equals(leaf.Key)) continue;
                 if (operation.Kind == PbtWriteOperationKind.Delete)
                 {
-                    overlay.SetLeaf(leaf.Key, null);
+                    leafMutations.Add(new(leaf.Key, null));
                     surviving = null;
                 }
                 else
@@ -105,60 +135,61 @@ public static class TrieUpdater
                 break;
             }
 
-            int setEnd = start;
-            for (int index = start; index < end; index++)
+            int setCount = 0;
+            for (int index = 0; index < operations.Length; index++)
             {
                 PbtWriteOperation operation = operations[index];
                 if (operation.Kind == PbtWriteOperationKind.Delete || operation.Key.Equals(leaf.Key)) continue;
-                (operations[setEnd], operations[index]) = (operations[index], operations[setEnd]);
-                setEnd++;
+                (operations[setCount], operations[index]) = (operations[index], operations[setCount]);
+                setCount++;
             }
 
             if (surviving is null)
             {
                 overlay.Remove(group, path);
-                return start == setEnd ? default : BuildSubtree(overlay, group, path, operations, start, setEnd);
+                return setCount == 0 ? default : BuildSubtree(overlay, group, path, operations[..setCount]);
             }
-            if (start == setEnd)
+            if (setCount == 0)
             {
                 if (surviving.Hash != leaf.Hash) overlay.Store(group, path, surviving);
                 return surviving.Hash;
             }
-            return InsertSetsIntoNode(overlay, group, path, surviving, operations, start, setEnd);
+            return InsertSetsIntoNode(overlay, group, path, surviving, operations[..setCount]);
         }
 
         PbtBranchNode branch = (PbtBranchNode)current;
-        FindMatchingBranchRange(branch, path.BitDepth, operations, start, end, out int matchingStart, out int matchingEnd);
-        int directionBit = path.BitDepth + branch.Prefix.BitCount;
-        int partition = PartitionByBit(operations, matchingStart, matchingEnd, directionBit);
+        int matchingCount = FindMatchingBranchRange(branch, path.BitDepth, operations);
+        Span<PbtWriteOperation> matchingOperations = operations[..matchingCount];
+        int partition = PartitionByBit(matchingOperations, path.BitDepth + branch.Prefix.BitCount);
         PbtNodePath leftPath = path.Append(branch.Prefix, 0);
         PbtNodePath rightPath = path.Append(branch.Prefix, 1);
         ValueHash256 leftHash = branch.LeftHash;
         ValueHash256 rightHash = branch.RightHash;
-        if (matchingStart < partition)
-            leftHash = FoldMutations(overlay, group, leftPath, leftHash, operations, matchingStart, partition);
-        if (partition < matchingEnd)
-            rightHash = FoldMutations(overlay, group, rightPath, rightHash, operations, partition, matchingEnd);
+        if (partition > 0)
+            leftHash = FoldMutations(overlay, group, leftPath, leftHash, matchingOperations[..partition], leafMutations);
+        if (partition < matchingOperations.Length)
+            rightHash = FoldMutations(overlay, group, rightPath, rightHash, matchingOperations[partition..], leafMutations);
 
         ValueHash256 reconciledHash = CanonicalizeBranch(overlay, group, path, branch.Prefix, leftPath, leftHash, rightPath, rightHash);
-        int divergentSetEnd = RetainSets(operations, matchingEnd, end);
-        if (matchingEnd == divergentSetEnd) return reconciledHash;
+        int divergentSetCount = RetainSets(operations[matchingCount..]);
+        Span<PbtWriteOperation> divergentSets = operations.Slice(matchingCount, divergentSetCount);
+        if (divergentSets.Length == 0) return reconciledHash;
         if (reconciledHash == default)
-            return BuildSubtree(overlay, group, path, operations, matchingEnd, divergentSetEnd);
+            return BuildSubtree(overlay, group, path, divergentSets);
         PbtNode reconciled = overlay.Load(group, path, reconciledHash, out GroupFrame reconciledGroup);
-        return InsertSetsIntoNode(overlay, reconciledGroup, path, reconciled, operations, matchingEnd, divergentSetEnd);
+        return InsertSetsIntoNode(overlay, reconciledGroup, path, reconciled, divergentSets);
     }
 
-    private static int RetainSets(PbtWriteOperation[] operations, int start, int end)
+    private static int RetainSets(Span<PbtWriteOperation> operations)
     {
-        int setEnd = start;
-        for (int index = start; index < end; index++)
+        int setCount = 0;
+        for (int index = 0; index < operations.Length; index++)
         {
             if (operations[index].Kind == PbtWriteOperationKind.Delete) continue;
-            (operations[setEnd], operations[index]) = (operations[index], operations[setEnd]);
-            setEnd++;
+            (operations[setCount], operations[index]) = (operations[index], operations[setCount]);
+            setCount++;
         }
-        return setEnd;
+        return setCount;
     }
 
     private static ValueHash256 CanonicalizeBranch(
@@ -200,13 +231,37 @@ public static class TrieUpdater
         GroupFrame? activeGroup,
         PbtNodePath path,
         in ValueHash256 expectedHash,
-        PbtWriteOperation[] sets,
-        int start,
-        int end)
+        Span<PbtWriteOperation> sets)
     {
-        if (expectedHash == default) return BuildSubtree(overlay, activeGroup, path, sets, start, end);
-        PbtNode current = overlay.Load(activeGroup, path, expectedHash, out GroupFrame group);
-        return InsertSetsIntoNode(overlay, group, path, current, sets, start, end);
+        if (expectedHash == default) return BuildSubtree(overlay, activeGroup, path, sets);
+
+        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
+        if (ReferenceEquals(group, activeGroup) || sets.Length == 1)
+            return InsertSetsInGroup(overlay, group, path, expectedHash, sets);
+
+        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        BucketizeByGroupBoundary(sets, group.BitDepth, starts, counts);
+
+        ValueHash256 root = expectedHash;
+        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+        {
+            int count = counts[bucket];
+            if (count == 0) continue;
+            root = InsertSetsInGroup(overlay, group, path, root, sets.Slice(starts[bucket], count));
+        }
+        return root;
+    }
+
+    private static ValueHash256 InsertSetsInGroup(
+        GroupOverlay overlay,
+        GroupFrame group,
+        PbtNodePath path,
+        in ValueHash256 expectedHash,
+        Span<PbtWriteOperation> sets)
+    {
+        PbtNode current = overlay.Load(group, path, expectedHash, out group);
+        return InsertSetsIntoNode(overlay, group, path, current, sets);
     }
 
     private static ValueHash256 InsertSetsIntoNode(
@@ -214,12 +269,10 @@ public static class TrieUpdater
         GroupFrame? activeGroup,
         PbtNodePath path,
         PbtNode current,
-        PbtWriteOperation[] sets,
-        int start,
-        int end) => current switch
+        Span<PbtWriteOperation> sets) => current switch
         {
-            PbtLeafNode leaf => InsertSetsIntoLeaf(overlay, activeGroup, path, leaf, sets, start, end),
-            PbtBranchNode branch => InsertSetsIntoBranch(overlay, activeGroup, path, branch, sets, start, end),
+            PbtLeafNode leaf => InsertSetsIntoLeaf(overlay, activeGroup, path, leaf, sets),
+            PbtBranchNode branch => InsertSetsIntoBranch(overlay, activeGroup, path, branch, sets),
             _ => throw new ArgumentOutOfRangeException(nameof(current)),
         };
 
@@ -228,13 +281,11 @@ public static class TrieUpdater
         GroupFrame? activeGroup,
         PbtNodePath path,
         PbtLeafNode leaf,
-        PbtWriteOperation[] sets,
-        int start,
-        int end)
+        Span<PbtWriteOperation> sets)
     {
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
         int differingBit = int.MaxValue;
-        for (int index = start; index < end; index++)
+        for (int index = 0; index < sets.Length; index++)
         {
             PbtFullKey key = sets[index].Key;
             if (leaf.Key.Equals(key)) continue;
@@ -246,14 +297,14 @@ public static class TrieUpdater
 
         if (differingBit == int.MaxValue)
         {
-            PbtLeafNode replacement = new(sets[start].Key, sets[start].Value.Bytes.ToArray());
+            PbtLeafNode replacement = new(sets[0].Key, sets[0].Value.Bytes.ToArray());
             overlay.Store(group, path, replacement);
             return replacement.Hash;
         }
 
         PbtBitPrefix common = PbtBitPrefix.FromKey(leaf.Key, path.BitDepth, differingBit - path.BitDepth);
         int existingDirection = leaf.Key.GetBit(differingBit);
-        int partition = PartitionByBit(sets, start, end, differingBit);
+        int partition = PartitionByBit(sets, differingBit);
         PbtNodePath leftPath = path.Append(common, 0);
         PbtNodePath rightPath = path.Append(common, 1);
         PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
@@ -263,16 +314,16 @@ public static class TrieUpdater
         ValueHash256 rightHash;
         if (existingDirection == 0)
         {
-            leftHash = start < partition
-                ? InsertSetsIntoNode(overlay, existingGroup, leftPath, leaf, sets, start, partition)
+            leftHash = partition > 0
+                ? InsertSetsIntoNode(overlay, existingGroup, leftPath, leaf, sets[..partition])
                 : leaf.Hash;
-            rightHash = BuildSubtree(overlay, group, rightPath, sets, partition, end);
+            rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
         }
         else
         {
-            leftHash = BuildSubtree(overlay, group, leftPath, sets, start, partition);
-            rightHash = partition < end
-                ? InsertSetsIntoNode(overlay, existingGroup, rightPath, leaf, sets, partition, end)
+            leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
+            rightHash = partition < sets.Length
+                ? InsertSetsIntoNode(overlay, existingGroup, rightPath, leaf, sets[partition..])
                 : leaf.Hash;
         }
 
@@ -286,13 +337,11 @@ public static class TrieUpdater
         GroupFrame? activeGroup,
         PbtNodePath path,
         PbtBranchNode branch,
-        PbtWriteOperation[] sets,
-        int start,
-        int end)
+        Span<PbtWriteOperation> sets)
     {
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
         int firstMismatch = branch.Prefix.BitCount;
-        for (int index = start; index < end; index++)
+        for (int index = 0; index < sets.Length; index++)
         {
             PbtFullKey key = sets[index].Key;
             int available = key.BitLength - path.BitDepth;
@@ -311,7 +360,7 @@ public static class TrieUpdater
                 branch.LeftHash,
                 branch.RightHash);
             int directionBit = path.BitDepth + firstMismatch;
-            int partition = PartitionByBit(sets, start, end, directionBit);
+            int partition = PartitionByBit(sets, directionBit);
             PbtNodePath leftPath = path.Append(common, 0);
             PbtNodePath rightPath = path.Append(common, 1);
             PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
@@ -321,16 +370,16 @@ public static class TrieUpdater
             ValueHash256 rightHash;
             if (existingDirection == 0)
             {
-                leftHash = start < partition
-                    ? InsertSetsIntoNode(overlay, existingGroup, leftPath, relocated, sets, start, partition)
+                leftHash = partition > 0
+                    ? InsertSetsIntoNode(overlay, existingGroup, leftPath, relocated, sets[..partition])
                     : relocated.Hash;
-                rightHash = BuildSubtree(overlay, group, rightPath, sets, partition, end);
+                rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
             }
             else
             {
-                leftHash = BuildSubtree(overlay, group, leftPath, sets, start, partition);
-                rightHash = partition < end
-                    ? InsertSetsIntoNode(overlay, existingGroup, rightPath, relocated, sets, partition, end)
+                leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
+                rightHash = partition < sets.Length
+                    ? InsertSetsIntoNode(overlay, existingGroup, rightPath, relocated, sets[partition..])
                     : relocated.Hash;
             }
 
@@ -340,18 +389,18 @@ public static class TrieUpdater
         }
 
         int childDirectionBit = path.BitDepth + branch.Prefix.BitCount;
-        int childPartition = PartitionByBit(sets, start, end, childDirectionBit);
+        int childPartition = PartitionByBit(sets, childDirectionBit);
         ValueHash256 replacementLeft = branch.LeftHash;
         ValueHash256 replacementRight = branch.RightHash;
-        if (start < childPartition)
+        if (childPartition > 0)
         {
             PbtNodePath leftPath = path.Append(branch.Prefix, 0);
-            replacementLeft = InsertSets(overlay, group, leftPath, replacementLeft, sets, start, childPartition);
+            replacementLeft = InsertSets(overlay, group, leftPath, replacementLeft, sets[..childPartition]);
         }
-        if (childPartition < end)
+        if (childPartition < sets.Length)
         {
             PbtNodePath rightPath = path.Append(branch.Prefix, 1);
-            replacementRight = InsertSets(overlay, group, rightPath, replacementRight, sets, childPartition, end);
+            replacementRight = InsertSets(overlay, group, rightPath, replacementRight, sets[childPartition..]);
         }
 
         PbtBranchNode replacement = new(branch.Prefix, replacementLeft, replacementRight);
@@ -363,22 +412,46 @@ public static class TrieUpdater
         GroupOverlay overlay,
         GroupFrame? activeGroup,
         PbtNodePath path,
-        PbtWriteOperation[] sets,
-        int start,
-        int end)
+        Span<PbtWriteOperation> sets)
     {
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
-        if (end - start == 1)
+        if (ReferenceEquals(group, activeGroup) || sets.Length == 1)
+            return BuildSubtreeInGroup(overlay, group, path, sets);
+
+        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        BucketizeByGroupBoundary(sets, group.BitDepth, starts, counts);
+
+        ValueHash256 root = default;
+        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
         {
-            PbtWriteOperation operation = sets[start];
+            int count = counts[bucket];
+            if (count == 0) continue;
+            Span<PbtWriteOperation> bucketSets = sets.Slice(starts[bucket], count);
+            root = root == default
+                ? BuildSubtreeInGroup(overlay, group, path, bucketSets)
+                : InsertSetsInGroup(overlay, group, path, root, bucketSets);
+        }
+        return root;
+    }
+
+    private static ValueHash256 BuildSubtreeInGroup(
+        GroupOverlay overlay,
+        GroupFrame group,
+        PbtNodePath path,
+        Span<PbtWriteOperation> sets)
+    {
+        if (sets.Length == 1)
+        {
+            PbtWriteOperation operation = sets[0];
             PbtLeafNode leaf = new(operation.Key, operation.Value.Bytes.ToArray());
             overlay.Store(group, path, leaf);
             return leaf.Hash;
         }
 
-        PbtFullKey firstKey = sets[start].Key;
+        PbtFullKey firstKey = sets[0].Key;
         int differingBit = int.MaxValue;
-        for (int index = start + 1; index < end; index++)
+        for (int index = 1; index < sets.Length; index++)
         {
             PbtFullKey key = sets[index].Key;
             int difference = firstKey.FirstDifferingBit(key, path.BitDepth);
@@ -387,28 +460,23 @@ public static class TrieUpdater
             differingBit = Math.Min(differingBit, difference);
         }
         PbtBitPrefix prefix = PbtBitPrefix.FromKey(firstKey, path.BitDepth, differingBit - path.BitDepth);
-        int partition = PartitionByBit(sets, start, end, differingBit);
+        int partition = PartitionByBit(sets, differingBit);
         PbtNodePath leftPath = path.Append(prefix, 0);
         PbtNodePath rightPath = path.Append(prefix, 1);
-        ValueHash256 leftHash = BuildSubtree(overlay, group, leftPath, sets, start, partition);
-        ValueHash256 rightHash = BuildSubtree(overlay, group, rightPath, sets, partition, end);
+        ValueHash256 leftHash = BuildSubtree(overlay, group, leftPath, sets[..partition]);
+        ValueHash256 rightHash = BuildSubtree(overlay, group, rightPath, sets[partition..]);
         PbtBranchNode branch = new(prefix, leftHash, rightHash);
         overlay.Store(group, path, branch);
         return branch.Hash;
     }
 
-    private static void FindMatchingBranchRange(
+    private static int FindMatchingBranchRange(
         PbtBranchNode branch,
         int bitDepth,
-        PbtWriteOperation[] operations,
-        int start,
-        int end,
-        out int matchingStart,
-        out int matchingEnd)
+        Span<PbtWriteOperation> operations)
     {
-        matchingStart = start;
-        matchingEnd = start;
-        for (int index = start; index < end; index++)
+        int matchingCount = 0;
+        for (int index = 0; index < operations.Length; index++)
         {
             PbtFullKey key = operations[index].Key;
             int available = key.BitLength - bitDepth;
@@ -416,15 +484,16 @@ public static class TrieUpdater
                 MatchingPrefixBits(branch.Prefix, key, bitDepth) != branch.Prefix.BitCount)
                 continue;
 
-            (operations[matchingEnd], operations[index]) = (operations[index], operations[matchingEnd]);
-            matchingEnd++;
+            (operations[matchingCount], operations[index]) = (operations[index], operations[matchingCount]);
+            matchingCount++;
         }
+        return matchingCount;
     }
 
-    private static int PartitionByBit(PbtWriteOperation[] operations, int start, int end, int bitIndex)
+    private static int PartitionByBit(Span<PbtWriteOperation> operations, int bitIndex)
     {
-        int partition = start;
-        for (int index = start; index < end; index++)
+        int partition = 0;
+        for (int index = 0; index < operations.Length; index++)
         {
             if (operations[index].Key.GetBit(bitIndex) != 0) continue;
             (operations[partition], operations[index]) = (operations[index], operations[partition]);
@@ -433,36 +502,51 @@ public static class TrieUpdater
         return partition;
     }
 
-    private static void ValidateBatchKeys(PbtWriteOperation[] sets, int start, int end, int bitDepth)
+    private static void BucketizeByGroupBoundary(
+        Span<PbtWriteOperation> operations,
+        int groupDepth,
+        Span<int> starts,
+        Span<int> counts)
     {
-        while (end - start >= 2)
-        {
-            PbtFullKey anchor = sets[start].Key;
-            int differingBit = int.MaxValue;
-            for (int index = start + 1; index < end; index++)
-            {
-                PbtFullKey key = sets[index].Key;
-                int difference = anchor.FirstDifferingBit(key, bitDepth);
-                if (difference == Math.Min(anchor.BitLength, key.BitLength))
-                    throw new ArgumentException("Tree keys must be prefix-free.", nameof(sets));
-                differingBit = Math.Min(differingBit, difference);
-            }
+        counts.Clear();
+        for (int index = 0; index < operations.Length; index++)
+            counts[BoundarySlot(operations[index].Key, groupDepth)]++;
 
-            int partition = PartitionByBit(sets, start, end, differingBit);
-            int leftCount = partition - start;
-            int rightCount = end - partition;
-            if (leftCount < rightCount)
-            {
-                ValidateBatchKeys(sets, start, partition, differingBit + 1);
-                start = partition;
-            }
-            else
-            {
-                ValidateBatchKeys(sets, partition, end, differingBit + 1);
-                end = partition;
-            }
-            bitDepth = differingBit + 1;
+        int total = 0;
+        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+        {
+            starts[bucket] = total;
+            total += counts[bucket];
         }
+
+        Span<int> next = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        starts.CopyTo(next);
+        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+        {
+            int end = starts[bucket] + counts[bucket];
+            while (next[bucket] < end)
+            {
+                int index = next[bucket];
+                int destination = BoundarySlot(operations[index].Key, groupDepth);
+                if (destination == bucket)
+                {
+                    next[bucket]++;
+                    continue;
+                }
+
+                (operations[index], operations[next[destination]]) =
+                    (operations[next[destination]], operations[index]);
+                next[destination]++;
+            }
+        }
+    }
+
+    private static int BoundarySlot(PbtFullKey key, int groupDepth)
+    {
+        int slot = 0;
+        for (int level = 0; level < PbtFourLevelGroupGeometry.LevelsPerGroup; level++)
+            slot = (slot << 1) | key.GetBit(groupDepth + level);
+        return slot;
     }
 
     private static int MatchingPrefixBits(PbtBitPrefix prefix, PbtFullKey key, int keyOffset)
@@ -486,18 +570,7 @@ public static class TrieUpdater
 
     private sealed class GroupOverlay(IPbtStore store, TrieUpdaterMetrics? metrics = null) : IDisposable
     {
-        private readonly Dictionary<PbtFullKey, ValueHash256?> _leaves = [];
         private readonly Dictionary<PbtNodePath, GroupFrame> _groups = [];
-
-        internal IReadOnlyList<PbtLeafMutation> LeafMutations
-        {
-            get
-            {
-                List<PbtLeafMutation> mutations = new(_leaves.Count);
-                foreach ((PbtFullKey key, ValueHash256? value) in _leaves) mutations.Add(new(key, value));
-                return mutations;
-            }
-        }
 
         internal IReadOnlyList<PbtNodeMutation> NodeMutations
         {
@@ -509,8 +582,6 @@ public static class TrieUpdater
                 return mutations;
             }
         }
-
-        internal void SetLeaf(PbtFullKey key, ValueHash256? value) => _leaves[key] = value;
 
         internal PbtNode Load(
             GroupFrame? activeGroup,
@@ -560,6 +631,8 @@ public static class TrieUpdater
 
     private sealed class GroupFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics) : IDisposable
     {
+        internal int BitDepth => groupKey.BitDepth;
+
         private readonly int[] _offsets = new int[PbtNodeGroupCodec.PositionCount];
         private readonly int[] _lengths = new int[PbtNodeGroupCodec.PositionCount];
         private readonly PbtNode?[] _nodes = new PbtNode[PbtNodeGroupCodec.PositionCount];
