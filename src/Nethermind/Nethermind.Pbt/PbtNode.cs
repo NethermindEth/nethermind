@@ -11,14 +11,16 @@ internal abstract record PbtNode
     internal abstract ValueHash256 Hash { get; }
 }
 
-internal sealed record PbtLeafNode(PbtFullKey Key, byte[] Value) : PbtNode
+internal sealed record PbtLeafNode(PbtFullKey Key, ValueHash256 Value) : PbtNode
 {
-    internal override ValueHash256 Hash => PbtNodeCodec.HashLeaf(Key, Value);
+    internal PbtLeafNode(PbtFullKey key, ReadOnlySpan<byte> value) : this(key, new ValueHash256(value)) { }
+
+    internal override ValueHash256 Hash { get; } = PbtNodeCodec.HashLeaf(Key, Value.Bytes);
 }
 
 internal sealed record PbtBranchNode(PbtBitPrefix Prefix, ValueHash256 LeftHash, ValueHash256 RightHash) : PbtNode
 {
-    internal override ValueHash256 Hash => PbtNodeCodec.HashBranch(Prefix, LeftHash, RightHash);
+    internal override ValueHash256 Hash { get; } = PbtNodeCodec.HashBranch(Prefix, LeftHash, RightHash);
 }
 
 internal static class PbtNodeCodec
@@ -109,7 +111,7 @@ internal static class PbtNodeCodec
         encoding[0] = LeafTag;
         BinaryPrimitives.WriteUInt16BigEndian(encoding.AsSpan(1), (ushort)leaf.Key.Length);
         leaf.Key.Bytes.CopyTo(encoding.AsSpan(3));
-        leaf.Value.CopyTo(encoding, 3 + leaf.Key.Length);
+        leaf.Value.Bytes.CopyTo(encoding.AsSpan(3 + leaf.Key.Length));
         return encoding;
     }
 
@@ -131,7 +133,7 @@ internal static class PbtNodeCodec
         if (encoding.Length != 3 + keyLength + 32) throw new InvalidDataException("Invalid PBT leaf encoding length.");
         try
         {
-            return new PbtLeafNode(new PbtFullKey(encoding.Slice(3, keyLength)), encoding[^32..].ToArray());
+            return new PbtLeafNode(new PbtFullKey(encoding.Slice(3, keyLength)), new ValueHash256(encoding[^32..]));
         }
         catch (ArgumentOutOfRangeException exception)
         {

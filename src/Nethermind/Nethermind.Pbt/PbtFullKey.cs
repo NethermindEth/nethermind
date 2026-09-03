@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
+
 namespace Nethermind.Pbt;
 
 /// <summary>An immutable complete EIP-8297 tree key.</summary>
@@ -35,12 +37,31 @@ public sealed class PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
 
     public int FirstDifferingBit(PbtFullKey other, int startBit = 0)
     {
+        ArgumentNullException.ThrowIfNull(other);
         ArgumentOutOfRangeException.ThrowIfNegative(startBit);
         int commonBits = Math.Min(BitLength, other.BitLength);
         if (startBit > commonBits) throw new ArgumentOutOfRangeException(nameof(startBit));
-        for (int bit = startBit; bit < commonBits; bit++)
+
+        int bit = startBit;
+        int firstCompleteByte = Math.Min((bit + 7) & ~7, commonBits);
+        while (bit < firstCompleteByte)
         {
-            if (GetBit(bit) != other.GetBit(bit)) return bit;
+            if (((_bytes[bit >> 3] ^ other._bytes[bit >> 3]) & (1 << (7 - (bit & 7)))) != 0) return bit;
+            bit++;
+        }
+
+        int completeByteEnd = commonBits >> 3;
+        for (int byteIndex = bit >> 3; byteIndex < completeByteEnd; byteIndex++)
+        {
+            int difference = _bytes[byteIndex] ^ other._bytes[byteIndex];
+            if (difference != 0) return (byteIndex << 3) + (BitOperations.LeadingZeroCount((uint)difference) - 24);
+        }
+
+        bit = completeByteEnd << 3;
+        while (bit < commonBits)
+        {
+            if (((_bytes[bit >> 3] ^ other._bytes[bit >> 3]) & (1 << (7 - (bit & 7)))) != 0) return bit;
+            bit++;
         }
 
         return commonBits;

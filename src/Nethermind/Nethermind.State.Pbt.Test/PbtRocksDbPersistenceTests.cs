@@ -37,7 +37,7 @@ public class PbtRocksDbPersistenceTests
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         PbtNodePath path = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-        byte[] node = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value.Bytes.ToArray()));
+        byte[] node = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value));
         StateId state = new(7, TestItem.KeccakB.ValueHash256);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, value, WriteFlags.None))
@@ -285,7 +285,7 @@ public class PbtRocksDbPersistenceTests
             TestItem.KeccakA.ValueHash256,
             WriteFlags.None);
         PbtFullKey nodeKey = new([0x80]);
-        final.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(nodeKey, TestItem.KeccakA.Bytes.ToArray())));
+        final.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(nodeKey, TestItem.KeccakA.Bytes)));
 
         Assert.That(() => final.Commit(), Throws.TypeOf<IOException>());
         final.Dispose();

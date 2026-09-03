@@ -223,7 +223,7 @@ public class ImportPbtFromPreimageFlatTests
         {
             staging.SetLeaf(PbtStateKey.Account(TestItem.AddressC, PbtKeyDerivation.BasicDataLeafKey), TestItem.KeccakB.ValueHash256);
             PbtFullKey staleNodeKey = new([0x80]);
-            staging.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(staleNodeKey, TestItem.KeccakA.Bytes.ToArray())));
+            staging.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(staleNodeKey, TestItem.KeccakA.Bytes)));
             staging.Commit();
         }
         pbtDb.GetColumnDb(PbtColumns.AccountLeaves)[new byte[] { 1 }] = [2];

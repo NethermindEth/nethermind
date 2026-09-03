@@ -21,7 +21,7 @@ public class PbtColumnRoutingTests
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         PbtNodePath node = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-        byte[] nodeEncoding = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value.Bytes.ToArray()));
+        byte[] nodeEncoding = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value));
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
         {

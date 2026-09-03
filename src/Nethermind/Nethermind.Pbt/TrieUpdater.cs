@@ -106,7 +106,7 @@ public static class TrieUpdater
                 else
                 {
                     store.SetLeaf(operation.Key, operation.Value);
-                    surviving = new PbtLeafNode(operation.Key, operation.Value.Bytes.ToArray());
+                    surviving = new PbtLeafNode(operation.Key, operation.Value);
                 }
                 break;
             }
@@ -328,7 +328,7 @@ public static class TrieUpdater
         if (differingBit == int.MaxValue)
         {
             store.SetLeaf(sets[0].Key, sets[0].Value);
-            PbtLeafNode replacement = new(sets[0].Key, sets[0].Value.Bytes.ToArray());
+            PbtLeafNode replacement = new(sets[0].Key, sets[0].Value);
             Store(ref group, path, replacement);
             return replacement.Hash;
         }
@@ -594,7 +594,7 @@ public static class TrieUpdater
         {
             PbtWriteOperation operation = sets[0];
             store.SetLeaf(operation.Key, operation.Value);
-            PbtLeafNode leaf = new(operation.Key, operation.Value.Bytes.ToArray());
+            PbtLeafNode leaf = new(operation.Key, operation.Value);
             Store(ref group, path, leaf);
             return leaf.Hash;
         }
