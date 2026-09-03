@@ -27,7 +27,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public VirtualMachine<TGasPolicy> Vm;
         public nint FinalProgramCounter;
         public int OpCodeCount;
-        public int CallDepth;
 #if DEBUG
         public DebugTracer<TGasPolicy>? Debugger;
         public bool SkipDebuggerWait;
@@ -126,7 +125,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 OpcodeHandlers = opcodeHandlers,
                 Vm = this,
-                CallDepth = VmState.Env.CallDepth,
 #if DEBUG
                 Debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>(),
 #endif
@@ -173,15 +171,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
         }
 #endif
-        Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-
         if (TCancelable.IsActive && (state.OpCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
             ThrowOperationCanceledException();
 
-        TGasPolicy.OnBeforeInstructionTrace(in gas, (int)pc, instruction, state.CallDepth);
-
+        // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
         if (TTracingInst.IsActive)
+        {
+            Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
             vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
+        }
 
         pc++;
         state.OpCodeCount++;
@@ -192,8 +190,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         Debug.Assert(vm.ReturnData is null,
             "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
-
-        TGasPolicy.OnAfterInstructionTrace(in gas);
 
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
@@ -236,7 +232,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return EvmExceptionType.OutOfGas;
         }
 
-        TGasPolicy.OnAfterInstructionTrace(in gas);
         return exceptionType;
     }
 }

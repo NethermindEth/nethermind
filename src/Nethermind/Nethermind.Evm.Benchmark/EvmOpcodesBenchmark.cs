@@ -691,7 +691,6 @@ public unsafe class EvmOpcodesBenchmark
     {
         OpcodeHandlers = _continuationHandlers,
         Vm = _vm,
-        CallDepth = 0,
     };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
