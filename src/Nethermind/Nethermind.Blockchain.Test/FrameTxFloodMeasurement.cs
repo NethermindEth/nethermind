@@ -458,15 +458,23 @@ public class FrameTxFloodMeasurement
         double w0After = Percentile(baselineAfter, 0.50);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
 
+        // A generator that fell behind repays the deficit inside the sampled window, which can push the
+        // achieved rate above the offered one. The rate floor alone cannot see that; the lag can.
+        double lagBudgetUs = offeredRate > 0 ? 1_000_000.0 / offeredRate * MaxSustainedLagPeriods : 0;
+        bool lagBounded = offeredRate == 0 || flooded.MaxLagUs <= lagBudgetUs;
+        bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
+
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} {Groth16FitField(shape)}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + $"W0_after_p50_us={w0After:F1} baseline_drift_pct={baselineDriftPct:F1} "
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} shed={flooded.Shed} "
-             + $"max_lag_us={flooded.MaxLagUs:F0} "
+             + $"max_lag_us={flooded.MaxLagUs:F0} lag_budget_us={lagBudgetUs:F0} "
+             + $"lag_bounded={(lagBounded ? "yes" : "no")} "
              + $"pending_pool_growth={flooded.PendingPoolGrowth} "
-             + $"saturated={(flooded.AchievedRate < offeredRate * RateHeldFloor ? "yes" : "no")} "
-             + $"delta_per_achieved_tx_us={(flooded.AchievedRate > 0 ? (w - w0) / flooded.AchievedRate : 0):F2} "
+             + $"saturated={(saturated ? "yes" : "no")} "
+             + $"delta_per_achieved_tx_per_s_us={(flooded.AchievedRate > 0 ? (w - w0) / flooded.AchievedRate : 0):F2} "
+             + $"delta_per_admitted_tx_us={(flooded.AchievedRate > 0 && w > 0 ? (w - w0) * 1_000_000 / (flooded.AchievedRate * w) : 0):F1} "
              + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
              + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} "
              + $"W_p50_us={w:F1} W_p95_us={wp95:F1} "
