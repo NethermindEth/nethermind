@@ -49,7 +49,14 @@ public ref partial struct EvmStack
     private readonly ref byte _stack;
     internal readonly ref byte Code;
     public int Head;
-    internal readonly int CodeLength;
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    /// <remarks>
+    /// Native width rather than <see cref="int"/>: the dispatch tests the program counter against it on
+    /// every opcode, and the zkEVM guest bills a 4-byte read as an unaligned access, roughly eight times
+    /// the cost of an aligned one. Every consumer already widens it to <see cref="nint"/> to combine it
+    /// with a program counter.
+    /// </remarks>
+    internal readonly nint CodeLength;
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;

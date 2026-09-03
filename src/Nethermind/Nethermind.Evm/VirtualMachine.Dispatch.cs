@@ -32,13 +32,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>How many opcodes the chain ran. Written only as the chain leaves.</summary>
         public int OpCodeCount;
-
-        /// <summary>The bound every dispatch tests, set once per frame.</summary>
-        /// <remarks>
-        /// Native width rather than <see cref="EvmStack.CodeLength"/>'s <see cref="int"/> for the reason
-        /// given above: read once per opcode, a 4-byte access costs the guest far more than an aligned one.
-        /// </remarks>
-        public nint CodeLength;
     }
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
@@ -149,7 +142,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 OpcodeHandlers = opcodeHandlers,
                 Vm = this,
-                CodeLength = stack.CodeLength,
             };
 
             byte opcode = Unsafe.Add(ref stack.Code, programCounter);
@@ -191,7 +183,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // Its load chain then overlaps the rest of the handler. Zero means the counter ran off the end of
         // the code. No table entry is null, so zero cannot mean anything else.
         nint next = 0;
-        if ((nuint)pc < (nuint)state.CodeLength)
+        if ((nuint)pc < (nuint)stack.CodeLength)
             next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
 
         if (ShouldExitFrame(exceptionType, TGasPolicy.IsOutOfGas(in gas)))
