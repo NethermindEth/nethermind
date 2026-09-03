@@ -137,7 +137,9 @@ public class DiscoveryConnectionsPoolTests
         {
             port = ((IPEndPoint)ipv4Blocker.LocalEndPoint!).Port;
             NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
-            DiscoveryConnectionsPool pool = CreatePool(listenerState);
+            InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+            underlyingLogger.IsError.Returns(true);
+            DiscoveryConnectionsPool pool = CreatePool(listenerState, new ILogger(underlyingLogger));
             IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
             List<IChannel> createdChannels = [];
             try
@@ -157,6 +159,13 @@ public class DiscoveryConnectionsPoolTests
                 await pool.StopAsync();
                 await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
             }
+
+            underlyingLogger.Received(1).Error(
+                Arg.Is<string>(message => message.StartsWith("Error when establishing discovery connection")),
+                Arg.Any<Exception>());
+            underlyingLogger.DidNotReceive().Error(
+                "Error during udp channel stop process",
+                Arg.Any<Exception>());
         }
 
         using Socket releasedIpv4 = CreateUdpListenerSocket(IPAddress.Any, port);
@@ -252,9 +261,9 @@ public class DiscoveryConnectionsPoolTests
         }
     }
 
-    private static DiscoveryConnectionsPool CreatePool(NetworkListenerState listenerState)
+    private static DiscoveryConnectionsPool CreatePool(NetworkListenerState listenerState, ILogger? logger = null)
         => new(
-            LimboLogs.Instance.GetClassLogger<DiscoveryConnectionsPool>(),
+            logger ?? LimboLogs.Instance.GetClassLogger<DiscoveryConnectionsPool>(),
             new DiscoveryConfig { UdpChannelCloseTimeout = 1_000 },
             listenerState);
 

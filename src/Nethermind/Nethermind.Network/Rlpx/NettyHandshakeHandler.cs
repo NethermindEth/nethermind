@@ -55,6 +55,7 @@ namespace Nethermind.Network.Rlpx
                 context.WriteAndFlushAsync(buffer);
                 Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
             }
+
             _ = CheckHandshakeInitTimeout();
         }
 

@@ -32,7 +32,15 @@ public sealed class DiscoveryConnectionsPool(
         task = BindWithFallbackAsync(bootstrapFactory, channelFactory, port);
         _byPort.Add(port, task);
 
-        return await task;
+        try
+        {
+            return await task;
+        }
+        catch
+        {
+            _byPort.Remove(port);
+            throw;
+        }
     }
 
     private async Task<IChannel> BindWithFallbackAsync(

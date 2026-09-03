@@ -111,8 +111,9 @@ public sealed class NodeRecordProvider(
         {
             current = await currentTask;
         }
-        catch
+        catch (Exception e)
         {
+            if (_logger.IsDebug) _logger.Debug($"Rebuilding the local ENR after the previous attempt failed. {e}");
             return await PrepareNodeRecord(effectiveHeader, previousSequence: 0, CancellationToken.None);
         }
 

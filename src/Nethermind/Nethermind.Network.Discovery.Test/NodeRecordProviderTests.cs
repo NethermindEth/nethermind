@@ -120,7 +120,7 @@ public class NodeRecordProviderTests
         NetworkForkId forkId = new(0x01020304, 20);
         forkInfo.GetForkId(1, 10).Returns(forkId);
         forkInfo.GetForkId(2, 20).Returns(forkId);
-        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
+        ILogManager logManager = CreateLogManager(out InterfaceLogger underlyingLogger, isWarn: true);
         NodeRecordProvider provider = CreateProvider(
             blockTree,
             forkInfo,
@@ -139,7 +139,7 @@ public class NodeRecordProviderTests
     [Test]
     public async Task GetCurrentAsync_WarnsWhenIpv4IsNotAdvertised()
     {
-        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
+        ILogManager logManager = CreateLogManager(out InterfaceLogger underlyingLogger, isWarn: true);
         NodeRecordProvider provider = CreateProvider(
             Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
             new NetworkForkId(0x01020304, 20),
@@ -423,7 +423,8 @@ public class NodeRecordProviderTests
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
         listenerState.SetRlpxAddress(IPAddress.Any);
         listenerState.SetDiscoveryAddress(IPAddress.Any);
-        NodeRecordProvider provider = CreateProvider(blockTree, forkInfo, ipResolver, 1_000, listenerState);
+        ILogManager logManager = CreateLogManager(out InterfaceLogger underlyingLogger, isDebug: true);
+        NodeRecordProvider provider = CreateProvider(blockTree, forkInfo, ipResolver, 1_000, listenerState, logManager);
         Task<NodeRecord> firstCall = provider.GetCurrentAsync().AsTask();
         if (queueListenerChange)
         {
@@ -437,6 +438,14 @@ public class NodeRecordProviderTests
 
         AssertEndpointEntries(record, "192.0.2.1", expectedIp6: null);
         Assert.That(attempts, Is.EqualTo(2));
+        if (queueListenerChange)
+        {
+            underlyingLogger.Received(1).Debug(Arg.Is<string>(message => message.StartsWith("Rebuilding the local ENR")));
+        }
+        else
+        {
+            underlyingLogger.DidNotReceive().Debug(Arg.Any<string>());
+        }
     }
 
     [Test]
@@ -450,7 +459,7 @@ public class NodeRecordProviderTests
         NetworkListenerState listenerState = CreateListenerState(resolvedIp);
         listenerState.SetRlpxAddress(IPAddress.Any);
         listenerState.SetDiscoveryAddress(IPAddress.Any);
-        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
+        ILogManager logManager = CreateLogManager(out InterfaceLogger underlyingLogger, isWarn: true);
         NodeRecordProvider provider = CreateProvider(
             Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
             new NetworkForkId(0x01020304, 20),
@@ -597,10 +606,14 @@ public class NodeRecordProviderTests
         Assert.That(endpoint, Is.EqualTo(expected ? new IPEndPoint(IPAddress.Parse(expectedIp!), 30303) : null));
     }
 
-    private static ILogManager CreateWarningLogManager(out InterfaceLogger underlyingLogger)
+    private static ILogManager CreateLogManager(
+        out InterfaceLogger underlyingLogger,
+        bool isWarn = false,
+        bool isDebug = false)
     {
         underlyingLogger = Substitute.For<InterfaceLogger>();
-        underlyingLogger.IsWarn.Returns(true);
+        underlyingLogger.IsWarn.Returns(isWarn);
+        underlyingLogger.IsDebug.Returns(isDebug);
         ILogger logger = new(underlyingLogger);
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<NodeRecordProvider>().Returns(logger);

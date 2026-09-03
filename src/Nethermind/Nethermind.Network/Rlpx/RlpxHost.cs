@@ -457,6 +457,7 @@ namespace Nethermind.Network.Rlpx
                     _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
                 }
             }) ?? Task.CompletedTask);
+
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
             Task closingTask = Task.WhenAll(
