@@ -36,7 +36,8 @@ public static class TrieUpdater
         try
         {
             ValueHash256 root = FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan(), true);
-            store.Apply(root, overlay.NodeMutations);
+            foreach (PbtNodeMutation mutation in overlay.NodeMutations)
+                store.SetNode(mutation.Path, mutation.Encoding);
             return root;
         }
         finally

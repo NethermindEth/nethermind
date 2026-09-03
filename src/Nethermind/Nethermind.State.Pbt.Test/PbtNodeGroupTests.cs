@@ -100,16 +100,13 @@ public class PbtNodeGroupTests
 
     [Test]
     public void Import_rejects_zero_availability_group() =>
-        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads(
-            default, [new PbtPhysicalPayload([0, 0, 0, 0], [0, 0, 0, 0])]));
+        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads([new PbtPhysicalPayload([0, 0, 0, 0], [0, 0, 0, 0])]));
 
     [Test]
     public void Import_rejects_non_boundary_keys_and_malformed_group_payloads()
     {
-        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads(
-            default, [new PbtPhysicalPayload([0x00], [0, 0, 0, 0])]));
-        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads(
-            default, [new PbtPhysicalPayload([], [1, 0, 0, 0])]));
+        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads([new PbtPhysicalPayload([0x00], [0, 0, 0, 0])]));
+        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads([new PbtPhysicalPayload([], [1, 0, 0, 0])]));
     }
 
     [Test]
@@ -122,7 +119,7 @@ public class PbtNodeGroupTests
 
         using (PbtNodeGroupStore store = new(provider))
         {
-            store.Apply(new ValueHash256(Value(1)), [new PbtNodeMutation(rootPath, firstEncoding)]);
+            store.SetNode(rootPath, firstEncoding);
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "create");
 
             byte[]? lookup = store.GetNode(rootPath);
@@ -130,14 +127,14 @@ public class PbtNodeGroupTests
             lookup![0] = 0x7F;
             Assert.That(store.GetNode(rootPath), Is.EqualTo(firstEncoding), "lookup is owned");
 
-            store.Apply(new ValueHash256(Value(2)), [new PbtNodeMutation(rootPath, secondEncoding)]);
+            store.SetNode(rootPath, secondEncoding);
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "replace");
 
             IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
-            using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.RootHash, payloads, provider);
+            using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads, provider);
             Assert.That(reopened.GetNode(rootPath), Is.EqualTo(secondEncoding), "reopen");
 
-            store.Apply(default, [new PbtNodeMutation(rootPath, null)]);
+            store.SetNode(rootPath, null);
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "delete leaves reopened owner");
         }
 
@@ -154,18 +151,18 @@ public class PbtNodeGroupTests
         byte[] thirdEncoding = LeafEncoding(0x40, 3);
 
         using PbtNodeGroupStore store = new(provider);
-        store.Apply(new ValueHash256(Value(1)), [new PbtNodeMutation(rootPath, firstEncoding)]);
+        store.SetNode(rootPath, firstEncoding);
         using PbtNodeGroupPayload firstLease = store.GetNodeGroup(rootPath)!;
 
-        store.Apply(new ValueHash256(Value(2)), [new PbtNodeMutation(rootPath, secondEncoding)]);
+        store.SetNode(rootPath, secondEncoding);
         using PbtNodeGroupPayload secondLease = store.GetNodeGroup(rootPath)!;
         Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
 
-        store.Apply(new ValueHash256(Value(3)), [new PbtNodeMutation(rootPath, null)]);
+        store.SetNode(rootPath, null);
         Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
         Assert.That(secondLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
 
-        store.Apply(new ValueHash256(Value(4)), [new PbtNodeMutation(rootPath, thirdEncoding)]);
+        store.SetNode(rootPath, thirdEncoding);
         using PbtNodeGroupPayload thirdLease = store.GetNodeGroup(rootPath)!;
         store.Dispose();
 
@@ -187,33 +184,6 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Failed_multi_group_mutation_releases_staged_memory_and_preserves_store()
-    {
-        TrackingMemoryProvider provider = new();
-        PbtNodePath rootPath = new([], 0);
-        PbtNodePath childPath = new([0], 4);
-        using PbtNodeGroupStore store = new(provider);
-        store.Apply(new ValueHash256(Value(1)), [new PbtNodeMutation(rootPath, LeafEncoding(0x00, 1))]);
-        ValueHash256 rootBefore = store.RootHash;
-        IReadOnlyList<PbtPhysicalPayload> payloadsBefore = store.ExportPhysicalPayloads();
-        provider.ThrowOnRent = provider.RentCount + 2;
-
-        Assert.Throws<InvalidOperationException>(() => store.Apply(
-            new ValueHash256(Value(2)),
-            [
-                new PbtNodeMutation(rootPath, LeafEncoding(0x00, 2)),
-                new PbtNodeMutation(childPath, LeafEncoding(0x00, 3)),
-            ]));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.RootHash, Is.EqualTo(rootBefore));
-            Assert.That(store.ExportPhysicalPayloads()[0].Payload.ToArray(), Is.EqualTo(payloadsBefore[0].Payload.ToArray()));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1));
-        }
-    }
-
-    [Test]
     public void Failed_import_releases_previously_copied_payloads()
     {
         TrackingMemoryProvider provider = new();
@@ -221,7 +191,7 @@ public class PbtNodeGroupTests
         byte[] validPayload = EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, LeafEncoding(0x00, 1))]);
         PbtPhysicalPayload valid = new(rootPath.Encode(), validPayload);
 
-        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads(default, [valid, valid], provider));
+        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads([valid, valid], provider));
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
 

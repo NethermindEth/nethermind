@@ -153,12 +153,10 @@ public class ParallelUpdateRootTests
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => _inner.SetLeaf(key, value);
 
-        public void Apply(
-            in ValueHash256 newRoot,
-            IReadOnlyList<PbtNodeMutation> nodes)
+        public void SetNode(PbtNodePath path, byte[]? encoding)
         {
-            Writes = nodes.Count;
-            _inner.Apply(newRoot, nodes);
+            Writes++;
+            _inner.SetNode(path, encoding);
         }
 
         public void Dispose() => _inner.Dispose();

@@ -11,23 +11,10 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
 {
     private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
     private Dictionary<PbtNodePath, RefCountingMemory> _groups = [];
-    private ValueHash256 _rootHash;
     private bool _disposed;
-
-    /// <summary>Gets the current canonical root.</summary>
-    public ValueHash256 RootHash
-    {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return _rootHash;
-        }
-        private set => _rootHash = value;
-    }
 
     /// <summary>Reconstructs a store from canonical node-group payloads.</summary>
     public static PbtNodeGroupStore FromPhysicalPayloads(
-        in ValueHash256 rootHash,
         IReadOnlyList<PbtPhysicalPayload> payloads,
         IRefCountingMemoryProvider? memoryProvider = null)
     {
@@ -57,7 +44,6 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
                 }
             }
 
-            store.RootHash = rootHash;
             return store;
         }
         catch
@@ -116,55 +102,17 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     public void SetLeaf(PbtFullKey key, ValueHash256? value) { }
 
     /// <inheritdoc/>
-    public void Apply(
-        in ValueHash256 newRoot,
-        IReadOnlyList<PbtNodeMutation> nodeMutations)
+    public void SetNode(PbtNodePath path, byte[]? encoding)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(nodeMutations);
-
-        Dictionary<PbtNodePath, Dictionary<int, byte[]?>> mutationsByGroup = [];
-        foreach (PbtNodeMutation mutation in nodeMutations)
-        {
-            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(mutation.Path);
-            if (mutation.Encoding is not null) PbtNodeCodec.ValidateExact(mutation.Encoding);
-
-            if (!mutationsByGroup.TryGetValue(location.GroupKey, out Dictionary<int, byte[]?>? mutations))
-            {
-                mutations = [];
-                mutationsByGroup.Add(location.GroupKey, mutations);
-            }
-            mutations[location.Position] = mutation.Encoding;
-        }
-
-        Dictionary<PbtNodePath, RefCountingMemory?> staged = new(mutationsByGroup.Count);
-        bool publishedSuccessfully = false;
-        try
-        {
-            foreach ((PbtNodePath groupKey, Dictionary<int, byte[]?> mutations) in mutationsByGroup)
-                staged.Add(groupKey, StageGroup(groupKey, mutations));
-
-            Dictionary<PbtNodePath, RefCountingMemory> published = new(_groups.Count + staged.Count);
-            foreach ((PbtNodePath groupKey, RefCountingMemory payload) in _groups)
-                if (!staged.ContainsKey(groupKey)) published.Add(groupKey, payload);
-            foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in staged)
-                if (payload is not null) published.Add(groupKey, payload);
-
-            Dictionary<PbtNodePath, RefCountingMemory> replacedGroups = _groups;
-            _groups = published;
-            RootHash = newRoot;
-            publishedSuccessfully = true;
-
-            foreach (PbtNodePath groupKey in staged.Keys)
-                if (replacedGroups.TryGetValue(groupKey, out RefCountingMemory? replacedPayload))
-                    ((IDisposable)replacedPayload).Dispose();
-        }
-        finally
-        {
-            if (!publishedSuccessfully)
-                foreach (RefCountingMemory? payload in staged.Values)
-                    ((IDisposable?)payload)?.Dispose();
-        }
+        ArgumentNullException.ThrowIfNull(path);
+        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
+        if (encoding is not null) PbtNodeCodec.ValidateExact(encoding);
+        Dictionary<int, byte[]?> mutation = new() { [location.Position] = encoding };
+        RefCountingMemory? replacement = StageGroup(location.GroupKey, mutation);
+        if (_groups.Remove(location.GroupKey, out RefCountingMemory? replacedPayload))
+            ((IDisposable)replacedPayload).Dispose();
+        if (replacement is not null) _groups.Add(location.GroupKey, replacement);
     }
 
     /// <summary>Exports owned copies of canonical node-group payloads sorted by group key.</summary>

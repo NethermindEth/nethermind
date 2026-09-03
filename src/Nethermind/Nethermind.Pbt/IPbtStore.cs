@@ -54,8 +54,8 @@ public interface IPbtStore
     /// <summary>Writes or deletes a complete-key leaf.</summary>
     void SetLeaf(PbtFullKey key, ValueHash256? value);
 
-    /// <summary>Applies node mutations and publishes <paramref name="newRoot"/>.</summary>
-    void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtNodeMutation> nodes);
+    /// <summary>Writes or deletes the canonical node at <paramref name="path"/>.</summary>
+    void SetNode(PbtNodePath path, byte[]? encoding);
 }
 
 /// <summary>A complete-key leaf replacement; a null value deletes the key.</summary>

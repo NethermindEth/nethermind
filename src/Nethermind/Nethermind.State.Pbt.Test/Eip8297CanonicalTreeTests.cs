@@ -106,7 +106,6 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(store.Reads, Is.Zero);
             Assert.That(store.Applies, Is.Zero);
-            Assert.That(store.Inner.RootHash, Is.EqualTo(default(ValueHash256)));
         }
     }
 
@@ -149,7 +148,6 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(applies));
-            Assert.That(store.Inner.RootHash, Is.EqualTo(root));
             Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
             Assert.That(store.Reads, Is.GreaterThan(0), "prefix conflicts are detected during traversal");
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
@@ -171,7 +169,6 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(applies));
-            Assert.That(store.Inner.RootHash, Is.EqualTo(root));
             Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
@@ -534,7 +531,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.GroupCacheProbes, Is.GreaterThanOrEqualTo(metrics.PhysicalGroupFetches));
             Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
-            Assert.That(store.Applies, Is.EqualTo(2));
         }
     }
 
@@ -675,8 +671,7 @@ public class Eip8297CanonicalTreeTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure), hashMismatch ? "hash mismatch" : "missing node");
-                Assert.That(store.Inner.RootHash, Is.EqualTo(root));
-                Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
+                    Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
                 Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
             }
         }
@@ -826,12 +821,12 @@ public class Eip8297CanonicalTreeTests
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => LastLeafMutations[key] = value;
 
-        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtNodeMutation> nodes)
+        public void SetNode(PbtNodePath path, byte[]? encoding)
         {
             Applies++;
-            LastNodeWrites = nodes.Count;
-            if (ThrowOnApply) throw new InvalidOperationException("Configured apply failure.");
-            Inner.Apply(newRoot, nodes);
+            LastNodeWrites++;
+            if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
+            Inner.SetNode(path, encoding);
         }
 
         internal void ResetReads()

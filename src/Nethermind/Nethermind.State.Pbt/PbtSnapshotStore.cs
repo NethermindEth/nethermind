@@ -17,8 +17,9 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore
 
     public void SetLeaf(PbtFullKey key, ValueHash256? value) => _leafMutations.Add(new(key, value));
 
-    public void Apply(
-        in ValueHash256 newRoot,
-        IReadOnlyList<PbtNodeMutation> nodeMutations)
-        => bundle.ApplyTreeMutations(_leafMutations, nodeMutations);
+    public void SetNode(PbtNodePath path, byte[]? encoding)
+    {
+        bundle.ApplyTreeMutations(_leafMutations, [new(path, encoding)]);
+        _leafMutations.Clear();
+    }
 }

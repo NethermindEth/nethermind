@@ -31,17 +31,14 @@ public class PbtFormatInteropTests
 
         using PbtNodeGroupStore source = new();
         ValueHash256 sourceRoot = TrieUpdater.UpdateRoot(source, default, batch);
-        using PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(
-            sourceRoot, source.ExportPhysicalPayloads());
+        using PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(source.ExportPhysicalPayloads());
 
-        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(
-            sourceRoot, target.ExportPhysicalPayloads());
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(target.ExportPhysicalPayloads());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sourceRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(CanonicalRecords(reopened), Is.EqualTo(CanonicalRecords(source)));
-            Assert.That(reopened.RootHash, Is.EqualTo(sourceRoot));
         }
     }
 

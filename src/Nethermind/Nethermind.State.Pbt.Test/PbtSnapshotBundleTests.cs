@@ -345,10 +345,11 @@ public class PbtSnapshotBundleTests
         public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
         public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => _leaves.Add(new(key, value));
-        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtNodeMutation> nodes)
+        public void SetNode(PbtNodePath path, byte[]? encoding)
         {
             ApplyCount++;
-            bundle.ApplyTreeMutations(_leaves, nodes);
+            bundle.ApplyTreeMutations(_leaves, [new(path, encoding)]);
+            _leaves.Clear();
         }
     }
 }

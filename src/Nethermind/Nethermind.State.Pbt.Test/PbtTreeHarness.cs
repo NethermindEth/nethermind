@@ -40,7 +40,7 @@ internal sealed class PbtTreeHarness : IDisposable
     public void Reopen()
     {
         IReadOnlyList<PbtPhysicalPayload> payloads = PhysicalPayloads;
-        PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(RootHash, payloads);
+        PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);
         PbtNodeGroupStore prior = _store;
         _store = reopened;
         prior.Dispose();
