@@ -250,6 +250,7 @@ public class FrameTxFloodMeasurement
         int Rejected,
         double MaxLagUs,
         int PendingPoolGrowth,
+        int Shed,
         List<double> ProcessMicros);
 
     [SetUp]
@@ -324,7 +325,7 @@ public class FrameTxFloodMeasurement
         Emit($"case=production_pass_at_fixed_occupancy ceiling={ceiling} offered_rate={offeredRate} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={outcome.ProcessMicros.Count} "
              + $"evictions={rig.EvictionsInWindow} failing_executions={rig.ExecutionsInWindow} "
-             + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} "
+             + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} flood_shed={outcome.Shed} "
              + $"flood_achieved_rate={outcome.AchievedRate:F1} flood_starved={(floodStarved ? "yes" : "no")} delivered={(delivered ? "yes" : "no")} "
              + $"production_p50_us={p50:F1} production_p95_us={p95:F1} production_p99_us={p99:F1}");
 
@@ -336,8 +337,9 @@ public class FrameTxFloodMeasurement
                 "no eviction fired, so the fixed-occupancy producer workload was not exercised");
             Assert.That(outcome.ProcessMicros, Has.Count.GreaterThan(10),
                 "too few production passes for a percentile to mean anything");
-            Assert.That(outcome.Rejected, Is.EqualTo(outcome.Submitted).Within(1),
-                "flood transactions were dropped before the simulator, so the flood arm measures an idle pool");
+            Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
+                "flood transactions went missing: they were neither simulated nor shed, so the arm measures "
+                + "an idle pool for a reason this harness cannot name");
             if (offeredRate > 0)
             {
                 Assert.That(outcome.Submitted, Is.GreaterThan(10),
@@ -354,7 +356,7 @@ public class FrameTxFloodMeasurement
     {
         rig.RunFor(WarmupWindow);
         rig.MarkWindowStart();
-        return new FloodOutcome(0, 0, 0, 0, 0, 0, rig.Measure(MeasureWindow));
+        return new FloodOutcome(0, 0, 0, 0, 0, 0, 0, rig.Measure(MeasureWindow));
     }
 
     private sealed class FloodGenerator
@@ -460,7 +462,8 @@ public class FrameTxFloodMeasurement
              + $"W0_after_p50_us={w0After:F1} baseline_drift_pct={baselineDriftPct:F1} "
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
-             + $"submitted={flooded.Submitted} rejected={flooded.Rejected} max_lag_us={flooded.MaxLagUs:F0} "
+             + $"submitted={flooded.Submitted} rejected={flooded.Rejected} shed={flooded.Shed} "
+             + $"max_lag_us={flooded.MaxLagUs:F0} "
              + $"pending_pool_growth={flooded.PendingPoolGrowth} "
              + $"saturated={(flooded.AchievedRate < offeredRate * RateHeldFloor ? "yes" : "no")} "
              + $"delta_per_achieved_tx_us={(flooded.AchievedRate > 0 ? (w - w0) / flooded.AchievedRate : 0):F2} "
@@ -478,8 +481,9 @@ public class FrameTxFloodMeasurement
                 + "states and no delta can be recovered from them. Re-run on a quieter machine. Rows between "
                 + $"{MaxBaselineDriftPercent}% and {BrokenBaselineDriftPercent}% are emitted with valid=no "
                 + "instead of failing.");
-            Assert.That(flooded.Rejected, Is.EqualTo(flooded.Submitted).Within(1),
-                "flood transactions were dropped before the simulator, so this measures an idle pool");
+            Assert.That(flooded.Rejected + flooded.Shed, Is.EqualTo(flooded.Submitted).Within(1),
+                "flood transactions went missing: they were neither simulated nor shed, so this measures an "
+                + "idle pool for a reason this harness cannot name");
             Assert.That(baseline, Has.Count.GreaterThan(10),
                 "the baseline window collected too few samples for a percentile to mean anything");
             Assert.That(flooded.Submitted, Is.GreaterThan(10),
@@ -569,12 +573,16 @@ public class FrameTxFloodMeasurement
                  + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
                  + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
                  + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
-                 + $"submitted={outcome.Submitted} pending_pool_growth={outcome.PendingPoolGrowth} "
+                 + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
+                 + $"shed_pct={(outcome.Submitted > 0 ? outcome.Shed * 100.0 / outcome.Submitted : 0):F0} "
+                 + $"pending_pool_growth={outcome.PendingPoolGrowth} "
                  + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
 
-            Assert.That(outcome.Rejected, Is.EqualTo(outcome.Submitted).Within(1),
-                $"at {rate} tx/s only {outcome.Rejected} of {outcome.Submitted} submissions reached the "
-                + "simulator; the rest were dropped upstream, so this point measures an idle node");
+            Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
+                $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
+                + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
+                + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
+                + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
 
             if (sustained)
             {
@@ -658,6 +666,7 @@ public class FrameTxFloodMeasurement
         int submittedAtStart = Volatile.Read(ref generator.Submitted);
         int rejectedAtStart = Volatile.Read(ref generator.Rejected);
         long rejectionCounterAtStart = rejectionCounter?.Invoke() ?? 0;
+        long shedAtStart = ShedCount();
         int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
 
         generator.ResetMaxLag();
@@ -681,6 +690,7 @@ public class FrameTxFloodMeasurement
             ? Volatile.Read(ref generator.Rejected) - rejectedAtStart
             : (int)(rejectionCounter() - rejectionCounterAtStart);
         int pendingPoolGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
+        int shedInWindow = (int)(ShedCount() - shedAtStart);
 
         Assert.That(generator.Stop(cts), Is.True,
             "the generator did not stop, so its counters are being read while it still writes them");
@@ -688,8 +698,17 @@ public class FrameTxFloodMeasurement
         double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
         double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
 
-        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs, pendingPoolGrowth, sampleMicros);
+        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs,
+            pendingPoolGrowth, shedInWindow, sampleMicros);
     }
+
+    /// <summary>
+    /// Admission the simulator refused without running the prefix: the per-head budget is spent, or the
+    /// simulator is already busy. Shed transactions cost the node nothing, so they are not rejections.
+    /// </summary>
+    private static long ShedCount() =>
+        Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBudgetExhausted)
+        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBusy);
 
     private static void WaitUntil(long dueTimestamp, CancellationToken token)
     {
