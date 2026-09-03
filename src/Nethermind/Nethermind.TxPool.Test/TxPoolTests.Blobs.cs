@@ -4915,27 +4915,40 @@ namespace Nethermind.TxPool.Test
                 "an expired blob-carrying frame tx must be evicted from the blob pool on a new head");
         }
 
-        // The deadline lives in the frames, which a reloaded light record does not have — so without it
-        // persisted the sweep cannot see the transaction and it never leaves the pool.
-        [Test]
-        public async Task Expired_blob_carrying_frame_tx_is_evicted_after_a_restart()
+        /// <summary>Head timestamp the expiry cases below are stated against, so each deadline names its own
+        /// side of the boundary rather than repeating a literal the head could drift away from.</summary>
+        private const ulong ExpiryHeadTimestamp = 1_500;
+
+        // With persistent storage the pool holds the frameless light record, not the submitted transaction, so
+        // the sweep reads the deadline that record carries: built at admission, or decoded off disk after a restart.
+        [TestCase(ExpiryHeadTimestamp - 1, 0, false, TestName = "a live light record behind the head expires")]
+        [TestCase(ExpiryHeadTimestamp, 1, false, TestName = "a live light record at the head timestamp survives")]
+        [TestCase(ExpiryHeadTimestamp + 1, 1, false, TestName = "a live light record ahead of the head survives")]
+        [TestCase(ExpiryHeadTimestamp - 1, 0, true, TestName = "a reloaded deadline behind the head still expires")]
+        [TestCase(ExpiryHeadTimestamp, 1, true, TestName = "a reloaded deadline at the head timestamp survives")]
+        [TestCase(ExpiryHeadTimestamp + 1, 1, true, TestName = "a reloaded deadline ahead of the head survives")]
+        public async Task Expiring_blob_carrying_frame_tx_expires_on_the_deadline_its_record_carries(ulong deadline, int expectedPending, bool restart)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the transaction must survive the restart");
+            if (restart)
+            {
+                // A fresh pool over the same storage stands in for a node restart.
+                _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            }
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the transaction must be pooled before the head moves");
 
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
-                "a reloaded blob-carrying frame tx must still expire out of the pool");
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ExpiryHeadTimestamp).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending),
+                "the pooled record must expire on exactly the deadline it carries");
         }
 
         // Restoring the pool evicts as it goes and each eviction decrements the expiry count, so the count must be
