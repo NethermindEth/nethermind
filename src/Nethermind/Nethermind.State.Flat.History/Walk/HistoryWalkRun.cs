@@ -126,7 +126,7 @@ internal sealed class HistoryWalkRun
             TreePath prefix = TreePath.FromNibble([(byte)(nibbles >> 4), (byte)(nibbles & 0x0F)]);
             partitions.Add(() =>
             {
-                MismatchSink found = ResumeItemMismatches(item);
+                MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
                 ProcessAccountPartition(prefix, item, found);
                 CompleteItem(item, found);
             });
@@ -145,7 +145,7 @@ internal sealed class HistoryWalkRun
             byte firstByte = (byte)first;
             partitions.Add(() =>
             {
-                MismatchSink found = ResumeItemMismatches(item);
+                MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
                 ProcessStorageRange(firstByte, item, found);
                 CompleteItem(item, found);
             });
@@ -171,13 +171,6 @@ internal sealed class HistoryWalkRun
             List<HistoryWalkMismatch> mismatches = _sink.Drain();
             return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
         }
-    }
-
-    private MismatchSink ResumeItemMismatches(int item)
-    {
-        MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-        if (_metadata.TryGetWalkItemProgress(item, out _, out ReadOnlySpan<byte> persisted)) found.Decode(persisted);
-        return found;
     }
 
     private void CompleteItem(int item, MismatchSink found)
@@ -214,7 +207,6 @@ internal sealed class HistoryWalkRun
             if (outcome == ScanOutcome.Split)
             {
                 rows.Reset();
-                if (prefix.Length == AccountPartitionDepth) found.Clear();
                 for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
                 {
                     _progress.EnterChild(item, nibble, BranchRlp.ChildCount);
@@ -226,7 +218,13 @@ internal sealed class HistoryWalkRun
                 return;
             }
 
-            ulong? resumeFrom = prefix.Length == AccountPartitionDepth && _metadata.TryGetWalkItemProgress(item, out ulong reached) ? reached : null;
+            ulong? resumeFrom = null;
+            if (prefix.Length == AccountPartitionDepth && _metadata.TryGetWalkItemProgress(item, out ulong reached, out ReadOnlySpan<byte> persisted))
+            {
+                resumeFrom = reached;
+                found.Decode(persisted);
+            }
+
             List<HistoryWalkMismatch> replayed = [];
             Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block, found, replayed) : null;
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
@@ -259,7 +257,13 @@ internal sealed class HistoryWalkRun
 
     private void ProcessStorageRange(byte firstByte, int item, MismatchSink found)
     {
-        uint? afterPrefix = _metadata.TryGetWalkItemProgress(item, out ulong done) ? (uint)done : null;
+        uint? afterPrefix = null;
+        if (_metadata.TryGetWalkItemProgress(item, out ulong done, out ReadOnlySpan<byte> persisted))
+        {
+            afterPrefix = (uint)done;
+            found.Decode(persisted);
+        }
+
         _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, afterPrefix, group =>
         {
             using (StoragePartitionRows rows = group.Rows)

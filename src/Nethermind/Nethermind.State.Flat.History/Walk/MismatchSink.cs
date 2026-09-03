@@ -33,14 +33,6 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
         }
     }
 
-    public void Clear()
-    {
-        lock (_mismatches)
-        {
-            _mismatches.Clear();
-        }
-    }
-
     public void AddRange(MismatchSink other)
     {
         lock (other._mismatches)
