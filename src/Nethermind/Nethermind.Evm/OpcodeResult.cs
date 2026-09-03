@@ -5,20 +5,33 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm;
 
-/// <summary>A jump handler's outcome: the program counter it selected, packed with its halting status.</summary>
+/// <summary>An opcode handler's outcome: the program counter it selected, packed with its halting status.</summary>
 /// <remarks>
-/// The counter occupies the low 32 bits and the <see cref="EvmExceptionType"/> the high 32. Handlers that
-/// move the counter would otherwise take it by reference, which forces it into an address-taken stack slot
-/// for as long as the body runs; the jump handlers pay that because they call a helper that does not inline,
-/// and <c>JUMPI</c> does not inline into the dispatch loop at all. Returning it keeps it in a register.
-/// One <see cref="ulong"/> wide because a 16-byte struct returns through memory on the Windows x64 ABI.
+/// The counter occupies the low 32 bits and the <see cref="EvmExceptionType"/> the high 32. Taking the
+/// counter by reference instead forces it into an address-taken stack slot for as long as the body runs;
+/// returning it keeps it in a register. One <see cref="ulong"/> wide because a 16-byte struct returns
+/// through memory on the Windows x64 ABI.
 /// </remarks>
-[method: MethodImpl(MethodImplOptions.AggressiveInlining)]
-public readonly struct OpcodeResult(nint programCounter, EvmExceptionType exception)
+public readonly struct OpcodeResult
 {
-    private readonly ulong _packed = ((ulong)(uint)exception << 32) | (uint)programCounter;
+    /// <summary>The <see cref="ProgramCounter"/> of a handler that leaves the counter to the caller.</summary>
+    /// <remarks>
+    /// Most handlers only step over their own opcode, so they return a bare <see cref="EvmExceptionType"/>
+    /// and the dispatch keeps the counter it already holds. EIP-170 caps code at 24 KiB and EIP-3860 caps
+    /// init code at 48 KiB, so no counter a handler can select reaches this value.
+    /// </remarks>
+    internal const uint NoProgramCounter = 0x8000_0000;
 
-    /// <summary>The counter the handler selected, whether or not it halted.</summary>
+    private readonly ulong _packed;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public OpcodeResult(nint programCounter, EvmExceptionType exception)
+        => _packed = ((ulong)(uint)exception << 32) | (uint)programCounter;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private OpcodeResult(ulong packed) => _packed = packed;
+
+    /// <summary>The counter the handler selected, or <see cref="NoProgramCounter"/> if it selected none.</summary>
     public nint ProgramCounter
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -31,4 +44,14 @@ public readonly struct OpcodeResult(nint programCounter, EvmExceptionType except
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => (EvmExceptionType)(uint)(_packed >> 32);
     }
+
+    /// <summary>Wraps a status from a handler that leaves the program counter to the caller.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator OpcodeResult(EvmExceptionType exception)
+        => new(((ulong)(uint)exception << 32) | NoProgramCounter);
+
+    /// <summary>Wraps a counter from a handler that moved it and did not halt.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator OpcodeResult(nint programCounter)
+        => new(((ulong)(uint)EvmExceptionType.None << 32) | (uint)programCounter);
 }
