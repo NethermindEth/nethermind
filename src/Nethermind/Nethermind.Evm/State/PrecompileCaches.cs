@@ -351,6 +351,11 @@ public sealed class PrecompileCaches : IDisposable
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
 
+            // we need to rebuild the key with data copy as the data can be changed by VM processing
+            // effective-input bounds are expected to remain the same
+            Key copiedKey = key.WithCopiedData();
+            if (entryBytes <= MaxSurvivingEntryBytes) _survivingCache.Set(copiedKey, result);
+
             if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
             {
                 Interlocked.Add(ref _bytes, -reservation);
@@ -358,16 +363,12 @@ public sealed class PrecompileCaches : IDisposable
                 return false;
             }
 
-            // we need to rebuild the key with data copy as the data can be changed by VM processing
-            // effective-input bounds are expected to remain the same
-            Key copiedKey = key.WithCopiedData();
             if (!_entries.TryAdd(copiedKey, result))
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 return false;
             }
 
-            if (entryBytes <= MaxSurvivingEntryBytes) _survivingCache.Set(copiedKey, result);
             return true;
         }
 
