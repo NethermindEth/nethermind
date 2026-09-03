@@ -33,7 +33,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         GetOpcodeHandlers<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(Spec, refresh: false);
+        GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(Spec);
 
     /// <summary>Whether the dispatch table should be rebuilt before the coming transaction.</summary>
     private partial bool ShouldRefreshOpcodes();
@@ -44,22 +44,30 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// whole transaction and the spec for the whole block, so every frame the transaction enters or
     /// resumes would resolve the same table, and the per-spec lookup behind it is not free.
     /// </remarks>
-    private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
+    private void PrepareOpcodes<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
         if (_isCancelableCached)
-            PrepareOpcodes<TTracingInst, OnFlag>(spec);
+            PrepareOpcodes<TTracingInst, OnFlag>();
         else
-            PrepareOpcodes<TTracingInst, OffFlag>(spec);
+            PrepareOpcodes<TTracingInst, OffFlag>();
     }
 
-    private void PrepareOpcodes<TTracingInst, TCancelable>(IReleaseSpec spec)
+    private void PrepareOpcodes<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag =>
+        where TCancelable : struct, IFlag
+    {
+        // The cache key and the table contents come from one read, so they cannot describe different forks.
+        IReleaseSpec spec = Spec;
+        OpcodeTable table = GetOpcodeTable();
+
         // Traced tables are left alone: a tracing run is short, and rebuilding one would cost more than
         // the promoted code it could pick up.
-        _opcodeHandlers = GetOpcodeTable().GetHandlers<TTracingInst, TCancelable>(
-            spec, refresh: !TTracingInst.IsActive && ShouldRefreshOpcodes());
+        if (!TTracingInst.IsActive && ShouldRefreshOpcodes())
+            table.RefreshNonTraced<TTracingInst>(spec);
+
+        _opcodeHandlers = table.GetHandlers<TTracingInst, TCancelable>(spec);
+    }
 
     private sealed unsafe class OpcodeTable
     {
@@ -70,12 +78,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>The table for this combination of flags, built on first use.</summary>
         /// <param name="spec">The fork whose opcode set the table describes.</param>
-        /// <param name="refresh">
-        /// Rebuild even when one is already cached, so its function pointers are captured from whatever the
-        /// JIT has promoted since the last build.
-        /// </param>
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, EvmExceptionType>[]
-            GetHandlers<TTracingInst, TCancelable>(IReleaseSpec spec, bool refresh)
+            GetHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
             where TTracingInst : struct, IFlag
             where TCancelable : struct, IFlag
         {
@@ -84,9 +88,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ? ref (TCancelable.IsActive ? ref TracedCancelable : ref Traced)
                     : ref (TCancelable.IsActive ? ref NoTraceCancelable : ref NoTrace);
 
-            return refresh
-                ? table = GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec)
-                : table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
+            return table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
+        }
+
+        /// <summary>Rebuilds both non-traced tables from whatever the JIT has promoted since the last build.</summary>
+        /// <remarks>
+        /// A captured function pointer keeps pointing at the code it was taken from. Both non-traced tables
+        /// share one cadence, so a rebuild has to cover both: which one a given transaction asks for follows
+        /// the node's mix of block processing and RPC, and block processing is what the cadence exists for.
+        /// </remarks>
+        public void RefreshNonTraced<TTracingInst>(IReleaseSpec spec)
+            where TTracingInst : struct, IFlag
+        {
+            NoTrace = GenerateOpcodeHandlers<TTracingInst, OffFlag>(spec);
+            NoTraceCancelable = GenerateOpcodeHandlers<TTracingInst, OnFlag>(spec);
         }
     }
 

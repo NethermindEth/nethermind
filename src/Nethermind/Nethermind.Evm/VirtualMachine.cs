@@ -191,7 +191,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _shouldRestoreRipemdTouch = false;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        PrepareOpcodes<TTracingInst>(spec);
+        PrepareOpcodes<TTracingInst>();
         OpCodeCount = 0;
         MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
