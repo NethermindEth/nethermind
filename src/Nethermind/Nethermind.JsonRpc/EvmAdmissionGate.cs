@@ -83,12 +83,14 @@ internal sealed class EvmAdmissionGate
 
         _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.MaxQueueWaitMs));
         _maxQueued = Math.Max(0, config.RequestQueueLimit);
-        // Created up front so that arming, which happens after a waiter is already queued and counted, can only Change and never throw.
-        _sweepTimer = _timeProvider.CreateTimer(static state => ((EvmAdmissionGate)state!).Sweep(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         for (int w = MinWeight; w <= MaxWeight; w++)
         {
             _queues[w] = new Queue<Waiter>();
         }
+
+        // Created up front so that arming, which happens after a waiter is already queued and counted, can only Change and never throw;
+        // after the queues exist, since a provider may run the callback from inside CreateTimer.
+        _sweepTimer = _timeProvider.CreateTimer(static state => ((EvmAdmissionGate)state!).Sweep(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     internal int Permits { get; }
