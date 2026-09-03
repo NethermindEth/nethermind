@@ -57,7 +57,8 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
-        IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = isPrewarmer ? scope.CreateTrieWarmerScope() : null;
+        IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = isPrewarmer ? preBlockCaches.RentTrieWarmerScope() : null;
+        PreBlockCaches.TrieWarmerScopeSource? trieWarmerScopeSource = null;
         if (!isPrewarmer)
         {
             try
@@ -65,6 +66,7 @@ public class PrewarmerScopeProvider(
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
+                trieWarmerScopeSource = preBlockCaches.RegisterTrieWarmerScopeSource(scope);
                 // The consumer reads the state at baseBlock through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
             }
@@ -83,7 +85,7 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmerScope, storageReadCapture, metrics, baseBlock?.StateRoot);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmerScope, trieWarmerScopeSource, storageReadCapture, metrics, baseBlock?.StateRoot);
     }
 
     private sealed class ScopeWrapper(
@@ -92,6 +94,7 @@ public class PrewarmerScopeProvider(
         ILogManager logManager,
         bool isPrewarmer,
         IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope,
+        PreBlockCaches.TrieWarmerScopeSource? trieWarmerScopeSource,
         PreBlockCaches.StorageReadCapture? storageReadCapture,
         LocalMetrics metrics,
         Hash256? baseStateRoot) : IWorldStateScopeProvider.IScope
@@ -102,6 +105,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = trieWarmerScope;
+        private readonly PreBlockCaches.TrieWarmerScopeSource? trieWarmerScopeSource = trieWarmerScopeSource;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -126,6 +130,7 @@ public class PrewarmerScopeProvider(
 
             // Unregister before teardown so no new warm hints target a disposing scope.
             preBlockCaches.MainScope = null;
+            trieWarmerScopeSource?.Dispose();
             try
             {
                 ObserveWriteBatchToDispose();

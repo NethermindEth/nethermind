@@ -24,6 +24,9 @@ public class PreBlockCaches
     private readonly PrecompileCaches _precompileCaches;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
     private int _consumerScopes;
+    private readonly Lock _trieWarmerScopeSourceLock = new();
+    private TrieWarmerScopeSource? _trieWarmerScopeSource;
+    private long _trieWarmerScopeSourceGeneration;
 
     private readonly Lock _reconcileLock = new();
     private readonly WriteBackBatch _writeBack;
@@ -93,6 +96,109 @@ public class PreBlockCaches
 
     /// <returns>The number of consumer scopes still open.</returns>
     public int EndConsumerScope() => Interlocked.Decrement(ref _consumerScopes);
+
+    internal TrieWarmerScopeSource RegisterTrieWarmerScopeSource(IWorldStateScopeProvider.IScope scope)
+    {
+        lock (_trieWarmerScopeSourceLock)
+        {
+            TrieWarmerScopeSource source = new(this, ++_trieWarmerScopeSourceGeneration, scope);
+            _trieWarmerScopeSource = source;
+            return source;
+        }
+    }
+
+    internal IWorldStateScopeProvider.ITrieWarmerScope RentTrieWarmerScope()
+    {
+        lock (_trieWarmerScopeSourceLock)
+        {
+            TrieWarmerScopeSource? source = _trieWarmerScopeSource;
+            return source is null
+                ? IWorldStateScopeProvider.ITrieWarmerScope.Noop.Instance
+                : source.Rent();
+        }
+    }
+
+    internal sealed class TrieWarmerScopeSource(
+        PreBlockCaches owner,
+        long generation,
+        IWorldStateScopeProvider.IScope mainScope) : IDisposable
+    {
+        private readonly object _lock = new();
+        private bool _closing;
+        private int _leaseCount;
+
+        internal IWorldStateScopeProvider.ITrieWarmerScope Rent()
+        {
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_closing, this);
+                IWorldStateScopeProvider.ITrieWarmerScope trieWarmerScope = mainScope.CreateTrieWarmerScope();
+                _leaseCount++;
+                return new TrieWarmerScopeLease(this, trieWarmerScope);
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (owner._trieWarmerScopeSourceLock)
+            {
+                lock (_lock)
+                {
+                    _closing = true;
+                    if (owner._trieWarmerScopeSourceGeneration == generation && ReferenceEquals(owner._trieWarmerScopeSource, this))
+                    {
+                        owner._trieWarmerScopeSource = null;
+                    }
+                }
+            }
+
+            lock (_lock)
+            {
+                while (_leaseCount != 0)
+                {
+                    Monitor.Wait(_lock);
+                }
+            }
+        }
+
+        private void Release()
+        {
+            lock (_lock)
+            {
+                _leaseCount--;
+                if (_leaseCount == 0)
+                {
+                    Monitor.PulseAll(_lock);
+                }
+            }
+        }
+
+        private sealed class TrieWarmerScopeLease(
+            TrieWarmerScopeSource source,
+            IWorldStateScopeProvider.ITrieWarmerScope inner) : IWorldStateScopeProvider.ITrieWarmerScope
+        {
+            private int _disposed;
+
+            public void HintWarmAccount(in ValueAddress address) => inner.HintWarmAccount(in address);
+
+            public void HintWarmSlot(in ValueAddress address, in Nethermind.Int256.UInt256 index) =>
+                inner.HintWarmSlot(in address, in index);
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+                try
+                {
+                    inner.Dispose();
+                }
+                finally
+                {
+                    source.Release();
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// Starts a thread-local capture of backing-store storage misses made through this block cache.
