@@ -78,7 +78,7 @@ public sealed class DiscoveryConnectionsPool(
             {
                 IPEndPoint ipEndpoint => ipEndpoint,
                 IIPEndpointSource source => source.IPEndpoint,
-                _ => null
+                _ => (channel as IIPEndpointSource)?.IPEndpoint
             };
             if (endpoint is not null)
             {
