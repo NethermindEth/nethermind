@@ -21,7 +21,7 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public sealed class Address : IEquatable<Address>, IComparable<Address>
+    public sealed partial class Address : IEquatable<Address>, IComparable<Address>
     {
         public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
@@ -163,27 +163,17 @@ namespace Nethermind.Core
                 return true;
             }
 
-            // Address must be 20 bytes long Vector128 + uint
-            ref byte bytes0 = ref Unsafe.AsRef(in FirstByte);
-            ref byte bytes1 = ref Unsafe.AsRef(in other.FirstByte);
-#if ZK_EVM
-            // RISC-V has no SIMD, so a Vector128 compare lowers to a slow software
-            // helper. Compare the 20 bytes as two ulongs plus a uint instead.
-            return Unsafe.ReadUnaligned<ulong>(ref bytes0)
-                       == Unsafe.ReadUnaligned<ulong>(ref bytes1)
-                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes0, 8))
-                       == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes1, 8))
-                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes0, 16))
-                       == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes1, 16));
-#else
-            // Compare first 16 bytes with Vector128 and last 4 bytes with uint
-            return
-                Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
-                Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
-#endif
+            return BytesEqual(ref Unsafe.AsRef(in FirstByte), ref Unsafe.AsRef(in other.FirstByte));
         }
+
+        /// <summary>Compares two addresses byte for byte.</summary>
+        /// <remarks>
+        /// Split by target rather than written once: RISC-V has no SIMD, and a <see cref="Vector128{T}"/> compare
+        /// lowers to a software helper there.
+        /// </remarks>
+        /// <param name="a">Reference to the first byte of one 20-byte address.</param>
+        /// <param name="b">Reference to the first byte of the other.</param>
+        internal static partial bool BytesEqual(ref byte a, ref byte b);
 
         // Same comparison as Equals(Address) but against raw bytes, skipping the
         // length-dispatching SequenceEqual helper on hot paths.
@@ -192,16 +182,7 @@ namespace Nethermind.Core
         {
             if (other.Length != Size) return false;
 
-            ref byte a = ref Unsafe.AsRef(in FirstByte);
-            ref byte b = ref MemoryMarshal.GetReference(other);
-#if ZK_EVM
-            return Unsafe.ReadUnaligned<ulong>(ref a) == Unsafe.ReadUnaligned<ulong>(ref b)
-                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))
-                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref a, 16)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
-#else
-            return Unsafe.As<byte, Vector128<byte>>(ref a) == Unsafe.As<byte, Vector128<byte>>(ref b)
-                && Unsafe.As<byte, uint>(ref Unsafe.Add(ref a, Vector128<byte>.Count)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref b, Vector128<byte>.Count));
-#endif
+            return BytesEqual(ref Unsafe.AsRef(in FirstByte), ref MemoryMarshal.GetReference(other));
         }
 
         public static Address FromNumber(in UInt256 number)
@@ -391,17 +372,7 @@ namespace Nethermind.Core
             if (ReferenceEquals(a, b)) return true;
             if (a is null || b is null) return false;
 
-            ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
-            ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
-#if ZK_EVM
-            // RISC-V has no SIMD, so a Vector128 compare lowers to a slow software helper.
-            return Unsafe.ReadUnaligned<ulong>(ref ab) == Unsafe.ReadUnaligned<ulong>(ref bb)
-                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref ab, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bb, 8))
-                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bb, 16));
-#else
-            return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
-                && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, Vector128<byte>.Count)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, Vector128<byte>.Count));
-#endif
+            return Address.BytesEqual(ref MemoryMarshal.GetReference(a.Bytes), ref MemoryMarshal.GetReference(b.Bytes));
         }
     }
 
