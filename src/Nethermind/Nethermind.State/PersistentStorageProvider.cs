@@ -815,6 +815,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// <summary>
         /// Claims the one account trie warm hint this contract needs for the block.
         /// </summary>
+        /// <remarks>
+        /// Spent whether or not the scope keeps the hint. A scope that drops this one drops the block's slot hints as
+        /// well, because both are gated on the same disposed and paused flags, so the contract is never left with its
+        /// slots warmed and its account path cold.
+        /// </remarks>
         /// <returns><see langword="true"/> for the first caller, <see langword="false"/> for every later one.</returns>
         public bool TakeAccountWarmHint()
         {

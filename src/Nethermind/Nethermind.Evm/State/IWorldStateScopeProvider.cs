@@ -89,8 +89,9 @@ public interface IWorldStateScopeProvider
         /// it; a scope without such a cache takes none, so the snapshot costs nothing.
         /// </summary>
         /// <remarks>
-        /// The snapshot must be taken before this call returns, because the world state discards its record of the
-        /// block immediately afterwards. Once taken it stands on its own, so the caller may apply it on another thread.
+        /// The snapshot must be taken before this call returns: the world state drops its storage record as soon as it
+        /// does, and its account record when the block ends. Once taken it stands on its own, so the caller may apply
+        /// it on another thread.
         /// </remarks>
         /// <param name="takeSnapshot">Takes the snapshot; the caller owns and must dispose what it returns.</param>
         void WriteBackCommittedState(Func<IBlockChangeSnapshot> takeSnapshot) { }

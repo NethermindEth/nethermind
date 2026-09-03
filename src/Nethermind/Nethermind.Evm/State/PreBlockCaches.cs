@@ -93,6 +93,12 @@ public class PreBlockCaches
     /// </summary>
     public event Action? ConsumerScopeOpened;
 
+    /// <summary>Opens a consumer scope; see <see cref="ConsumerScopeOpen"/>.</summary>
+    /// <remarks>
+    /// At most one may be open at a time, which is what leaves the write-back a single writer. Nothing here enforces
+    /// it: it holds because only the main processing scope is decorated, leaving the RPC, tracing and simulate world
+    /// states out. A second consumer inside that scope would clear the caches mid-block and race the write-back.
+    /// </remarks>
     public void BeginConsumerScope()
     {
         Interlocked.Increment(ref _consumerScopes);
