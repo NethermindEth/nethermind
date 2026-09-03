@@ -7,10 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -573,12 +570,6 @@ public sealed class SnapshotBundle : IDisposable
             transientResource.ReleaseLease();
         }
     }
-
-    internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
-        in StateId baseState,
-        ITrieWarmer trieWarmer,
-        ILogManager logManager) =>
-        new FlatTrieWarmupSession(baseState, this, _trieNodeCache, trieWarmer, logManager);
 
     /// <summary>
     /// Leases the stable read-only bundle independently of the transient resource.
