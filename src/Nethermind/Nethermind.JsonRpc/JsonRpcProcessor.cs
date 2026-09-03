@@ -585,7 +585,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 case JsonValueKind.Object:
                     JsonRpcRequest request = CreateRequest(rootElement);
-                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
+                    if (_logger.IsDebug) DebugRequest(request);
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context, cancellationToken);
                     await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
@@ -614,7 +614,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         try
         {
-            if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
+            if (_logger.IsDebug) DebugRequest(request);
 
             JsonRpcResult.Entry response = await HandleSingleRequest(request, context, cancellationToken);
             await WriteSingleEntryAsync(response, sink, cancellationToken);
@@ -624,6 +624,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             request.DisposeParsedParamsDocument();
         }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void DebugRequest(JsonRpcRequest request) =>
+        _logger.Debug($"JSON RPC request {request.Method}");
 
     private async ValueTask ProcessBatchDocumentToSink(
         JsonElement rootElement,

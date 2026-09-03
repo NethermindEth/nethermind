@@ -147,8 +147,9 @@ public sealed class JsonRpcService : IJsonRpcService
             {
                 contextAwareModule.Context = context;
             }
+            void ReturnRental() => _rpcModuleProvider.Return(method, rpcModule);
             bool returnImmediately = methodName != GetLogsMethodName;
-            Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
+            Action? returnAction = returnImmediately ? null : ReturnRental;
             IResultWrapper? resultWrapper = null;
             try
             {
@@ -173,6 +174,15 @@ public sealed class JsonRpcService : IJsonRpcService
                     default:
                         break;
                 }
+
+                // A streamed result executes while the response is written, after this method has returned, on state the
+                // module owns (its overridable world state env). Returning the module now would let the next rental run on
+                // that same env concurrently, so the rental has to last until the response is disposed.
+                if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
+                {
+                    returnImmediately = false;
+                    returnAction = ReturnRental;
+                }
             }
             catch (Exception ex)
             {
@@ -182,7 +192,7 @@ public sealed class JsonRpcService : IJsonRpcService
             {
                 if (returnImmediately)
                 {
-                    _rpcModuleProvider.Return(method, rpcModule);
+                    ReturnRental();
                 }
             }
 

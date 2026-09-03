@@ -1056,8 +1056,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadChainSpecFromString(chainSpecJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+        Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
     [Test]
@@ -1086,8 +1087,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
+        Assert.That(genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
     }
 
     [TestCase(null, 0ul, TestName = "Geth genesis Amsterdam slot number: absent defaults to zero")]
@@ -1124,8 +1126,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+        Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
     [TestCase(1ul)]

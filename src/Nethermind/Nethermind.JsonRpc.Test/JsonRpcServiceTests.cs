@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -426,6 +427,29 @@ public class JsonRpcServiceTests
 
         response.Dispose();
         pool.Received().ReturnModule(rpcModule);
+    }
+
+    // A streamed trace executes while the response is written, on the module's own overridable env; the module must
+    // therefore stay rented until the response is disposed, or the next rental races it on that env.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Returns_module_to_pool_only_after_a_streamed_result_is_disposed(bool streamed)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        using CancellationTokenSource timeoutCts = new();
+        IEnumerable<ParityTxTraceFromReplay> traces = streamed
+            ? new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(static (_, _, _) => { }, timeoutCts, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())
+            : [];
+        rpcModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces));
+
+        JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayBlockTransactions", "latest", new[] { "trace" });
+
+        pool.Received(streamed ? 0 : 1).ReturnModule(rpcModule);
+        response.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
     }
 
     [Test]
