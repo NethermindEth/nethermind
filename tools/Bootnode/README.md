@@ -39,7 +39,11 @@ The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode a
 
 ## Release Assets
 
-Bootnode maintains an independent version line starting at `1.0.0`. Its separate GitHub Release tag includes the `bootnode-` prefix, for example `bootnode-1.0.0`; package archive names and Docker tags use the same unprefixed Bootnode version, for example `nethermind-bootnode-1.0.0-linux-x64.tar.gz` and `nethermind/bootnode:1.0.0`. The `Release Bootnode` workflow always marks its GitHub release as not latest, so it does not replace the Nethermind client release in the repository sidebar. It builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For a stable version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
+Bootnode maintains an independent version line starting at `1.0.0`. Its separate GitHub Release tag includes the `bootnode-` prefix, for example `bootnode-1.0.0`; package archive names and Docker tags use the same unprefixed Bootnode version, for example `nethermind-bootnode-1.0.0-linux-x64.tar.gz` and `nethermind/bootnode:1.0.0`. The `Release Bootnode` workflow always marks its GitHub release as not latest, so it does not replace the Nethermind client release in the repository sidebar.
+
+Dispatch `Release Bootnode` from a ref whose Bootnode project declares the version to publish. To re-upload an existing published version, dispatch from its `bootnode-<version>` tag; delete a stale draft before re-cutting that version at another commit. Each release includes `SHA256SUMS` and detached `.asc` signatures. The `nethermind/bootnode` image name replaces `nethermind/nethermind-bootnode`.
+
+The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For the highest published stable Bootnode version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
 
 ```powershell
 docker pull nethermind/bootnode:latest
