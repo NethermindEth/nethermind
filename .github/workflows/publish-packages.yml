@@ -35,15 +35,11 @@ jobs:
         working-directory: scripts/build/ppa
         run: |
           version="$TAG_NAME"
-          json=$(curl -fsSL "$ASSETS_URL?per_page=100")
+          json=$(curl -sL "$ASSETS_URL")
           arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
+          arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
           x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
-          if [[ -z "$arm64_url" || -z "$x64_url" ]]; then
-            echo "::error::Could not resolve Nethermind Linux release assets for $TAG_NAME."
-            exit 1
-          fi
-          arm64_hash=$(curl -fsSL "$arm64_url" | sha256sum | awk '{print $1}')
-          x64_hash=$(curl -fsSL "$x64_url" | sha256sum | awk '{print $1}')
+          x64_hash=$(curl -sL $x64_url | sha256sum | awk '{print $1}')
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url='$arm64_url'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
           awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
@@ -99,12 +95,8 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
           ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
-          $releaseInfo = curl -fsSL "$($env:ASSETS_URL)?per_page=100" | ConvertFrom-Json
-          $assetPattern = "nethermind-$env:TAG_NAME-*-windows-x64.zip"
-          $releaseUrl = $releaseInfo | Where-Object { $_.name -like $assetPattern } | Select-Object -First 1 -ExpandProperty browser_download_url
-          if (-not $releaseUrl) {
-            throw "Could not resolve the Nethermind Windows release asset for $env:TAG_NAME."
-          }
+          $releaseInfo = curl -sL $env:ASSETS_URL | ConvertFrom-Json
+          $releaseUrl = $releaseInfo | Where-Object -Property name -like "nethermind-$env:TAG_NAME-*-windows-x64.zip" | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
           ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u $releaseUrl
 
@@ -134,15 +126,11 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
           ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
-          json=$(curl -fsSL "$ASSETS_URL?per_page=100")
+          json=$(curl -sL "$ASSETS_URL")
           arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-arm64.zip"))')
+          arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
           x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-x64.zip"))')
-          if [[ -z "$arm64_url" || -z "$x64_url" ]]; then
-            echo "::error::Could not resolve Nethermind macOS release assets for $TAG_NAME."
-            exit 1
-          fi
-          arm64_hash=$(curl -fsSL "$arm64_url" | shasum -a 256 | awk '{print $1}')
-          x64_hash=$(curl -fsSL "$x64_url" | shasum -a 256 | awk '{print $1}')
+          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
           sed -i "s/version .*/version \"$TAG_NAME\"/" $FORMULA
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
@@ -180,18 +168,13 @@ jobs:
       - name: Download Nethermind reference assemblies
         id: download
         env:
-          TAG_NAME: ${{ github.event.release.tag_name }}
           ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
-          json=$(curl -fsSL "$ASSETS_URL?per_page=100")
+          json=$(curl -s "$ASSETS_URL")
           asset=$(echo "$json" | jq -r '.[] | select(.name | contains("ref-assemblies"))')
           name=$(echo "$asset" | jq -r '.name')
           url=$(echo "$asset" | jq -r '.browser_download_url')
-          if [[ -z "$name" || "$name" == "null" || -z "$url" || "$url" == "null" ]]; then
-            echo "::error::Could not resolve the Nethermind reference assemblies release asset for $TAG_NAME."
-            exit 1
-          fi
-          curl -fsSL "$url" -o refasm.zip
+          curl -sL $url -o refasm.zip
           unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
           echo "asset-name=$name" >> $GITHUB_OUTPUT
 
