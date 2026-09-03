@@ -25,17 +25,13 @@ public static partial class ZkEvmBitOperations
 
     // RISC-V has no byte-swap instruction; this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Bswap64(ulong x)
-    {
-        x = ((x & 0x00FF00FF00FF00FFUL) << 8) | ((x >> 8) & 0x00FF00FF00FF00FFUL);
-        x = ((x & 0x0000FFFF0000FFFFUL) << 16) | ((x >> 16) & 0x0000FFFF0000FFFFUL);
-        return (x << 32) | (x >> 32);
-    }
+    public static ulong Bswap64(ulong x) => Swap(x, 0x00FF00FF00FF00FFUL, 0x0000FFFF0000FFFFUL);
 
     /// <summary>Writes <paramref name="value"/> to <paramref name="destination"/> with all 32 bytes reversed.</summary>
     /// <remarks>Shares the swap masks across the four lanes and stores lanes directly; per-lane
     /// <see cref="Bswap64"/> calls rematerialize the mask constants for every lane, and composing the
-    /// result through <see cref="Vector256"/> round-trips it through memory.</remarks>
+    /// result through <see cref="Vector256"/> round-trips it through memory. Lanes are stored as they
+    /// are computed, so <paramref name="destination"/> must not overlap <paramref name="value"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Bswap256(in UInt256 value, ref Vector256<byte> destination)
     {
