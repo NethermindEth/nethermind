@@ -117,6 +117,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             };
         }
 
+        public bool AcceptsStorageWrites => _writeBatch.AcceptsStorageWrites;
+
         public void Dispose()
         {
             _writeBatch.Dispose();

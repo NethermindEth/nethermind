@@ -906,9 +906,10 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(0, TestName = "StorageCell_VaryingOnlyTheAddressIsDistributed")]
+        [TestCase(0, TestName = "StorageCell_VaryingOnlyTheAddressHeadIsDistributed")]
         [TestCase(1, TestName = "StorageCell_VaryingOnlyTheLowSlotBytesIsDistributed")]
         [TestCase(2, TestName = "StorageCell_VaryingOnlyTheHighSlotBytesIsDistributed")]
+        [TestCase(3, TestName = "StorageCell_VaryingOnlyTheAddressTailIsDistributed")]
         public void StorageCell_EveryPartOfTheKeyReachesTheHash(int varying)
         {
             // One chain hashes the address and both halves of the slot, so a part that never reached the mixer
@@ -921,9 +922,11 @@ namespace Nethermind.Core.Test
             {
                 Span<byte> target = varying switch
                 {
-                    0 => addressBytes,
+                    0 => addressBytes.AsSpan(0, sizeof(int)),
                     1 => slotBytes.AsSpan(0, sizeof(int)),
-                    _ => slotBytes.AsSpan(24, sizeof(int))
+                    2 => slotBytes.AsSpan(24, sizeof(int)),
+                    // The last four bytes of the address are the one input that enters as a round key.
+                    _ => addressBytes.AsSpan(16, sizeof(int))
                 };
                 BinaryPrimitives.WriteInt32LittleEndian(target, value);
                 StorageCell cell = new(new Address(addressBytes), new UInt256(slotBytes, isBigEndian: false));
@@ -932,9 +935,10 @@ namespace Nethermind.Core.Test
 
             string context = varying switch
             {
-                0 => "addresses over one slot",
+                0 => "address heads over one slot",
                 1 => "low slot bytes under one address",
-                _ => "high slot bytes under one address"
+                2 => "high slot bytes under one address",
+                _ => "address tails over one slot"
             };
             using (Assert.EnterMultipleScope())
             {

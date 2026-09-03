@@ -393,8 +393,15 @@ namespace Nethermind.Core
 
             ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
             ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
+#if ZK_EVM
+            // RISC-V has no SIMD, so a Vector128 compare lowers to a slow software helper.
+            return Unsafe.ReadUnaligned<ulong>(ref ab) == Unsafe.ReadUnaligned<ulong>(ref bb)
+                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref ab, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bb, 8))
+                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bb, 16));
+#else
             return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
                 && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, Vector128<byte>.Count)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, Vector128<byte>.Count));
+#endif
         }
     }
 

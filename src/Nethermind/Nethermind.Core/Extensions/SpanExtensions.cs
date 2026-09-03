@@ -697,10 +697,18 @@ namespace Nethermind.Core.Extensions
         /// One AES chain over both inputs rather than a hash of each and a fold of the two, which is two chains and
         /// three 128-bit folds for the same 52 bytes.
         /// <para>
-        /// The seed enters the first round as data, so the mixer is not computable without it and a slot index
-        /// cannot be chosen to cancel a difference in the address. A cancellation that does not involve the seed is
-        /// what made the earlier four-lane XOR fold a cache-flood lever. Each input still gets two rounds before the
-        /// fold, which is what spreads a difference beyond one column.
+        /// The seed enters the first round as data, so the mixer is not computable without it and neither half of
+        /// the slot index can be chosen to cancel a difference in the address head. A cancellation that does not
+        /// involve the seed is what made the earlier four-lane XOR fold a cache-flood lever. Each input gets two
+        /// rounds before the fold, which is what spreads a difference beyond one column.
+        /// </para>
+        /// <para>
+        /// One pair is left adjacent under an exclusive-or: the last four bytes of the address, which are the third
+        /// round's key, and the high half of the index, which is its data. Cancelling across it needs two addresses
+        /// agreeing on their first sixteen bytes, so it is priced at 2^128 of address grinding rather than by the
+        /// seed. Moving the tail into the first round closes it and costs 3 to 9 percent of the hash; moving it to
+        /// the last round costs 1 to 3 percent and leaves it a single round of diffusion. Callers hashing something
+        /// other than a 20-byte address paired with a 32-byte index should re-price that before relying on this.
         /// </para>
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
