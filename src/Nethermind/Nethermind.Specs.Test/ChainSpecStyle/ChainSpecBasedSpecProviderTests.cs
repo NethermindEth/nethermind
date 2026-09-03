@@ -861,6 +861,48 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Frame_family_eips_activate_only_at_their_own_transition_timestamp()
+    {
+        const ulong eip8141Timestamp = 10;
+        const ulong eip8250Timestamp = 20;
+        const ulong eip8272Timestamp = 30;
+        const ulong eip7906Timestamp = 40;
+        const ulong eip7805Timestamp = 50;
+        const ulong eip8037Timestamp = 60;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = eip8141Timestamp,
+                Eip8250TransitionTimestamp = eip8250Timestamp,
+                Eip8272TransitionTimestamp = eip8272Timestamp,
+                Eip7906TransitionTimestamp = eip7906Timestamp,
+                Eip7805TransitionTimestamp = eip7805Timestamp,
+                Eip8037TransitionTimestamp = eip8037Timestamp,
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp - 1)).IsEip8141Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp - 1)).IsEip8250Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp)).IsEip8250Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8272Timestamp - 1)).IsEip8272Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8272Timestamp)).IsEip8272Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7906Timestamp - 1)).IsEip7906Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7906Timestamp)).IsEip7906Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp - 1)).IsEip7805Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp)).IsEip7805Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp - 1)).IsEip8037Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp)).IsEip8037Enabled, Is.True);
+        }
+    }
+
+    [Test]
     public void Eip2200_is_set_correctly_directly()
     {
         ChainSpec chainSpec = new()

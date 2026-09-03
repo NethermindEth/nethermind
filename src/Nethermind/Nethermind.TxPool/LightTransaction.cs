@@ -88,7 +88,9 @@ public class LightTransaction : Transaction
         int sparseBlobNetworkSize,
         TxType type,
         ulong? expiryDeadline = null,
-        UInt256[]? nonceKeys = null)
+        UInt256[]? nonceKeys = null,
+        Address? payerAddress = null,
+        UInt256? payerExposure = null)
     {
         Type = type;
         Hash = hash;
@@ -107,6 +109,10 @@ public class LightTransaction : Transaction
         _consensusEncodingSize = sparseBlobNetworkSize;
         PersistedExpiryDeadline = expiryDeadline;
         NonceKeys = nonceKeys;
+        // The reservation this record already holds in the pool's ledger, so its removal releases what
+        // admission took rather than nothing.
+        PayerAddress = payerAddress;
+        PayerExposure = payerExposure;
         _size = size;
     }
 

@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
@@ -15,7 +14,6 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, bool thereIsPriorityContract, ILogger logger) : IIncomingTxFilter
     {
-        private readonly IChainHeadSpecProvider _specProvider = headInfo.SpecProvider;
         private readonly IChainHeadInfoProvider _headInfo = headInfo;
         private readonly TxDistinctSortedPool _txs = txs;
         private readonly TxDistinctSortedPool _blobTxs = blobTxs;
@@ -30,8 +28,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             }
 
-            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            bool isEip1559Enabled = state.HeadSpec.IsEip1559Enabled;
             UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
             // Don't accept zero fee txns even if pool is empty as will never run
             if (isEip1559Enabled && !_thereIsPriorityContract && !tx.IsFree() && affordableGasPrice.IsZero)

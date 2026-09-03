@@ -101,7 +101,7 @@ public partial class BlockAccessListManager
         if (!spec.IsEip8037Enabled) return;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome;
-        if (tx.SupportsFrames && FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation))
+        if (Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation))
         {
             outcome = Eip8037BlockGasInclusionCheck.Validate(
                 block.Header.GasLimit,

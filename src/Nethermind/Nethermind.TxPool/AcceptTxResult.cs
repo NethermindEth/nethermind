@@ -178,6 +178,16 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
 
         /// <summary>
+        /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
+        /// spent, so the transaction was never judged.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from
+        /// a peer sending transactions this node rejects.
+        /// </remarks>
+        public static readonly AcceptTxResult FrameSimulationDeferred = new(TxPoolErrorMessages.FrameSimulationDeferred);
+
+        /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>
         /// <remarks>For static declarations only: every call permanently consumes an id from a process-wide

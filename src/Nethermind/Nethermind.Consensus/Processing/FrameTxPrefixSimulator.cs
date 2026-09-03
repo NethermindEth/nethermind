@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -14,27 +16,40 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Metrics = Nethermind.TxPool.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IFrameTxPrefixSimulator"/>
-/// <remarks>Simulations are serialized: they share one resettable world state, which also bounds the
-/// concurrent admission work an attacker can trigger.</remarks>
+/// <remarks>Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout per
+/// simulation, and a cumulative per-head budget. A busy simulator sheds rather than queues.</remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
     ISpecProvider specProvider,
+    ITxPoolConfig txPoolConfig,
     ILogManager logManager) : IFrameTxPrefixSimulator, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
     private readonly object _lock = new();
+    private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
+    private readonly long _headBudgetTicks = (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * Stopwatch.Frequency);
     private IReadOnlyTxProcessorSource? _source;
+    private Hash256? _budgetHead;
+    private long _budgetSpentTicks;
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false)
     {
         token.ThrowIfCancellationRequested();
+
+        // Public API, so the precondition cannot rely on the pool filter: any other type would run as an
+        // ordinary transaction whose mutations this read-only env would not restore.
+        if (!tx.SupportsFrames)
+        {
+            return FrameTxSimulationResult.Reject("not a frame transaction");
+        }
 
         if (tx.SenderAddress is null)
         {
@@ -47,69 +62,134 @@ public sealed class FrameTxPrefixSimulator(
             return FrameTxSimulationResult.Undecided("no chain head to simulate against");
         }
 
-        lock (_lock)
+        // Advisory, and ahead of the lock on purpose: under spam this rejects nearly everything, so making
+        // each arrival contend for the lock to learn it would amplify the load the budget exists to shed.
+        if (!local && !HasHeadBudgetHint(head))
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsBudgetExhausted);
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
+        }
+
+        // No wait for gossip: that admission runs on a small pool of background threads which also serve
+        // sync. A local submission is on the RPC thread instead, so shedding it protects nothing and would
+        // hand a peer the exemption from the per-head budget it was given.
+        if (!Monitor.TryEnter(_lock, local && _timeout > TimeSpan.Zero ? _timeout : TimeSpan.Zero))
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
+        }
+
+        try
         {
             if (_disposed)
             {
                 return FrameTxSimulationResult.Undecided("simulator disposed");
             }
 
-            IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
+            // The budget rations simulation between gossiping peers; a local submission is not competing
+            // for that share, so it is only bounded by the timeout and MAX_VERIFY_GAS.
+            if (!local && !HasHeadBudget(head))
+            {
+                Interlocked.Increment(ref Metrics.FrameTxSimulationsBudgetExhausted);
+                return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
+            }
+
+            long startedAt = Stopwatch.GetTimestamp();
             try
             {
-                using IReadOnlyTxProcessingScope scope = source.Build(head);
-                ITransactionProcessor processor = scope.TransactionProcessor;
-                processor.SetBlockExecutionContext(head);
-
-                IReleaseSpec spec = specProvider.GetSpec(head);
-                FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec);
-                ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
-                if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
-                TransactionResult result = processor.Process(tx, tracer, opts);
-
-                // The EVM ran, so any fault episode has ended and the next one warns again.
-                _nodeFaultReported = false;
-
-                if (tracer.Violated)
-                {
-                    return FrameTxSimulationResult.Reject(tracer.ViolationReason ?? "validation trace rule violated");
-                }
-
-                if (!result || tracer.Payer is null)
-                {
-                    return FrameTxSimulationResult.Reject(result.TransactionExecuted ? "validation prefix set no payer" : result.ErrorDescription);
-                }
-
-                return FrameTxSimulationResult.Accept(tracer.Payer);
+                return SimulateLocked(tx, head, signaturesPreValidated, token);
             }
-            catch (OperationCanceledException)
+            finally
             {
-                // Shutdown, not a verdict on the transaction.
-                throw;
+                // Charged only to the share it drew on. Narrow, since only HasHeadBudget claims a head and
+                // local skips it, so an unclaimed head resets on the next gossip call and wipes the charge.
+                if (!local) Volatile.Write(ref _budgetSpentTicks, _budgetSpentTicks + Stopwatch.GetTimestamp() - startedAt);
             }
-            catch (Exception e) when (IsNodeFault(e))
-            {
-                // Blaming the transaction for our own fault feeds the peer flood counter and eventually
-                // disconnects honest peers; such faults hit every submission, so warn once per episode.
-                if (!_nodeFaultReported)
-                {
-                    _nodeFaultReported = true;
-                    if (_logger.IsWarn) _logger.Warn($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. Further occurrences log at debug. {e}");
-                }
-                else if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. {e.Message}");
-                }
+        }
+        finally
+        {
+            Monitor.Exit(_lock);
+        }
+    }
 
-                return FrameTxSimulationResult.Undecided("validation-prefix simulation unavailable");
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
+    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token)
+    {
+        FrameTxValidationTracer? tracer = null;
+        try
+        {
+            // Inside the try: a processing env this node cannot build must reject rather than escape into
+            // the admission path.
+            IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
+            using IReadOnlyTxProcessingScope scope = source.Build(head);
+            ITransactionProcessor processor = scope.TransactionProcessor;
+            processor.SetBlockExecutionContext(head);
+
+            IReleaseSpec spec = specProvider.GetSpec(head);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, token, _timeout);
+            ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
+            if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
+            TransactionResult result = processor.Process(tx, tracer, opts);
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
+
+            // The EVM ran, so any fault episode has ended and the next one warns again.
+            _nodeFaultReported = false;
+
+            if (tracer.Violated)
             {
-                // Attacker-chosen bytecode over the EVM: the throw surface is not enumerable, and one
-                // escaping exception would stop admission for every peer.
-                if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
-                return FrameTxSimulationResult.Reject("validation-prefix simulation error");
+                return FrameTxSimulationResult.Reject(tracer.ViolationReason ?? "validation trace rule violated");
             }
+
+            if (!result || tracer.Payer is null)
+            {
+                return FrameTxSimulationResult.Reject(result.TransactionExecuted ? "validation prefix set no payer" : result.ErrorDescription);
+            }
+
+            return FrameTxSimulationResult.Accept(tracer.Payer);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { Violated: true })
+        {
+            // The tracer aborted the interpreter on a rule violation.
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
+            return FrameTxSimulationResult.Reject(tracer.ViolationReason!);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { TimedOut: true })
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsTimedOut);
+            return FrameTxSimulationResult.RejectTimedOut("validation-prefix simulation timed out");
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // Neither the caller's cancellation nor one the tracer raised, so it came from this node's env
+            // (a cancellable state read during shutdown): a malfunction, not a bound, so it decides nothing.
+            return FrameTxSimulationResult.Undecided("validation-prefix simulation cancelled");
+        }
+        catch (Exception e) when (IsNodeFault(e))
+        {
+            // A fault this node is answerable for, wherever it surfaced: a trie read can fail mid-execution,
+            // long after the tracer exists, and blaming the transaction for it throttles honest peers.
+            // A systemic fault (state still healing after sync, say) hits every submission, so warn once per episode.
+            if (!_nodeFaultReported)
+            {
+                _nodeFaultReported = true;
+                if (_logger.IsWarn) _logger.Warn($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. Further occurrences log at debug. {e}");
+            }
+            else if (_logger.IsDebug)
+            {
+                _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. {e.Message}");
+            }
+
+            return FrameTxSimulationResult.Undecided("validation-prefix simulation unavailable");
+        }
+        catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
+        {
+            // Attacker-chosen bytecode over env build, trie reads and the EVM: the throw surface is not
+            // enumerable. Once the tracer exists the prefix is the expected source, so the rejection is
+            // definite: one that throws every head cannot pin a slot.
+            if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
+            return tracer is null
+                ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix processing env unavailable")
+                : FrameTxSimulationResult.Reject("validation-prefix simulation error");
         }
     }
 
@@ -117,6 +197,33 @@ public sealed class FrameTxPrefixSimulator(
     /// <remarks>The marker covers the <see cref="TrieException"/> family, including nodes pruning can remove.</remarks>
     private static bool IsNodeFault(Exception e) =>
         e is IInternalNethermindException or ObjectDisposedException or IOException;
+
+    /// <summary>Lock-free read of the per-head budget, used only to shed before contending for the lock.</summary>
+    /// <remarks>Advisory, and not one-sided: a stale read can cost an extra simulation or shed one the
+    /// authoritative check would have admitted, both within one head transition. That check stays final.</remarks>
+    private bool HasHeadBudgetHint(BlockHeader head) =>
+        _headBudgetTicks <= 0
+        || Volatile.Read(ref _budgetHead) != head.Hash
+        || Volatile.Read(ref _budgetSpentTicks) < _headBudgetTicks;
+
+    /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
+    /// <remarks>Checked before the simulation and charged after it, so it can overshoot by one simulation;
+    /// a stalled head keeps its exhausted budget. The head-change revalidation sweep draws on this same
+    /// budget and runs before admission sees the new head, so it is the first claim on every head, not only
+    /// a reorg's. <paramref name="head"/> comes from the block tree rather than the pool, so two threads
+    /// spanning a transition can each reset it, and the lock-free hint can shed one the reset would admit.</remarks>
+    private bool HasHeadBudget(BlockHeader head)
+    {
+        if (_headBudgetTicks <= 0) return true;
+
+        if (_budgetHead != head.Hash)
+        {
+            Volatile.Write(ref _budgetSpentTicks, 0);
+            Volatile.Write(ref _budgetHead, head.Hash);
+        }
+
+        return _budgetSpentTicks < _headBudgetTicks;
+    }
 
     public void Dispose()
     {

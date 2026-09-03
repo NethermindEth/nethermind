@@ -370,6 +370,17 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_log_blob_cell_request_at_trace()
+    {
+        TestLogger logger = new() { IsDebug = false };
+        RecreateHandler(logManager: new OneLoggerLogManager(new ILogger(logger)));
+        HandleIncomingStatusMessage();
+
+        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(HashFromInt(1), BlobCellMask.FromIndices([1])), Is.True);
+        Assert.That(logger.LogList, Has.Some.Contains("requesting blob cells"));
+    }
+
+    [Test]
     public void should_preserve_pending_mask_expanded_while_request_is_sent()
     {
         RecreateHandler();
@@ -4949,7 +4960,8 @@ public class Eth72ProtocolHandlerTests
         int providerProbabilityPercent = 15,
         IBackgroundTaskScheduler? backgroundTaskScheduler = null,
         ISparseBlobPoolPeerRegistry? sparseBlobPoolPeerRegistry = null,
-        IMessageSerializationService? serializer = null)
+        IMessageSerializationService? serializer = null,
+        ILogManager? logManager = null)
     {
         _handler.Dispose();
         _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(providerProbabilityPercent);
@@ -4962,7 +4974,7 @@ public class Eth72ProtocolHandlerTests
             _transactionPool,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             _txPoolConfig,
             _specProvider,
             _blobCustodyTracker,

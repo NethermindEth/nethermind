@@ -68,6 +68,48 @@ public class FrameTxReceiptDecoderTests
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
+    /// <summary>The object-path array decode over LegacyStorage receipts must both decode a frame-tx receipt's
+    /// [payer, per-frame receipts] extension and realign to its own end, mirroring the compact object path; otherwise
+    /// under AllowExtraBytes the extension is read as the next element and corrupts it. The frame receipt sits between
+    /// two distinct regulars so realigning onto the trailing one is provably not the leading one, and the asserted
+    /// Payer/FrameReceipts prove the extension is decoded rather than skipped.</summary>
+    [Test]
+    public void ArrayDecode_ObjectPath_FrameTxReceiptBetweenRegulars_DecodesExtensionAndStaysAligned(
+        [Values(RlpBehaviors.Storage, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes)] RlpBehaviors decodeBehaviors)
+    {
+        LogEntry frameLog = Log(0x01);
+        TxReceipt frameReceipt = CreateStorageFrameReceipt(
+            [frameLog],
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [frameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [Log(0x02)]));
+
+        TxReceipt before = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressD).WithGasUsedTotal(1000).WithCalculatedBloom().TestObject;
+        TxReceipt after = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressE).WithGasUsedTotal(2000).WithCalculatedBloom().TestObject;
+
+        ReceiptStorageDecoder decoder = new();
+        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+
+        RlpReader reader = new(encoded);
+        TxReceipt[] decoded = decoder.DecodeArray(ref reader, decodeBehaviors);
+
+        Assert.That(decoded, Has.Length.EqualTo(3), "every receipt must decode, including the neighbour after the frame extension");
+
+        Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender), "leading receipt sender");
+        Assert.That(decoded[0].GasUsedTotal, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+        Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
+
+        Assert.That(decoded[1].TxType, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
+        Assert.That(decoded[1].GasUsedTotal, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
+        Assert.That(decoded[1].Payer, Is.EqualTo(frameReceipt.Payer), "the payer must be decoded, not skipped by realignment");
+        AssertFrameReceiptsEqual(decoded[1].FrameReceipts!, frameReceipt.FrameReceipts!);
+
+        Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender), "trailing receipt sender proves realignment past the frame extension");
+        Assert.That(decoded[2].GasUsedTotal, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+        Assert.That(decoded[2].TxType, Is.EqualTo(TxType.Legacy));
+    }
+
     // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts, so a frame-tx receipt must leave
     // the reader at its own end or corrupt the next one; it sits between two regulars here.
     [Test]
@@ -127,6 +169,43 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
         Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
         Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
+    }
+
+    /// <summary>The on-disk storage encoding persists each log twice — in the top-level union sequence and again
+    /// inside its frame receipt — so a frame-tx receipt is a full logs copy larger than the wire form, the trade-off
+    /// that lets the zero-alloc <c>DecodeStructRef</c> path slice the top-level logs without rebuilding them from the
+    /// frames. The literal length pins that on-disk size so a second duplication cannot land unnoticed.</summary>
+    [Test]
+    public void StorageEncoding_MultiFrameReceiptWithLogs_StoresLogsTwiceAtPinnedSizeAndRoundtrips(
+        [Values(true, false)] bool compact)
+    {
+        TxFrameReceipt[] frameReceipts =
+        [
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [Log(0x01), Log(0x02)]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [Log(0x03)]),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []),
+        ];
+        LogEntry[] unionLogs = frameReceipts.SelectMany(static frame => frame.Logs).ToArray();
+        TxReceipt receipt = CreateStorageFrameReceipt(unionLogs, frameReceipts);
+
+        RlpDecoder<TxReceipt> decoder = compact ? new CompactReceiptStorageDecoder() : new ReceiptStorageDecoder();
+        RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts;
+        byte[] encoded = decoder.EncodeAsBytes(receipt, behaviors);
+
+        int expectedLength = compact ? 435 : 701;
+        Assert.That(encoded.Length, Is.EqualTo(expectedLength),
+            "the stored size counts every log twice; a change here means a copy was added or removed");
+
+        RlpReader reader = new(encoded);
+        TxReceipt decoded = decoder.Decode(ref reader, RlpBehaviors.Storage)!;
+        Assert.That(decoded.TxType, Is.EqualTo(TxType.FrameTx));
+        Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
+        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+        Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
+        AssertLogsEqual(decoded.Logs!, unionLogs, "the top-level union copy of the logs must survive the round-trip");
+        AssertFrameReceiptsEqual(decoded.FrameReceipts!, frameReceipts);
+        AssertLogsEqual(decoded.FrameReceipts!.SelectMany(static frame => frame.Logs).ToArray(), unionLogs,
+            "the per-frame copy holds the same logs as the top-level union, the duplication this size pins");
     }
 
     private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp, bool compact)

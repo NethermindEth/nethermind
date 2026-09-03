@@ -94,7 +94,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [[status, gas_used, logs], ...]], gas_used = [execution, state].
-        // EIP8141-GAP: the spec receipt has no top-level status or bloom; both are derived from the frame receipts.
+        // The payload carries no top-level status or bloom; both are derived from the frame receipts.
         private void DecodeFrameTxReceipt(TxReceipt txReceipt, ref RlpReader ctx, RlpBehaviors rlpBehaviors)
         {
             int sequenceLength = ctx.ReadSequenceLength();

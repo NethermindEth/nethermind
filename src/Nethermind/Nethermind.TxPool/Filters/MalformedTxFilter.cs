@@ -13,20 +13,20 @@ namespace Nethermind.TxPool.Filters
     /// Filters out malformed transactions and resolves the sender for subsequent state-dependent filters.
     /// </summary>
     internal sealed class MalformedTxFilter(
-        IChainHeadSpecProvider specProvider,
         ITxValidator txValidator,
+        ITxValidator specChangeTxValidator,
         IEthereumEcdsa ecdsa,
         ILogger logger)
         : IIncomingTxFilter
     {
+        // Plugins may supply only ITxValidator, in which case they require the full validation pass.
+        private readonly ISpecChangeTxValidator? _incrementalSpecChangeTxValidator =
+            specChangeTxValidator as ISpecChangeTxValidator;
+
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
-            IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            ValidationResult result = txValidator.IsWellFormed(
-                tx,
-                spec,
-                blockGasLimit: 0,
-                TxValidationOptions.SkipBlobProofs);
+            IReleaseSpec spec = state.HeadSpec;
+            ValidationResult result = Validate(tx, spec);
             bool retryAfterSenderRecovery = !result
                 && spec.IsEip2780Enabled
                 && tx.IsMessageCall
@@ -52,16 +52,26 @@ namespace Nethermind.TxPool.Filters
 
             // An unresolved sender is conservatively priced as non-self, so only a rejected
             // intrinsic result can become valid after recovery.
-            if (retryAfterSenderRecovery && !(result = txValidator.IsWellFormed(
-                tx,
-                spec,
-                blockGasLimit: 0,
-                TxValidationOptions.SkipBlobProofs)))
+            if (retryAfterSenderRecovery && !(result = Validate(tx, spec)))
             {
                 return RejectMalformed(tx, result);
             }
 
             return AcceptTxResult.Accepted;
+
+            ValidationResult Validate(Transaction transaction, IReleaseSpec releaseSpec)
+            {
+                ValidationResult validationResult = txValidator.IsWellFormed(
+                    transaction,
+                    releaseSpec,
+                    blockGasLimit: 0,
+                    TxValidationOptions.SkipBlobProofs);
+                return validationResult
+                    ? _incrementalSpecChangeTxValidator is null
+                        ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
+                        : _incrementalSpecChangeTxValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec)
+                    : validationResult;
+            }
         }
 
         private static bool CanSenderRecoveryFixIntrinsicGas(Transaction tx, IReleaseSpec spec)

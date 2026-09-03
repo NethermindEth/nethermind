@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using Nethermind.Specs.Forks;
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -109,7 +110,7 @@ public class FrameTxPaymasterFilterTests
         PendingPaymasterCache cache = new();
         cache.Reserve(Sender);
 
-        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: 100_000, UInt256.Zero, default);
+        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: PrefixFrameGas, UInt256.Zero, default);
         AcceptTxResult result = Accept(state, cache, FrameTx([selfRelay], nonce: 1));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -256,7 +257,7 @@ public class FrameTxPaymasterFilterTests
             ? (Pool(blobs: false), pool ?? Pool(blobs: true))
             : (pool ?? Pool(blobs: false), Pool(blobs: true));
         FrameTxPaymasterFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 

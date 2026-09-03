@@ -7,6 +7,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Filters;
 using NUnit.Framework;
 
@@ -45,7 +46,7 @@ internal class KeyedNonceFilterTests
     private static AcceptTxResult Accept(Transaction tx, TestReadOnlyStateProvider state)
     {
         KeyedNonceFilter filter = new(state);
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 

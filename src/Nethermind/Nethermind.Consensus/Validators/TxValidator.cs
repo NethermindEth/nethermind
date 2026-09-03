@@ -166,6 +166,11 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
+        if (transaction is LightTransaction)
+        {
+            return TxErrorMessages.InvalidTransactionForm;
+        }
+
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
@@ -180,10 +185,40 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
-public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
+/// <summary>Applies <paramref name="inner"/> only to transactions carrying the envelope it judges.</summary>
+/// <remarks>EIP-8141: a frame transaction has no envelope gas limit and no <c>to</c>, so <see cref="TxValidator"/>
+/// omits the envelope size, gas-cap and intrinsic-gas rules from its frame composite; head validation must too.</remarks>
+internal sealed class ExceptFrameTxValidator(ITxValidator inner) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        !validate(releaseSpec) ? TxErrorMessages.InvalidTxType(releaseSpec.Name) : ValidationResult.Success;
+        transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
+        transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec, blockGasLimit, options);
+}
+
+public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = null) : ITxValidator
+{
+    internal static readonly ReleaseSpecTxValidator Instance = new();
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+            ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
+            : ValidationResult.Success;
+
+    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
+    {
+        TxType.AccessList => releaseSpec.IsEip2930Enabled,
+        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+        TxType.Blob => releaseSpec.IsEip4844Enabled,
+        TxType.SetCode => releaseSpec.IsEip7702Enabled,
+        // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+        TxType.FrameTx => releaseSpec.IsEip8141Enabled,
+        _ => true,
+    };
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
@@ -220,7 +255,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return FrameTxValidation.FrameGasOverflow;
         }
 
-        if (releaseSpec.IsEip8037Enabled && executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
+        if ((releaseSpec.IsEip8037Enabled || releaseSpec.IsEip8141Enabled) && executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
         {
             return FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap);
         }

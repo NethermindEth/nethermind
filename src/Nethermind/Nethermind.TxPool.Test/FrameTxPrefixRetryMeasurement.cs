@@ -184,11 +184,11 @@ public class FrameTxPrefixRetryMeasurement
             headInfo,
             new TxPoolConfig { GasLimit = 30_000_000 },
             new TxValidator(_specProvider.ChainId),
+            new SpecChangeTxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
             ShouldGossip.Instance,
             incomingTxFilters: null,
-            new HeadTxValidator(),
             thereIsPriorityContract: false);
     }
 

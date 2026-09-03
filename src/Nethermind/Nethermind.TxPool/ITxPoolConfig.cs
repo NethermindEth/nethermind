@@ -37,11 +37,17 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for the transaction to be accepted into the public mempool. `0` to lift the limit. It bounds the declared-gas check only: an opaque prefix that has to be simulated is additionally capped, frame by frame, at the fixed `Eip8141Constants.MaxVerifyGas`, which raising this value does not move. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for the transaction to be accepted into the public mempool. `0` to lift the limit. It bounds the declared-gas check only: an opaque prefix that has to be simulated is additionally capped, frame by frame, at the fixed `Eip8141Constants.MaxVerifyGas`, which raising this value does not move. Lifting this limit with `0` still caps signature verification at that same fixed `Eip8141Constants.MaxVerifyGas`, so per-signature recovery cannot be uncapped. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for the transaction to be accepted into the public mempool. `0` to lift the limit. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyStateGas { get; set; }
+
+    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A gossiped transaction never waits for a busy simulator; a locally submitted one waits up to this long as well, so for it the two are additive. `0` to lift the limit.")]
+    int FrameTxSimulationTimeoutMs { get; set; }
+
+    [ConfigItem(DefaultValue = "1000", Description = "The total time, in milliseconds, spent simulating EIP-8141 validation prefixes per chain head. Once spent, opaque frame transactions are rejected until the next head. `0` to lift the limit.")]
+    int FrameTxSimulationBudgetPerHeadMs { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }

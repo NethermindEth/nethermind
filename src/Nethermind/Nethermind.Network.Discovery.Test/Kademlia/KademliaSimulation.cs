@@ -14,7 +14,7 @@ using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
 using NUnit.Framework;
-using TestKademlia = Nethermind.Kademlia.Kademlia<Nethermind.Core.Crypto.ValueHash256, Nethermind.Network.Discovery.Test.Kademlia.KademliaSimulation.TestNode, Nethermind.Core.Crypto.Hash256>;
+using TestKademlia = Nethermind.Kademlia.Kademlia<Nethermind.Core.Crypto.ValueHash256, Nethermind.Network.Discovery.Test.Kademlia.KademliaSimulation.TestNode, Nethermind.Core.Crypto.ValueHash256>;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
@@ -147,7 +147,7 @@ public class KademliaSimulation
         {
             TestNode[] nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
             HashSet<ValueHash256> expectedNodeClosestK = nodeIds
-                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256KademliaDistance.Instance.Compare(ToHash(n1), ToHash(n2), ToHash(targetNode))))
+                .Order(Comparer<ValueHash256>.Create((n1, n2) => ValueHash256KademliaDistance.Instance.Compare(n1, n2, targetNode)))
                 .Take(_config.KSize)
                 .ToHashSet();
 
@@ -185,8 +185,6 @@ public class KademliaSimulation
         return val;
     }
 
-    private static Hash256 ToHash(ValueHash256 hash) => ValueHashKeyOperator<TestNode>.ToHash(hash);
-
     private class TestFabric(KademliaConfig<ValueHash256> config)
     {
         internal long PingCount = 0;
@@ -218,10 +216,10 @@ public class KademliaSimulation
 
             ContainerBuilder builder = new();
             builder
-                .AddModule(new KademliaModule<ValueHash256, TestNode, Hash256>())
+                .AddModule(new KademliaModule<ValueHash256, TestNode, ValueHash256>())
                 .AddSingleton<ITimestamper>(new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)))
-                .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
-                .AddSingleton<IKeyOperator<ValueHash256, TestNode, Hash256>>(_nodeHashProvider)
+                .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
+                .AddSingleton<IKeyOperator<ValueHash256, TestNode, ValueHash256>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>
                 {
                     CurrentNodeId = nodeIDTestNode,

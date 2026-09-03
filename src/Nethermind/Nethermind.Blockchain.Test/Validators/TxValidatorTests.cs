@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
@@ -570,6 +571,206 @@ public class TxValidatorTests
         };
     }
 
+    private static IEnumerable<TestCaseData> SpecChangeValidationCases()
+    {
+        yield return new TestCaseData(
+                Berlin.Instance,
+                Build.A.Transaction
+                    .WithType(TxType.EIP1559)
+                    .WithAccessList(AccessList.Empty)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_release_activation_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Cancun.Instance,
+                Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields((int)Cancun.Instance.MaxBlobCount + 1, isMempoolTx: false)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_blob_count_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Osaka.Instance,
+                Build.A.Transaction
+                    .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_gas_limit_cap_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Osaka.Instance,
+                Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_proof_version_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Shanghai.Instance,
+                Build.A.Transaction
+                    .WithCode(new byte[(int)Shanghai.Instance.MaxInitCodeSize + 1])
+                    .WithGasLimit(int.MaxValue)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_contract_size_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Prague.Instance,
+                Build.A.Transaction
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .TestObject)
+            .SetName("Spec_change_signature_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Prague.Instance,
+                Build.A.Transaction
+                    .WithData([1])
+                    .WithGasLimit(Transaction.BaseTxGasCost)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_intrinsic_gas_is_covered_by_full_validation");
+    }
+
+    [TestCaseSource(nameof(SpecChangeValidationCases))]
+    public void Full_validation_covers_spec_change_validation(IReleaseSpec spec, Transaction transaction)
+    {
+        TxValidator fullValidator = new(TestBlockchainIds.ChainId);
+        SpecChangeTxValidator specChangeValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult specChangeResult = specChangeValidator.IsWellFormed(transaction, spec);
+        ValidationResult fullValidationResult = fullValidator.IsWellFormed(
+            transaction,
+            spec,
+            blockGasLimit: 0,
+            TxValidationOptions.SkipBlobProofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
+            Assert.That(fullValidationResult.AsBool, Is.False);
+        }
+    }
+
+    // A frame transaction has no envelope gas limit and no `to`, so GasLimit holds the sum of frame budgets
+    // and IsContractCreation is spuriously true; the envelope intrinsic-gas and contract-size rules cannot apply.
+    [Test]
+    public void SpecChangeValidation_AgreesWithFullValidation_ForFrameTx()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(1_000)],
+            FrameSignatures = [],
+        };
+
+        ValidationResult full = new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(
+            tx, Eip8141Prototype.Instance, blockGasLimit: 0, TxValidationOptions.SkipBlobProofs);
+        ValidationResult specChange = new SpecChangeTxValidator(TestBlockchainIds.ChainId)
+            .IsWellFormed(tx, Eip8141Prototype.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.AsBool, Is.True, "full validation must accept this frame transaction");
+            Assert.That(specChange.AsBool, Is.True, $"revalidation disagreed with admission: {specChange}");
+        }
+    }
+
+    // GasLimit holds the sum of frame budgets, so the envelope gas cap cannot judge it. Vacuous on every
+    // shipping fork -- GetTxGasLimitCap is uncapped whenever EIP-8037 is on -- so this pins the one spec that bites.
+    [Test]
+    public void HeadValidation_FrameTx_IsNotJudgedByEnvelopeGasLimitCap()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(Eip7825Constants.DefaultTxGasLimitCap + 1)],
+            FrameSignatures = [],
+        };
+        // The decoder, not the caller, derives GasLimit from the frames; mirror it or the cap is never reached.
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        IReleaseSpec spec = new ReleaseSpec { IsEip8141Enabled = true, IsEip7825Enabled = true, IsEip8037Enabled = false };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.GasLimit, Is.GreaterThan(spec.GetTxGasLimitCap()),
+                "the synthetic envelope limit must exceed the cap, or the case proves nothing");
+            Assert.That(Eip8141Prototype.Instance.GetTxGasLimitCap(), Is.EqualTo(ulong.MaxValue),
+                "records why no shipping fork can exercise this");
+            Assert.That(new HeadTxValidator().IsWellFormed(tx, spec).AsBool(), Is.True);
+        }
+    }
+
+    // A wrapper that forwards only the two-argument overload silently drops the caller's block gas limit.
+    [Test]
+    public void ExceptFrameTxValidator_ForwardsEveryOverload_ForNonFrameTransactions()
+    {
+        RecordingTxValidator inner = new();
+        ITxValidator wrapped = new ExceptFrameTxValidator(inner);
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).TestObject;
+
+        wrapped.IsWellFormed(tx, Prague.Instance);
+        wrapped.IsWellFormed(tx, Prague.Instance, blockGasLimit: 42);
+        wrapped.IsWellFormed(tx, Prague.Instance, blockGasLimit: 43, TxValidationOptions.SkipBlobProofs);
+
+        Assert.That(inner.SeenBlockGasLimits, Is.EqualTo(new ulong[] { 0, 42, 43 }));
+    }
+
+    private sealed class RecordingTxValidator : ITxValidator
+    {
+        public List<ulong> SeenBlockGasLimits { get; } = [];
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+            IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        {
+            SeenBlockGasLimits.Add(blockGasLimit);
+            return ValidationResult.Success;
+        }
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+            IsWellFormed(transaction, releaseSpec, blockGasLimit);
+    }
+
+    // Revalidation runs at the new head's spec, so a pooled frame transaction must be evicted at a head
+    // that does not enable EIP-8141, exactly as full validation rejects it there.
+    [Test]
+    public void SpecChangeValidation_EvictsFrameTx_WhenHeadSpecDoesNotEnableEip8141()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(PrefixFrameGas)],
+            FrameSignatures = [],
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new SpecChangeTxValidator(TestBlockchainIds.ChainId)
+                .IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
+            Assert.That(new HeadTxValidator()
+                .IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
+        }
+    }
+
     [Test]
     public void IsWellFormed_CreateTxInSetCode_ReturnsFalse()
     {
@@ -686,6 +887,31 @@ public class TxValidatorTests
         ValidationResult result = txValidator.IsWellFormed(decoded, Eip8141Prototype.Instance);
 
         Assert.That(result.AsBool, Is.True, result.Error);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxWhenEip8141Disabled_ReturnsInvalidTxType()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+        };
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(Prague.Instance.Name)));
+        }
     }
 
     [Test]
@@ -1149,6 +1375,27 @@ public class TxValidatorTests
         Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
     }
 
+    [Test]
+    public void IsWellFormed_FrameTxExecutionReservationIsBoundedByEip7825_WhenEip8037Disabled()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.NoEip8037Instance) { IsEip8141Enabled = true };
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                    Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 1,
+        };
+
+        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, spec).AsBool(), Is.False);
+    }
+
     private static IEnumerable<TestCaseData> NonceKeysEnvelopeCases()
     {
         yield return new TestCaseData(null, false, true).SetName("IsWellFormed_FrameTxLegacyNonce_BeforeEip8250_ReturnTrue");
@@ -1188,7 +1435,8 @@ public class TxValidatorTests
 
     [TestCaseSource(nameof(HeadRevalidationNonceEnvelopeCases))]
     public bool IsWellFormed_HeadRevalidationEvictsPreForkScalarNonceFrameTx(Transaction tx) =>
-        new HeadTxValidator().IsWellFormed(tx, new ReleaseSpec { IsEip8250Enabled = true }).AsBool();
+        new HeadTxValidator().IsWellFormed(
+            tx, new ReleaseSpec { IsEip8250Enabled = true, IsEip1559Enabled = true, IsEip8141Enabled = true }).AsBool();
 
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
