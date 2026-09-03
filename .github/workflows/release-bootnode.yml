@@ -28,7 +28,9 @@ jobs:
     name: Build Bootnode packages
     runs-on: ubuntu-latest
     outputs:
-      release-tag: ${{ steps.version.outputs.version }}
+      release-tag: ${{ steps.version.outputs.release-tag }}
+      release-name: ${{ steps.version.outputs.release-name }}
+      version: ${{ steps.version.outputs.version }}
       package-prefix: ${{ steps.version.outputs.package-prefix }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       publish-latest: ${{ steps.version.outputs.publish-latest }}
@@ -46,6 +48,8 @@ jobs:
           version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
           version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" -n Directory.Build.props)
           version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
+          release_tag=bootnode-$version
+          release_name="Nethermind Bootnode $version"
           package_prefix=nethermind-bootnode-$version
 
           if [[ -n "$version_suffix" && "$INPUT_PUBLISH_LATEST" == "true" ]]; then
@@ -54,6 +58,8 @@ jobs:
           fi
 
           echo "Detected version $version"
+          echo "release-tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release-name=$release_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "package-prefix=$package_prefix" >> "$GITHUB_OUTPUT"
           echo "prerelease=$([[ -n "$version_suffix" ]] && echo 'true' || echo 'false')" >> "$GITHUB_OUTPUT"
@@ -85,7 +91,7 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for file_name in *.tar.gz *.zip *SHA256SUMS; do
+          for file_name in *.tar.gz *.zip SHA256SUMS; do
             gpg --no-tty --batch --yes --pinentry-mode loopback \
               --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
               -o "$file_name.asc" -ab "$file_name"
@@ -135,24 +141,77 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+          RELEASE_NAME: ${{ needs.build.outputs.release-name }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "::error::The matching Nethermind release $RELEASE_TAG must exist before its Bootnode assets can be uploaded."
-            exit 1
+          relnotes=$(cat <<EOF
+          # Release notes
+
+          Standalone Nethermind Bootnode release for Nethermind $RELEASE_VERSION.
+
+          ## Docker image
+
+          \`\`\`bash
+          docker pull nethermind/bootnode:$RELEASE_VERSION
+          \`\`\`
+
+          ## Build signatures
+
+          The packages are signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
+          EOF
+          )
+
+          prerelease_flag=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_flag=(--prerelease)
           fi
 
-          if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha); then
-            echo "::error::Could not resolve the commit for matching Nethermind release $RELEASE_TAG."
-            exit 1
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Drafting release $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              -t "$RELEASE_NAME" \
+              -d \
+              --latest=false \
+              "${prerelease_flag[@]}" \
+              -F <(printf '%s' "$relnotes")
+          fi
+
+          if release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha); then
+            :
+          else
+            if ! release=$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish); then
+              echo "::error::Could not inspect Bootnode release $RELEASE_TAG."
+              exit 1
+            fi
+
+            if [[ "$(jq -r '.isDraft' <<< "$release")" != "true" ]]; then
+              echo "::error::Could not resolve the tag for published Bootnode release $RELEASE_TAG."
+              exit 1
+            fi
+
+            commitish=$(jq -r '.targetCommitish' <<< "$release")
+            if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$commitish" --jq .sha); then
+              echo "::error::Could not resolve the commit for Bootnode release $RELEASE_TAG."
+              exit 1
+            fi
           fi
 
           if [[ "$release_target" != "$GITHUB_SHA" ]]; then
-            echo "::error::The matching Nethermind release $RELEASE_TAG resolves to $release_target, but this Bootnode build targets $GITHUB_SHA."
+            echo "::error::Bootnode release $RELEASE_TAG resolves to $release_target, but this build targets $GITHUB_SHA."
             exit 1
           fi
 
           echo "Uploading assets"
           gh release upload "$RELEASE_TAG" "$PACKAGE_DIR"/* --clobber
+
+          echo "Publishing release $RELEASE_TAG"
+          gh release edit "$RELEASE_TAG" \
+            -t "$RELEASE_NAME" \
+            --draft=false \
+            --latest=false \
+            "${prerelease_flag[@]}"
 
   publish-docker:
     name: Publish to Docker Hub
@@ -176,12 +235,12 @@ jobs:
 
       - name: Build and push image to Docker Hub
         env:
-          RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           PUBLISH_LATEST: ${{ needs.build.outputs.publish-latest }}
         run: |
           image=nethermind/bootnode
-          tags=(-t "$image:$RELEASE_TAG")
+          tags=(-t "$image:$RELEASE_VERSION")
           if [[ "$PRERELEASE" == "false" && "$PUBLISH_LATEST" == "true" ]]; then
             tags+=(-t "$image:latest")
           fi
