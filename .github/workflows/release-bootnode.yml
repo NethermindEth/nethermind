@@ -52,6 +52,11 @@ jobs:
           release_name="Nethermind Bootnode $version"
           package_prefix=nethermind-bootnode-$version
 
+          if [[ -z "$version_prefix" || ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || ! git check-ref-format --allow-onelevel "refs/tags/$release_tag"; then
+            echo "Bootnode version '$version' must produce valid Docker and Git tags."
+            exit 1
+          fi
+
           if [[ -n "$version_suffix" && "$INPUT_PUBLISH_LATEST" == "true" ]]; then
             echo "Docker latest cannot be published for a prerelease."
             exit 1
