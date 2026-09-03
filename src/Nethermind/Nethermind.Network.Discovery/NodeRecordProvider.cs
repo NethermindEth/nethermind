@@ -64,7 +64,15 @@ public sealed class NodeRecordProvider(
             _ = CompleteInitialRecord(initialRecord);
         }
 
-        return (await task.WaitAsync(cancellationToken)).Record;
+        try
+        {
+            return (await task.WaitAsync(cancellationToken)).Record;
+        }
+        catch when (task.IsFaulted)
+        {
+            _ = Interlocked.CompareExchange(ref _nodeRecordTask, null, task);
+            throw;
+        }
     }
 
     private async Task CompleteInitialRecord(TaskCompletionSource<LocalNodeRecord> completion)
@@ -98,7 +106,16 @@ public sealed class NodeRecordProvider(
 
     private async Task<LocalNodeRecord> RefreshNodeRecord(Task<LocalNodeRecord> currentTask, BlockHeader? effectiveHeader)
     {
-        LocalNodeRecord current = await currentTask;
+        LocalNodeRecord current;
+        try
+        {
+            current = await currentTask;
+        }
+        catch
+        {
+            return await PrepareNodeRecord(effectiveHeader, previousSequence: 0, CancellationToken.None);
+        }
+
         try
         {
             IIPResolver.NethermindIp ip = await ipResolver.Resolve(CancellationToken.None);
@@ -106,6 +123,12 @@ public sealed class NodeRecordProvider(
             if (current.State == state)
             {
                 return current;
+            }
+
+            if (!Equals(current.State.ExternalIpV4, state.ExternalIpV4) ||
+                !Equals(current.State.ExternalIpV6, state.ExternalIpV6))
+            {
+                LogEndpointIssues(ip, state);
             }
 
             return CreateSignedRecord(state, NextSequence(current.Record.EnrSequence));

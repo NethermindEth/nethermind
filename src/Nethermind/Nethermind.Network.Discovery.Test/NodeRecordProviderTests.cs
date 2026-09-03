@@ -403,6 +403,72 @@ public class NodeRecordProviderTests
         AssertEndpointEntries(current, "192.0.2.1", "2001:db8::1", expectTcp: true, expectUdp: false);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task GetCurrentAsync_RetriesAfterInitialRecordFailure(bool queueListenerChange)
+    {
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(head);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(head.Header.Number, head.Header.Timestamp).Returns(new NetworkForkId(0x01020304, 20));
+        IIPResolver.NethermindIp resolvedIp = new(IPAddress.Any, IPAddress.Parse("192.0.2.1"));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        TaskCompletionSource<IIPResolver.NethermindIp> firstResolution = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int attempts = 0;
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(_ =>
+            Interlocked.Increment(ref attempts) == 1
+                ? new ValueTask<IIPResolver.NethermindIp>(firstResolution.Task)
+                : new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
+        listenerState.SetRlpxAddress(IPAddress.Any);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        NodeRecordProvider provider = CreateProvider(blockTree, forkInfo, ipResolver, 1_000, listenerState);
+        Task<NodeRecord> firstCall = provider.GetCurrentAsync().AsTask();
+        if (queueListenerChange)
+        {
+            listenerState.SetDiscoveryAddress(IPAddress.Loopback);
+        }
+
+        firstResolution.SetException(new InvalidOperationException("Transient resolution failure."));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await firstCall);
+
+        NodeRecord record = await provider.GetCurrentAsync();
+
+        AssertEndpointEntries(record, "192.0.2.1", expectedIp6: null);
+        Assert.That(attempts, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task ListenerChange_WarnsWhenPreviouslyAdvertisedFamilyIsLost()
+    {
+        IIPResolver.NethermindIp resolvedIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("2001:db8::1"));
+        NetworkListenerState listenerState = CreateListenerState(resolvedIp);
+        listenerState.SetRlpxAddress(IPAddress.Any);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
+        NodeRecordProvider provider = CreateProvider(
+            Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
+            new NetworkForkId(0x01020304, 20),
+            resolvedIp,
+            logManager,
+            listenerState);
+        await provider.GetCurrentAsync();
+        underlyingLogger.ClearReceivedCalls();
+
+        listenerState.SetDiscoveryAddress(IPAddress.IPv6Loopback);
+        NodeRecord record = await provider.GetCurrentAsync();
+
+        AssertEndpointEntries(record, expectedIp: null, expectedIp6: null);
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("External IPv4 address")));
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("External IPv6 address")));
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("No external IP address")));
+    }
+
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
         => CreateProvider(head, forkId, new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp));
 

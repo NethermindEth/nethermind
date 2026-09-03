@@ -26,22 +26,6 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
-    [TestCase("0.0.0.0")]
-    [TestCase("127.0.0.1")]
-    [TestCase("::1")]
-    public void SingleFamilyServerSocket_DoesNotRequireExclusiveAddressUse(string addressText)
-    {
-        IPAddress address = IPAddress.Parse(addressText);
-        if (address.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
-        {
-            Assert.Ignore("IPv6 is not supported on this host.");
-        }
-
-        using Socket socket = RlpxHost.CreateServerSocket(address);
-
-        Assert.That(socket.ExclusiveAddressUse, Is.False);
-    }
-
     [TestCase(true, false, null, "203.0.113.1", "203.0.113.1", false, Description = "Exact match: blocks same IP")]
     [TestCase(true, false, null, "203.0.113.1", "198.51.100.1", true, Description = "Exact match: allows different IP")]
     [TestCase(true, true, null, "203.0.113.1", "203.0.113.50", false, Description = "Subnet bucketing: blocks same subnet")]
@@ -234,20 +218,29 @@ public class RlpxHostIntegrationTests
         using Socket releasedIpv4 = CreateTcpListenerSocket(IPAddress.Any, port);
     }
 
-    [Test]
-    public async Task DefaultListener_DoesNotClaimDualStackWhenIpv4PortIsOccupied()
+    [TestCase(null, "0.0.0.0", false, Description = "Default listener with a reuse-enabled IPv4 blocker")]
+    [TestCase(null, "0.0.0.0", true, Description = "Default listener with an exclusive IPv4 blocker")]
+    [TestCase("127.0.0.1", "127.0.0.1", false, Description = "Explicit IPv4 listener")]
+    [TestCase("::1", "::1", false, Description = "Explicit IPv6 listener")]
+    public async Task Listener_SurfacesCollision(string? configuredIp, string addressText, bool blockerExclusiveAddressUse)
     {
+        IPAddress address = IPAddress.Parse(addressText);
+        if (address.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
         int port;
-        using (Socket blocker = CreateTcpListenerSocket(IPAddress.Any, 0))
+        using (Socket blocker = CreateTcpListenerSocket(address, 0, blockerExclusiveAddressUse))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
-            (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(null, IPAddress.Any, port);
+            (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, address, port);
 
             Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
             Assert.That(listenerState.RlpxAddress, Is.Null);
         }
 
-        using Socket released = CreateTcpListenerSocket(IPAddress.Any, port);
+        using Socket released = CreateTcpListenerSocket(address, port);
     }
 
     [Test]
@@ -429,12 +422,12 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static Socket CreateTcpListenerSocket(IPAddress address, int port)
+    private static Socket CreateTcpListenerSocket(IPAddress address, int port, bool exclusiveAddressUse = true)
     {
         Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
         {
-            socket.ExclusiveAddressUse = true;
+            socket.ExclusiveAddressUse = exclusiveAddressUse;
             if (address.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 socket.DualMode = false;

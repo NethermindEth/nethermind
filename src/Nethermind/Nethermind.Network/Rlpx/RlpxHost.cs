@@ -234,7 +234,7 @@ namespace Nethermind.Network.Rlpx
             return new TcpServerSocketChannel(CreateServerSocket(address));
         }
 
-        internal static Socket CreateServerSocket(IPAddress address)
+        private static Socket CreateServerSocket(IPAddress address)
         {
             Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             try
@@ -242,8 +242,11 @@ namespace Nethermind.Network.Rlpx
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     socket.DualMode = DiscoveryAddressSupport.SupportsFamily(address, AddressFamily.InterNetwork);
-                    // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
-                    socket.ExclusiveAddressUse = socket.DualMode;
+                    if (socket.DualMode)
+                    {
+                        // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
+                        socket.ExclusiveAddressUse = true;
+                    }
                 }
 
                 return socket;

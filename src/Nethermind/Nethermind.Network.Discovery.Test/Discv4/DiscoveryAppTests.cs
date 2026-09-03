@@ -17,7 +17,6 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
