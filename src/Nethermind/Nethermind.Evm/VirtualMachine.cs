@@ -72,11 +72,13 @@ public static class VirtualMachineStatics
     /// </summary>
     /// <remarks>
     /// This folds both conditions into one branch on the per-opcode hot path. The exit path checks the gas
-    /// policy first so out-of-gas retains priority over a handler status.
+    /// policy first so out-of-gas retains priority over a handler status. The subtraction keeps the fold
+    /// correct for any value of <see cref="EvmExceptionType.None"/>, which is hand-numbered; the OR only
+    /// ever sets bit 0, so it cannot cancel a nonzero difference. While <c>None</c> is zero it folds away.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool ShouldExitFrame(EvmExceptionType status, bool outOfGas) =>
-        ((int)status | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
+        (((int)status - (int)EvmExceptionType.None) | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
 
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
@@ -1352,15 +1354,12 @@ public partial class VirtualMachine<TGasPolicy>(
     DataReturn:
         // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
         // the general helper, while a class one has a specialized fast path. Order them accordingly.
-        if (ReturnData is VmState<TGasPolicy> state)
+        return ReturnData switch
         {
-            return new CallResult(state);
-        }
-        else if (ReturnData is byte[] data)
-        {
-            return new CallResult(data, null);
-        }
-        return new CallResult(ReturnDataBuffer, null);
+            VmState<TGasPolicy> state => new CallResult(state),
+            byte[] data => new CallResult(data, null),
+            _ => new CallResult(ReturnDataBuffer, null),
+        };
 
     Revert:
         return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
