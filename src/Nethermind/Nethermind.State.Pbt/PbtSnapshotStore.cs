@@ -9,13 +9,16 @@ namespace Nethermind.State.Pbt;
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore
 {
+    private readonly List<PbtLeafMutation> _leafMutations = [];
+
     public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
 
     public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
 
+    public void SetLeaf(PbtFullKey key, ValueHash256? value) => _leafMutations.Add(new(key, value));
+
     public void Apply(
         in ValueHash256 newRoot,
-        IReadOnlyList<PbtLeafMutation> leafMutations,
         IReadOnlyList<PbtNodeMutation> nodeMutations)
-        => bundle.ApplyTreeMutations(leafMutations, nodeMutations);
+        => bundle.ApplyTreeMutations(_leafMutations, nodeMutations);
 }

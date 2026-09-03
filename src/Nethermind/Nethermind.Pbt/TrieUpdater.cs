@@ -29,37 +29,14 @@ public static class TrieUpdater
         ArgumentNullException.ThrowIfNull(changes);
         if (changes.Count == 0) return currentRoot;
 
-        Dictionary<PbtFullKey, PbtWriteOperation> operations = [];
-        foreach (PbtWriteOperation operation in changes.Operations) operations[operation.Key] = operation;
-
-        int deleteCount = 0;
-        foreach (PbtWriteOperation operation in operations.Values)
-        {
-            if (operation.Kind == PbtWriteOperationKind.Delete) deleteCount++;
-        }
-
-        PbtWriteOperation[] effectiveOperations = new PbtWriteOperation[operations.Count];
-        int deleteIndex = 0;
-        int setIndex = deleteCount;
-        foreach (PbtWriteOperation operation in operations.Values)
-        {
-            if (operation.Kind == PbtWriteOperationKind.Delete) effectiveOperations[deleteIndex++] = operation;
-            else effectiveOperations[setIndex++] = operation;
-        }
-
-        List<PbtLeafMutation> leafMutations = new(effectiveOperations.Length - deleteCount);
-        for (int index = deleteCount; index < effectiveOperations.Length; index++)
-        {
-            PbtWriteOperation operation = effectiveOperations[index];
-            leafMutations.Add(new(operation.Key, operation.Value));
-        }
+        // PbtWriteBatch supplies unique keys with deletions preceding writes.
+        PbtWriteOperation[] operations = [.. changes.Operations];
 
         GroupOverlay overlay = new(store, metrics);
         try
         {
-            ValueHash256 root = FoldMutations(overlay, null, RootPath, currentRoot, effectiveOperations.AsSpan(), leafMutations);
-            IReadOnlyList<PbtNodeMutation> nodeMutations = overlay.NodeMutations;
-            store.Apply(root, leafMutations, nodeMutations);
+            ValueHash256 root = FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan(), true);
+            store.Apply(root, overlay.NodeMutations);
             return root;
         }
         finally
@@ -69,13 +46,20 @@ public static class TrieUpdater
     }
 
     private static ValueHash256 FoldMutations(
+        IPbtStore store,
         GroupOverlay overlay,
         GroupFrame? activeGroup,
         PbtNodePath path,
         in ValueHash256 expectedHash,
         Span<PbtWriteOperation> operations,
-        List<PbtLeafMutation> leafMutations)
+        bool writeLeaves = false)
     {
+        if (writeLeaves)
+        {
+            foreach (PbtWriteOperation operation in operations)
+                if (operation.Kind == PbtWriteOperationKind.Set) store.SetLeaf(operation.Key, operation.Value);
+        }
+
         if (expectedHash == default)
         {
             int setCount = RetainSets(operations);
@@ -84,7 +68,7 @@ public static class TrieUpdater
 
         GroupFrame group = overlay.Resolve(activeGroup, path, out _);
         if (ReferenceEquals(group, activeGroup) || operations.Length == 1)
-            return FoldMutationsInGroup(overlay, group, path, expectedHash, operations, leafMutations);
+            return FoldMutationsInGroup(store, overlay, group, path, expectedHash, operations);
 
         Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
         Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
@@ -96,18 +80,18 @@ public static class TrieUpdater
             int count = counts[bucket];
             if (count == 0) continue;
             root = FoldMutationsInGroup(
-                overlay, group, path, root, operations.Slice(starts[bucket], count), leafMutations);
+                store, overlay, group, path, root, operations.Slice(starts[bucket], count));
         }
         return root;
     }
 
     private static ValueHash256 FoldMutationsInGroup(
+        IPbtStore store,
         GroupOverlay overlay,
         GroupFrame group,
         PbtNodePath path,
         in ValueHash256 expectedHash,
-        Span<PbtWriteOperation> operations,
-        List<PbtLeafMutation> leafMutations)
+        Span<PbtWriteOperation> operations)
     {
         if (expectedHash == default)
         {
@@ -125,7 +109,7 @@ public static class TrieUpdater
                 if (!operation.Key.Equals(leaf.Key)) continue;
                 if (operation.Kind == PbtWriteOperationKind.Delete)
                 {
-                    leafMutations.Add(new(leaf.Key, null));
+                    store.SetLeaf(leaf.Key, null);
                     surviving = null;
                 }
                 else
@@ -166,9 +150,9 @@ public static class TrieUpdater
         ValueHash256 leftHash = branch.LeftHash;
         ValueHash256 rightHash = branch.RightHash;
         if (partition > 0)
-            leftHash = FoldMutations(overlay, group, leftPath, leftHash, matchingOperations[..partition], leafMutations);
+            leftHash = FoldMutations(store, overlay, group, leftPath, leftHash, matchingOperations[..partition]);
         if (partition < matchingOperations.Length)
-            rightHash = FoldMutations(overlay, group, rightPath, rightHash, matchingOperations[partition..], leafMutations);
+            rightHash = FoldMutations(store, overlay, group, rightPath, rightHash, matchingOperations[partition..]);
 
         ValueHash256 reconciledHash = CanonicalizeBranch(overlay, group, path, branch.Prefix, leftPath, leftHash, rightPath, rightHash);
         int divergentSetCount = RetainSets(operations[matchingCount..]);

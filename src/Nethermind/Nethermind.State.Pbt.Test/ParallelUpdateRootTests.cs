@@ -151,13 +151,14 @@ public class ParallelUpdateRootTests
 
         public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
 
+        public void SetLeaf(PbtFullKey key, ValueHash256? value) => _inner.SetLeaf(key, value);
+
         public void Apply(
             in ValueHash256 newRoot,
-            IReadOnlyList<PbtLeafMutation> leaves,
             IReadOnlyList<PbtNodeMutation> nodes)
         {
             Writes = nodes.Count;
-            _inner.Apply(newRoot, leaves, nodes);
+            _inner.Apply(newRoot, nodes);
         }
 
         public void Dispose() => _inner.Dispose();

@@ -824,14 +824,14 @@ public class Eip8297CanonicalTreeTests
             return innerPayload;
         }
 
-        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtLeafMutation> leaves, IReadOnlyList<PbtNodeMutation> nodes)
+        public void SetLeaf(PbtFullKey key, ValueHash256? value) => LastLeafMutations[key] = value;
+
+        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtNodeMutation> nodes)
         {
             Applies++;
-            LastLeafMutations.Clear();
-            foreach (PbtLeafMutation mutation in leaves) LastLeafMutations[mutation.Key] = mutation.Value;
             LastNodeWrites = nodes.Count;
             if (ThrowOnApply) throw new InvalidOperationException("Configured apply failure.");
-            Inner.Apply(newRoot, leaves, nodes);
+            Inner.Apply(newRoot, nodes);
         }
 
         internal void ResetReads()

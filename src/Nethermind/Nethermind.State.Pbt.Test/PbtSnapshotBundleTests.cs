@@ -339,13 +339,16 @@ public class PbtSnapshotBundleTests
 
     private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore
     {
+        private readonly List<PbtLeafMutation> _leaves = [];
+
         public int ApplyCount { get; private set; }
         public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
         public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
-        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtLeafMutation> leaves, IReadOnlyList<PbtNodeMutation> nodes)
+        public void SetLeaf(PbtFullKey key, ValueHash256? value) => _leaves.Add(new(key, value));
+        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtNodeMutation> nodes)
         {
             ApplyCount++;
-            bundle.ApplyTreeMutations(leaves, nodes);
+            bundle.ApplyTreeMutations(_leaves, nodes);
         }
     }
 }

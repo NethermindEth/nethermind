@@ -8,7 +8,7 @@ namespace Nethermind.Pbt;
 /// <summary>A batch of complete-key mutations applied atomically by <see cref="TrieUpdater"/>.</summary>
 public sealed class PbtWriteBatch
 {
-    private readonly List<PbtWriteOperation> _operations = [];
+    private readonly Dictionary<PbtFullKey, PbtWriteOperation> _operations = [];
 
     /// <summary>Gets the number of mutations in this batch.</summary>
     public int Count => _operations.Count;
@@ -17,17 +17,27 @@ public sealed class PbtWriteBatch
     public void Set(PbtFullKey key, in ValueHash256 value)
     {
         ArgumentNullException.ThrowIfNull(key);
-        _operations.Add(PbtWriteOperation.Set(key, value));
+        _operations[key] = PbtWriteOperation.Set(key, value);
     }
 
     /// <summary>Adds an explicit complete-key deletion.</summary>
     public void Delete(PbtFullKey key)
     {
         ArgumentNullException.ThrowIfNull(key);
-        _operations.Add(PbtWriteOperation.Delete(key));
+        _operations[key] = PbtWriteOperation.Delete(key);
     }
 
-    internal IReadOnlyList<PbtWriteOperation> Operations => _operations;
+    // TrieUpdater relies on unique keys with deletions preceding writes.
+    internal IEnumerable<PbtWriteOperation> Operations
+    {
+        get
+        {
+            foreach (PbtWriteOperation operation in _operations.Values)
+                if (operation.Kind == PbtWriteOperationKind.Delete) yield return operation;
+            foreach (PbtWriteOperation operation in _operations.Values)
+                if (operation.Kind == PbtWriteOperationKind.Set) yield return operation;
+        }
+    }
 }
 
 internal enum PbtWriteOperationKind : byte

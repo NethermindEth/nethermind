@@ -113,13 +113,14 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
+    public void SetLeaf(PbtFullKey key, ValueHash256? value) { }
+
+    /// <inheritdoc/>
     public void Apply(
         in ValueHash256 newRoot,
-        IReadOnlyList<PbtLeafMutation> leafMutations,
         IReadOnlyList<PbtNodeMutation> nodeMutations)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(leafMutations);
         ArgumentNullException.ThrowIfNull(nodeMutations);
 
         Dictionary<PbtNodePath, Dictionary<int, byte[]?>> mutationsByGroup = [];
