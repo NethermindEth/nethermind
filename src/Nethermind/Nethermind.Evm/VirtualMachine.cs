@@ -1312,9 +1312,9 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>
-    /// Runs the frame's bytecode through the dispatch loop (see VirtualMachine.DispatchSpecialized),
-    /// lifting the two opcode-availability flags it gates on into compile-time <see cref="IFlag"/>
-    /// type args so the JIT folds them. One loop body serves all forks.
+    /// Runs the frame's bytecode through the build-specific dispatch loop, lifting fork-dependent opcode
+    /// availability into compile-time <see cref="IFlag"/> type arguments. The standard build uses
+    /// tail-call opcode-table dispatch; the stream interpreter remains available only when explicitly forced.
     /// </summary>
     [SkipLocalsInit]
     protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
@@ -1324,12 +1324,8 @@ public partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         IReleaseSpec spec = Spec;
-        // Engage the stream only in cancelable call contexts (eth_call/estimateGas/simulate). Block
-        // processing runs a non-cancelable tracer, where the stream is pure overhead with no compute
-        // payoff; gating it out there removes both the throughput regression and the retained StreamOp[].
-        if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
-            && (TCancelable.IsActive || StreamInterpreter.ForceAllContexts)
-            && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
+        if (StreamInterpreter.Enabled && StreamInterpreter.ForceAllContexts && spec.IncludePush0Instruction
+            && !TTracingInst.IsActive && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {
             return RunStream<TCancelable>(stream, ref stack, ref gas);
         }
