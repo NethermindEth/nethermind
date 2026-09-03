@@ -116,7 +116,7 @@ public static partial class EvmInstructions
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPush2<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+    public static OpcodeResult InstructionPush2<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -190,10 +190,9 @@ public static partial class EvmInstructions
             // Fallback when immediate data is incomplete.
             result = stack.PushZero<TTracingInst>();
         }
-        programCounter += Size;
-        return result;
+        return new(programCounter + Size, result);
     Success:
-        return EvmExceptionType.None;
+        return programCounter;
         // Jump forward to be unpredicted by the branch predictor.
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
@@ -883,13 +882,14 @@ public static partial class EvmInstructions
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCount">The push operation implementation defining the byte count.</typeparam>
     /// <typeparam name="TTracingInst">The tracing flag.</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">The program counter, advanced past the pushed bytes.</param>
-    /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
+    /// <param name="programCounter">The program counter, positioned at the first immediate byte.</param>
+    /// <returns>
+    /// The counter advanced past the pushed bytes, with <see cref="EvmExceptionType.None"/> on success.
+    /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+    public static OpcodeResult InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
@@ -899,8 +899,7 @@ public static partial class EvmInstructions
         // Use the push method defined by the specific push operation.
         EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter);
         // Advance the program counter by the number of bytes consumed.
-        programCounter += TOpCount.Count;
-        return result;
+        return new(programCounter + TOpCount.Count, result);
     }
 
     /// <summary>
@@ -952,15 +951,15 @@ public static partial class EvmInstructions
     /// Duplicates a stack item based on an immediate operand with extended encoding.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+    public static OpcodeResult InstructionDupN<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
-            ? EvmExceptionType.BadInstruction
-            : stack.Dup<TTracingInst>(depth);
+        return TryDecodeSingle(ref stack, ref programCounter, out int depth)
+            ? new OpcodeResult(programCounter, stack.Dup<TTracingInst>(depth))
+            : EvmExceptionType.BadInstruction;
     }
 
     /// <summary>
@@ -968,15 +967,15 @@ public static partial class EvmInstructions
     /// Swaps top of stack with the Nth element, where N is decoded from the immediate.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+    public static OpcodeResult InstructionSwapN<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
-            ? EvmExceptionType.BadInstruction
-            : stack.Swap<TTracingInst>(depth + 1);
+        return TryDecodeSingle(ref stack, ref programCounter, out int depth)
+            ? new OpcodeResult(programCounter, stack.Swap<TTracingInst>(depth + 1))
+            : EvmExceptionType.BadInstruction;
     }
 
     /// <summary>
@@ -984,15 +983,15 @@ public static partial class EvmInstructions
     /// Exchanges stack items at positions n and m from the top.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+    public static OpcodeResult InstructionExchange<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        return !TryDecodePair(ref stack, ref programCounter, out int n, out int m)
-            ? EvmExceptionType.BadInstruction
-            : stack.Exchange<TTracingInst>(n, m);
+        return TryDecodePair(ref stack, ref programCounter, out int n, out int m)
+            ? new OpcodeResult(programCounter, stack.Exchange<TTracingInst>(n, m))
+            : EvmExceptionType.BadInstruction;
     }
 
     // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
