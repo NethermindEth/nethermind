@@ -32,8 +32,7 @@ public static class TrieUpdater
         // PbtWriteBatch supplies unique keys with deletions preceding writes.
         PbtWriteOperation[] operations = [.. changes.Operations];
 
-        using GroupFrameCache cache = new(store, metrics);
-        GroupFrame rootGroup = cache.Resolve(RootPath, out _);
+        using GroupFrame rootGroup = Resolve(store, metrics, null, RootPath, out _);
         if (operations.Length > 1)
             BucketizeByGroupBoundary(operations, rootGroup.BitDepth);
         return FoldMutationsInGroup(store, metrics, rootGroup, RootPath, operations.AsSpan(), allowAbsent: true);
@@ -586,22 +585,16 @@ public static class TrieUpdater
         PbtNodePath path,
         out int position)
     {
-        if (activeGroup is not null)
-        {
-            if (activeGroup.TryGetPosition(path, out position)) return activeGroup;
-            return activeGroup.Cache is GroupFrameCache cache
-                ? cache.Resolve(path, out position)
-                : Resolve(store, metrics, null, path, out position);
-        }
+        if (activeGroup is not null && activeGroup.TryGetPosition(path, out position)) return activeGroup;
 
         PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
         position = location.Position;
-        metrics?.IncrementGroupCacheProbes();
+        metrics?.IncrementGroupFrameResolutions();
         return new GroupFrame(store, location.GroupKey, metrics);
     }
 
     private static bool OwnsGroup(GroupFrame group, GroupFrame? activeGroup) =>
-        !ReferenceEquals(group, activeGroup) && group.Cache is null;
+        !ReferenceEquals(group, activeGroup);
 
     private static GroupFrame Store(
         IPbtStore store,
@@ -629,32 +622,9 @@ public static class TrieUpdater
         activeGroup.Remove(position);
     }
 
-    private sealed class GroupFrameCache(IPbtStore store, TrieUpdaterMetrics? metrics) : IDisposable
-    {
-        private readonly Dictionary<PbtNodePath, GroupFrame> _frames = [];
-
-        internal GroupFrame Resolve(PbtNodePath path, out int position)
-        {
-            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
-            position = location.Position;
-            metrics?.IncrementGroupCacheProbes();
-            if (_frames.TryGetValue(location.GroupKey, out GroupFrame? frame)) return frame;
-            frame = new GroupFrame(store, location.GroupKey, metrics, this);
-            _frames.Add(location.GroupKey, frame);
-            return frame;
-        }
-
-        public void Dispose()
-        {
-            foreach (GroupFrame frame in _frames.Values) frame.Dispose();
-            _frames.Clear();
-        }
-    }
-
-    private sealed class GroupFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics, GroupFrameCache? cache = null) : IDisposable
+    private sealed class GroupFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics) : IDisposable
     {
         internal int BitDepth => groupKey.BitDepth;
-        internal GroupFrameCache? Cache => cache;
 
         private readonly int[] _offsets = new int[PbtNodeGroupCodec.PositionCount];
         private readonly int[] _lengths = new int[PbtNodeGroupCodec.PositionCount];
@@ -815,11 +785,11 @@ internal sealed class TrieUpdaterMetrics
 {
     internal int PhysicalGroupFetches { get; private set; }
     internal int GroupParses { get; private set; }
-    internal int GroupCacheProbes { get; private set; }
+    internal int GroupFrameResolutions { get; private set; }
     internal int EmittedNodeWrites { get; private set; }
 
     internal void IncrementPhysicalGroupFetches() => PhysicalGroupFetches++;
     internal void IncrementGroupParses() => GroupParses++;
-    internal void IncrementGroupCacheProbes() => GroupCacheProbes++;
+    internal void IncrementGroupFrameResolutions() => GroupFrameResolutions++;
     internal void AddEmittedNodeWrites(int count) => EmittedNodeWrites += count;
 }

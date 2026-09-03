@@ -60,9 +60,9 @@ public class ParallelUpdateRootTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root, Is.EqualTo(results[0].Root));
-                Assert.That(metrics.PhysicalGroupFetches, Is.LessThanOrEqualTo(metrics.GroupCacheProbes));
-                Assert.That(metrics.GroupCacheProbes, Is.LessThan(256), "probes follow group crossings, not logical nodes");
-                Assert.That(metrics.GroupParses, Is.Zero, "a new tree visits absent groups without parsing payloads");
+                Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(metrics.GroupFrameResolutions));
+                Assert.That(metrics.GroupFrameResolutions, Is.LessThan(256), "frame resolutions follow group crossings, not logical nodes");
+                Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
                 Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(writes));
             }
         }

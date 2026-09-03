@@ -370,7 +370,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void All_second_group_boundary_destinations_fetch_only_touched_groups_once()
+    public void All_second_group_boundary_destinations_fetch_only_touched_groups()
     {
         CountingPbtStore store = new();
         PbtWriteBatch initial = new();
@@ -394,10 +394,9 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(changedRoot, Is.Not.EqualTo(root));
             Assert.That(store.NodeReads, Is.Zero);
-            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False);
-            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.GroupReads.Count));
-            Assert.That(metrics.GroupParses, Is.EqualTo(store.GroupReads.Count));
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
+            Assert.That(metrics.GroupParses, Is.EqualTo(store.Reads));
             Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
         }
     }
@@ -493,7 +492,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Mixed_bulk_updates_sharing_a_long_persisted_prefix_load_each_branch_once()
+    public void Mixed_bulk_updates_sharing_a_long_persisted_prefix_load_without_node_reads()
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(
@@ -514,12 +513,10 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(root, Is.Not.EqualTo(default(ValueHash256)));
             Assert.That(store.NodeReads, Is.Zero, "the updater never falls back to per-node reads");
-            Assert.That(store.Reads, Is.EqualTo(store.GroupReads.Count), "each owning group is fetched once");
             Assert.That(store.GroupReads, Is.Not.Empty);
-            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1), "mixed changes share each cached group lease");
-            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.GroupReads.Count));
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
             Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
-            Assert.That(metrics.GroupCacheProbes, Is.GreaterThanOrEqualTo(metrics.PhysicalGroupFetches));
+            Assert.That(metrics.GroupFrameResolutions, Is.GreaterThanOrEqualTo(metrics.PhysicalGroupFetches));
             Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
@@ -581,7 +578,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.NodeReads, Is.Zero, "the updater never falls back to per-node reads");
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1));
             Assert.That(metrics.GroupParses, Is.EqualTo(1));
-            Assert.That(metrics.GroupCacheProbes, Is.EqualTo(1), "same-group logical nodes use the active frame");
+            Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(1), "same-group logical nodes use the active frame");
             Assert.That(metrics.EmittedNodeWrites, Is.Zero);
             Assert.That(store.LastNodeWrites, Is.Zero);
         }
@@ -604,7 +601,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.NodeReads, Is.Zero);
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(2), "root group and changed left boundary group");
             Assert.That(metrics.GroupParses, Is.EqualTo(2));
-            Assert.That(metrics.GroupCacheProbes, Is.EqualTo(2), "one probe per entered physical group");
+            Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(2), "one frame resolution per entered physical group");
             Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False, "the untouched right group is not fetched");
             Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
@@ -613,7 +610,7 @@ public class Eip8297CanonicalTreeTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Cached_group_leases_are_released_when_decode_or_apply_fails(bool applyFailure)
+    public void Group_leases_are_released_when_decode_or_apply_fails(bool applyFailure)
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
@@ -633,7 +630,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Cached_group_lease_is_released_when_traversal_finds_a_missing_node()
+    public void Group_lease_is_released_when_traversal_finds_a_missing_node()
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1)), ([0x92], Value(2))));
