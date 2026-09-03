@@ -155,16 +155,16 @@ public sealed class PrecompileCaches : IDisposable
     /// <summary> Set to <c>false</c> to build an occupancy-only image: the JIT folds every counter guard away. </summary>
     private const bool TrackHits = true;
 
-    /// <summary> Blocks buffered before the sampled rows go out in a single write. </summary>
-    private const int FlushEveryBlocks = 128;
+    /// <summary> Samples buffered before the rows go out in a single write. </summary>
+    private const int FlushEverySamples = 128;
 
-    private const int SampleFields = 3;
+    private const int SampleFields = 4;
 
     // Sampling state is touched only from the block-processing thread, which runs ClearBlockCache inline
     // and serialized per block (BranchProcessor.QueueClearCaches), so it needs no synchronisation.
-    private readonly long[] _samples = new long[FlushEveryBlocks * SampleFields];
+    private readonly long[] _samples = new long[FlushEverySamples * SampleFields];
     private KeyValuePair<AddressAsKey, Partition>[]? _partitionList;
-    private int _blocks;
+    private int _sampled;
 
     /// <summary> Indexed view of <see cref="_partitions"/>, so the per-block loop skips the frozen-dictionary enumerator. </summary>
     private KeyValuePair<AddressAsKey, Partition>[] PartitionList
@@ -181,18 +181,24 @@ public sealed class PrecompileCaches : IDisposable
         }
     }
 
-    /// <summary> Records the block's peak occupancy, then flushes once a full batch has accumulated. </summary>
-    /// <remarks> Called before the clear, so the partitions still hold what the block put in them. </remarks>
+    /// <summary> Records occupancy across the partitions, then flushes once a full batch has accumulated. </summary>
+    /// <remarks>
+    /// Called before the clear, so the partitions still hold what was admitted since the last one.
+    /// A clear that finds every partition already empty is not a data point - the caches are cleared
+    /// several times per block, and only the first of those carries the block's contents - so it is skipped.
+    /// </remarks>
     private void SampleBlock()
     {
         KeyValuePair<AddressAsKey, Partition>[] partitions = PartitionList;
         if (partitions.Length == 0) return;
 
         long peakBytes = 0;
+        long totalBytes = 0;
         int peakIndex = -1;
         for (int i = 0; i < partitions.Length; i++)
         {
             long used = partitions[i].Value.UsedBytes;
+            totalBytes += used;
             if (used > peakBytes)
             {
                 peakBytes = used;
@@ -200,12 +206,15 @@ public sealed class PrecompileCaches : IDisposable
             }
         }
 
-        int slot = (_blocks % FlushEveryBlocks) * SampleFields;
+        if (peakBytes == 0) return;
+
+        int slot = (_sampled % FlushEverySamples) * SampleFields;
         _samples[slot] = peakBytes;
         _samples[slot + 1] = peakIndex;
         _samples[slot + 2] = _survivingCache.Count;
+        _samples[slot + 3] = totalBytes;
 
-        if (++_blocks % FlushEveryBlocks == 0) FlushSamples(FlushEveryBlocks);
+        if (++_sampled % FlushEverySamples == 0) FlushSamples(FlushEverySamples);
     }
 
     /// <summary> Writes the buffered rows and the cumulative counter table in one stdout write. </summary>
@@ -214,21 +223,22 @@ public sealed class PrecompileCaches : IDisposable
         KeyValuePair<AddressAsKey, Partition>[] partitions = PartitionList;
         if (count == 0 || partitions.Length == 0) return;
 
-        int firstBlock = _blocks - count;
-        System.Text.StringBuilder sb = new(count * 64 + partitions.Length * 128);
+        int firstSample = _sampled - count;
+        System.Text.StringBuilder sb = new(count * 80 + partitions.Length * 128);
 
         for (int i = 0; i < count; i++)
         {
             int slot = i * SampleFields;
             int peakIndex = (int)_samples[slot + 1];
-            sb.Append("PCACHE blk=").Append(firstBlock + i)
+            sb.Append("PCACHE n=").Append(firstSample + i)
+                .Append(" total=").Append(_samples[slot + 3])
                 .Append(" peak=").Append(_samples[slot])
                 .Append(" peakOn=").Append(peakIndex < 0 ? "none" : partitions[peakIndex].Key.Value.ToString())
                 .Append(" surv=").Append(_samples[slot + 2])
                 .Append('\n');
         }
 
-        sb.Append("PCACHE-TOTALS blocks=").Append(_blocks).Append(" survEntries=").Append(_survivingCache.Count);
+        sb.Append("PCACHE-TOTALS samples=").Append(_sampled).Append(" survEntries=").Append(_survivingCache.Count);
         foreach (KeyValuePair<AddressAsKey, Partition> partition in partitions)
         {
             sb.Append("\nPCACHE-PART ").Append(partition.Key.Value)
@@ -247,7 +257,7 @@ public sealed class PrecompileCaches : IDisposable
     }
 
     /// <summary> Flushes the rows buffered since the last full batch, so a run's tail is not lost. </summary>
-    public void Dispose() => FlushSamples(_blocks % FlushEveryBlocks);
+    public void Dispose() => FlushSamples(_sampled % FlushEverySamples);
 
     #endregion
 
