@@ -1202,7 +1202,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void CreateTrieWarmerScope_WhenScopeConstructionThrows_ReleasesGatheredBundleExactlyOnce()
+    public void CreateTrieWarmupSession_WhenScopeConstructionThrows_ReleasesGatheredBundleExactlyOnce()
     {
         FlatDbConfig config = new();
         TrackingResourcePool resourcePool = new();
@@ -1225,7 +1225,7 @@ public class FlatWorldStateScopeProviderTests
             {
                 using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
                     Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject, new LocalMetrics());
-                ordinaryScope.CreateTrieWarmerScope();
+                ordinaryScope.CreateTrieWarmupSession();
             },
             Throws.TypeOf<InvalidOperationException>());
 
@@ -1240,7 +1240,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void OwnedTrieWarmerScope_DisposeDrainsAcceptedJobsRejectsNewHintsAndReturnsResourcesOnce()
+    public void OwnedTrieWarmupSession_DisposeDrainsAcceptedJobsRejectsNewHintsAndReturnsResourcesOnce()
     {
         FlatDbConfig config = new();
         TrackingResourcePool resourcePool = new();
@@ -1260,7 +1260,7 @@ public class FlatWorldStateScopeProviderTests
             isReadOnly: false);
         using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
             Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject, new LocalMetrics());
-        FlatTrieWarmerScope scope = (FlatTrieWarmerScope)ordinaryScope.CreateTrieWarmerScope();
+        FlatTrieWarmupSession scope = (FlatTrieWarmupSession)ordinaryScope.CreateTrieWarmupSession();
 
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);

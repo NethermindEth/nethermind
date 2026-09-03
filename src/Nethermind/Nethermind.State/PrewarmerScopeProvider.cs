@@ -53,7 +53,7 @@ public class PrewarmerScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
-        IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = null;
+        IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
         IWorldStateScopeProvider.IScope? processingScope = null;
         try
         {
@@ -62,7 +62,7 @@ public class PrewarmerScopeProvider(
             {
                 if (isPrewarmer)
                 {
-                    trieWarmerScope = preBlockCaches.MainScope?.CreateTrieWarmerScope();
+                    trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
                 }
                 else
                 {
@@ -70,9 +70,9 @@ public class PrewarmerScopeProvider(
                 }
             }
             PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-            ScopeWrapper scope = new(processingScope, preBlockCaches, logManager, isPrewarmer, trieWarmerScope, storageReadCapture, metrics);
+            ScopeWrapper scope = new(processingScope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics);
             processingScope = null;
-            trieWarmerScope = null;
+            trieWarmupSession = null;
             return scope;
         }
         finally
@@ -83,19 +83,19 @@ public class PrewarmerScopeProvider(
             }
             finally
             {
-                trieWarmerScope?.Dispose();
+                trieWarmupSession?.Dispose();
             }
         }
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope, PreBlockCaches.StorageReadCapture? storageReadCapture, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession, PreBlockCaches.StorageReadCapture? storageReadCapture, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
-        private readonly IWorldStateScopeProvider.ITrieWarmerScope? trieWarmerScope = trieWarmerScope;
+        private readonly IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = trieWarmupSession;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -110,7 +110,7 @@ public class PrewarmerScopeProvider(
 
             try
             {
-                trieWarmerScope?.Dispose();
+                trieWarmupSession?.Dispose();
             }
             finally
             {
@@ -135,8 +135,8 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope() =>
-            baseScope.CreateTrieWarmerScope();
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+            baseScope.CreateTrieWarmupSession();
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
@@ -213,7 +213,7 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                if (storageReadCapture is null) trieWarmerScope?.HintWarmAccount(new ValueAddress(address.Bytes));
+                if (storageReadCapture is null) trieWarmupSession?.HintWarmAccount(new ValueAddress(address.Bytes));
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
@@ -228,7 +228,7 @@ public class PrewarmerScopeProvider(
         {
             if (storageReadCapture is not null) return;
             if (isPrewarmer)
-                trieWarmerScope?.HintWarmAccount(in address);
+                trieWarmupSession?.HintWarmAccount(in address);
             else
                 baseScope.HintWarmAccount(in address);
         }
@@ -237,7 +237,7 @@ public class PrewarmerScopeProvider(
         {
             if (storageReadCapture is not null) return;
             if (isPrewarmer)
-                trieWarmerScope?.HintWarmSlot(in address, in index);
+                trieWarmupSession?.HintWarmSlot(in address, in index);
             else
                 baseScope.HintWarmSlot(in address, in index);
         }
