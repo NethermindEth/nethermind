@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using InlineIL;
@@ -67,7 +68,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
-    /// <returns>The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts.</returns>
+    /// <returns>
+    /// The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts, while <c>Suspend</c>
+    /// indicates a yielded child frame.
+    /// </returns>
     [SkipLocalsInit]
     private EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
@@ -150,22 +154,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         EvmExceptionType exceptionType = TOpcode.Execute(vm, ref stack, ref gas, ref pc);
         state.ProgramCounter = pc;
 
-        if (TGasPolicy.IsOutOfGas(in gas))
-        {
-            TGasPolicy.SetOutOfGas(ref gas);
-            return EvmExceptionType.OutOfGas;
-        }
+        if (ShouldExitFrame(exceptionType, TGasPolicy.IsOutOfGas(in gas)))
+            goto Exit;
+
+        Debug.Assert(vm.ReturnData is null,
+            "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
         TGasPolicy.OnAfterInstructionTrace(in gas);
 
-        if (exceptionType != EvmExceptionType.None)
-            return exceptionType;
-
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-
-        if (instruction >= Instruction.CREATE && vm.ReturnData is not null)
-            return EvmExceptionType.None;
 
         if ((nuint)pc >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
@@ -193,5 +191,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             TypeRef.Type<DispatchState>().MakeByRefType()));
         IL.Emit.Ret();
         throw IL.Unreachable();
+
+    Exit:
+        if (TGasPolicy.IsOutOfGas(in gas))
+        {
+            TGasPolicy.SetOutOfGas(ref gas);
+            return EvmExceptionType.OutOfGas;
+        }
+
+        TGasPolicy.OnAfterInstructionTrace(in gas);
+        return exceptionType;
     }
 }

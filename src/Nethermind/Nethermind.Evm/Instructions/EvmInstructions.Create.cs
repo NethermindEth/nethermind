@@ -236,7 +236,7 @@ public static partial class EvmInstructions
             snapshot: in snapshot,
             isCreateStateGasCharged: chargeCreateStateGas);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Suspend;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
