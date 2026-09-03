@@ -70,6 +70,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of most recent commitment epochs to keep. Older epochs are deleted and historical proofs below them are refused; 0 keeps every epoch (a full archive).", DefaultValue = "0")]
     int ArchiveProofRecentEpochs { get; set; }
 
+    [ConfigItem(Description = "Number of most recent commitment epochs to keep the per-block rows for. Older epochs keep only their checkpoint rows: proofs there are still served and still verified, rebuilt from the window rows, which costs about a second instead of a hundred milliseconds and is most of the column's size. 0 keeps the per-block rows for every epoch.", DefaultValue = "0")]
+    int ArchiveProofFineEpochs { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

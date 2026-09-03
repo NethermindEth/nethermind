@@ -181,6 +181,7 @@ public sealed class CommitmentEmitter : IDisposable
             {
                 case CommitmentTier.PerChange:
                     WriteExact(key, rlp, isEmpty: length == EmptyRecord);
+                    Accumulate(key, rlp, isEmpty: length == EmptyRecord);
                     break;
                 case CommitmentTier.Checkpoint:
                     Accumulate(key, rlp, isEmpty: length == EmptyRecord);

@@ -34,24 +34,26 @@ internal sealed class CommitmentStore
     public ulong EpochOf(scoped ReadOnlySpan<byte> prefix, ulong suffix) =>
         CommitmentKeyLayout.IsExactPrefix(prefix, _identityLength) ? _policy.Epoch(suffix) : _policy.EpochOfWindow(suffix);
 
+    private byte TierOf(scoped ReadOnlySpan<byte> prefix) => CommitmentKeyLayout.TierOf(prefix, _identityLength);
+
     public void Write(scoped ReadOnlySpan<byte> prefix, ulong suffix, scoped ReadOnlySpan<byte> value, IWriteBatch batch)
     {
         Span<byte> rowKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
-        int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, EpochOf(prefix, suffix), CommitmentKeyLayout.FineTier, prefix, suffix);
+        int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, EpochOf(prefix, suffix), TierOf(prefix), prefix, suffix);
         batch.PutSpan(rowKey[..keyLength], value);
     }
 
     public byte[]? TryGetExact(scoped ReadOnlySpan<byte> prefix, ulong suffix)
     {
         Span<byte> rowKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
-        int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, EpochOf(prefix, suffix), CommitmentKeyLayout.FineTier, prefix, suffix);
+        int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, EpochOf(prefix, suffix), TierOf(prefix), prefix, suffix);
         return _column.Get(rowKey[..keyLength]);
     }
 
     public Span<byte> GetExactSpan(scoped ReadOnlySpan<byte> prefix, ulong suffix)
     {
         Span<byte> rowKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
-        int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, EpochOf(prefix, suffix), CommitmentKeyLayout.FineTier, prefix, suffix);
+        int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, EpochOf(prefix, suffix), TierOf(prefix), prefix, suffix);
         return _column.GetSpan(rowKey[..keyLength]);
     }
 
@@ -88,10 +90,10 @@ internal sealed class CommitmentStore
             suffix = ulong.MaxValue;
         }
 
-        return new RowChain(_sorted, prefix, suffix, budget, epoch, Math.Min(minEpoch, epoch));
+        return new RowChain(_sorted, prefix, TierOf(prefix), suffix, budget, epoch, Math.Min(minEpoch, epoch));
     }
 
-    public RowChain OpenScratchAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix) => new(_sorted, prefix, suffix, budget: null, epoch: null, minEpoch: 0);
+    public RowChain OpenScratchAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix) => new(_sorted, prefix, CommitmentKeyLayout.FineTier, suffix, budget: null, epoch: null, minEpoch: 0);
 
     public void RemoveEpoch(ulong epoch, byte tier)
     {
@@ -109,15 +111,17 @@ internal sealed class CommitmentStore
         private readonly ISortedKeyValueStore _column;
         private readonly byte[] _prefix;
         private readonly int _prefixLength;
+        private readonly byte _tier;
         private readonly ResolutionBudget? _budget;
         private readonly ulong _minEpoch;
         private readonly int _keyLength;
         private ISortedView? _view;
         private ulong? _epoch;
 
-        internal RowChain(ISortedKeyValueStore column, scoped ReadOnlySpan<byte> prefix, ulong suffix, ResolutionBudget? budget, ulong? epoch, ulong minEpoch)
+        internal RowChain(ISortedKeyValueStore column, scoped ReadOnlySpan<byte> prefix, byte tier, ulong suffix, ResolutionBudget? budget, ulong? epoch, ulong minEpoch)
         {
             _column = column;
+            _tier = tier;
             _prefix = ArrayPool<byte>.Shared.Rent(prefix.Length);
             prefix.CopyTo(_prefix);
             _prefixLength = prefix.Length;
@@ -159,8 +163,8 @@ internal sealed class CommitmentStore
             int upperLength;
             if (_epoch is { } epoch)
             {
-                keyLength = CommitmentKeyLayout.WriteRowKey(seekKey, epoch, CommitmentKeyLayout.FineTier, prefix, suffix);
-                upperLength = CommitmentKeyLayout.WriteRowUpperBound(upperBound, epoch, CommitmentKeyLayout.FineTier, prefix);
+                keyLength = CommitmentKeyLayout.WriteRowKey(seekKey, epoch, _tier, prefix, suffix);
+                upperLength = CommitmentKeyLayout.WriteRowUpperBound(upperBound, epoch, _tier, prefix);
             }
             else
             {

@@ -18,6 +18,7 @@ public sealed class ArchiveProofSettings
         RetrofitEnabled = BuildEnabled && config.HistoryVerifyEveryBlock;
         DiscardMismatchedLayout = config.ArchiveProofDiscardMismatchedLayout;
         RecentEpochs = config.ArchiveProofRecentEpochs < 0 ? 0 : config.ArchiveProofRecentEpochs;
+        FineEpochs = config.ArchiveProofFineEpochs < 0 ? 0 : config.ArchiveProofFineEpochs;
 
         if (!supported && (config.ArchiveProofBuildEnabled || config.ArchiveProofServeEnabled) && logger.IsWarn)
         {
@@ -43,4 +44,6 @@ public sealed class ArchiveProofSettings
     public bool DiscardMismatchedLayout { get; }
 
     public int RecentEpochs { get; }
+
+    public int FineEpochs { get; }
 }

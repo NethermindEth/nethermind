@@ -12,28 +12,57 @@ public sealed class CommitmentPruner(IColumnsDb<FlatHistoryColumns> history, Com
     private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly ILogger _logger = logManager.GetClassLogger<CommitmentPruner>();
 
-    public bool Enabled => settings.RecentEpochs > 0;
+    public bool Enabled => settings.RecentEpochs > 0 || settings.FineEpochs > 0;
 
     public void PruneBelow(ulong headBlock)
     {
         if (!Enabled) return;
 
         ulong headEpoch = policy.Epoch(headBlock);
-        ulong recent = (ulong)settings.RecentEpochs;
-        if (headEpoch + 1 <= recent) return;
+        Demote(headEpoch);
+        Drop(headEpoch);
+    }
 
-        ulong keepFrom = headEpoch + 1 - recent;
-        ulong retained = metadata.RetainedFromEpoch;
-        if (keepFrom <= retained) return;
+    private void Demote(ulong headEpoch)
+    {
+        if (settings.FineEpochs <= 0 || !TryFloor(headEpoch, settings.FineEpochs, metadata.FineFromEpoch, out ulong keepFrom, out ulong from)) return;
 
-        for (ulong epoch = retained; epoch < keepFrom; epoch++)
+        for (ulong epoch = from; epoch < keepFrom; epoch++)
         {
             _accounts.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
             _storages.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
         }
 
-        metadata.SetRetainedFromEpoch(keepFrom);
+        metadata.SetFineFromEpoch(keepFrom);
         if (_logger.IsInfo) _logger.Info(
-            $"Archive proof commitments below epoch {keepFrom} (block {policy.EpochStart(keepFrom)}) were dropped; historical proofs are served from that block on, keeping the {recent} most recent epochs of 2^{policy.EpochLog2} blocks.");
+            $"Archive proof commitments below epoch {keepFrom} (block {policy.EpochStart(keepFrom)}) dropped their per-block rows; proofs there are still served, rebuilt from the checkpoint rows, which costs a second or so instead of a hundred milliseconds.");
+    }
+
+    private void Drop(ulong headEpoch)
+    {
+        if (settings.RecentEpochs <= 0 || !TryFloor(headEpoch, settings.RecentEpochs, metadata.RetainedFromEpoch, out ulong keepFrom, out ulong from)) return;
+
+        for (ulong epoch = from; epoch < keepFrom; epoch++)
+        {
+            _accounts.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
+            _accounts.RemoveEpoch(epoch, CommitmentKeyLayout.CoarseTier);
+            _storages.RemoveEpoch(epoch, CommitmentKeyLayout.FineTier);
+            _storages.RemoveEpoch(epoch, CommitmentKeyLayout.CoarseTier);
+        }
+
+        metadata.SetRetainedFromEpoch(keepFrom);
+        if (metadata.FineFromEpoch < keepFrom) metadata.SetFineFromEpoch(keepFrom);
+        if (_logger.IsInfo) _logger.Info(
+            $"Archive proof commitments below epoch {keepFrom} (block {policy.EpochStart(keepFrom)}) were dropped; historical proofs are served from that block on, keeping the {settings.RecentEpochs} most recent epochs of 2^{policy.EpochLog2} blocks.");
+    }
+
+    private static bool TryFloor(ulong headEpoch, int keep, ulong current, out ulong keepFrom, out ulong from)
+    {
+        keepFrom = 0;
+        from = current;
+        if (headEpoch + 1 <= (ulong)keep) return false;
+
+        keepFrom = headEpoch + 1 - (ulong)keep;
+        return keepFrom > current;
     }
 }

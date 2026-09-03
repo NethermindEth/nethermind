@@ -43,6 +43,7 @@ public class ArchiveProofTests
         _accounts = BuildAddresses(AccountCount);
         _policy = TestPolicy;
         _recentEpochs = 0;
+        _fineEpochs = 0;
         BuildChain();
     }
 
@@ -320,6 +321,40 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_demoted_epoch_still_proves_every_height_it_covers()
+    {
+        _policy = EpochPolicy;
+        _fineEpochs = 1;
+        BuildCommitments();
+
+        CreateRetrofit(_policy).PruneBelow(_chain.Head);
+
+        foreach (ulong block in (ulong[])[1, 64, 100, 127, 135, Blocks])
+        {
+            AssertProofMatchesTheTrie(_accounts[2], block);
+            AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void Demotion_drops_the_per_block_rows_and_keeps_the_checkpoint_rows()
+    {
+        _policy = EpochPolicy;
+        _fineEpochs = 1;
+        BuildCommitments();
+
+        CreateRetrofit(_policy).PruneBelow(_chain.Head);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.False, "the per-block rows of the demoted epoch are gone in one range delete");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.True, "its window rows stay, which is what keeps that range provable");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 1, CommitmentKeyLayout.FineTier)), Is.True, "the epoch inside the fine window keeps both");
+        }
+    }
+
+    [Test]
     public void Epochs_older_than_the_recent_window_are_dropped_and_proofs_below_them_refused()
     {
         _policy = EpochPolicy;
@@ -333,8 +368,8 @@ public class ArchiveProofTests
         IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(accounts.GetAllKeys().Any(static key => key.Length > 3 && key[0] == 0 && key[1] == 0 && key[2] == CommitmentKeyLayout.FineTier), Is.False, "every account row of epoch 0 is gone in one range delete");
-            Assert.That(storages.GetAllKeys().Any(static key => key.Length > 3 && key[0] == 0 && key[1] == 0 && key[2] == CommitmentKeyLayout.FineTier), Is.False, "every storage row of epoch 0 is gone");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier) || IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.False, "every account row of epoch 0 is gone in one range delete per tier");
+            Assert.That(storages.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier) || IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.False, "every storage row of epoch 0 is gone");
             Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(100)), Is.False, "a block in the dropped epoch is refused, not served from raw history");
             Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(130)), Is.True, "the retained epoch stays servable");
         }
@@ -553,6 +588,12 @@ public class ArchiveProofTests
             "windowed rows are pre-values behind a retention floor, which a proof resolution cannot replay");
     }
 
+    private static bool IsEpochTier(byte[] key, ulong epoch, byte tier) =>
+        key.Length > CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength
+        && key[0] == (byte)(epoch >> 8)
+        && key[1] == (byte)epoch
+        && key[CommitmentKeyLayout.EpochLength] == tier;
+
     private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
 
     private HistoryWalkVerifier CreateVerifyOnlyVerifier(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
@@ -578,6 +619,7 @@ public class ArchiveProofTests
     private static CommitmentDepthPolicy EpochPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1, CommitmentDepthPolicy.DefaultAccountComposedDepths, epochLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
 
     private int _recentEpochs;
+    private int _fineEpochs;
 
     private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
 
@@ -628,7 +670,7 @@ public class ArchiveProofTests
 
     private ArchiveProofRetrofit CreateRetrofit(CommitmentDepthPolicy policy, bool discardMismatchedLayout = false)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout, ArchiveProofRecentEpochs = _recentEpochs };
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout, ArchiveProofRecentEpochs = _recentEpochs, ArchiveProofFineEpochs = _fineEpochs };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         return new ArchiveProofRetrofit(_historyColumns, policy, new CommitmentMetadata(_historyColumns, policy), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
     }

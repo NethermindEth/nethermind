@@ -25,6 +25,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ArchiveProofDiscardMismatchedLayout { get; set; } = false;
     public int ArchiveProofEpochLog2 { get; set; } = 0;
     public int ArchiveProofRecentEpochs { get; set; } = 0;
+    public int ArchiveProofFineEpochs { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

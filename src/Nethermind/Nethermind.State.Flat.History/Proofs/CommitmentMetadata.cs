@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.History.Proofs;
 
 public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy)
 {
-    public const byte FormatVersion = 1;
+    public const byte FormatVersion = 2;
 
     private const byte Marker = 0xFE;
     private static ReadOnlySpan<byte> StampKey => [Marker, 0x01];
@@ -21,6 +21,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private static ReadOnlySpan<byte> TipSeriesKey => [Marker, 0x03];
     private static ReadOnlySpan<byte> WalkRangeKey => [Marker, 0x04];
     private static ReadOnlySpan<byte> RetainedFromEpochKey => [Marker, 0x07];
+    private static ReadOnlySpan<byte> FineFromEpochKey => [Marker, 0x08];
     private const byte WalkItemMarker = 0x05;
     private const byte WalkItemProgressMarker = 0x06;
     public const int MaxWalkItems = 1 << 16;
@@ -147,13 +148,26 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         }
     }
 
-    public void SetRetainedFromEpoch(ulong epoch)
+    public void SetRetainedFromEpoch(ulong epoch) => WriteEpoch(RetainedFromEpochKey, epoch);
+
+    public ulong FineFromEpoch
+    {
+        get
+        {
+            byte[]? value = _column.Get(FineFromEpochKey);
+            return value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
+        }
+    }
+
+    public void SetFineFromEpoch(ulong epoch) => WriteEpoch(FineFromEpochKey, epoch);
+
+    private void WriteEpoch(ReadOnlySpan<byte> key, ulong epoch)
     {
         Span<byte> value = stackalloc byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(value, epoch);
         lock (_lock)
         {
-            _column.PutSpan(RetainedFromEpochKey, value);
+            _column.PutSpan(key, value);
         }
     }
 

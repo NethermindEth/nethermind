@@ -19,6 +19,7 @@ internal static class CommitmentKeyLayout
     public const int MaxKeyLength = EpochLength + TierLength + MaxPrefixLength + SuffixLength;
     public const byte ExactRowFlag = 0x80;
     public const byte FineTier = 0x00;
+    public const byte CoarseTier = 0x01;
     public const byte ReservedMarker = 0xFF;
     public const ulong MaxEpoch = ushort.MaxValue - 1;
 
@@ -39,6 +40,8 @@ internal static class CommitmentKeyLayout
     }
 
     public static bool IsExactPrefix(scoped ReadOnlySpan<byte> prefix, int identityLength) => (prefix[identityLength] & ExactRowFlag) != 0;
+
+    public static byte TierOf(scoped ReadOnlySpan<byte> prefix, int identityLength) => IsExactPrefix(prefix, identityLength) ? FineTier : CoarseTier;
 
     public static int WriteRowKey(Span<byte> destination, ulong epoch, byte tier, scoped ReadOnlySpan<byte> prefix, ulong suffix)
     {
