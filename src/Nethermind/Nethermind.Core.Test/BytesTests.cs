@@ -925,7 +925,7 @@ namespace Nethermind.Core.Test
                     0 => addressBytes.AsSpan(0, sizeof(int)),
                     1 => slotBytes.AsSpan(0, sizeof(int)),
                     2 => slotBytes.AsSpan(24, sizeof(int)),
-                    // The last four bytes of the address are the one input that enters as a round key.
+                    // The address tail is read separately from the head, so only this case catches it being dropped.
                     _ => addressBytes.AsSpan(16, sizeof(int))
                 };
                 BinaryPrimitives.WriteInt32LittleEndian(target, value);
