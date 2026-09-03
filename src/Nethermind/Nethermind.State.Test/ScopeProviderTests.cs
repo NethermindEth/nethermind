@@ -502,7 +502,9 @@ public class ScopeProviderTests(bool useFlat)
                 "unrelated slots survive only when the cleared account had no storage to begin with");
             Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage),
                 "the cleared account's pre-block slots must not survive the clear");
-            Assert.That(CachedSlot(caches, in written), Is.EqualTo(new byte[] { 9 }));
+            Assert.That(caches.StorageCache.TryGetValue(in written, out byte[] writtenValue), Is.EqualTo(!preExistingStorage),
+                "a clear abandons the rest of the block, which would refill the cache with one block's writes");
+            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new byte[] { 9 }));
         }
     }
 
@@ -658,14 +660,14 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_RevertedStorageClear_CachesTheCommittedValues()
+    public void Test_RevertedStorageClear_LeavesNoStaleCachedValue()
     {
         using Context ctx = new(useFlat);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
-        // A selfdestruct that reverts within its transaction: the clear leaves a conservative mark, but every value the
-        // caches end up holding must still be the committed one.
+        // A selfdestruct that reverts within its transaction: the clear leaves a conservative mark, so the caches end up
+        // holding nothing of the slot rather than the value it had before the block.
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
             ws.Get(in SlotA1);
@@ -681,7 +683,7 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(carried, Is.True);
-            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "asserted before the read below caches it again");
             Assert.That(consumer.Get(in SlotA1).ToArray(), Is.EqualTo(new byte[] { 7 }));
             Assert.That(CachedAccount(caches, TestItem.AddressA).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "the account keeps its storage");
         }
@@ -763,6 +765,8 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True, "the first commit must carry the caches to its own root");
 
             consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
+            // Cached within the second block, so replaying the first block's removal would clear it away again.
+            consumer.Get(in SlotC5);
             consumer.Commit(Cancun.Instance);
             consumer.CommitTree(3);
             secondRoot = consumer.StateRoot;
@@ -773,7 +777,7 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(caches.PrepareFor(secondRoot), Is.True);
             Assert.That(CachedAccount(caches, TestItem.AddressA), Is.Null);
             Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
-            Assert.That(CachedSlot(caches, in slotD1), Is.EqualTo(new byte[] { 7 }), "the second commit must not replay the first block's removal");
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "the second commit must not replay the first block's removal");
         }
     }
 

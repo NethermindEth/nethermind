@@ -231,13 +231,13 @@ public class PreBlockCaches
     /// <para>
     /// The invariant this rests on is not enforced here: it is that <see cref="PrepareFor"/>,
     /// <see cref="EnsureNotStaleFor"/> and <see cref="ClearCaches"/> are the only ways to the caches for anything but
-    /// the committing scope. In particular a speculative session cannot start while a consumer scope is open, so none
-    /// can begin between this write-back being queued and its join.
+    /// the committing scope. A speculative session that starts while this one runs is covered by the first of them:
+    /// its start calls <see cref="PrepareFor"/>, which joins, before the session's own thread exists.
     /// </para>
     /// <para>
     /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the whole storage cache, because a
-    /// contract's pre-block slots cannot be enumerated, so the snapshot must issue every clear before its first
-    /// slot write.
+    /// contract's pre-block slots cannot be enumerated. The batch then stops accepting storage writes, so the snapshot
+    /// ends there instead of refilling the cache with the one block it holds.
     /// </para>
     /// </remarks>
     /// <param name="takeSnapshot">
@@ -266,7 +266,7 @@ public class PreBlockCaches
                 {
                     try
                     {
-                        WriteBackCore(baseStateRoot, stateRoot, snapshot.WriteTo);
+                        WriteBackCore(baseStateRoot, stateRoot, snapshot.WriteTo, logger);
                     }
                     catch (Exception e)
                     {
@@ -325,13 +325,13 @@ public class PreBlockCaches
         }
     }
 
-    private void WriteBackCore(Hash256? baseStateRoot, Hash256 stateRoot, Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges)
+    private void WriteBackCore(Hash256? baseStateRoot, Hash256 stateRoot, Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges, ILogger logger)
     {
         lock (_reconcileLock)
         {
             if (baseStateRoot is null || _validFor != baseStateRoot) return;
 
-            _writeBack.Begin();
+            _writeBack.Begin(logger);
             try
             {
                 writeChanges(_writeBack);
@@ -346,6 +346,7 @@ public class PreBlockCaches
             {
                 // Another writer got in, so the caches describe neither the base nor the committed state.
                 ClearStateCachesCore();
+                if (logger.IsInfo) ReportCachesCleared(logger);
             }
             else
             {
@@ -354,6 +355,11 @@ public class PreBlockCaches
         }
     }
 
+    /// <remarks>Out of line because it must be rare.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ReportCachesCleared(ILogger logger) =>
+        logger.Info("Pre-block caches cleared by a writer that overlapped the write-back");
+
     private sealed class WriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly StorageWriteBackBatch _storage = new(caches._storageCache);
@@ -361,10 +367,14 @@ public class PreBlockCaches
 
         public bool Contended => _contended || _storage.Contended;
 
-        public void Begin()
+        public bool AcceptsStorageWrites => !_storage.Cleared && !Contended;
+
+        public void Begin(ILogger logger)
         {
             _contended = false;
             _storage.Contended = false;
+            _storage.Cleared = false;
+            _storage.Logger = logger;
         }
 
         // Never raised: nothing on the way into a cache recomputes a storage root.
@@ -372,6 +382,9 @@ public class PreBlockCaches
 
         public void Set(Address key, Account? account)
         {
+            // A contended write-back ends with both caches cleared, so nothing after the first one is worth writing.
+            if (Contended) return;
+
             AddressAsKey addressAsKey = key;
             if (!caches._stateCache.TrySetExclusive(in addressAsKey, account)) _contended = true;
         }
@@ -390,14 +403,30 @@ public class PreBlockCaches
     {
         public Address Address { get; set; } = null!;
         public bool Contended { get; set; }
+        public ILogger Logger { get; set; }
+        public bool Cleared { get; set; }
 
         public void Set(in UInt256 index, byte[] value)
         {
+            if (Contended) return;
+
             StorageCell cell = new(Address, in index);
             if (!storageCache.TrySetExclusive(in cell, value)) Contended = true;
         }
 
-        public void Clear() => storageCache.Clear();
+        public void Clear()
+        {
+            if (Cleared) return;
+
+            storageCache.Clear();
+            Cleared = true;
+            if (Logger.IsInfo) ReportStorageCacheCleared(Logger, Address);
+        }
+
+        /// <remarks>Out of line because it must be rare.</remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ReportStorageCacheCleared(ILogger logger, Address address) =>
+            logger.Info($"Pre-block storage cache cleared by {address}");
 
         public void Dispose() { }
     }

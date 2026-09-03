@@ -209,6 +209,13 @@ public interface IWorldStateScopeProvider
     {
         public event EventHandler<AccountUpdated> OnAccountUpdated;
 
+        /// <summary>Whether storage writes still reach the batch.</summary>
+        /// <remarks>
+        /// A batch that has dropped what it held reports <see langword="false"/>, so a caller with slot writes left to
+        /// produce can stop rather than produce writes the batch would ignore. Account writes are unaffected.
+        /// </remarks>
+        bool AcceptsStorageWrites => true;
+
         // Note: Null account imply removal and clearing of storage.
         void Set(Address key, Account? account);
 

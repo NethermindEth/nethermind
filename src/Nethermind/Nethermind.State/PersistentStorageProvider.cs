@@ -398,9 +398,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// every contract whose pre-block storage the block wiped or whose account it removed.
         /// </summary>
         /// <remarks>
-        /// Clears come first: each drops every cached slot, so none may follow a slot write of the same write-back. An
-        /// account removed with storage the block never touched has no contract state, so the removals the state
-        /// provider recorded are checked as well.
+        /// Clears come first, so none may follow a slot write of the same write-back. An account removed with storage
+        /// the block never touched has no contract state, so the removals the state provider recorded are checked as
+        /// well. A batch that drops what it held on a clear ends the write there: it has nothing left to complete, and
+        /// the block's own slots are all that would go back in.
         /// </remarks>
         public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
@@ -410,6 +411,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 if (!storages.TryGetValue(removed, out PerContractState? state) || state.HadStorageBeforeBlock != false)
                 {
                     ClearCachedStorage(writeBatch, removed.Value);
+                    if (!writeBatch.AcceptsStorageWrites) return;
                 }
             }
 
@@ -419,8 +421,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 if (state.BlockEndFate == AccountFate.Unknown || state.ClearsPreBlockStorage(state.BlockEndFate == AccountFate.Present))
                 {
                     ClearCachedStorage(writeBatch, storage.Key.Value);
+                    if (!writeBatch.AcceptsStorageWrites) return;
                 }
             }
+
+            if (!writeBatch.AcceptsStorageWrites) return;
 
             foreach (KeyValuePair<AddressAsKey, PerContractState> storage in storages)
             {
@@ -811,7 +816,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return true;
         }
 
-        /// <summary>The account's fate at block end, resolved by the write-back's clear pass and reused by its slot pass.</summary>
+        /// <summary>The account's fate at block end.</summary>
+        /// <remarks>
+        /// Resolved by <see cref="DetachBlockChanges"/> on the block thread, while the state provider still holds the
+        /// block's account record. The detached snapshot is written after the scope is gone, so it must not reach back
+        /// into the provider to work this out for itself.
+        /// </remarks>
         public AccountFate BlockEndFate { get; set; }
 
         public Hash256 StorageRoot
@@ -876,7 +886,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _storageRootSeen = false;
             _wasCleared = false;
             _accountHinted = false;
-            // Set by the write-back's clear pass and read by its slot pass, which are no longer adjacent.
+            // A later block may never detach its changes, and would then read whatever this one left behind.
             BlockEndFate = AccountFate.Present;
             Pool.Return(this);
         }
