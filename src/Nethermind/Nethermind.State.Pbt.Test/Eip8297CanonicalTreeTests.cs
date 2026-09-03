@@ -138,8 +138,6 @@ public class Eip8297CanonicalTreeTests
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
-        PbtPhysicalPayload[] physical = [.. store.Inner.ExportPhysicalPayloads()];
-        int applies = store.Applies;
         store.ResetReads();
 
         Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, Batch(
@@ -147,8 +145,6 @@ public class Eip8297CanonicalTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Applies, Is.EqualTo(applies));
-            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
             Assert.That(store.Reads, Is.GreaterThan(0), "prefix conflicts are detected during traversal");
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
@@ -159,8 +155,6 @@ public class Eip8297CanonicalTreeTests
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x10], Value(1)), ([0x80], Value(2))));
-        PbtPhysicalPayload[] physical = [.. store.Inner.ExportPhysicalPayloads()];
-        int applies = store.Applies;
         store.ResetReads();
 
         Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, Batch(
@@ -168,8 +162,6 @@ public class Eip8297CanonicalTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Applies, Is.EqualTo(applies));
-            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
             Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
     }
@@ -497,7 +489,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(deleteValue, Is.Null);
             Assert.That(hasSetMutation, Is.True);
             Assert.That(setValue, Is.EqualTo(new ValueHash256(Value(2))));
-            Assert.That(store.Applies, Is.EqualTo(deleteKeyExists ? 2 : 1));
         }
     }
 

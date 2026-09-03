@@ -35,10 +35,7 @@ public static class TrieUpdater
         GroupOverlay overlay = new(store, metrics);
         try
         {
-            ValueHash256 root = FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan(), true);
-            foreach (PbtNodeMutation mutation in overlay.NodeMutations)
-                store.SetNode(mutation.Path, mutation.Encoding);
-            return root;
+            return FoldMutations(store, overlay, null, RootPath, currentRoot, operations.AsSpan(), true);
         }
         finally
         {
@@ -557,17 +554,6 @@ public static class TrieUpdater
     {
         private readonly Dictionary<PbtNodePath, GroupFrame> _groups = [];
 
-        internal IReadOnlyList<PbtNodeMutation> NodeMutations
-        {
-            get
-            {
-                List<PbtNodeMutation> mutations = [];
-                foreach (GroupFrame group in _groups.Values) group.AddMutations(mutations);
-                metrics?.AddEmittedNodeWrites(mutations.Count);
-                return mutations;
-            }
-        }
-
         internal PbtNode Load(
             GroupFrame? activeGroup,
             PbtNodePath path,
@@ -621,10 +607,8 @@ public static class TrieUpdater
         private readonly int[] _offsets = new int[PbtNodeGroupCodec.PositionCount];
         private readonly int[] _lengths = new int[PbtNodeGroupCodec.PositionCount];
         private readonly PbtNode?[] _nodes = new PbtNode[PbtNodeGroupCodec.PositionCount];
-        private readonly byte[]?[] _stagedEncodings = new byte[PbtNodeGroupCodec.PositionCount][];
         private readonly SlotState[] _states = new SlotState[PbtNodeGroupCodec.PositionCount];
         private PbtNodeGroupPayload? _payload;
-        private uint _dirtyPositions;
         private uint _knownPositions;
         private bool _fetched;
 
@@ -662,16 +646,14 @@ public static class TrieUpdater
             if (CanSuppressWrite(position, encoding))
             {
                 _states[position] = SlotState.Persisted;
-                _stagedEncodings[position] = null;
                 _nodes[position] = node;
-                _dirtyPositions &= ~(1u << position);
                 return;
             }
 
             _states[position] = SlotState.Staged;
-            _stagedEncodings[position] = encoding;
             _nodes[position] = node;
-            _dirtyPositions |= 1u << position;
+            store.SetNode(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding);
+            metrics?.AddEmittedNodeWrites(1);
         }
 
         internal void Remove(int position)
@@ -680,26 +662,14 @@ public static class TrieUpdater
             if (_lengths[position] != 0)
             {
                 _states[position] = SlotState.Tombstone;
-                _dirtyPositions |= 1u << position;
+                store.SetNode(PbtFourLevelGroupGeometry.PathOf(groupKey, position), null);
+                metrics?.AddEmittedNodeWrites(1);
             }
             else
             {
                 _states[position] = SlotState.Absent;
-                _dirtyPositions &= ~(1u << position);
             }
-            _stagedEncodings[position] = null;
             _nodes[position] = null;
-        }
-
-        internal void AddMutations(List<PbtNodeMutation> mutations)
-        {
-            uint remaining = _dirtyPositions;
-            for (int position = 0; remaining != 0; position++, remaining >>= 1)
-            {
-                if ((remaining & 1) == 0) continue;
-                byte[]? encoding = _states[position] == SlotState.Staged ? _stagedEncodings[position] : null;
-                mutations.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding));
-            }
         }
 
         public void Dispose() => _payload?.Dispose();
@@ -713,7 +683,7 @@ public static class TrieUpdater
         private bool CanSuppressWrite(int position, ReadOnlySpan<byte> encoding)
         {
             if ((_knownPositions & (1u << position)) == 0) EnsureFetched();
-            return PersistedEncodingEquals(position, encoding);
+            return _states[position] == SlotState.Persisted && PersistedEncodingEquals(position, encoding);
         }
 
         private void EnsureFetched()

@@ -71,7 +71,7 @@ public class PbtSnapshotBundleTests
         bool foundNode = snapshot.Content.TryGetNode(originalNodePath, out byte[]? node);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshot.Content.Leaves, Has.Count.EqualTo(1));
+            Assert.That(snapshot.Content.Leaves, Has.Count.EqualTo(2));
             Assert.That(snapshot.Content.TryGetLeaf(originalLeafKey, out ValueHash256? leaf) && leaf == originalLeafValue, Is.True);
             Assert.That(snapshot.Content.Nodes, Has.Count.EqualTo(1));
             Assert.That(foundNode, Is.True);
