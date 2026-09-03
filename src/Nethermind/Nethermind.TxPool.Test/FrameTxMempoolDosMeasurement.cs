@@ -758,6 +758,7 @@ public class FrameTxMempoolDosMeasurement
             new HarnessEnvFactory(_worldStateManager, _specProvider, _logManager),
             _blockTree,
             _specProvider,
+            txPoolConfig,
             _logManager);
 
         _txPool = CreatePool(new TimingSimulator(_realSimulator, _simulateMicros), txPoolConfig);
@@ -835,12 +836,13 @@ public class FrameTxMempoolDosMeasurement
         public FrameTxSimulationResult Simulate(
             Transaction tx,
             bool signaturesPreValidated = false,
-            CancellationToken token = default)
+            CancellationToken token = default,
+            bool local = false)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated, token);
+                return inner.Simulate(tx, signaturesPreValidated, token, local);
             }
             finally
             {
