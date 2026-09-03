@@ -229,6 +229,55 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_TracerAbortsOnAViolation_RejectsWithTheReasonRatherThanDeferring()
+    {
+        // The tracer cancels the interpreter at the first banned opcode, so the violation reaches the
+        // simulator as a cancellation. Read as an ordinary one it would defer, and admission would pool
+        // the transaction the trace rules exist to refuse.
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
+        Violate(processor);
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Throws(new OperationCanceledException());
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Indeterminate, Is.False, "a trace violation is a definite verdict on the prefix");
+            Assert.That(result.Reason, Does.Contain("SLOAD outside tx.sender storage"));
+        }
+    }
+
+    [Test]
+    public void Simulate_TracerAbortsOnItsWallClockBound_IsChargedToTheSender()
+    {
+        // The prefix's own wall clock trips the timeout, so revalidation retains it, but it still counts
+        // against the sender rather than reading as this node shedding load.
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, timeoutMs: 1);
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns<TransactionResult>(static _ =>
+            {
+                Thread.Sleep(50);
+                throw new OperationCanceledException();
+            });
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Indeterminate, Is.True, "a timeout says nothing about the prefix's validity");
+            Assert.That(result.NodeBound, Is.False, "the sender chose the prefix that spent the clock");
+        }
+    }
+
+    /// <summary>Records a trace violation on whichever tracer the simulator hands the processor.</summary>
+    private static void Violate(ITransactionProcessor processor) =>
+        processor.When(static p => p.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()))
+            .Do(static call => call.ArgAt<ITxTracer>(1).LoadOperationStorage(TestItem.AddressB, UInt256.Zero, ReadOnlySpan<byte>.Empty));
+
+    [Test]
     public void Simulate_AfterDispose_LeavesTheTransactionUndecided()
     {
         FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out _);
@@ -375,7 +424,8 @@ public class FrameTxPrefixSimulatorTests
     private static FrameTxPrefixSimulator CreateOverBuiltEnv(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
-        InterfaceLogger? logSink = null)
+        InterfaceLogger? logSink = null,
+        int timeoutMs = 250)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -388,7 +438,7 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);
 
-        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink);
+        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink, timeoutMs);
     }
 
     private static IBlockFinder BlockFinderAtHead()
