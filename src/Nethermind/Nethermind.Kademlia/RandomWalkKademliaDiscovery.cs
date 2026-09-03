@@ -14,8 +14,9 @@ namespace Nethermind.Kademlia;
 /// <remarks>
 /// Jobs iterate at <see cref="MinimumIterationDuration"/> while the routing table is still underfilled. Once the table
 /// is healthy, each job backs off to <see cref="MaximumProductiveIterationDuration"/> while nodes are still being
-/// admitted and to <see cref="MaximumIterationDuration"/> when idle. Periodic bootstrap and bucket refresh in
-/// <see cref="IKademlia{TKey,TNode}.Run"/> are unaffected.
+/// admitted. Sustained admission-free windows may extend the interval toward <see cref="MaximumIterationDuration"/>,
+/// which bounds worst-case staleness rather than describing the usual steady state. Periodic bootstrap and bucket
+/// refresh in <see cref="IKademlia{TKey,TNode}.Run"/> are unaffected.
 /// Routing-table occupancy deliberately controls this protocol-independent loop because it cannot observe whether
 /// downstream consumers accept emitted nodes or establish peer connections.
 /// </remarks>
@@ -44,14 +45,14 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     private static readonly TimeSpan MaximumProductiveIterationDuration = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Longest interval an idle job backs off to.
+    /// Longest interval an admission-free job can back off to.
     /// </summary>
     /// <remarks>
-    /// The lookup rate is inversely proportional to this cap, so almost all of the saving is already banked by the
-    /// first few doublings: a one-minute cap removes 98% of the one-second crawl rate and this one removes 99.7%,
-    /// while a half-hour cap would buy a further 0.3% at six times the worst-case delay. Because a reset only
-    /// applies to the next iteration and never wakes a sleeping job, this cap alone bounds how long a job can go
-    /// without looking up, whatever else happens in the table meanwhile.
+    /// Shared admissions normally return a live node to the productive range before this ceiling. The lookup rate is
+    /// inversely proportional to the cap, so almost all of the saving is already banked by the first few doublings:
+    /// a one-minute cap removes 98% of the one-second crawl rate and this one removes 99.7%, while a half-hour cap
+    /// would buy a further 0.3% at six times the worst-case delay. Because a reset only applies to the next iteration
+    /// and never wakes a sleeping job, this cap alone bounds how long a job can go without looking up.
     /// </remarks>
     private static readonly TimeSpan MaximumIterationDuration = TimeSpan.FromMinutes(5);
 
@@ -79,6 +80,10 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     private readonly TKadKey _currentNodeHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
     private readonly int _maxDistance = distance.MaxDistance;
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly Lock _occupancyLock = new();
+    private long _lastOccupancyTimestamp;
+    private bool _hasCachedOccupancy;
+    private bool _cachedUnderfilled;
 
     /// <inheritdoc/>
     public IAsyncEnumerable<TNode> DiscoverNodes(int concurrentDiscoveryJobs, int lookupResultLimit, CancellationToken token)
@@ -204,8 +209,22 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
 
     private bool IsUnderfilled()
     {
-        RoutingTableOccupancy occupancy = routingTable.GetOccupancy();
-        return occupancy.NodeCount * HealthyOccupancyDivisor < occupancy.Capacity;
+        lock (_occupancyLock)
+        {
+            long timestamp = _timeProvider.GetTimestamp();
+            // Coalesce discovery jobs because GetOccupancy may walk the full table under its mutation lock.
+            if (_hasCachedOccupancy &&
+                _timeProvider.GetElapsedTime(_lastOccupancyTimestamp, timestamp) < MinimumIterationDuration)
+            {
+                return _cachedUnderfilled;
+            }
+
+            RoutingTableOccupancy occupancy = routingTable.GetOccupancy();
+            _cachedUnderfilled = occupancy.NodeCount * HealthyOccupancyDivisor < occupancy.Capacity;
+            _lastOccupancyTimestamp = timestamp;
+            _hasCachedOccupancy = true;
+            return _cachedUnderfilled;
+        }
     }
 
     /// <summary>

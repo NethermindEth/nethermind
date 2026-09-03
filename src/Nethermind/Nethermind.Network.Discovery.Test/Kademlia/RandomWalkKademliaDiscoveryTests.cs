@@ -183,6 +183,17 @@ public class RandomWalkKademliaDiscoveryTests
         ]);
     }
 
+    [Test]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_should_cache_routing_table_occupancy_within_minimum_interval(CancellationToken token)
+    {
+        RoutingTableStub routingTable = new() { Occupancy = FilledTable };
+
+        await RunIterations(new TestKademlia(), routingTable, iterations: 4, token, advanceTime: false);
+
+        Assert.That(routingTable.GetOccupancyCalls, Is.EqualTo(1));
+    }
+
     /// <summary>Asserts that the first iterations waited for exactly the expected paces.</summary>
     private static void AssertPacedBy(TimeSpan[] delays, TimeSpan[] expected) =>
         Assert.That(delays[..expected.Length], Is.EqualTo(expected));
@@ -230,9 +241,14 @@ public class RandomWalkKademliaDiscoveryTests
         RoutingTableStub routingTable,
         int iterations,
         CancellationToken token,
-        Action<int>? onDelayRequested = null)
+        Action<int>? onDelayRequested = null,
+        bool advanceTime = true)
     {
-        NoWaitTimeProvider timeProvider = new() { OnDelayRequested = onDelayRequested };
+        NoWaitTimeProvider timeProvider = new()
+        {
+            OnDelayRequested = onDelayRequested,
+            AdvanceTime = advanceTime
+        };
         RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, routingTable, timeProvider);
 
         await discovery.DiscoverNodes(1, NodesPerLookup, token).Take(iterations * NodesPerLookup).ToListAsync(token);
@@ -250,27 +266,44 @@ public class RandomWalkKademliaDiscoveryTests
     private sealed class NoWaitTimeProvider : TimeProvider
     {
         private readonly ConcurrentQueue<TimeSpan> _requestedDelays = new();
+        private long _timestamp;
 
         public TimeSpan[] RequestedDelays => _requestedDelays.ToArray();
+
+        public bool AdvanceTime { get; init; } = true;
 
         /// <summary>Called as a job starts waiting, with the one-based ordinal of that wait.</summary>
         public Action<int>? OnDelayRequested { get; init; }
 
-        public override long GetTimestamp() => 0;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => Volatile.Read(ref _timestamp);
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             _requestedDelays.Enqueue(dueTime);
             OnDelayRequested?.Invoke(_requestedDelays.Count);
+            if (AdvanceTime)
+            {
+                Interlocked.Add(ref _timestamp, dueTime.Ticks);
+            }
             return System.CreateTimer(callback, state, TimeSpan.Zero, period);
         }
     }
 
     private sealed class RoutingTableStub : IRoutingTable<int, int>
     {
+        private int _getOccupancyCalls;
+
         public RoutingTableOccupancy Occupancy { get; set; } = new(0, 16);
 
-        public RoutingTableOccupancy GetOccupancy() => Occupancy;
+        public int GetOccupancyCalls => Volatile.Read(ref _getOccupancyCalls);
+
+        public RoutingTableOccupancy GetOccupancy()
+        {
+            Interlocked.Increment(ref _getOccupancyCalls);
+            return Occupancy;
+        }
 
         public void RaiseNodeAdded(int node) => OnNodeAdded?.Invoke(this, node);
 

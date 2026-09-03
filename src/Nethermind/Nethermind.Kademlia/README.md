@@ -61,6 +61,6 @@ Call `AddOrRefresh` when an authenticated node sends a valid protocol message, a
 
 Use `LookupNodesClosest(key, token)` when the caller needs the final closest set. Use `LookupNodes(key, token, maxResults)` or `IKademliaDiscovery<TKey, TNode>.DiscoverNodes(...)` when the caller wants candidates streamed as soon as lookups find them.
 
-`RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>` paces itself: it keeps looking up every second while the routing table is underfilled. Once the table is healthy, it backs off exponentially to a 30-second productive pace while admissions continue, and up to five minutes when the table stops learning anything new.
+`RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>` paces itself: it keeps looking up every second while the routing table is underfilled. Once the table is healthy, it backs off exponentially to a 30-second productive pace while admissions continue. Successive admission-free windows may extend that toward a five-minute worst-case ceiling, although shared inbound and concurrent-job admissions normally return a live node to the productive range sooner.
 
 Dispose `NodeHealthTracker<TKey, TNode, TKadKey>` when the host shuts down, or let the dependency-injection container that owns it dispose it.
