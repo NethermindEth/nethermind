@@ -157,11 +157,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
-            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
-            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            // Keep the trailing re-read after the Key/Value loads. The header read above is a load-acquire, which
+            // already stops those loads moving in front of it, so only this side needs a fence.
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
@@ -178,7 +177,6 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
@@ -270,7 +268,6 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
@@ -289,7 +286,6 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
