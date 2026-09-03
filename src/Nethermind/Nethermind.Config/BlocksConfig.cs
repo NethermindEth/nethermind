@@ -61,7 +61,7 @@ namespace Nethermind.Config
 
         // A caller buys at most ~3.4 bytes of cache per gas spent, so a 60M-gas block could ask at max for ~200 MB.
         // Real blocks store a few hundred KB, so 32 MB is a deliberate cut-off few times below max.
-        // Needs revisiting if the block gas limit changes significantly.
+        // Needs revisiting if the block gas limit or number of precompiles changes significantly.
         public int PrecompileCacheMaxKilobytes { get; set; } = 32768;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
