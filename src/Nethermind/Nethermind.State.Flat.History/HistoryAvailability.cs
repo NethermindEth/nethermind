@@ -93,7 +93,7 @@ public sealed class HistoryAvailability
         if (!hasLegacyData)
         {
             // Pre-versioning v1 stamped no format key, so any existing marker means old-layout data.
-            foreach (KeyValuePair<byte[], byte[]?> _ in _availableBlocks.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> _ in _availableBlocks.GetAll())
             {
                 hasLegacyData = true;
                 break;

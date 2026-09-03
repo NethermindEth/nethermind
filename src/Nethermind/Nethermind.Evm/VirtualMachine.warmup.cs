@@ -149,12 +149,12 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         const int WarmUpIterations = 40;
 
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         vmState.InitializeStacks(txTracer, vmState.Env.CodeInfo.CodeSpan, out EvmStack stack);
         TGasPolicy gas = TGasPolicy.FromULong(ulong.MaxValue);
-        int pc = 0;
+        nint pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {

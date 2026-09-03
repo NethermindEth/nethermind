@@ -24,21 +24,21 @@ namespace Nethermind.Stats.Model
     /// </remarks>
     public sealed class Node : IFormattable, IEquatable<Node>
     {
-        private string _clientId;
-        private string _enodeHost;
-        private string _paddedHost;
-        private string _paddedPort;
-        private EnrCacheState _enrState;
+        private string? _clientId;
+        private string? _enodeHost;
+        private string? _paddedHost;
+        private string? _paddedPort;
+        private EnrCacheState? _enrState;
         private int? _discoveryPort;
-        private IPEndPoint _discoveryAddress;
+        private IPEndPoint? _discoveryAddress;
         private static long _nextEnrCacheStateId;
 
         private sealed class EnrCacheState
         {
             public long Id { get; } = Interlocked.Increment(ref _nextEnrCacheStateId);
             public Lock Sync { get; } = new();
-            public EnrCacheState Redirect;
-            public EnrRecordState RecordState;
+            public EnrCacheState? Redirect;
+            public EnrRecordState? RecordState;
             public ulong HighestObservedSequence;
             public ulong RequestingSequence;
         }
@@ -62,8 +62,8 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= FormatHost(Address?.Address);
-        private string _host;
+        public string Host => _host ??= FormatHost(Address.Address);
+        private string? _host;
 
         /// <summary>
         /// TCP port part of the network node.
@@ -118,7 +118,7 @@ namespace Nethermind.Stats.Model
         public bool IsTrusted { get; set; }
 
 
-        public string ClientId
+        public string? ClientId
         {
             get => _clientId;
             set
@@ -133,21 +133,21 @@ namespace Nethermind.Stats.Model
 
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
 
-        public string EthDetails { get; set; }
+        public string? EthDetails { get; set; }
         public long CurrentReputation { get; set; }
-        public NodeRecord Enr
+        public NodeRecord? Enr
         {
             get
             {
                 while (true)
                 {
-                    EnrCacheState state = GetEnrState();
+                    EnrCacheState? state = GetEnrState();
                     if (state is null)
                     {
                         return null;
                     }
 
-                    EnrRecordState recordState = Volatile.Read(ref state.RecordState);
+                    EnrRecordState? recordState = Volatile.Read(ref state.RecordState);
                     if (Volatile.Read(ref state.Redirect) is null)
                     {
                         return recordState?.Record;
@@ -156,13 +156,13 @@ namespace Nethermind.Stats.Model
             }
             set
             {
-                EnrCacheState state = Volatile.Read(ref _enrState);
+                EnrCacheState? state = Volatile.Read(ref _enrState);
                 if (state is null && value is null)
                 {
                     return;
                 }
 
-                EnrRecordState replacement = value is null ? null : new EnrRecordState(value, isVerified: false);
+                EnrRecordState? replacement = value is null ? null : new EnrRecordState(value, isVerified: false);
                 while (true)
                 {
                     state = GetOrCreateEnrState();
@@ -187,13 +187,13 @@ namespace Nethermind.Stats.Model
         {
             while (true)
             {
-                EnrCacheState state = GetEnrState();
+                EnrCacheState? state = GetEnrState();
                 if (state is null)
                 {
                     return false;
                 }
 
-                EnrRecordState recordState = Volatile.Read(ref state.RecordState);
+                EnrRecordState? recordState = Volatile.Read(ref state.RecordState);
                 if (Volatile.Read(ref state.Redirect) is null)
                 {
                     return recordState?.IsVerified == true && ReferenceEquals(recordState.Record, value);
@@ -210,7 +210,7 @@ namespace Nethermind.Stats.Model
         {
             ArgumentNullException.ThrowIfNull(value);
             ulong sequence = value.EnrSequence;
-            EnrRecordState replacement = null;
+            EnrRecordState? replacement = null;
 
             while (true)
             {
@@ -234,7 +234,7 @@ namespace Nethermind.Stats.Model
                         return false;
                     }
 
-                    EnrRecordState current = Volatile.Read(ref state.RecordState);
+                    EnrRecordState? current = Volatile.Read(ref state.RecordState);
                     // An unverified sequence is not authenticated and cannot block a verified record.
                     if (current?.IsVerified == true)
                     {
@@ -266,7 +266,7 @@ namespace Nethermind.Stats.Model
             while (true)
             {
                 EnrCacheState existingState = existingNode.GetOrCreateEnrState();
-                EnrCacheState candidateState = GetEnrState();
+                EnrCacheState? candidateState = GetEnrState();
                 if (candidateState is null)
                 {
                     if (Interlocked.CompareExchange(ref _enrState, existingState, null) is null)
@@ -316,8 +316,8 @@ namespace Nethermind.Stats.Model
         private static void MergeEnrStates(EnrCacheState candidate, EnrCacheState existing)
         {
             ulong existingHighWater = Volatile.Read(ref existing.HighestObservedSequence);
-            EnrRecordState candidateRecord = Volatile.Read(ref candidate.RecordState);
-            EnrRecordState existingRecord = Volatile.Read(ref existing.RecordState);
+            EnrRecordState? candidateRecord = Volatile.Read(ref candidate.RecordState);
+            EnrRecordState? existingRecord = Volatile.Read(ref existing.RecordState);
             if (candidateRecord?.IsVerified == true)
             {
                 ulong candidateSequence = candidateRecord.Record.EnrSequence;
@@ -349,9 +349,9 @@ namespace Nethermind.Stats.Model
             Volatile.Write(ref existing.RequestingSequence, requestingSequence);
         }
 
-        private EnrCacheState GetEnrState()
+        private EnrCacheState? GetEnrState()
         {
-            EnrCacheState state = Volatile.Read(ref _enrState);
+            EnrCacheState? state = Volatile.Read(ref _enrState);
             if (state is null)
             {
                 return null;
@@ -368,7 +368,7 @@ namespace Nethermind.Stats.Model
 
         private EnrCacheState GetOrCreateEnrState()
         {
-            EnrCacheState state = GetEnrState();
+            EnrCacheState? state = GetEnrState();
             if (state is not null)
             {
                 return state;
@@ -381,7 +381,7 @@ namespace Nethermind.Stats.Model
 
         private static EnrCacheState FollowEnrState(EnrCacheState state)
         {
-            EnrCacheState redirect;
+            EnrCacheState? redirect;
             while ((redirect = Volatile.Read(ref state.Redirect)) is not null)
             {
                 state = redirect;
@@ -399,7 +399,7 @@ namespace Nethermind.Stats.Model
             {
                 while (true)
                 {
-                    EnrCacheState state = GetEnrState();
+                    EnrCacheState? state = GetEnrState();
                     if (state is null)
                     {
                         return 0;
@@ -423,7 +423,7 @@ namespace Nethermind.Stats.Model
             {
                 while (true)
                 {
-                    EnrCacheState state = GetEnrState();
+                    EnrCacheState? state = GetEnrState();
                     if (state is null)
                     {
                         return 0;
@@ -508,7 +508,7 @@ namespace Nethermind.Stats.Model
         {
             while (true)
             {
-                EnrCacheState state = GetEnrState();
+                EnrCacheState? state = GetEnrState();
                 if (state is null)
                 {
                     return false;
@@ -544,7 +544,7 @@ namespace Nethermind.Stats.Model
             if (networkNode.IsEnr)
             {
                 SetVerifiedEnr(networkNode.Enr);
-                if (networkNode.Enr.TryGetDiscoveryEndpoint(Address.AddressFamily, out IPEndPoint discoveryEndpoint))
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(Address.AddressFamily, out IPEndPoint? discoveryEndpoint))
                 {
                     DiscoveryPort = discoveryEndpoint.Port;
                 }
@@ -569,9 +569,9 @@ namespace Nethermind.Stats.Model
         /// <param name="enr">The Ethereum Node Record to read.</param>
         /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
         {
-            if (!enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            if (!enr.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint))
             {
                 node = null;
                 return false;
@@ -587,9 +587,9 @@ namespace Nethermind.Stats.Model
         /// <param name="addressFamily">The IPv4 or IPv6 address family to select.</param>
         /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromEnr(NodeRecord enr, AddressFamily addressFamily, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromEnr(NodeRecord enr, AddressFamily addressFamily, [NotNullWhen(true)] out Node? node)
         {
-            if (!enr.TryGetTcpEndpoint(addressFamily, out IPEndPoint tcpEndpoint))
+            if (!enr.TryGetTcpEndpoint(addressFamily, out IPEndPoint? tcpEndpoint))
             {
                 node = null;
                 return false;
@@ -604,9 +604,9 @@ namespace Nethermind.Stats.Model
         /// <param name="enr">The Ethereum Node Record to read.</param>
         /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
         {
-            if (!enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            if (!enr.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint))
             {
                 node = null;
                 return false;
@@ -622,9 +622,9 @@ namespace Nethermind.Stats.Model
         /// <param name="addressFamily">The IPv4 or IPv6 address family to select.</param>
         /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromDiscoveryEnr(NodeRecord enr, AddressFamily addressFamily, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, AddressFamily addressFamily, [NotNullWhen(true)] out Node? node)
         {
-            if (!enr.TryGetDiscoveryEndpoint(addressFamily, out IPEndPoint discoveryEndpoint))
+            if (!enr.TryGetDiscoveryEndpoint(addressFamily, out IPEndPoint? discoveryEndpoint))
             {
                 node = null;
                 return false;
@@ -672,6 +672,7 @@ namespace Nethermind.Stats.Model
             return ports;
         }
 
+        [MemberNotNull(nameof(Address))]
         private void SetIPEndPoint(IPEndPoint address)
         {
             Address = address;
@@ -703,12 +704,12 @@ namespace Nethermind.Stats.Model
                 return GetIPEndPoint(networkNode.Host, networkNode.Port);
             }
 
-            if (networkNode.Enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            if (networkNode.Enr.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint))
             {
                 return tcpEndpoint;
             }
 
-            if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint))
             {
                 return new IPEndPoint(discoveryEndpoint.Address, 0);
             }
@@ -716,9 +717,9 @@ namespace Nethermind.Stats.Model
             throw new InvalidOperationException("ENR is missing a usable IP endpoint.");
         }
 
-        private static bool TryFromEnr(NodeRecord enr, IPEndPoint tcpEndpoint, [MaybeNullWhen(false)] out Node node)
+        private static bool TryFromEnr(NodeRecord enr, IPEndPoint tcpEndpoint, [NotNullWhen(true)] out Node? node)
         {
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
             if (key is null)
             {
                 node = null;
@@ -734,16 +735,16 @@ namespace Nethermind.Stats.Model
             return true;
         }
 
-        private static bool TryFromDiscoveryEnr(NodeRecord enr, IPEndPoint discoveryEndpoint, [MaybeNullWhen(false)] out Node node)
+        private static bool TryFromDiscoveryEnr(NodeRecord enr, IPEndPoint discoveryEndpoint, [NotNullWhen(true)] out Node? node)
         {
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
             if (key is null)
             {
                 node = null;
                 return false;
             }
 
-            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(discoveryEndpoint.Address.AddressFamily, out IPEndPoint foundTcpEndpoint)
+            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(discoveryEndpoint.Address.AddressFamily, out IPEndPoint? foundTcpEndpoint)
                 ? foundTcpEndpoint
                 : new IPEndPoint(discoveryEndpoint.Address, 0);
 
@@ -756,7 +757,7 @@ namespace Nethermind.Stats.Model
 
         private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr, AddressFamily addressFamily)
         {
-            if (enr.TryGetDiscoveryEndpoint(addressFamily, out IPEndPoint discoveryEndpoint))
+            if (enr.TryGetDiscoveryEndpoint(addressFamily, out IPEndPoint? discoveryEndpoint))
             {
                 node.DiscoveryPort = discoveryEndpoint.Port;
             }
@@ -786,7 +787,7 @@ namespace Nethermind.Stats.Model
 
         private static IPEndPoint GetIPEndPoint(string host, int port) => new(IPAddress.Parse(host), port);
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(this, obj))
             {
@@ -805,9 +806,9 @@ namespace Nethermind.Stats.Model
 
         public override string ToString() => ToString(Format.WithPublicKey);
 
-        public string ToString(string format) => ToString(format, null);
+        public string ToString(string? format) => ToString(format, null);
 
-        public string ToString(string format, IFormatProvider formatProvider) => format switch
+        public string ToString(string? format, IFormatProvider? formatProvider) => format switch
         {
             Format.Short => $"{Host}:{Port}",
             Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
@@ -818,7 +819,7 @@ namespace Nethermind.Stats.Model
             _ => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}"
         };
 
-        public bool Equals(Node other)
+        public bool Equals(Node? other)
         {
             if (ReferenceEquals(this, other)) return true;
             if (other is null) return false;
@@ -826,7 +827,7 @@ namespace Nethermind.Stats.Model
             return Id.Equals(other.Id);
         }
 
-        public static bool operator ==(Node a, Node b)
+        public static bool operator ==(Node? a, Node? b)
         {
             if (ReferenceEquals(a, b)) return true;
 
@@ -838,7 +839,7 @@ namespace Nethermind.Stats.Model
             return a.Id.Equals(b.Id);
         }
 
-        public static bool operator !=(Node a, Node b) => !(a == b);
+        public static bool operator !=(Node? a, Node? b) => !(a == b);
 
         // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
         // Pattern structure: (ClientName|OtherClient|...)
@@ -879,7 +880,7 @@ namespace Nethermind.Stats.Model
                         .OrderByDescending(name => name.Length))),
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public static NodeClientType RecognizeClientType(string clientId)
+        public static NodeClientType RecognizeClientType(string? clientId)
         {
             if (clientId is null)
             {

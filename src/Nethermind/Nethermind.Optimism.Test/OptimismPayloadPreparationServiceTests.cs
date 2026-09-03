@@ -96,7 +96,7 @@ public class OptimismPayloadPreparationServiceTests
         testCase.Attributes.PrevRandao = Hash256.Zero;
         testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
+        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes)!;
         IBlockProductionContext context = (await service.GetPayload(payloadId))!;
         Block currentBestBlock = context.CurrentBestBlock!;
 

@@ -184,7 +184,7 @@ namespace Nethermind.Evm.Benchmark
             _straightLineEnvironment.Dispose();
             _memoryHeavyEnvironment.Dispose();
             _stateScope.Dispose();
-            StreamInterpreter.Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
+            StreamInterpreter.Enabled = StreamInterpreter.EnabledByDefault;
             StreamInterpreter.ForceAllContexts = false;
         }
 

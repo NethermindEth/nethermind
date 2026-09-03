@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -118,6 +119,22 @@ namespace Ethereum.Test.Base
             };
         }
 
+        /// <summary>
+        /// Parses the JSON-RPC error code an engine fixture expects <c>engine_newPayloadV*</c> to
+        /// answer with, or null when it expects the payload to be validated.
+        /// </summary>
+        /// <exception cref="FormatException">The fixture carries an <c>errorCode</c> that is not an integer.</exception>
+        public static int? ParseErrorCode(TestEngineNewPayloadsJson engineNewPayload)
+        {
+            if (engineNewPayload.ErrorCode is null)
+            {
+                return null;
+            }
+
+            return int.TryParse(engineNewPayload.ErrorCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out int errorCode)
+                ? errorCode
+                : throw new FormatException($"Invalid engine payload errorCode: '{engineNewPayload.ErrorCode}'");
+        }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {

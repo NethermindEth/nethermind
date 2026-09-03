@@ -215,6 +215,51 @@ public partial class ShardBlobTxDecoderTests
         Assert.That(wrapper.Proofs, Has.Length.EqualTo(BlobCellProofsCountLimit));
     }
 
+    [TestCase(nameof(Transaction.MaxFeePerBlobGas), RlpBehaviors.None)]
+    [TestCase(nameof(Transaction.BlobVersionedHashes), RlpBehaviors.None)]
+    [TestCase(nameof(Transaction.NetworkWrapper), RlpBehaviors.InMempoolForm)]
+    public void Encode_rejects_blob_transaction_missing_required_payload(string missingField, RlpBehaviors rlpBehaviors)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(blobCount: 1, isMempoolTx: true)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        switch (missingField)
+        {
+            case nameof(Transaction.MaxFeePerBlobGas):
+                tx.MaxFeePerBlobGas = null;
+                break;
+            case nameof(Transaction.BlobVersionedHashes):
+                tx.BlobVersionedHashes = null;
+                break;
+            case nameof(Transaction.NetworkWrapper):
+                tx.NetworkWrapper = null;
+                break;
+        }
+
+        Assert.That(
+            () => _txDecoder.Encode(tx, rlpBehaviors),
+            Throws.TypeOf<RlpException>().With.Message.Contains(missingField));
+    }
+
+    [Test]
+    public void Encode_rejects_blob_transaction_with_null_versioned_hash()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(blobCount: 1, isMempoolTx: true)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        byte[]?[] blobVersionedHashes = tx.BlobVersionedHashes
+            ?? throw new InvalidOperationException($"{nameof(Transaction.BlobVersionedHashes)} was not initialized.");
+        blobVersionedHashes[0] = null;
+
+        Assert.That(
+            () => _txDecoder.Encode(tx),
+            Throws.TypeOf<RlpException>().With.Message.Contains(nameof(Transaction.BlobVersionedHashes)));
+    }
+
     [TestCase(ProofVersion.V0)]
     [TestCase(ProofVersion.V1)]
     public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list(ProofVersion version)
