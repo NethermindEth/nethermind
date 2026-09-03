@@ -322,7 +322,6 @@ public unsafe class EvmOpcodesBenchmark
     {
         _stateProvider.Reset(resetBlockChanges: true);
         StaticCodeCache.Instance.Clear();
-        InstructionStreamCache.Clear();
     }
 
     [IterationSetup]

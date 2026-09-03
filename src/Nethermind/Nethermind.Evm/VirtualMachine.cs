@@ -1316,7 +1316,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>
     /// Runs the frame's bytecode through the build-specific dispatch loop, lifting fork-dependent opcode
     /// availability into compile-time <see cref="IFlag"/> type arguments. The standard build uses
-    /// tail-call opcode-table dispatch; the stream interpreter remains available only when explicitly forced.
+    /// tail-call opcode-table dispatch.
     /// </summary>
     [SkipLocalsInit]
     protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
@@ -1326,12 +1326,6 @@ public partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         IReleaseSpec spec = Spec;
-        if (StreamInterpreter.Enabled && StreamInterpreter.ForceAllContexts && spec.IncludePush0Instruction
-            && !TTracingInst.IsActive && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
-        {
-            return RunStream<TCancelable>(stream, ref stack, ref gas);
-        }
-
         return (spec.ShiftOpcodesEnabled, spec.IncludePush0Instruction) switch
         {
             (true, true) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OnFlag>(ref stack, ref gas),
