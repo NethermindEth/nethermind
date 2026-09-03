@@ -245,15 +245,20 @@ jobs:
           image=nethermind/bootnode
           tags=(-t "$image:$RELEASE_VERSION")
           if [[ "$PUBLISH_LATEST" == "true" ]]; then
-            latest_release_version=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq \
-              '.[] | select(.draft == false and (.tag_name | startswith("bootnode-"))) | .tag_name | sub("^bootnode-"; "")' |
-              sort -V |
-              tail -n 1)
-            if [[ -z "$latest_release_version" || "$RELEASE_VERSION" != "$latest_release_version" ]]; then
-              echo "::error::Docker latest can only be published for the highest published Bootnode version ($latest_release_version)."
+            if ! release_versions=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq \
+              '.[] | select(.draft == false and (.tag_name | startswith("bootnode-"))) | .tag_name | sub("^bootnode-"; "")'); then
+              echo "::error::Could not determine the highest published Bootnode version."
               exit 1
             fi
-            tags+=(-t "$image:latest")
+            latest_release_version=$(printf '%s\n' "$release_versions" | sort -V | tail -n 1)
+            if [[ -z "$latest_release_version" ]]; then
+              echo "::error::No published Bootnode release was found."
+              exit 1
+            elif [[ "$RELEASE_VERSION" != "$latest_release_version" ]]; then
+              echo "::warning::Skipping Docker latest: it tracks the highest published Bootnode version ($latest_release_version), not $RELEASE_VERSION."
+            else
+              tags+=(-t "$image:latest")
+            fi
           fi
 
           docker buildx build . \

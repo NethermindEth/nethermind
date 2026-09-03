@@ -43,7 +43,7 @@ Bootnode maintains an independent version line starting at `1.0.0`. Its separate
 
 To publish a new version, update `VersionPrefix` in `tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj` and dispatch `Release Bootnode` from a ref containing that change. To re-upload an existing published version, dispatch from its `bootnode-<version>` tag; delete a stale draft before re-cutting that version at another commit. Each release includes `SHA256SUMS` and detached `.asc` signatures. The `nethermind/bootnode` image name replaces `nethermind/nethermind-bootnode`.
 
-The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For the highest published Bootnode version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
+The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For the highest published Bootnode version, select `publish_latest` to also refresh the Bootnode `latest` image tag; an older version still publishes its versioned image but leaves `latest` unchanged.
 
 ```powershell
 docker pull nethermind/bootnode:latest
