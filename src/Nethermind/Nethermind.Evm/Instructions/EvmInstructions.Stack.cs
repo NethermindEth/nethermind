@@ -159,10 +159,11 @@ public static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, vm.VmState.Env))
+            nint jumpTarget = JumpDestination((int)destination, vm.VmState.Env);
+            if (jumpTarget < 0)
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
-            programCounter++;
+            programCounter = jumpTarget + 1;
             // Prefetch the cache line at the jump destination
             // since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
