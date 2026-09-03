@@ -271,6 +271,9 @@ public class LightTxDecoderTests
             Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
             Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
             Assert.That(decoded.PayerExposure, Is.EqualTo(withPayer ? (UInt256)12_345 : null));
+            // The shape a build before the sponsor slot writes: it has to price as unsponsored at restore and
+            // at release alike, so the record releases nothing it never took.
+            Assert.That(decoded.PersistedPaymaster, Is.Null);
         }
     }
 
@@ -308,6 +311,86 @@ public class LightTxDecoderTests
             Assert.That(decoded.PayerAddress, Is.EqualTo(TestItem.AddressB));
             Assert.That(decoded.PayerExposure, Is.EqualTo(UInt256.Zero));
         }
+    }
+
+    // The sponsor is derived from the frames, which a reloaded record no longer has, so the cap can only
+    // count it again if the record carries it. The payer slot ahead of it may be empty.
+    [TestCase(true, TestName = "a sponsor alongside a payer")]
+    [TestCase(false, TestName = "a sponsor with the payer slot left empty")]
+    public void Round_trip_carries_the_paymaster_in_the_trailing_group(bool withPayer)
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, paymaster: TestItem.AddressF);
+        if (withPayer)
+        {
+            tx.PayerAddress = TestItem.AddressB;
+            tx.PayerExposure = 99;
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressF));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+            Assert.That(decoded.PayerExposure, Is.EqualTo(withPayer ? (UInt256)99 : UInt256.Zero));
+        }
+    }
+
+    // An unsponsored record must keep the exact bytes an earlier build gives it, so the slot costs only itself.
+    [Test]
+    public void A_paymaster_grows_the_record_by_its_own_slot_alone()
+    {
+        Transaction withPayer = BlobCarryingTx(TxType.FrameTx);
+        withPayer.PayerAddress = TestItem.AddressB;
+        withPayer.PayerExposure = 1;
+        Transaction sponsored = BlobCarryingTx(TxType.FrameTx, paymaster: TestItem.AddressF);
+        sponsored.PayerAddress = TestItem.AddressB;
+        sponsored.PayerExposure = 1;
+
+        int grownBy = LightTxDecoder.Encode(sponsored).Length - LightTxDecoder.Encode(withPayer).Length;
+
+        Assert.That(grownBy, Is.EqualTo(21), "the 21-byte address and nothing else");
+    }
+
+    // The slots are read against the group end, so a build that appends one must not make every record
+    // written by it unreadable to this one.
+    [Test]
+    public void A_record_carrying_an_unknown_trailing_slot_still_decodes()
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, paymaster: TestItem.AddressF);
+        tx.PayerAddress = TestItem.AddressB;
+        tx.PayerExposure = 1;
+        byte[] extended = WithExtraTrailingSlot(LightTxDecoder.Encode(tx));
+
+        LightTransaction decoded = LightTxDecoder.Decode(extended);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressF));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    /// <summary>Appends one slot to the record's trailing group, as a later build would.</summary>
+    private static byte[] WithExtraTrailingSlot(byte[] record)
+    {
+        // The group closes the record, so its short-form header is the one byte whose declared length runs
+        // exactly to the end.
+        int header = -1;
+        for (int i = record.Length - 1; i >= 0; i--)
+        {
+            if (record[i] is >= 0xC0 and <= 0xF7 && record[i] - 0xC0 == record.Length - i - 1)
+            {
+                header = i;
+                break;
+            }
+        }
+
+        Assert.That(header, Is.GreaterThanOrEqualTo(0), "the record must end in a short-form trailing group");
+
+        byte[] extended = [.. record, 0x2A];
+        extended[header]++;
+        return extended;
     }
 
     // A legacy record whose flat list is empty leaves the group zero-length, and IsSequenceNext is an
@@ -362,7 +445,7 @@ public class LightTxDecoderTests
         Assert.That(grownBy, Is.EqualTo(1 + 1 + 21 + 1));
     }
 
-    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null, Address paymaster = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -387,6 +470,12 @@ public class LightTxDecoderTests
         {
             tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
             tx.FrameSignatures = [];
+        }
+
+        if (paymaster is not null)
+        {
+            // The first payment-approving frame of the prefix is the sponsor, so it has to lead the self-relay one.
+            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, paymaster, gasLimit: 60_000, UInt256.Zero, default), .. tx.Frames!];
         }
 
         if (deadline is not null)

@@ -90,7 +90,8 @@ public class LightTransaction : Transaction
         ulong? expiryDeadline = null,
         UInt256[]? nonceKeys = null,
         Address? payerAddress = null,
-        UInt256? payerExposure = null)
+        UInt256? payerExposure = null,
+        Address? paymaster = null)
     {
         Type = type;
         Hash = hash;
@@ -113,6 +114,8 @@ public class LightTransaction : Transaction
         // admission took rather than nothing.
         PayerAddress = payerAddress;
         PayerExposure = payerExposure;
+        // The sponsor slot the record still occupies, so the cap counts it again after a reload.
+        PersistedPaymaster = paymaster;
         _size = size;
     }
 

@@ -49,16 +49,20 @@ public class LightTxDecoder : TxDecoder<Transaction>
             : Rlp.LengthOfSequence(content);
     }
 
-    /// <summary>Content length of the grouped form, or zero for a record that needs no payer.</summary>
+    /// <summary>Content length of the grouped form, or zero for a record that needs neither payer nor paymaster.</summary>
     private static int TrailingContentLength(Transaction tx)
     {
-        if (tx.PayerAddress is null) return 0;
+        Address? paymaster = FrameTxValidation.GetPrefixPaymaster(tx);
+        if (tx.PayerAddress is null && paymaster is null) return 0;
 
         // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
         // nonce_keys list a payerless record still writes, whose first element is a scalar.
         return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
                + Rlp.LengthOf(tx.PayerAddress)
-               + Rlp.LengthOf(tx.PayerExposure ?? default);
+               + Rlp.LengthOf(tx.PayerExposure ?? default)
+               // Written only when there is a sponsor, so a record without one keeps the exact bytes an
+               // earlier build gives it.
+               + (paymaster is null ? 0 : Rlp.LengthOf(paymaster));
     }
 
     public static byte[] Encode(Transaction tx)
@@ -104,6 +108,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
             // A payer that never reached the exposure gate holds no reservation, which this record does not
             // distinguish from a zero one: reserving, releasing and restoring zero are all no-ops.
             writer.Encode(tx.PayerExposure ?? default);
+            // The sponsor the pending-paymaster cap counts against, unrecoverable after a reload because the
+            // frames that named it are gone.
+            if (FrameTxValidation.GetPrefixPaymaster(tx) is Address paymaster) writer.Encode(paymaster);
         }
 
         return bytes;
@@ -154,6 +161,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         UInt256[]? nonceKeys = null;
         Address? payerAddress = null;
         UInt256? payerExposure = null;
+        Address? paymaster = null;
         if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
         {
             // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
@@ -166,8 +174,13 @@ public class LightTxDecoder : TxDecoder<Transaction>
             if (trailingLength > 0 && ctx.IsSequenceNext())
             {
                 nonceKeys = DecodeKeysOrNull(ref ctx);
-                if (ctx.Position < end) payerAddress = ctx.DecodeAddress();
+                // Nullable: a record carrying a sponsor but no payer still has to fill the slot ahead of it.
+                if (ctx.Position < end) payerAddress = ctx.DecodeAddressOrNull();
                 if (ctx.Position < end) payerExposure = ctx.DecodeUInt256();
+                if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
+                // Positional slots read against the group end, so a slot a later build appends is skipped
+                // here rather than making the whole record unreadable.
+                ctx.Position = end;
             }
             else
             {
@@ -199,7 +212,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             expiryDeadline,
             nonceKeys,
             payerAddress,
-            payerExposure);
+            payerExposure,
+            paymaster);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)

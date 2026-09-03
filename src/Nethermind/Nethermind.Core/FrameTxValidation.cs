@@ -375,8 +375,8 @@ public static class FrameTxValidation
     /// still keyed. Derived from the frame layout alone, never from state. The target is resolved as the processor
     /// resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
     /// for itself — the self-relay prefix included — uses no paymaster and is bounded by its own balance instead.
-    /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, unset after a
-    /// reload — <c>null</c> then means unknown, not unsponsored.
+    /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, which it carries
+    /// across a reload so the cap counts the record the same either side of one.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {

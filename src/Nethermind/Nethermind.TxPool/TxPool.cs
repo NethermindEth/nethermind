@@ -233,6 +233,13 @@ namespace Nethermind.TxPool
                     {
                         _payerExposure.Restore(payer, reserved);
                     }
+
+                    // Taken again rather than re-judged, for the same reason: the slot was granted at admission,
+                    // and a record whose slot went untaken would release one it never held when it leaves.
+                    if (GetPaymaster(restored) is Address paymaster)
+                    {
+                        _pendingPaymasters.Reserve(paymaster);
+                    }
                 }
             }
 
@@ -553,8 +560,7 @@ namespace Nethermind.TxPool
         }
 
 #if DEBUG
-        // A restored record's payer is persisted, so it is inside this check's reach. Its paymaster is not:
-        // LightTxDecoder drops it, so GetPaymaster prices null here and at release alike.
+        // A restored record's payer and paymaster are both persisted, so it is inside this check's reach.
         private static void AccumulateFrameTxBookkeeping(
             Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring)
         {
