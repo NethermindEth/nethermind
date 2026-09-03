@@ -170,9 +170,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         _shouldRestoreRipemdTouch = false;
 
-        // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
         MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
@@ -991,19 +989,6 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>
-    /// Prepares the opcode methods to be used during EVM execution,
-    /// based on the provided release specification.
-    /// </summary>
-    /// <typeparam name="TTracingInst">
-    /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
-    /// should be used.
-    /// </typeparam>
-    /// <param name="spec">
-    /// The release specification, which is used to prepare the appropriate opcodes.
-    /// </param>
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag;
-
-    /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
     /// various conditions such as exceptions, reverts, and contract creation flows. For contract creation,
     /// the method adjusts the available gas by the code deposit cost and validates the deployed code.
@@ -1315,8 +1300,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     /// <summary>
     /// Runs the frame's bytecode through the build-specific dispatch loop, lifting fork-dependent opcode
-    /// availability into compile-time <see cref="IFlag"/> type arguments. The standard build uses
-    /// tail-call opcode-table dispatch.
+    /// availability into compile-time <see cref="IFlag"/> type arguments.
     /// </summary>
     [SkipLocalsInit]
     protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(

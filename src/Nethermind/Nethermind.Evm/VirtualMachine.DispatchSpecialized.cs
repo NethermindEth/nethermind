@@ -11,9 +11,8 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// The interpreter dispatch loop. The standard build uses tail-call opcode-table dispatch; alternative builds
-/// provide their own dispatch implementation. Fork gates are compile-time <see cref="IFlag"/> type args
-/// (<c>TShift</c>: EIP-145, <c>TPush0</c>: EIP-3855) that the JIT folds.
+/// The tail-call opcode-table interpreter dispatch loop. Fork gates are compile-time <see cref="IFlag"/> type
+/// args (<c>TShift</c>: EIP-145, <c>TPush0</c>: EIP-3855) that the JIT folds.
 /// </summary>
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
@@ -24,8 +23,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
     /// <returns>The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts.</returns>
     /// <remarks>
-    /// Implemented per build so the standard runtime and constrained guest can use different dispatch
-    /// strategies without branching in the instruction path.
+    /// Implemented per build so the standard runtime and constrained guest can use different opcode-table
+    /// lifetimes without branching in the instruction path.
     /// </remarks>
     private partial EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,

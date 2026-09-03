@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using InlineIL;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 #if DEBUG
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Debugger;
@@ -29,6 +30,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
     }
 
+    private sealed unsafe class OpcodeTable
+    {
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedNoTrace;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedNoTraceCancelable;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedTraced;
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]? ThreadedTracedCancelable;
+
+        public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[]
+            GetThreaded<TTracingInst, TCancelable>(IReleaseSpec spec)
+            where TTracingInst : struct, IFlag
+            where TCancelable : struct, IFlag
+        {
+            if (TTracingInst.IsActive)
+            {
+                return TCancelable.IsActive
+                    ? ThreadedTracedCancelable ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec)
+                    : ThreadedTraced ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec);
+            }
+
+            return TCancelable.IsActive
+                ? ThreadedNoTraceCancelable ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec)
+                : ThreadedNoTrace ??= GenerateThreadedOpcodeTable<TTracingInst, TCancelable>(spec);
+        }
+    }
+
     [SkipLocalsInit]
     private partial EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,
@@ -42,7 +68,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        OpcodeTable opcodeTable = _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
+        OpcodeTable opcodeTable = GetOpcodeTable();
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>[] handlers =
             opcodeTable.GetThreaded<TTracingInst, TCancelable>(Spec);
 
