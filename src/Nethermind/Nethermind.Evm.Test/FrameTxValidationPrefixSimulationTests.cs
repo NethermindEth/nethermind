@@ -236,11 +236,12 @@ public class FrameTxValidationPrefixSimulationTests
         AssertPrefixCallTarget(TestItem.AddressC, violates: true);
     }
 
-    // The target sits at a different stack slot for each of these, so the allowed row is what proves the
-    // slot is read rather than the ban firing on whatever else is on the stack.
+    // EXTCODECOPY's operands are all zero, which reads as a forbidden target itself, so only its allowed
+    // row tells a correct target slot from a wrong one; the refused row alone would pass on either.
     [TestCase(Instruction.EXTCODESIZE, 0, false, TestName = "EXTCODESIZE of a helper contract is allowed")]
     [TestCase(Instruction.EXTCODESIZE, 0, true, TestName = "EXTCODESIZE of a codeless target is refused")]
     [TestCase(Instruction.EXTCODEHASH, 0, true, TestName = "EXTCODEHASH of a codeless target is refused")]
+    [TestCase(Instruction.EXTCODECOPY, 3, false, TestName = "EXTCODECOPY of a helper contract is allowed")]
     [TestCase(Instruction.EXTCODECOPY, 3, true, TestName = "EXTCODECOPY of a codeless target is refused")]
     public void Simulate_PrefixReadsForeignCode_IsClassifiedByTheTarget(Instruction opcode, int extraOperands, bool violates)
     {
@@ -257,6 +258,7 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
     }
 
+    /// <remarks>Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.</remarks>
     private void AssertPrefixCallTarget(Address target, bool violates)
     {
         byte[] code = Prepare.EvmCode
@@ -266,7 +268,7 @@ public class FrameTxValidationPrefixSimulationTests
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
-        Assert.That(tracer.Violated, Is.EqualTo(violates));
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
     }
 
     // The banned list is the security surface of admission, so it is swept whole: any of these in the

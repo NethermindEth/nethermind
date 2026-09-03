@@ -235,9 +235,13 @@ public class FrameTxPrefixSimulatorTests
         // simulator as a cancellation. Read as an ordinary one it would defer, and admission would pool
         // the transaction the trace rules exist to refuse.
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
-        Violate(processor);
+        // One arrangement, so the tracer can only be reached by the call the simulator itself makes.
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
-            .Throws(new OperationCanceledException());
+            .Returns<TransactionResult>(static call =>
+            {
+                call.ArgAt<ITxTracer>(1).LoadOperationStorage(TestItem.AddressB, UInt256.Zero, ReadOnlySpan<byte>.Empty);
+                throw new OperationCanceledException();
+            });
 
         FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
@@ -271,11 +275,6 @@ public class FrameTxPrefixSimulatorTests
             Assert.That(result.NodeBound, Is.False, "the sender chose the prefix that spent the clock");
         }
     }
-
-    /// <summary>Records a trace violation on whichever tracer the simulator hands the processor.</summary>
-    private static void Violate(ITransactionProcessor processor) =>
-        processor.When(static p => p.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()))
-            .Do(static call => call.ArgAt<ITxTracer>(1).LoadOperationStorage(TestItem.AddressB, UInt256.Zero, ReadOnlySpan<byte>.Empty));
 
     [Test]
     public void Simulate_AfterDispose_LeavesTheTransactionUndecided()
