@@ -154,16 +154,12 @@ public class HistoricalTraceReExecutionTests
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
-    private FlatScopeProvider CreateScopeProvider(IFlatDbManager manager)
-    {
-        FlatDbConfig config = new() { CompactSize = 16, HistoryEnabled = true };
-        return new FlatScopeProvider(
-            new MemDb(),
-            manager,
-            config,
-            new NoopTrieWarmer(),
-            ResourcePool.Usage.ReadOnlyProcessingEnv,
-            LimboLogs.Instance,
-            isReadOnly: false);
-    }
+    private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager) => new(
+        new MemDb(),
+        manager,
+        new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },
+        new NoopTrieWarmer(),
+        ResourcePool.Usage.ReadOnlyProcessingEnv,
+        LimboLogs.Instance,
+        isReadOnly: false);
 }

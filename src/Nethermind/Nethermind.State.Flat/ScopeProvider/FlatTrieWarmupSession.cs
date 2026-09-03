@@ -16,9 +16,8 @@ internal sealed class FlatTrieWarmupSession :
     IWorldStateScopeProvider.ITrieWarmupSession,
     ITrieWarmer.IAddressWarmer
 {
+    private readonly SnapshotBundle _snapshotBundle;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
-    private readonly TransientResource _transientResource;
-    private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
     private readonly PatriciaTree _stateTree;
     private readonly ILogManager _logManager;
@@ -30,36 +29,22 @@ internal sealed class FlatTrieWarmupSession :
     private bool _isDisposing;
     private ExceptionDispatchInfo? _disposeException;
 
-    internal bool IsDisposing
-    {
-        get
-        {
-            lock (_lifetimeLock)
-            {
-                return _isDisposing;
-            }
-        }
-    }
+    internal Action? OnWaitingForJobs;
 
     public FlatTrieWarmupSession(
         in StateId baseState,
         SnapshotBundle snapshotBundle,
-        ITrieNodeCache trieNodeCache,
         ITrieWarmer trieWarmer,
         ILogManager logManager)
     {
         ReadOnlySnapshotBundle? readOnlySnapshotBundle = null;
-        TransientResource? transientResource = null;
         try
         {
             readOnlySnapshotBundle = snapshotBundle.TryLeaseReadOnlySnapshotBundle()
                 ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
-            transientResource = snapshotBundle.TryLeaseTransientResource()
-                ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
 
+            _snapshotBundle = snapshotBundle;
             _readOnlySnapshotBundle = readOnlySnapshotBundle;
-            _transientResource = transientResource;
-            _trieNodeCache = trieNodeCache;
             _trieWarmer = trieWarmer;
             _logManager = logManager;
             _stateTree = new PatriciaTree(new StateResolver(this), logManager)
@@ -69,68 +54,105 @@ internal sealed class FlatTrieWarmupSession :
 
             _trieWarmer.OnEnterScope();
             readOnlySnapshotBundle = null;
-            transientResource = null;
         }
         finally
         {
-            transientResource?.ReleaseLease();
             readOnlySnapshotBundle?.Dispose();
         }
     }
 
     public void HintWarmAccount(in ValueAddress address)
     {
+        if (!_snapshotBundle.ShouldQueuePrewarm(in address)) return;
+
         lock (_lifetimeLock)
         {
-            if (_isDisposing || !_transientResource.ShouldPrewarm(in address, null)) return;
+            if (_isDisposing) return;
 
-            Address accountAddress = address.ToAddress();
-            QueueAcceptedJob(() => _trieWarmer.PushAddressJob(this, accountAddress, sequenceId: 0));
+            AcceptJob();
+            bool accepted = false;
+            try
+            {
+                accepted = _trieWarmer.PushAddressJob(this, address.ToAddress(), sequenceId: 0);
+            }
+            finally
+            {
+                if (!accepted) CompleteJobUnderLock();
+            }
         }
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
+        if (!_snapshotBundle.ShouldQueuePrewarm(in address, index)) return;
+
+        Address accountAddress = address.ToAddress();
+        StorageWarmer? storageWarmer;
         lock (_lifetimeLock)
         {
-            if (_isDisposing || !_transientResource.ShouldPrewarm(in address, index)) return;
-
-            StorageWarmer? storageWarmer = GetOrCreateStorageWarmer(address.ToAddress());
-            if (storageWarmer is not null)
+            if (_isDisposing) return;
+            if (_storageWarmers.TryGetValue(accountAddress, out storageWarmer))
             {
-                UInt256 slot = index;
-                QueueAcceptedJob(() => _trieWarmer.PushSlotJobMpmc(storageWarmer, in slot, sequenceId: 0));
+                QueueSlotJob(storageWarmer, in index);
+                return;
             }
+
+            AcceptJob();
+        }
+
+        Hash256 storageRoot;
+        try
+        {
+            storageRoot = _readOnlySnapshotBundle.GetAccount(accountAddress)?.StorageRoot ?? Keccak.EmptyTreeHash;
+        }
+        catch
+        {
+            CompleteJob();
+            throw;
+        }
+
+        lock (_lifetimeLock)
+        {
+            if (_isDisposing || storageRoot == Keccak.EmptyTreeHash)
+            {
+                CompleteJobUnderLock();
+                return;
+            }
+
+            if (!_storageWarmers.TryGetValue(accountAddress, out storageWarmer))
+            {
+                storageWarmer = new StorageWarmer(this, accountAddress.ToAccountPath.ToHash256(), storageRoot, _logManager);
+                _storageWarmers.Add(accountAddress, storageWarmer);
+            }
+
+            QueueReservedSlotJob(storageWarmer, in index);
         }
     }
 
-    private StorageWarmer? GetOrCreateStorageWarmer(Address address)
+    private void QueueSlotJob(StorageWarmer storageWarmer, in UInt256 index)
     {
-        if (_storageWarmers.TryGetValue(address, out StorageWarmer? storageWarmer)) return storageWarmer;
-
-        Hash256 storageRoot = _readOnlySnapshotBundle.GetAccount(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        if (storageRoot == Keccak.EmptyTreeHash) return null;
-
-        storageWarmer = new StorageWarmer(this, address.ToAccountPath.ToHash256(), storageRoot, _logManager);
-        _storageWarmers.Add(address, storageWarmer);
-        return storageWarmer;
+        AcceptJob();
+        QueueReservedSlotJob(storageWarmer, in index);
     }
 
-    private void QueueAcceptedJob(Func<bool> queueJob)
+    private void QueueReservedSlotJob(StorageWarmer storageWarmer, in UInt256 index)
+    {
+        bool accepted = false;
+        try
+        {
+            accepted = _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, sequenceId: 0);
+        }
+        finally
+        {
+            if (!accepted) CompleteJobUnderLock();
+        }
+    }
+
+    private void AcceptJob()
     {
         if (_acceptedJobs++ == 0)
         {
             _jobsDrained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-
-        bool accepted = false;
-        try
-        {
-            accepted = queueJob();
-        }
-        finally
-        {
-            if (!accepted) CompleteJob();
         }
     }
 
@@ -151,30 +173,23 @@ internal sealed class FlatTrieWarmupSession :
     {
         lock (_lifetimeLock)
         {
-            if (--_acceptedJobs == 0) _jobsDrained!.SetResult();
+            CompleteJobUnderLock();
         }
+    }
+
+    private void CompleteJobUnderLock()
+    {
+        if (--_acceptedJobs == 0) _jobsDrained!.SetResult();
     }
 
     private TrieNode FindNodeOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
-        bool found = address is null
-            ? _transientResource.TryGetStateNode(in path, hash, out TrieNode? node)
-            : _transientResource.TryGetStorageNode((Hash256AsKey)address, in path, hash, out node);
-        if (found) return node!;
-
-        if (_trieNodeCache.TryGet(address, in path, hash, out node)) return node;
-
-        bool foundInSnapshot = address is null
-            ? _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node)
-            : _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
-        if (!foundInSnapshot)
-        {
-            node = new TrieNode(NodeType.Unknown, hash);
-            node.MarkWarmerOwned();
-        }
-        return address is null
-            ? _transientResource.GetOrAddStateNode(in path, node!)
-            : _transientResource.GetOrAddStorageNode((Hash256AsKey)address, in path, node!);
+        TrieNode node = address is null
+            ? _snapshotBundle.FindStateNodeOrUnknownForTrieWarmer(in path, hash)
+            : _snapshotBundle.FindStorageNodeOrUnknownTrieWarmer(address, in path, hash);
+        return node.Keccak != hash
+            ? throw new NodeHashMismatchException($"Node hash mismatch. Address {address}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}")
+            : node;
     }
 
     public void Dispose()
@@ -195,14 +210,17 @@ internal sealed class FlatTrieWarmupSession :
             {
                 try
                 {
-                    jobsDrained?.GetAwaiter().GetResult();
+                    if (jobsDrained is not null)
+                    {
+                        OnWaitingForJobs?.Invoke();
+                        jobsDrained.GetAwaiter().GetResult();
+                    }
                 }
                 catch (Exception exception)
                 {
                     disposeException = ExceptionDispatchInfo.Capture(exception);
                 }
 
-                CaptureException(ref disposeException, _transientResource.ReleaseLease);
                 CaptureException(ref disposeException, _readOnlySnapshotBundle.Dispose);
                 CaptureException(ref disposeException, _trieWarmer.OnExitScope);
             }
@@ -232,50 +250,35 @@ internal sealed class FlatTrieWarmupSession :
         }
     }
 
-    private sealed class StateResolver(FlatTrieWarmupSession scope) : AbstractMinimalTrieStore
+    private sealed class StateResolver(FlatTrieWarmupSession session) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-        {
-            TrieNode node = scope.FindNodeOrUnknown(address: null, in path, hash);
-            return node.Keccak != hash
-                ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}")
-                : node;
-        }
+        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+            session.FindNodeOrUnknown(address: null, in path, hash);
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            scope._readOnlySnapshotBundle.TryLoadStateRlp(in path, hash, flags);
+            session._readOnlySnapshotBundle.TryLoadStateRlp(in path, hash, flags);
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-            address is null ? this : new StorageResolver(scope, address);
+            address is null ? this : new StorageResolver(session, address);
     }
 
-    private sealed class StorageResolver(FlatTrieWarmupSession scope, Hash256AsKey address) : AbstractMinimalTrieStore
+    private sealed class StorageResolver(FlatTrieWarmupSession session, Hash256AsKey address) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-        {
-            TrieNode node = scope.FindNodeOrUnknown(address, in path, hash);
-            return node.Keccak != hash
-                ? throw new NodeHashMismatchException($"Node hash mismatch. Address {address.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}")
-                : node;
-        }
+        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+            session.FindNodeOrUnknown(address, in path, hash);
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            scope._readOnlySnapshotBundle.TryLoadStorageRlp(address, in path, hash, flags);
+            session._readOnlySnapshotBundle.TryLoadStorageRlp(address, in path, hash, flags);
     }
 
-    private sealed class StorageWarmer : ITrieWarmer.IStorageWarmer
+    private sealed class StorageWarmer
+        (FlatTrieWarmupSession session, Hash256 addressHash, Hash256 storageRoot, ILogManager logManager)
+        : ITrieWarmer.IStorageWarmer
     {
-        private readonly FlatTrieWarmupSession _scope;
-        private readonly StorageTree _storageTree;
-
-        public StorageWarmer(FlatTrieWarmupSession scope, Hash256 addressHash, Hash256 storageRoot, ILogManager logManager)
+        private readonly StorageTree _storageTree = new(new StorageResolver(session, addressHash), storageRoot, logManager)
         {
-            _scope = scope;
-            _storageTree = new StorageTree(new StorageResolver(scope, addressHash), storageRoot, logManager)
-            {
-                RootHash = storageRoot
-            };
-        }
+            RootHash = storageRoot
+        };
 
         public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
         {
@@ -288,7 +291,7 @@ internal sealed class FlatTrieWarmupSession :
             }
             finally
             {
-                _scope.CompleteJob();
+                session.CompleteJob();
             }
         }
     }

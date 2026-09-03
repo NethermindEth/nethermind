@@ -56,41 +56,70 @@ public class PrewarmerScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
-        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
+        PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
         IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
-        lock (preBlockCaches)
+        IWorldStateScopeProvider.IScope? scope = null;
+        bool consumerScopeOpened = false;
+        bool registeredMainScope = false;
+        try
         {
-            if (isPrewarmer) trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
-        }
-        if (!isPrewarmer)
-        {
-            try
+            scope = baseProvider.BeginScope(baseBlock, metrics);
+            if (isPrewarmer)
+            {
+                if (storageReadCapture is null)
+                {
+                    lock (preBlockCaches.MainScopeLock)
+                    {
+                        trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
+                    }
+                }
+            }
+            else
             {
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
+                consumerScopeOpened = true;
                 preBlockCaches.BeginConsumerScope();
-                lock (preBlockCaches)
+                lock (preBlockCaches.MainScopeLock)
                 {
                     preBlockCaches.MainScope = scope;
+                    registeredMainScope = true;
                 }
                 // The consumer reads the state at baseBlock through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
             }
-            catch
+
+            ScopeWrapper wrapper = new(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
+            scope = null;
+            trieWarmupSession = null;
+            consumerScopeOpened = false;
+            return wrapper;
+        }
+        finally
+        {
+            if (registeredMainScope)
             {
-                preBlockCaches.MainScope = null;
+                lock (preBlockCaches.MainScopeLock)
+                {
+                    if (ReferenceEquals(preBlockCaches.MainScope, scope)) preBlockCaches.MainScope = null;
+                }
+            }
+
+            try
+            {
+                scope?.Dispose();
+            }
+            finally
+            {
                 try
                 {
-                    scope.Dispose();
+                    trieWarmupSession?.Dispose();
                 }
                 finally
                 {
-                    preBlockCaches.EndConsumerScope();
+                    if (consumerScopeOpened) preBlockCaches.EndConsumerScope();
                 }
-                throw;
             }
         }
-        PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
     }
 
     private sealed class ScopeWrapper(
@@ -123,22 +152,28 @@ public class PrewarmerScopeProvider(
         {
             if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
 
+            ObserveWriteBatchToDispose();
             if (isPrewarmer)
             {
-                ObserveWriteBatchToDispose();
-                trieWarmupSession?.Dispose();
-                baseScope.Dispose();
+                try
+                {
+                    trieWarmupSession?.Dispose();
+                }
+                finally
+                {
+                    baseScope.Dispose();
+                }
                 return;
             }
 
             // Unregister before teardown so no new warm hints target a disposing scope.
-            lock (preBlockCaches)
+            lock (preBlockCaches.MainScopeLock)
             {
-                preBlockCaches.MainScope = null;
+                if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
             }
+
             try
             {
-                ObserveWriteBatchToDispose();
                 baseScope.Dispose();
             }
             finally
