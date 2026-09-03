@@ -889,6 +889,7 @@ public static partial class EvmInstructions
     /// The counter advanced past the pushed bytes, with <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static OpcodeResult InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
