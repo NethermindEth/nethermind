@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
@@ -160,17 +161,22 @@ public class FrameTxProducerRetryMeasurement
         }
     }
 
+    private static IEnumerable<TestCaseData> RetryCases()
+    {
+        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        {
+            foreach (int kRetry in new int[] { 1, 2, 4, 8 })
+            {
+                yield return new TestCaseData(verifyGas, kRetry);
+            }
+        }
+    }
+
     /// <summary>
     /// Measures the unpaid verification work extracted from a producer by a never-approving prefix
     /// that is evicted after <paramref name="kRetry"/> failed attempts.
     /// </summary>
-    [TestCase(100_000ul, 1)]
-    [TestCase(100_000ul, 2)]
-    [TestCase(100_000ul, 4)]
-    [TestCase(100_000ul, 8)]
-    [TestCase(236_285ul, 1)]
-    [TestCase(300_000ul, 1)]
-    [TestCase(500_000ul, 1)]
+    [TestCaseSource(nameof(RetryCases))]
     public void ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
         _stateProvider.CreateAccount(Sender, 100.Ether);
