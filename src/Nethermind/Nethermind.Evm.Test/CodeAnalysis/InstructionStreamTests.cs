@@ -370,6 +370,12 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             SpecProvider.GetSpec(Activation).IncludePush0Instruction,
             "the differential fixture must run on a fork where the stream engages");
 
+    [Test]
+    public void StreamInterpreter_IsDisabledByDefault() =>
+        Assert.That(StreamInterpreter.EnabledByDefault, Is.False,
+            "the bytecode loop measured faster on every benchmarked call shape and on captured eth_call traffic; "
+            + "re-enabling the stream by default needs a benchmark that shows it winning");
+
     private static readonly byte[] CalleeCode = Prepare.EvmCode
         .PushData(7).PushData(6).Op(Instruction.MUL)
         .PushData(0).Op(Instruction.MSTORE)

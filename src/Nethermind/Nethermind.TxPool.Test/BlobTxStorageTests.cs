@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -10,6 +11,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -407,11 +411,61 @@ public class BlobTxStorageTests
         Assert.That(results[1], Is.Null);
     }
 
-    private static Transaction CreateBlobTransaction() => Build.A.Transaction
+    /// <remarks>
+    /// A corrupt light record surfaces as one of three unrelated exception roots, so each case pins the one it
+    /// exercises: <see cref="RlpReader"/> slices without bounds checks, which turns truncation into
+    /// <see cref="ArgumentOutOfRangeException"/> or <see cref="IndexOutOfRangeException"/> rather than <see cref="RlpException"/>.
+    /// </remarks>
+    private static IEnumerable<TestCaseData> CorruptLightTxRecords()
+    {
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(ArgumentOutOfRangeException))
+            .SetName("GetAll_skips_unreadable_record(truncated)");
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(IndexOutOfRangeException))
+            .SetName("GetAll_skips_unreadable_record(empty)");
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [0x82, 0x00, 0x01, .. valid[1..]]), typeof(RlpException))
+            .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
+            .SetName("GetAll_skips_unreadable_record(garbage)");
+        // A record written by a newer version carrying a fifth optional field: every record fails after a downgrade.
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01]), typeof(RlpException))
+            .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
+    }
+
+    [TestCaseSource(nameof(CorruptLightTxRecords))]
+    public void GetAll_should_skip_unreadable_records_and_warn_once(Func<byte[], byte[]> corrupt, Type expectedDecodeException)
+    {
+        InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+        iLogger.IsWarn.Returns(true);
+
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb, new OneLoggerLogManager(new ILogger(iLogger)));
+        Transaction[] txs = [CreateBlobTransaction(TestItem.PrivateKeyA), CreateBlobTransaction(TestItem.PrivateKeyB)];
+
+        byte[] corruptRecord = corrupt(LightTxDecoder.Encode(txs[0]));
+        Exception decodeFailure = Assert.Throws(Is.InstanceOf(expectedDecodeException), () => LightTxDecoder.Decode(corruptRecord),
+            "case no longer exercises the decode failure mode it is meant to cover")!;
+
+        blobTxStorage.Add(txs[0]);
+        columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs).Set(TestItem.KeccakA, corruptRecord);
+        blobTxStorage.Add(txs[1]);
+
+        LightTransaction[] restored = blobTxStorage.GetAll().ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Select(static tx => tx.Hash), Is.EquivalentTo(txs.Select(static tx => tx.Hash)));
+            iLogger.Received(1).Warn(Arg.Is<string>(message =>
+                message.Contains("Skipped 1 of 3 ") && message.Contains($"{decodeFailure.GetType().Name}: {decodeFailure.Message}")));
+        }
+    }
+
+    private static Transaction CreateBlobTransaction() => CreateBlobTransaction(TestItem.PrivateKeyA);
+
+    private static Transaction CreateBlobTransaction(PrivateKey signer) => Build.A.Transaction
         .WithShardBlobTxTypeAndFields()
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)
-        .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA).TestObject;
+        .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), signer).TestObject;
 
     private sealed class TrackingColumnsDb : IColumnsDb<BlobTxsColumns>
     {

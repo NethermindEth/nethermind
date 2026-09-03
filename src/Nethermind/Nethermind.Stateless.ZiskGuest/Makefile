@@ -11,6 +11,16 @@ ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9
 # ziskemu ROMs the whole .text, so even unreachable F/D/C/A instructions reject
 # the guest - fail at build time instead.
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
+# The guest has no instruction cache, so the code-size cost of inlining buys nothing back
+# and favouring speed is close to free. Must land together with the TrieNode seqlock
+# collapse: -Ot over the seqlock builds a guest whose output success flag is 0. The
+# mechanism is unconfirmed, but the suspicion is that under --error-on-atomic the
+# Interlocked/Volatile the seqlock was built on lower to non-atomic sequences that happen to
+# work at the default optimization level and do not survive -Ot. That would not be specific
+# to the seqlock: PatriciaTree.Set and Microsoft.Extensions.ObjectPool carry the same
+# constructs and compile correctly today, so suspect them first if the guest ever starts
+# failing silently again.
+OPT_FLAGS ?= -Ot
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -51,6 +61,7 @@ build: dotnet-build
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
+		$(OPT_FLAGS) \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
