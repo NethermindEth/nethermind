@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
@@ -53,6 +54,23 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     {
         TestAllTracerWithOutput receipt = Execute((byte)Instruction.STOP);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
+    }
+
+    [Test]
+    public void Tail_call_opcode_table_dispatch_executes_maximum_length_code_without_growing_the_managed_stack()
+    {
+        byte[] code = new byte[CodeSizeConstants.MaxCodeSizeEip170];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[^1] = (byte)Instruction.STOP;
+
+        TestAllTracerWithOutput receipt = ExecuteUntraced(100_000UL, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + (ulong)code.Length - 1), "gas");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(code.Length), "opcode count");
+        }
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]
