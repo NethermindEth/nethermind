@@ -27,6 +27,8 @@ internal class ExpiredFrameTxFilterTests
             .SetName("a deadline equal to the head timestamp is still admissible");
         yield return new TestCaseData(HeadTimestamp + 1, AcceptTxResult.Accepted)
             .SetName("a deadline one second ahead of the head is admissible");
+        yield return new TestCaseData(0UL, AcceptTxResult.FrameTxExpired)
+            .SetName("a zero deadline is a deadline, not the absent-deadline encoding");
     }
 
     // The predeploy reverts only once the head timestamp is strictly past the deadline, so the boundary
@@ -41,19 +43,6 @@ internal class ExpiredFrameTxFilterTests
             Assert.That(Accept(FrameTx(ExpiryAt(deadline), SelfVerify())), Is.EqualTo(expected));
             Assert.That(Metrics.PendingTransactionsFrameTxExpired,
                 Is.EqualTo(expected == AcceptTxResult.Accepted ? before : before + 1));
-        }
-    }
-
-    // Zero is a deadline like any other, not the absent-deadline encoding.
-    [Test]
-    public void Accept_RejectsAZeroDeadlineRatherThanReadingItAsAbsent()
-    {
-        long before = Metrics.PendingTransactionsFrameTxExpired;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Accept(FrameTx(ExpiryAt(deadline: 0), SelfVerify())), Is.EqualTo(AcceptTxResult.FrameTxExpired));
-            Assert.That(Metrics.PendingTransactionsFrameTxExpired, Is.EqualTo(before + 1));
         }
     }
 
@@ -72,8 +61,16 @@ internal class ExpiredFrameTxFilterTests
     // The deadline is read from the leading frame alone, which is what the placement filter ahead of this one
     // guarantees; a trailing expiry frame is that filter's rejection, never a silent pass on an elapsed deadline.
     [Test]
-    public void Accept_ReadsTheDeadlineFromTheLeadingFrameOnly() =>
-        Assert.That(Accept(FrameTx(SelfVerify(), ExpiryAt(HeadTimestamp - 1))), Is.EqualTo(AcceptTxResult.Accepted));
+    public void Accept_ReadsTheDeadlineFromTheLeadingFrameOnly()
+    {
+        long before = Metrics.PendingTransactionsFrameTxExpired;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Accept(FrameTx(SelfVerify(), ExpiryAt(HeadTimestamp - 1))), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(Metrics.PendingTransactionsFrameTxExpired, Is.EqualTo(before));
+        }
+    }
 
     [Test]
     public void Accept_LeavesANonFrameTransactionAlone()
