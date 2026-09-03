@@ -61,7 +61,7 @@ public static partial class EvmInstructions
         return ShiftCore<TOpShift, TTracingInst>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst>(ref EvmStack stack)

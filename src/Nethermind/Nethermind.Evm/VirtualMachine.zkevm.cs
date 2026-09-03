@@ -20,9 +20,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static OpcodeTable GetOpcodeTable() => _opcodeTable;
 
-    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
-
     public object ReturnData;
 
     /// <summary>
