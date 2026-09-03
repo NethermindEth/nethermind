@@ -15,14 +15,6 @@ internal sealed class HistoricalTrieNodeBuilder
     private readonly int _fanOut;
     private readonly ArchiveProofNodeCache? _cache;
     private readonly ParallelOptions _fanOutOptions;
-    private readonly Action<int> _resolveFanOutChild;
-    private readonly Action<int> _composeFanOutChild;
-    private readonly byte[]?[] _composedChildren = new byte[]?[BranchRlp.ChildCount];
-    private readonly NodeView[] _composedViews = new NodeView[BranchRlp.ChildCount];
-    private TreePath _fixupParent;
-    private ushort _fixupChanged;
-    private ChildVector? _fixupChildren;
-    private TreePath _composeParent;
 
     public HistoricalTrieNodeBuilder(TrieHistoryScope scope, ulong block, ResolutionBudget budget, int fanOut, ArchiveProofNodeCache? cache)
     {
@@ -32,8 +24,6 @@ internal sealed class HistoricalTrieNodeBuilder
         _fanOut = fanOut;
         _cache = cache;
         _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut) };
-        _resolveFanOutChild = ResolveFanOutChild;
-        _composeFanOutChild = ComposeFanOutChild;
     }
 
     public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
@@ -126,21 +116,11 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         if (parallelChildren)
         {
-            _fixupParent = path;
-            _fixupChanged = changed;
-            _fixupChildren = children;
-            try
+            TreePath parent = path;
+            RunFanOut(index =>
             {
-                Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, _resolveFanOutChild);
-            }
-            catch (AggregateException e) when (e.InnerException is not null)
-            {
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
-            }
-            finally
-            {
-                _fixupChildren = null;
-            }
+                if (((changed >> index) & 1) == 1) ResolveChild(parent.Append(index), children, index);
+            });
 
             return;
         }
@@ -151,31 +131,37 @@ internal sealed class HistoricalTrieNodeBuilder
         }
     }
 
+    private void RunFanOut(Action<int> child)
+    {
+        try
+        {
+            Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
+        }
+        catch (AggregateException e) when (e.InnerException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+        }
+    }
+
     private byte[]? Compose(in TreePath path, bool parallelChildren)
     {
+        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
         if (parallelChildren)
         {
-            _composeParent = path;
-            try
-            {
-                Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, _composeFanOutChild);
-            }
-            catch (AggregateException e) when (e.InnerException is not null)
-            {
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
-            }
+            TreePath parent = path;
+            RunFanOut(index => children[index] = ResolveRlp(parent.Append(index), parallelChildren: false));
         }
         else
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++) _composedChildren[index] = ResolveRlp(path.Append(index), parallelChildren: false);
+            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index] = ResolveRlp(path.Append(index), parallelChildren: false);
         }
 
-        NodeView[] views = _composedViews;
+        NodeView[] views = new NodeView[BranchRlp.ChildCount];
         try
         {
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
-                byte[]? child = _composedChildren[index];
+                byte[]? child = children[index];
                 views[index] = child is null ? NodeView.Empty : NodeViews.FromRlp(child);
             }
 
@@ -192,16 +178,7 @@ internal sealed class HistoricalTrieNodeBuilder
         finally
         {
             foreach (NodeView view in views) view.Release();
-            Array.Clear(_composedChildren);
-            Array.Clear(views);
         }
-    }
-
-    private void ComposeFanOutChild(int index) => _composedChildren[index] = ResolveRlp(_composeParent.Append(index), parallelChildren: false);
-
-    private void ResolveFanOutChild(int index)
-    {
-        if (((_fixupChanged >> index) & 1) == 1) ResolveChild(_fixupParent.Append(index), _fixupChildren!, index);
     }
 
     private void ResolveChild(in TreePath childPath, ChildVector children, int index)

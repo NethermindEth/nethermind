@@ -252,7 +252,7 @@ public sealed class CommitmentEmitter : IDisposable
             isBranch = true;
             ushort presence = _children.Presence;
             bool wasBranch = _exactBranches.TryGetValue(key, out bool previous) && previous;
-            ushort changed = _policy.IsFullVectorSuffix(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
+            ushort changed = _policy.IsFullVectorBlock(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
             int length = ParentRowCodec.EncodeBranch(_block, presence, changed, _children, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
         }
@@ -349,7 +349,7 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void WriteState(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong window, WindowState state, IWriteBatch batch)
     {
-        bool full = _policy.IsFullVectorSuffix(window);
+        bool full = _policy.IsFullVectorWindow(window);
         switch (state.Kind)
         {
             case WindowKind.Empty:
@@ -382,7 +382,7 @@ public sealed class CommitmentEmitter : IDisposable
 
     private int MergeBranch(ReadOnlySpan<byte> existing, WindowState state, ulong window, ChildVector merged, Span<byte> row)
     {
-        bool full = _policy.IsFullVectorSuffix(window);
+        bool full = _policy.IsFullVectorWindow(window);
         bool existingNewer = ParentRowCodec.LastBlock(existing) > state.LastBlock;
         ushort existingChanged = ParentRowCodec.Changed(existing);
         ushort changed = (ushort)(existingChanged | state.Changed);

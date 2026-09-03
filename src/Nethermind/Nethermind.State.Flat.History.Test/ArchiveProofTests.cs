@@ -356,10 +356,16 @@ public class ArchiveProofTests
     }
 
     [TestCase(6, TestName = "SixIsTheSmallestIntervalButFarTooSmallAnEpoch")]
-    [TestCase(15, TestName = "OneShortOfReaching")]
+    [TestCase(15, TestName = "TwoShortOfReaching")]
+    [TestCase(16, TestName = "OneShortOfReaching")]
     public void An_epoch_whose_two_byte_number_cannot_reach_a_plausible_chain_height_is_refused(int epochLog2) =>
         Assert.That(() => CommitmentDepthPolicy.FromConfig(new FlatDbConfig { ArchiveProofEpochLog2 = epochLog2 }), Throws.InstanceOf<InvalidConfigurationException>(),
             "the epoch is a two-byte key prefix, so too small an epoch runs out of numbers partway up the chain and every later row would throw where nothing names the setting");
+
+    [Test]
+    public void The_smallest_epoch_the_refusal_names_is_accepted() =>
+        Assert.That(() => CommitmentDepthPolicy.FromConfig(new FlatDbConfig { ArchiveProofEpochLog2 = CommitmentDepthPolicy.MinEpochLog2ForConfig }), Throws.Nothing,
+            "an operator who follows the message must not land in the same exception");
 
     [Test]
     public void A_node_that_keeps_only_recent_epochs_builds_only_those_epochs()

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 
@@ -20,7 +21,7 @@ public sealed class CommitmentDepthPolicy
     public const int DefaultEpochLog2 = 19;
     public const int MaxEpochLog2 = 30;
     public const ulong MinReachableBlocks = 1UL << 32;
-    public const int MinEpochLog2ForConfig = 16;
+    public static readonly int MinEpochLog2ForConfig = BitOperations.Log2(MinReachableBlocks / CommitmentKeyLayout.MaxEpoch) + 1;
     public const int DefaultIntervalLog2 = 9;
     public const int MinIntervalLog2 = 6;
     public const int MaxIntervalLog2 = 12;
@@ -33,7 +34,7 @@ public sealed class CommitmentDepthPolicy
     {
         int intervalLog2 = config.ArchiveProofCheckpointIntervalLog2 <= 0 ? DefaultIntervalLog2 : config.ArchiveProofCheckpointIntervalLog2;
         int epochLog2 = config.ArchiveProofEpochLog2 <= 0 ? DefaultEpochLog2 : config.ArchiveProofEpochLog2;
-        if (epochLog2 <= MaxEpochLog2 && CommitmentKeyLayout.MaxEpoch << epochLog2 < MinReachableBlocks)
+        if (epochLog2 <= MaxEpochLog2 && epochLog2 < MinEpochLog2ForConfig)
         {
             throw new InvalidConfigurationException(
                 $"FlatDb.ArchiveProofEpochLog2 of {epochLog2} gives {CommitmentKeyLayout.MaxEpoch} epochs of 2^{epochLog2} blocks, which run out at block " +
@@ -157,7 +158,9 @@ public sealed class CommitmentDepthPolicy
 
     public bool ClosesWindow(ulong block) => (block & (Interval - 1)) == 0;
 
-    public bool IsFullVectorSuffix(ulong suffix) => suffix % FullVectorEvery == 0 || IsEpochStartWindow(suffix);
+    public bool IsFullVectorBlock(ulong block) => block % FullVectorEvery == 0 || (block & (EpochBlocks - 1)) == 0;
+
+    public bool IsFullVectorWindow(ulong window) => window % FullVectorEvery == 0 || IsEpochStartWindow(window);
 
     public void WriteStamp(Span<byte> destination)
     {
