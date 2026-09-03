@@ -88,6 +88,44 @@ public class ProtocolsManagerTests
         Assert.That(session.RemovedDisconnectedHandler, Is.Null);
     }
 
+    [TestCase(DisconnectReason.TooManyPeers, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.ConnectionClosed, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.ConnectionReset, DisconnectType.Local)]
+    [TestCase(DisconnectReason.OutgoingConnectionFailed, DisconnectType.Local)]
+    [TestCase(DisconnectReason.Exception, DisconnectType.Local)]
+    [TestCase(DisconnectReason.ClientQuitting, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.Other, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.BreachOfProtocol, DisconnectType.Remote)]
+    public void Initialized_session_disconnects_are_not_logged_at_debug(
+        DisconnectReason reason,
+        DisconnectType type)
+    {
+        TestLogger logger = new() { IsTrace = false };
+        IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+        ISession session = Substitute.For<ISession>();
+        session.BestStateReached.Returns(SessionState.Initialized);
+        session.Node.Returns(new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303));
+        _ = new ProtocolsManager(
+            Substitute.For<ISyncPeerPool>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IDiscoveryApp>(),
+            rlpxHost,
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IProtocolValidator>(),
+            Substitute.For<IPeerManager>(),
+            Substitute.For<INetworkStorage>(),
+            [],
+            [],
+            new OneLoggerLogManager(new ILogger(logger)));
+
+        rlpxHost.SessionDisconnected += Raise.Event<SessionDisconnectedEventHandler>(
+            new object(),
+            session,
+            new DisconnectEventArgs(reason, type, "test"));
+
+        Assert.That(logger.LogList, Is.Empty);
+    }
+
     [Test]
     public void Advertised_capabilities_apply_resolver_additions_and_removals()
     {

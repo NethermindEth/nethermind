@@ -99,6 +99,23 @@ namespace Nethermind.TxPool
             return false;
         }
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
+
+        /// <summary>
+        /// Takes the pending transactions to build <paramref name="targetBlock"/> from, together with whether
+        /// they have already been validated against that block's release specification.
+        /// </summary>
+        /// <param name="targetBlock">Header of the block being produced.</param>
+        /// <param name="filterToReadyTx">Whether to keep only senders whose next transaction can be included now.</param>
+        /// <param name="baseFee">Base fee of the block being produced, applied when <paramref name="filterToReadyTx"/> is set.</param>
+        /// <remarks>
+        /// An implementation that cannot read the transactions and the validation state as one must report
+        /// <see cref="PendingTransactionsView.IsRevalidated"/> as <see langword="false"/>, as this default does.
+        /// </remarks>
+        PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee) =>
+            new(filterToReadyTx ? GetPendingTransactionsBySender(true, baseFee) : GetPendingTransactionsBySender(),
+                GetPendingLightBlobTransactionsBySender(filterToReadyTx, baseFee),
+                isRevalidated: false);
+
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof);
