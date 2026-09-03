@@ -153,6 +153,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         state.OpCodeCount++;
         EvmExceptionType exceptionType = TOpcode.Execute(ref stack, ref gas, vm, ref pc);
 
+        // The counter is final here, so the target resolves before the halt checks instead of after them.
+        // Its load chain then overlaps the rest of the handler. Zero means the counter ran off the end of
+        // the code. No table entry is null, so zero cannot mean anything else.
+        nint next = 0;
+        if ((nuint)pc < (nuint)stack.CodeLength)
+            next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
+
         if (ShouldExitFrame(exceptionType, TGasPolicy.IsOutOfGas(in gas)))
             goto Exit;
 
@@ -162,14 +169,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
-        if ((nuint)pc >= (nuint)stack.CodeLength)
+        if (next == 0)
         {
             state.FinalProgramCounter = pc;
             return EvmExceptionType.None;
         }
 
-        byte nextOpcode = Unsafe.Add(ref stack.Code, pc);
-        nint next = (nint)state.OpcodeHandlers[nextOpcode];
         // Keep the target in a real local so InlineIL can place it above the outgoing arguments.
         IL.EnsureLocal(in next);
 
