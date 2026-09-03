@@ -8,27 +8,17 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
-using SHA256 =
-#if ZK_EVM
-    Merkle.Sha256;
-#else
-    System.Security.Cryptography.SHA256;
-#endif
-
 public static partial class Merkle
 {
     public static readonly UInt256[] ZeroHashes = new UInt256[64];
 
     private static void BuildZeroHashes()
     {
-        Span<UInt256> concatenation = stackalloc UInt256[2];
         // ZeroHashes[0] will be UInt256.Zero
         for (int i = 1; i < 64; i++)
         {
             UInt256 previous = ZeroHashes[i - 1];
-            MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation[..1]);
-            MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
-            ZeroHashes[i] = new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(concatenation)));
+            ZeroHashes[i] = HashPair(in previous, in previous);
         }
     }
 
@@ -169,18 +159,4 @@ public static partial class Merkle
 
         merkleizer.CalculateRoot(out root);
     }
-
-#if ZK_EVM
-    internal static class Sha256
-    {
-        internal static byte[] HashData(ReadOnlySpan<byte> data)
-        {
-            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
-
-            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, output);
-
-            return output;
-        }
-    }
-#endif
 }
