@@ -114,25 +114,16 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 return false;
             }
 
-            if (!_bundle.TryLeaseReadOnlyBundle())
-            {
-                return false;
-            }
+            using ReadOnlySnapshotBundle? readOnlySnapshotBundle = _bundle.TryLeaseReadOnlySnapshotBundle();
+            if (readOnlySnapshotBundle is null) return false;
 
-            try
-            {
-                // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-                // this is just to warm up the nodes.
-                ValueHash256 key = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(index, ref key);
+            // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+            // this is just to warm up the nodes.
+            ValueHash256 key = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
-                return true;
-            }
-            finally
-            {
-                _bundle.ReleaseReadOnlyBundleLease();
-            }
+            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+            return true;
         }
         finally
         {
