@@ -72,7 +72,16 @@ public class Driver : IDisposable
                 if (nextBatchReady.IsCompleted)
                 {
                     (BatchV1 decodedBatch, ulong batchOrigin) = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
-                    await ProcessDecodedBatch(decodedBatch, batchOrigin, token);
+                    try
+                    {
+                        await ProcessDecodedBatch(decodedBatch, batchOrigin, token);
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        // Skip the batch instead of ending derivation. The batch is stored on L1, so
+                        // failing here would halt the node again on every restart.
+                        if (_logger.IsWarn) _logger.Warn($"Skipping batch that failed to derive: {e}");
+                    }
                     continue;
                 }
 
@@ -184,13 +193,18 @@ public class Driver : IDisposable
 
         L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
 
-        IAsyncEnumerator<PayloadAttributesRef> derivedPayloadAttributes = _derivationPipeline
-            .DerivePayloadAttributes(l2Parent, decodedBatch, token)
-            .GetAsyncEnumerator(token);
-        BlockId? lastDerivedBlock = null;
-        while (await derivedPayloadAttributes.MoveNextAsync())
+        // Derive the whole batch before importing any of it. Transactions are decoded lazily per block,
+        // so a failure in a later block would otherwise leave the batch half-imported.
+        List<PayloadAttributesRef> derivedPayloadAttributes = [];
+        await foreach (PayloadAttributesRef payloadAttributes in
+                       _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token))
         {
-            PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
+            derivedPayloadAttributes.Add(payloadAttributes);
+        }
+
+        BlockId? lastDerivedBlock = null;
+        foreach (PayloadAttributesRef payloadAttributes in derivedPayloadAttributes)
+        {
             BlockId? derivedBlock = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes, token);
             if (derivedBlock is null)
             {
