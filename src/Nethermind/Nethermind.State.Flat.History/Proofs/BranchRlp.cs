@@ -19,19 +19,6 @@ internal static class BranchRlp
         return reader.PeekNumberOfItemsRemaining(reader.Position + length) == BranchItems;
     }
 
-    public static void ReadChildren(ReadOnlySpan<byte> branchRlp, byte[]?[] children)
-    {
-        RlpReader reader = new(branchRlp);
-        reader.ReadSequenceLength();
-        for (int index = 0; index < ChildCount; index++)
-        {
-            ReadOnlySpan<byte> reference = ReadChild(ref reader);
-            children[index] = reference.IsEmpty ? null : reference.ToArray();
-        }
-
-        RequireNoValue(ref reader);
-    }
-
     public static void ReadChildren(ReadOnlySpan<byte> branchRlp, ChildVector children)
     {
         RlpReader reader = new(branchRlp);
@@ -46,32 +33,67 @@ internal static class BranchRlp
         RequireNoValue(ref reader);
     }
 
-    public static byte[] Encode(byte[]?[] children)
+    public static bool TryReadChildren(ReadOnlySpan<byte> nodeRlp, ChildVector children)
     {
-        int contentLength = 1;
-        for (int index = 0; index < ChildCount; index++) contentLength += ItemLength(children[index]?.Length ?? 0);
+        RlpReader reader = new(nodeRlp);
+        int length = reader.ReadSequenceLength();
+        int end = reader.Position + length;
+        for (int index = 0; index < ChildCount; index++)
+        {
+            if (reader.Position >= end) return false;
 
-        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
+            ReadOnlySpan<byte> reference = ReadChild(ref reader);
+            if (reference.Length > Hash256.Size) return false;
+
+            if (reference.IsEmpty) children.Clear(index);
+            else children.Set(index, reference);
+        }
+
+        if (reader.Position >= end) return false;
+
+        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
+        if (reader.Position + prefixLength + contentLength != end) return false;
+
+        RequireNoValue(ref reader);
+        return true;
+    }
+
+    public static int EncodedLength(ChildVector children) => Rlp.LengthOfSequence(ContentLength(children));
+
+    public static int Encode(ChildVector children, Span<byte> rlp)
+    {
+        int contentLength = ContentLength(children);
         int position = Rlp.StartSequence(rlp, 0, contentLength);
         for (int index = 0; index < ChildCount; index++) position = WriteChild(rlp, position, children[index]);
-        rlp[position] = EmptyItem;
-        return rlp;
+        rlp[position++] = EmptyItem;
+        return position;
     }
 
     public static byte[] Encode(ChildVector children)
     {
-        int contentLength = 1;
-        for (int index = 0; index < ChildCount; index++) contentLength += ItemLength(children[index].Length);
-
-        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
-        int position = Rlp.StartSequence(rlp, 0, contentLength);
-        for (int index = 0; index < ChildCount; index++) position = WriteChild(rlp, position, children[index]);
-        rlp[position] = EmptyItem;
+        byte[] rlp = new byte[EncodedLength(children)];
+        Encode(children, rlp);
         return rlp;
     }
 
-    public static byte[] ReferenceOf(byte[] nodeRlp) =>
-        nodeRlp.Length < Hash256.Size ? nodeRlp : Keccak.Compute(nodeRlp).BytesToArray();
+    public static int ReferenceOf(ReadOnlySpan<byte> nodeRlp, Span<byte> destination)
+    {
+        if (nodeRlp.Length < Hash256.Size)
+        {
+            nodeRlp.CopyTo(destination);
+            return nodeRlp.Length;
+        }
+
+        ValueKeccak.Compute(nodeRlp).Bytes.CopyTo(destination);
+        return Hash256.Size;
+    }
+
+    private static int ContentLength(ChildVector children)
+    {
+        int contentLength = 1;
+        for (int index = 0; index < ChildCount; index++) contentLength += ItemLength(children[index].Length);
+        return contentLength;
+    }
 
     private static ReadOnlySpan<byte> ReadChild(ref RlpReader reader)
     {

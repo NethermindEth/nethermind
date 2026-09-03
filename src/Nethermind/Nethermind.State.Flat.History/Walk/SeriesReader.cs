@@ -124,7 +124,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
             Span<byte> upper = stackalloc byte[SeriesKey.MaxKeyLength];
             int upperLength = CommitmentKeyLayout.WriteSeekKey(upper, prefix, lo - 1);
 
-            using ISortedView view = column.GetViewBetween(lower[..lowerLength], upper[..upperLength]);
+            using ISortedView view = column.GetViewBetween(lower[..lowerLength], upper[..upperLength], ReadFlags.HintCacheMiss);
             while (view.MoveNext())
             {
                 if (view.CurrentKey.Length != lowerLength) continue;

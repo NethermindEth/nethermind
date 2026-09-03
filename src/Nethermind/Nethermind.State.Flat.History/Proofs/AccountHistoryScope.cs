@@ -40,13 +40,13 @@ internal sealed class AccountHistoryScope(
 
     protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)
     {
-        RlpReader reader = new(storedValue);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
+        try
         {
-            throw new StateUnavailableException("An account history row failed to decode; the history column is corrupt.");
+            return AccountRowRlp.Encode(storedValue);
         }
-
-        return Decoder.EncodeAsBytes(new Account(
-            account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment()));
+        catch (InvalidDataException e)
+        {
+            throw new StateUnavailableException(e.Message);
+        }
     }
 }

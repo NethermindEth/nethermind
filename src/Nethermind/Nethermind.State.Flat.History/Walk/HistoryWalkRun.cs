@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
@@ -29,10 +30,13 @@ internal sealed class HistoryWalkRun
     private readonly ulong _from;
     private readonly ulong _to;
     private readonly ulong _checkpointBlocks;
+    private readonly int _checkpointGroups;
     private readonly Action<int, ulong>? _onCheckpoint;
     private readonly Action<int>? _onItemDone;
     private readonly CancellationToken _token;
     private readonly ILogger _logger;
+    public const int DefaultCheckpointGroups = 1024;
+
     private readonly MismatchSink _sink = new();
     private readonly CommitmentMetadata _metadata;
     private readonly WalkProgress _progress;
@@ -52,12 +56,14 @@ internal sealed class HistoryWalkRun
         ulong from,
         ulong to,
         ulong checkpointBlocks,
+        int checkpointGroups,
         Action<int, ulong>? onCheckpoint,
         Action<int>? onItemDone,
         CancellationToken token)
     {
         _history = history;
         _checkpointBlocks = checkpointBlocks;
+        _checkpointGroups = checkpointGroups;
         _onCheckpoint = onCheckpoint;
         _onItemDone = onItemDone;
         _accountHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
@@ -113,41 +119,39 @@ internal sealed class HistoryWalkRun
 
         List<Action> partitions = [];
         int previouslyCompleted = 0;
-        for (int nibbles = 0; nibbles < AccountPartitions; nibbles++)
+        for (int index = 0; index < AccountPartitions; index++)
         {
-            int item = nibbles;
-            if (_metadata.IsWalkItemDone(item))
+            int storageItem = AccountPartitions + index;
+            if (_metadata.IsWalkItemDone(storageItem))
             {
                 previouslyCompleted++;
-                _progress.PreviouslyCompleted(item);
+                _progress.PreviouslyCompleted(storageItem);
+            }
+            else
+            {
+                byte firstByte = (byte)index;
+                partitions.Add(() =>
+                {
+                    MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
+                    ProcessStorageRange(firstByte, storageItem, found);
+                    CompleteItem(storageItem, found);
+                });
+            }
+
+            int accountItem = index;
+            if (_metadata.IsWalkItemDone(accountItem))
+            {
+                previouslyCompleted++;
+                _progress.PreviouslyCompleted(accountItem);
                 continue;
             }
 
-            TreePath prefix = TreePath.FromNibble([(byte)(nibbles >> 4), (byte)(nibbles & 0x0F)]);
+            TreePath prefix = TreePath.FromNibble([(byte)(index >> 4), (byte)(index & 0x0F)]);
             partitions.Add(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-                ProcessAccountPartition(prefix, item, found);
-                CompleteItem(item, found);
-            });
-        }
-
-        for (int first = 0; first < StorageRanges; first++)
-        {
-            int item = AccountPartitions + first;
-            if (_metadata.IsWalkItemDone(item))
-            {
-                previouslyCompleted++;
-                _progress.PreviouslyCompleted(item);
-                continue;
-            }
-
-            byte firstByte = (byte)first;
-            partitions.Add(() =>
-            {
-                MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-                ProcessStorageRange(firstByte, item, found);
-                CompleteItem(item, found);
+                ProcessAccountPartition(prefix, accountItem, found);
+                CompleteItem(accountItem, found);
             });
         }
 
@@ -158,7 +162,7 @@ internal sealed class HistoryWalkRun
             RunParallel(partitions, workers);
 
             if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed; folding the root and comparing every block in [{_from}, {_to}] to its header.");
-            RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger);
+            using RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger);
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
@@ -186,7 +190,7 @@ internal sealed class HistoryWalkRun
         ParallelOptions options = new() { MaxDegreeOfParallelism = Math.Max(1, workers), CancellationToken = _token };
         try
         {
-            Parallel.ForEach(items, options, static item => item());
+            Parallel.ForEach(Partitioner.Create(items, EnumerablePartitionerOptions.NoBuffering), options, static item => item());
         }
         catch (AggregateException e) when (e.InnerExceptions.Count == 1)
         {
@@ -230,7 +234,7 @@ internal sealed class HistoryWalkRun
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
-                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, new StorageRootMoveCheck(probe, replayed), _progress, item, resumeFrom, _checkpointBlocks, checkpoint, _token);
+                _accounts.Replay(prefix, rows, Context(emitter, series, item), AccountSeriesKey(prefix), new StorageRootMoveCheck(probe, replayed), resumeFrom, _checkpointBlocks, checkpoint);
                 emitter?.FlushOpenWindows();
             }
 
@@ -264,6 +268,7 @@ internal sealed class HistoryWalkRun
             found.Decode(persisted);
         }
 
+        int groupsSinceCheckpoint = 0;
         _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, afterPrefix, group =>
         {
             using (StoragePartitionRows rows = group.Rows)
@@ -279,10 +284,15 @@ internal sealed class HistoryWalkRun
                 }
             }
 
+            if (++groupsSinceCheckpoint < _checkpointGroups) return;
+
+            groupsSinceCheckpoint = 0;
             Checkpoint(item, BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), found, pending: null);
             _token.ThrowIfCancellationRequested();
         }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
     }
+
+    private WalkReplayContext Context(CommitmentEmitter? emitter, SeriesWriter series, int item) => new(_from, _to, emitter, series, _progress, item, _token);
 
     private void Checkpoint(int item, ulong progress, MismatchSink found, List<HistoryWalkMismatch>? pending)
     {
@@ -326,7 +336,7 @@ internal sealed class HistoryWalkRun
     {
         using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
         using SeriesWriter series = new(_history);
-        _storages.Replay(slotPrefix, rows, clears, _from, _to, emitter, series, slotPrefix.Length > 0, found, _progress, item, _token);
+        _storages.Replay(slotPrefix, rows, clears, Context(emitter, series, item), slotPrefix.Length > 0, found);
         emitter?.FlushOpenWindows();
     }
 

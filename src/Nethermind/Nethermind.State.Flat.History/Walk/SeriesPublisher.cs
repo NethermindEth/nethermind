@@ -29,7 +29,7 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
         }
         else if (key is { Scratch: true } otherKey)
         {
-            if (view.Kind == NodeViewKind.Whole) writer.WriteWhole(otherKey, block, view.Rlp!);
+            if (view.Kind == NodeViewKind.Whole) writer.WriteWhole(otherKey, block, view.Rlp);
             else writer.WriteEmpty(otherKey, block);
         }
 

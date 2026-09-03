@@ -15,27 +15,6 @@ internal static class ParentRowCodec
 
     public const int MaxBranchRowLength = HeaderLength + BranchRlp.ChildCount * (1 + ChildVector.SlotSize);
 
-    public static byte[] EncodeBranch(ulong lastBlock, ushort presence, ushort changed, byte[]?[] children)
-    {
-        int length = HeaderLength;
-        for (int index = 0; index < BranchRlp.ChildCount; index++)
-        {
-            if (((changed >> index) & 1) == 1) length += 1 + (children[index]?.Length ?? 0);
-        }
-
-        byte[] row = new byte[length];
-        WriteBranchHeader(row, lastBlock, presence, changed);
-        int position = HeaderLength;
-        for (int index = 0; index < BranchRlp.ChildCount; index++)
-        {
-            if (((changed >> index) & 1) == 0) continue;
-
-            position = WriteChild(row, position, children[index]);
-        }
-
-        return row;
-    }
-
     public static int EncodeBranch(ulong lastBlock, ushort presence, ushort changed, ChildVector children, Span<byte> row)
     {
         WriteBranchHeader(row, lastBlock, presence, changed);
@@ -50,26 +29,12 @@ internal static class ParentRowCodec
         return position;
     }
 
-    public static byte[] EncodeWholeNode(ulong lastBlock, ReadOnlySpan<byte> nodeRlp)
-    {
-        byte[] row = new byte[KindAndBlockLength + nodeRlp.Length];
-        EncodeWholeNode(lastBlock, nodeRlp, row);
-        return row;
-    }
-
     public static int EncodeWholeNode(ulong lastBlock, ReadOnlySpan<byte> nodeRlp, Span<byte> row)
     {
         row[0] = WholeNodeKind;
         BinaryPrimitives.WriteUInt64BigEndian(row[1..], lastBlock);
         nodeRlp.CopyTo(row[KindAndBlockLength..]);
         return KindAndBlockLength + nodeRlp.Length;
-    }
-
-    public static byte[] EncodeEmpty(ulong lastBlock)
-    {
-        byte[] row = new byte[KindAndBlockLength];
-        EncodeEmpty(lastBlock, row);
-        return row;
     }
 
     public static int EncodeEmpty(ulong lastBlock, Span<byte> row)
@@ -96,28 +61,6 @@ internal static class ParentRowCodec
     public static ushort Presence(ReadOnlySpan<byte> row) => BinaryPrimitives.ReadUInt16BigEndian(row[9..]);
 
     public static ushort Changed(ReadOnlySpan<byte> row) => BinaryPrimitives.ReadUInt16BigEndian(row[11..]);
-
-    public static ushort Fill(ReadOnlySpan<byte> row, ushort wanted, byte[]?[] children)
-    {
-        ushort changed = Changed(row);
-        ushort filled = 0;
-        int position = HeaderLength;
-        for (int index = 0; index < BranchRlp.ChildCount; index++)
-        {
-            if (((changed >> index) & 1) == 0) continue;
-
-            int length = row[position++];
-            if (((wanted >> index) & 1) == 1 && children[index] is null)
-            {
-                children[index] = length == 0 ? null : row.Slice(position, length).ToArray();
-                filled |= (ushort)(1 << index);
-            }
-
-            position += length;
-        }
-
-        return filled;
-    }
 
     public static ushort Fill(ReadOnlySpan<byte> row, ushort wanted, ChildVector children)
     {

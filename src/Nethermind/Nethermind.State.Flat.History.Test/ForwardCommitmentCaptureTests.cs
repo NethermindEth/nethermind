@@ -224,14 +224,14 @@ public class ForwardCommitmentCaptureTests
         return ParentRowCodec.WholeNodeRlp(chain.CurrentValue).ToArray();
     }
 
-    private static byte[]?[] ChildrenAt(params int[] present)
+    private static ChildVector ChildrenAt(params int[] present)
     {
-        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        ChildVector children = ChildVector.Rent();
         foreach (int index in present)
         {
             byte[] hash = new byte[Hash256.Size];
             hash[0] = (byte)(index + 1);
-            children[index] = hash;
+            children.Set(index, hash);
         }
 
         return children;

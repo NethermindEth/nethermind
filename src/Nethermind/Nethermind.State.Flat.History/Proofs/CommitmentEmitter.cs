@@ -25,7 +25,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly CommitmentStore _storages;
     private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
-    private readonly bool _writeThrough;
+    private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
 
     private readonly RowArena _blockArena = new();
@@ -46,25 +46,28 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _block;
     private bool _haveBlock;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool writeThrough, int maxOpenWindowNodes)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes)
     {
         _history = history;
         _policy = policy;
         _metadata = metadata;
         _windowWriteLock = metadata.WindowWriteLock;
-        _writeThrough = writeThrough;
         _maxOpenWindowNodes = maxOpenWindowNodes;
         _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
         _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
     }
 
     public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, writeThrough: false, WalkMaxOpenWindowNodes);
+        new(history, policy, metadata, WalkMaxOpenWindowNodes);
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, writeThrough: true, DefaultMaxOpenWindowNodes);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes);
 
     public CommitmentDepthPolicy Policy => _policy;
+
+    public int AccountRecordDepth => _policy.AccountCheckpointDepth + 1;
+
+    public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
 
     public void BeginBlock(ulong block)
     {
@@ -183,16 +186,6 @@ public sealed class CommitmentEmitter : IDisposable
             }
         }
 
-        if (_writeThrough)
-        {
-            ulong window = _policy.WindowClosingAt(_block);
-            lock (_windowWriteLock)
-            {
-                foreach (NodePathKey key in _touchedThisBlock) MergeWrite(key, _windows[key], window);
-                CommitBatch();
-            }
-        }
-
         if (_policy.ClosesWindow(_block))
         {
             FlushWindows(_policy.WindowAtOrBelow(_block));
@@ -214,6 +207,7 @@ public sealed class CommitmentEmitter : IDisposable
         CommitBatch();
         foreach (WindowState state in _windows.Values) state.Release();
         _windows.Clear();
+        while (_spareWindows.TryPop(out WindowState? spare)) spare.Release();
         _blockArena.Dispose();
         ChildVector.Return(_children);
         ChildVector.Return(_merged);
@@ -248,10 +242,9 @@ public sealed class CommitmentEmitter : IDisposable
             int length = ParentRowCodec.EncodeEmpty(_block, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
         }
-        else if (BranchRlp.IsBranch(rlp))
+        else if (BranchRlp.TryReadChildren(rlp, _children))
         {
             isBranch = true;
-            BranchRlp.ReadChildren(rlp, _children);
             ushort presence = _children.Presence;
             bool wasBranch = _exactBranches.TryGetValue(key, out bool previous) && previous;
             ushort changed = CommitmentDepthPolicy.IsFullVectorSuffix(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
@@ -270,7 +263,7 @@ public sealed class CommitmentEmitter : IDisposable
     {
         if (!_windows.TryGetValue(key, out WindowState? state))
         {
-            state = new WindowState();
+            state = _spareWindows.TryPop(out WindowState? spare) ? spare : new WindowState();
             _windows[key] = state;
         }
 
@@ -283,13 +276,12 @@ public sealed class CommitmentEmitter : IDisposable
             return;
         }
 
-        if (!BranchRlp.IsBranch(rlp))
+        if (!BranchRlp.TryReadChildren(rlp, _children))
         {
             state.SetWhole(rlp);
             return;
         }
 
-        BranchRlp.ReadChildren(rlp, _children);
         ushort presence = _children.Presence;
         ushort changed = ChangedChildren(key, _children);
         if (state.Kind is WindowKind.Whole or WindowKind.Empty) changed |= presence;
@@ -299,7 +291,8 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void FlushWindows(ulong window)
     {
-        using ArrayPoolList<KeyValuePair<NodePathKey, WindowState>> pending = new(_windows.Count, _windows);
+        using ArrayPoolList<KeyValuePair<NodePathKey, WindowState>> pending = new(_windows.Count);
+        foreach (KeyValuePair<NodePathKey, WindowState> entry in _windows) pending.Add(entry);
         for (int start = 0; start < pending.Count; start += WindowFlushChunk)
         {
             int end = Math.Min(pending.Count, start + WindowFlushChunk);
@@ -310,7 +303,12 @@ public sealed class CommitmentEmitter : IDisposable
             }
         }
 
-        foreach (KeyValuePair<NodePathKey, WindowState> entry in pending) entry.Value.Release();
+        foreach (KeyValuePair<NodePathKey, WindowState> entry in pending)
+        {
+            entry.Value.Recycle();
+            _spareWindows.Push(entry.Value);
+        }
+
         _windows.Clear();
     }
 
@@ -355,9 +353,16 @@ public sealed class CommitmentEmitter : IDisposable
             case WindowKind.Whole:
                 {
                     byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(state.WholeLength));
-                    int length = ParentRowCodec.EncodeWholeNode(state.LastBlock, state.Whole, row);
-                    store.Write(prefix, window, row.AsSpan(0, length), batch);
-                    ArrayPool<byte>.Shared.Return(row);
+                    try
+                    {
+                        int length = ParentRowCodec.EncodeWholeNode(state.LastBlock, state.Whole, row);
+                        store.Write(prefix, window, row.AsSpan(0, length), batch);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(row);
+                    }
+
                     break;
                 }
             default:
@@ -426,9 +431,15 @@ public sealed class CommitmentEmitter : IDisposable
     private void WriteWhole(in NodePathKey key, bool exact, ulong suffix, ReadOnlySpan<byte> rlp)
     {
         byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(rlp.Length));
-        int length = ParentRowCodec.EncodeWholeNode(suffix, rlp, row);
-        Write(key, exact, suffix, row.AsSpan(0, length));
-        ArrayPool<byte>.Shared.Return(row);
+        try
+        {
+            int length = ParentRowCodec.EncodeWholeNode(suffix, rlp, row);
+            Write(key, exact, suffix, row.AsSpan(0, length));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(row);
+        }
     }
 
     private void Write(in NodePathKey key, bool exact, ulong suffix, ReadOnlySpan<byte> row)
@@ -503,6 +514,16 @@ public sealed class CommitmentEmitter : IDisposable
             Presence = presence;
             Changed |= changed;
             Latest.CopyFrom(children);
+        }
+
+        public void Recycle()
+        {
+            Kind = default;
+            LastBlock = 0;
+            Presence = 0;
+            Changed = 0;
+            WholeLength = 0;
+            Latest.Clear();
         }
 
         public void Release()

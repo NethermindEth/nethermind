@@ -18,19 +18,14 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
     public void Replay(
         in TreePath prefix,
         AccountPartitionRows rows,
-        ulong from,
-        ulong to,
-        CommitmentEmitter? emitter,
+        in WalkReplayContext context,
         SeriesKey seriesKey,
-        SeriesWriter series,
         StorageRootMoveCheck moveCheck,
-        WalkProgress progress,
-        int item,
         ulong? resumeFrom,
         ulong checkpointBlocks,
-        Action<ulong>? checkpoint,
-        CancellationToken token)
+        Action<ulong>? checkpoint)
     {
+        (ulong from, ulong to, CommitmentEmitter? emitter, SeriesWriter series, WalkProgress progress, int item, CancellationToken token) = context;
         long replayed = 0;
         ulong replayedUpTo = resumeFrom ?? from;
         RawScopedTrieStore store = new(new MemDb());
@@ -47,7 +42,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 ValueHash256 startRoot = Keccak.EmptyTreeHash.ValueHash256;
                 if (cursor.TryReadStart(out _, out byte[] start) && start.Length > 0)
                 {
-                    state.Set(path, HistoryRowScanner.DecodeAccount(start));
+                    AccountRowRlp.Set(state, path, start);
                     startRoot = HistoryRowScanner.StorageRootOf(start);
                 }
 
@@ -56,7 +51,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
 
             foreach (AccountRowRef row in rows.Start)
             {
-                state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+                AccountRowRlp.Set(state, row.Path, rows.Arena.Slice(row.Offset, row.Length));
             }
 
             rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
@@ -66,7 +61,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 while (next < rows.Deltas.Count && rows.Deltas[next].Block <= resumed)
                 {
                     AccountRowRef row = rows.Deltas[next++];
-                    state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+                    AccountRowRlp.Set(state, row.Path, rows.Arena.Slice(row.Offset, row.Length));
                 }
 
                 state.UpdateRootHash();
@@ -102,7 +97,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 while (next < rows.Deltas.Count && rows.Deltas[next].Block == block)
                 {
                     AccountRowRef row = rows.Deltas[next++];
-                    state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+                    AccountRowRlp.Set(state, row.Path, rows.Arena.Slice(row.Offset, row.Length));
                 }
 
                 foreach (StreamedAccount stream in streams)
@@ -110,7 +105,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                     if (!stream.HasRow || stream.Rows.Block != block) continue;
 
                     ReadOnlySpan<byte> value = stream.Rows.Value;
-                    state.Set(stream.Path, HistoryRowScanner.DecodeAccount(value));
+                    AccountRowRlp.Set(state, stream.Path, value);
                     ValueHash256 root = HistoryRowScanner.StorageRootOf(value);
                     if (root != stream.LastRoot) moveCheck.OnMoved(stream.Path, block, stream.LastRoot, root);
                     stream.LastRoot = root;
@@ -145,7 +140,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
 
     private static void Recompute(PatriciaTree tree, TrieChangeCollector? changes, CommitmentEmitter? emitter, int minRecordedDepth)
     {
-        changes?.Collect(tree.RootRef);
+        changes?.Collect(tree.RootRef, emitter!.AccountRecordDepth);
         tree.UpdateRootHash();
         if (changes is not null) changes.RecordAccounts(emitter!, minRecordedDepth);
     }

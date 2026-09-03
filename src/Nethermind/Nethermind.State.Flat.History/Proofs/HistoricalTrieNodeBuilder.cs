@@ -6,45 +6,60 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
-internal sealed class HistoricalTrieNodeBuilder(
-    TrieHistoryScope scope,
-    ulong block,
-    ResolutionBudget budget,
-    int fanOut,
-    ArchiveProofNodeCache? cache)
+internal sealed class HistoricalTrieNodeBuilder
 {
-    private readonly ParallelOptions _fanOutOptions = new() { MaxDegreeOfParallelism = Math.Max(1, fanOut) };
+    private readonly TrieHistoryScope _scope;
+    private readonly ulong _block;
+    private readonly ResolutionBudget _budget;
+    private readonly int _fanOut;
+    private readonly ArchiveProofNodeCache? _cache;
+    private readonly ParallelOptions _fanOutOptions;
+    private readonly Action<int> _resolveFanOutChild;
+    private TreePath _fanOutParent;
+    private ushort _fanOutChanged;
+    private ChildVector? _fanOutChildren;
+
+    public HistoricalTrieNodeBuilder(TrieHistoryScope scope, ulong block, ResolutionBudget budget, int fanOut, ArchiveProofNodeCache? cache)
+    {
+        _scope = scope;
+        _block = block;
+        _budget = budget;
+        _fanOut = fanOut;
+        _cache = cache;
+        _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut) };
+        _resolveFanOutChild = ResolveFanOutChild;
+    }
 
     public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
     {
         ValueHash256 expected = expectedHash.ValueHash256;
-        if (cache is not null && cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
+        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
 
-        byte[]? rlp = ResolveRlp(path, fanOut > 1);
-        if (rlp is not null && Keccak.Compute(rlp) == expected) return Publish(expected, rlp);
+        byte[]? rlp = ResolveRlp(path, _fanOut > 1);
+        if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         rlp = RebuildRlp(path);
-        if (rlp is not null && Keccak.Compute(rlp) == expected) return Publish(expected, rlp);
+        if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         throw new StateUnavailableException(
-            $"The node at {path} as of block {block} rebuilt to {(rlp is null ? "nothing" : Keccak.Compute(rlp).ToString())} instead of the " +
+            $"The node at {path} as of block {_block} rebuilt to {(rlp is null ? "nothing" : ValueKeccak.Compute(rlp).ToString())} instead of the " +
             $"{expectedHash} its parent commits to. The flat history rows below that path do not reproduce the proven " +
             "state root, so no proof is served for this height.");
     }
 
     private byte[] Publish(in ValueHash256 hash, byte[] rlp)
     {
-        cache?.Set(hash, rlp);
+        _cache?.Set(hash, rlp);
         return rlp;
     }
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren)
     {
-        if (!scope.HasCommitmentRows(path.Length)) return RebuildRlp(path);
+        if (!_scope.HasCommitmentRows(path.Length)) return RebuildRlp(path);
 
-        if (scope.MayHaveExactRows(path.Length))
+        if (_scope.MayHaveExactRows(path.Length))
         {
-            using CommitmentStore.RowChain exact = scope.OpenRows(path, exact: true, block, budget);
+            using CommitmentStore.RowChain exact = _scope.OpenRows(path, exact: true, _block, _budget);
             if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue) && !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)) && Materialize(exact) is { } fromExact)
             {
                 return fromExact;
@@ -56,57 +71,66 @@ internal sealed class HistoricalTrieNodeBuilder(
 
     private bool NewerCheckpointRowExists(in TreePath path, ulong exactLastBlock)
     {
-        using CommitmentStore.RowChain chain = scope.OpenRows(path, exact: false, scope.Policy.WindowAtOrBelow(block) + 1, budget);
-        return chain.MoveNext() && ParentRowCodec.IsValid(chain.CurrentValue) && ParentRowCodec.LastBlock(chain.CurrentValue) > exactLastBlock && ParentRowCodec.LastBlock(chain.CurrentValue) <= block;
+        using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, _scope.Policy.WindowAtOrBelow(_block) + 1, _budget);
+        return chain.MoveNext() && ParentRowCodec.IsValid(chain.CurrentValue) && ParentRowCodec.LastBlock(chain.CurrentValue) > exactLastBlock && ParentRowCodec.LastBlock(chain.CurrentValue) <= _block;
     }
 
     private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren)
     {
-        ulong anchor = scope.Policy.WindowAtOrBelow(block);
-        using CommitmentStore.RowChain chain = scope.OpenRows(path, exact: false, anchor + 1, budget);
+        ulong anchor = _scope.Policy.WindowAtOrBelow(_block);
+        using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, anchor + 1, _budget);
         if (!chain.MoveNext()) return RebuildRlp(path);
         if (!ParentRowCodec.IsValid(chain.CurrentValue)) return RebuildRlp(path);
-        if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= block) return Materialize(chain);
+        if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= _block) return Materialize(chain);
 
         ReadOnlySpan<byte> movedRow = chain.CurrentValue;
         if (!ParentRowCodec.IsBranchRow(movedRow)) return RebuildRlp(path);
 
         ushort presenceMoved = ParentRowCodec.Presence(movedRow);
         ushort changed = ParentRowCodec.Changed(movedRow);
-        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
-
-        ushort presenceAnchor = 0;
-        using (CommitmentStore.RowChain anchored = scope.OpenRows(path, exact: false, anchor, budget))
+        ChildVector children = ChildVector.Rent();
+        try
         {
-            if (anchored.MoveNext() && ParentRowCodec.IsBranchRow(anchored.CurrentValue))
+            ushort presenceAnchor = 0;
+            using (CommitmentStore.RowChain anchored = _scope.OpenRows(path, exact: false, anchor, _budget))
             {
-                presenceAnchor = ParentRowCodec.Presence(anchored.CurrentValue);
-                ushort fromAnchor = (ushort)(presenceMoved & ~changed & presenceAnchor);
-                FillFromChainIncludingCurrent(anchored, fromAnchor, children);
-                if (Missing(fromAnchor, children) != 0) return RebuildRlp(path);
+                if (anchored.MoveNext() && ParentRowCodec.IsBranchRow(anchored.CurrentValue))
+                {
+                    presenceAnchor = ParentRowCodec.Presence(anchored.CurrentValue);
+                    ushort fromAnchor = (ushort)(presenceMoved & ~changed & presenceAnchor);
+                    FillFromChainIncludingCurrent(anchored, fromAnchor, children);
+                    if ((fromAnchor & ~children.Presence) != 0) return RebuildRlp(path);
+                }
             }
-        }
 
-        ushort recompute = (ushort)(changed | (presenceAnchor & ~presenceMoved) | (presenceMoved & ~presenceAnchor & ~changed));
-        ResolveChangedChildren(path, recompute, children, parallelChildren);
-        return BranchRlp.Encode(children);
+            ushort recompute = (ushort)(changed | (presenceAnchor & ~presenceMoved) | (presenceMoved & ~presenceAnchor & ~changed));
+            ResolveChangedChildren(path, recompute, children, parallelChildren);
+            return BranchRlp.Encode(children);
+        }
+        finally
+        {
+            ChildVector.Return(children);
+        }
     }
 
-    private void ResolveChangedChildren(in TreePath path, ushort changed, byte[]?[] children, bool parallelChildren)
+    private void ResolveChangedChildren(in TreePath path, ushort changed, ChildVector children, bool parallelChildren)
     {
-        TreePath parent = path;
         if (parallelChildren)
         {
+            _fanOutParent = path;
+            _fanOutChanged = changed;
+            _fanOutChildren = children;
             try
             {
-                Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, index =>
-                {
-                    if (((changed >> index) & 1) == 1) children[index] = ResolveReference(parent.Append(index));
-                });
+                Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, _resolveFanOutChild);
             }
             catch (AggregateException e) when (e.InnerException is not null)
             {
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+            }
+            finally
+            {
+                _fanOutChildren = null;
             }
 
             return;
@@ -114,14 +138,33 @@ internal sealed class HistoricalTrieNodeBuilder(
 
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
-            if (((changed >> index) & 1) == 1) children[index] = ResolveReference(parent.Append(index));
+            if (((changed >> index) & 1) == 1) ResolveChild(path.Append(index), children, index);
         }
     }
 
-    private byte[]? ResolveReference(in TreePath childPath)
+    private void ResolveFanOutChild(int index)
+    {
+        if (((_fanOutChanged >> index) & 1) == 1) ResolveChild(_fanOutParent.Append(index), _fanOutChildren!, index);
+    }
+
+    private void ResolveChild(in TreePath childPath, ChildVector children, int index)
     {
         byte[]? rlp = ResolveRlp(childPath, parallelChildren: false);
-        return rlp is null ? null : BranchRlp.ReferenceOf(rlp);
+        if (rlp is null)
+        {
+            children.Clear(index);
+            return;
+        }
+
+        if (rlp.Length < Hash256.Size)
+        {
+            children.Set(index, rlp);
+            return;
+        }
+
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        children.SetHash(index, hash);
+        _cache?.Set(hash, rlp);
     }
 
     private byte[]? Materialize(CommitmentStore.RowChain chain)
@@ -132,20 +175,27 @@ internal sealed class HistoricalTrieNodeBuilder(
         ushort presence = ParentRowCodec.Presence(newest);
         if (presence == 0) return null;
 
-        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
-        ushort missing = (ushort)(presence & ~ParentRowCodec.Fill(newest, presence, children));
-        while (missing != 0 && chain.MoveNext())
+        ChildVector children = ChildVector.Rent();
+        try
         {
-            ReadOnlySpan<byte> older = chain.CurrentValue;
-            if (!ParentRowCodec.IsBranchRow(older)) break;
+            ushort missing = (ushort)(presence & ~ParentRowCodec.Fill(newest, presence, children));
+            while (missing != 0 && chain.MoveNext())
+            {
+                ReadOnlySpan<byte> older = chain.CurrentValue;
+                if (!ParentRowCodec.IsBranchRow(older)) break;
 
-            missing = (ushort)(missing & ~ParentRowCodec.Fill(older, missing, children));
+                missing = (ushort)(missing & ~ParentRowCodec.Fill(older, missing, children));
+            }
+
+            return missing == 0 ? BranchRlp.Encode(children) : null;
         }
-
-        return missing == 0 ? BranchRlp.Encode(children) : null;
+        finally
+        {
+            ChildVector.Return(children);
+        }
     }
 
-    private static void FillFromChainIncludingCurrent(CommitmentStore.RowChain chain, ushort wanted, byte[]?[] children)
+    private static void FillFromChainIncludingCurrent(CommitmentStore.RowChain chain, ushort wanted, ChildVector children)
     {
         ushort missing = (ushort)(wanted & ~ParentRowCodec.Fill(chain.CurrentValue, wanted, children));
         while (missing != 0 && chain.MoveNext())
@@ -157,21 +207,10 @@ internal sealed class HistoricalTrieNodeBuilder(
         }
     }
 
-    private static ushort Missing(ushort wanted, byte[]?[] children)
-    {
-        ushort missing = 0;
-        for (int index = 0; index < BranchRlp.ChildCount; index++)
-        {
-            if (((wanted >> index) & 1) == 1 && children[index] is null) missing |= (ushort)(1 << index);
-        }
-
-        return missing;
-    }
-
     private byte[]? RebuildRlp(in TreePath path)
     {
         List<TrieLeaf> leaves = [];
-        scope.EnumerateLeaves(path, block, budget, leaves);
+        _scope.EnumerateLeaves(path, _block, _budget, leaves);
         TrieNode? node = SparseTrieBuilder.Build(leaves, path);
         return node?.FullRlp.ToArray();
     }

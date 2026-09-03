@@ -210,7 +210,7 @@ internal sealed class HistoryRowScanner(
         storagePrefix.CopyTo(upper);
         upper[^1] = 0x00;
 
-        using ISortedView view = storageClears.GetViewBetween(lower, upper);
+        using ISortedView view = storageClears.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
         while (view.MoveNext())
         {
             ReadOnlySpan<byte> key = view.CurrentKey;
@@ -238,19 +238,6 @@ internal sealed class HistoryRowScanner(
         }
 
         return account.StorageRoot;
-    }
-
-    public static Account? DecodeAccount(ReadOnlySpan<byte> accountRow)
-    {
-        if (accountRow.IsEmpty) return null;
-
-        RlpReader reader = new(accountRow);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
-        {
-            throw new InvalidOperationException("An account history row failed to decode; the column is corrupt.");
-        }
-
-        return new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment());
     }
 
     public static bool KilledByClear(IReadOnlyList<ClearRecord> clears, in ValueHash256 identity, ulong writtenAt, ulong asOf)

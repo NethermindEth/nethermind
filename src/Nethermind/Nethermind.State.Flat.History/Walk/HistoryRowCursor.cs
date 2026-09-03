@@ -64,7 +64,7 @@ internal sealed class HistoryRowCursor : IDisposable
         upper[_flatKey.Length..].Fill(0xFF);
         upper[keyLength] = 0x00;
 
-        using ISortedView view = _rows.GetViewBetween(lower[..keyLength], upper[..(keyLength + 1)]);
+        using ISortedView view = _rows.GetViewBetween(lower[..keyLength], upper[..(keyLength + 1)], ReadFlags.HintCacheMiss);
         while (view.MoveNext())
         {
             if (!Matches(view.CurrentKey)) continue;
@@ -160,7 +160,7 @@ internal sealed class HistoryRowCursor : IDisposable
         Span<byte> upper = stackalloc byte[MaxRowKeyLength];
         WriteRowKey(upper, lo - 1);
 
-        using ISortedView view = _rows.GetViewBetween(lower[..keyLength], upper[..keyLength]);
+        using ISortedView view = _rows.GetViewBetween(lower[..keyLength], upper[..keyLength], ReadFlags.HintCacheMiss);
         while (view.MoveNext())
         {
             if (!Matches(view.CurrentKey)) continue;

@@ -5,6 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -21,7 +22,10 @@ public sealed class ForwardCommitmentCapture
     private readonly long _maxBufferedBytes;
     private readonly ILogger _logger;
     private readonly SortedDictionary<ulong, CapturedBlock> _buffered = [];
+    private readonly Stack<CapturedBlock> _spare = new();
     private long _bufferedBytes;
+    private ulong _firstBuffered;
+    private ulong _lastBuffered;
     private bool _stopped;
 
     public ForwardCommitmentCapture(
@@ -58,7 +62,7 @@ public sealed class ForwardCommitmentCapture
 
         try
         {
-            CapturedBlock captured = new();
+            CapturedBlock captured = Take();
             foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in snapshot.StateNodes)
             {
                 AddAccount(captured, entry.Key.Key, entry.Value.FullRlp.AsSpan());
@@ -84,7 +88,7 @@ public sealed class ForwardCommitmentCapture
 
         try
         {
-            CapturedBlock captured = new();
+            CapturedBlock captured = Take();
             foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
             {
                 AddAccount(captured, entry.Path, entry.Rlp);
@@ -105,6 +109,7 @@ public sealed class ForwardCommitmentCapture
 
     public void Discard()
     {
+        foreach (CapturedBlock captured in _buffered.Values) Recycle(captured);
         _buffered.Clear();
         _bufferedBytes = 0;
     }
@@ -127,11 +132,19 @@ public sealed class ForwardCommitmentCapture
         }
     }
 
+    private CapturedBlock Take() => _spare.TryPop(out CapturedBlock? spare) ? spare : new CapturedBlock();
+
+    private void Recycle(CapturedBlock captured)
+    {
+        captured.Reset();
+        _spare.Push(captured);
+    }
+
     private void AddAccount(CapturedBlock captured, in TreePath path, ReadOnlySpan<byte> rlp)
     {
         if (rlp.Length < Hash256.Size || path.Length > _policy.AccountCheckpointDepth + 1) return;
 
-        captured.Accounts.Add(new NodeChange(default, path, rlp.ToArray()));
+        captured.Accounts.Add(new NodeChange(default, path, captured.Arena.Append(rlp), rlp.Length));
         captured.Bytes += rlp.Length;
     }
 
@@ -145,7 +158,7 @@ public sealed class ForwardCommitmentCapture
 
         if (rlp.Length < Hash256.Size || path.Length > _policy.StorageCheckpointDepth + 1) return;
 
-        captured.Storages.Add(new NodeChange(accountPath, path, rlp.ToArray()));
+        captured.Storages.Add(new NodeChange(accountPath, path, captured.Arena.Append(rlp), rlp.Length));
         captured.Bytes += rlp.Length;
     }
 
@@ -153,6 +166,7 @@ public sealed class ForwardCommitmentCapture
     {
         if (_buffered.Count >= MaxBufferedBlocks || _bufferedBytes + captured.Bytes > _maxBufferedBytes)
         {
+            Recycle(captured);
             Discard();
             _stopped = true;
             if (_logger.IsWarn) _logger.Warn(
@@ -160,6 +174,14 @@ public sealed class ForwardCommitmentCapture
             return;
         }
 
+        if (_buffered.Remove(block, out CapturedBlock? replaced))
+        {
+            _bufferedBytes -= replaced.Bytes;
+            Recycle(replaced);
+        }
+
+        if (_buffered.Count == 0 || block < _firstBuffered) _firstBuffered = block;
+        if (_buffered.Count == 0 || block > _lastBuffered) _lastBuffered = block;
         _buffered[block] = captured;
         _bufferedBytes += captured.Bytes;
     }
@@ -173,8 +195,8 @@ public sealed class ForwardCommitmentCapture
 
     private void Replay()
     {
-        ulong first = _buffered.Keys.First();
-        ulong last = _buffered.Keys.Last();
+        ulong first = _firstBuffered;
+        ulong last = _lastBuffered;
 
         EnsureStamp();
         using (CommitmentEmitter emitter = CommitmentEmitter.ForTip(_history, _policy, _metadata))
@@ -187,10 +209,12 @@ public sealed class ForwardCommitmentCapture
                     foreach ((ValueHash256 account, int depth) in depths) emitter.RecordStorageDepthReached(account, depth);
                 }
 
-                foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, change.Rlp);
-                foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, change.Rlp);
+                foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, captured.Arena.Slice(change.Offset, change.Length));
+                foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, captured.Arena.Slice(change.Offset, change.Length));
                 emitter.CompleteBlock();
             }
+
+            emitter.FlushOpenWindows();
         }
 
         _metadata.AdvanceTipSeries(first, last, out bool restarted);
@@ -202,11 +226,21 @@ public sealed class ForwardCommitmentCapture
 
     private sealed class CapturedBlock
     {
-        public readonly List<NodeChange> Accounts = [];
-        public readonly List<NodeChange> Storages = [];
+        public readonly RowArena Arena = new();
+        public readonly ArrayPoolList<NodeChange> Accounts = new(64);
+        public readonly ArrayPoolList<NodeChange> Storages = new(64);
         public Dictionary<ValueHash256, int>? StorageDepths;
         public long Bytes;
+
+        public void Reset()
+        {
+            Arena.Clear();
+            Accounts.Clear();
+            Storages.Clear();
+            StorageDepths?.Clear();
+            Bytes = 0;
+        }
     }
 
-    private readonly record struct NodeChange(ValueHash256 Scope, TreePath Path, byte[] Rlp);
+    private readonly record struct NodeChange(ValueHash256 Scope, TreePath Path, int Offset, int Length);
 }

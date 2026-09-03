@@ -11,13 +11,13 @@ internal sealed class TrieChangeCollector
 {
     private readonly List<(TreePath Path, TrieNode Node)> _changed = [];
 
-    public void Collect(TrieNode? root)
+    public void Collect(TrieNode? root, int maxDepth)
     {
         _changed.Clear();
         if (root is null) return;
 
         TreePath path = TreePath.Empty;
-        Visit(root, ref path);
+        Visit(root, ref path, maxDepth);
     }
 
     public void RecordAccounts(CommitmentEmitter emitter, int minRecordedDepth)
@@ -36,12 +36,12 @@ internal sealed class TrieChangeCollector
         }
     }
 
-    private void Visit(TrieNode node, ref TreePath path)
+    private void Visit(TrieNode node, ref TreePath path, int maxDepth)
     {
-        if (node.Keccak is not null) return;
+        if (node.Keccak is not null || path.Length > maxDepth) return;
 
         _changed.Add((path, node));
-        if (node.IsLeaf) return;
+        if (node.IsLeaf || path.Length == maxDepth) return;
 
         if (node.IsExtension)
         {
@@ -49,7 +49,7 @@ internal sealed class TrieChangeCollector
 
             int length = path.Length;
             path.AppendMut(node.Key!);
-            Visit(child, ref path);
+            Visit(child, ref path, maxDepth);
             path.TruncateMut(length);
             return;
         }
@@ -61,7 +61,7 @@ internal sealed class TrieChangeCollector
             if (!node.TryGetDirtyChild(nibble, out TrieNode? child)) continue;
 
             path.SetLast(nibble);
-            Visit(child, ref path);
+            Visit(child, ref path, maxDepth);
         }
 
         path.TruncateMut(parentLength);

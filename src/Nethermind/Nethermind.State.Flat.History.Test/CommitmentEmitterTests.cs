@@ -40,9 +40,9 @@ public class CommitmentEmitterTests
     {
         ulong fullWindow = CommitmentDepthPolicy.FullVectorEvery;
         ulong closing = fullWindow * Policy.Interval;
-        byte[]?[] newer = Children(0, 1, 2, 5);
-        byte[]?[] older = Children(0, 1, 2);
-        older[1] = TestItem.KeccakF.BytesToArray();
+        ChildVector newer = Children(0, 1, 2, 5);
+        ChildVector older = Children(0, 1, 2);
+        older.SetHash(1, TestItem.KeccakF.ValueHash256);
 
         if (walkFirst)
         {
@@ -56,7 +56,7 @@ public class CommitmentEmitterTests
         }
 
         byte[] row = WindowRow(CheckpointedPath, fullWindow)!;
-        byte[]?[] carried = new byte[]?[BranchRlp.ChildCount];
+        ChildVector carried = ChildVector.Rent();
         ushort presence = ParentRowCodec.Presence(row);
         ushort filled = ParentRowCodec.Fill(row, presence, carried);
 
@@ -64,8 +64,8 @@ public class CommitmentEmitterTests
         {
             Assert.That(ParentRowCodec.LastBlock(row), Is.EqualTo(closing), "the newer block keeps the row");
             Assert.That(filled, Is.EqualTo(presence), "a full-vector window carries a reference for every present child however the two writers interleave");
-            Assert.That(carried[1], Is.EqualTo(newer[1]), "a child both writers carried resolves to the newer block's reference");
-            Assert.That(carried[5], Is.EqualTo(newer[5]), "a child only the newer block carried is present in the merged row");
+            Assert.That(carried[1].ToArray(), Is.EqualTo(newer[1].ToArray()), "a child both writers carried resolves to the newer block's reference");
+            Assert.That(carried[5].ToArray(), Is.EqualTo(newer[5].ToArray()), "a child only the newer block carried is present in the merged row");
         }
     }
 
@@ -120,13 +120,13 @@ public class CommitmentEmitterTests
         for (int i = 1; i <= 16; i++) valued[i] = 0x80;
         valued[17] = 0x81;
         valued[18] = 0x7F;
-        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        ChildVector children = ChildVector.Rent();
 
         Assert.That(() => BranchRlp.ReadChildren(valued, children), Throws.InstanceOf<InvalidDataException>(),
             "state and storage tries key by fixed-width hashes, so no branch can carry a value; one that does is not a node of these tries and must not round-trip to a different node");
     }
 
-    private static void WriteWindow(CommitmentEmitter emitter, ulong block, byte[]?[] children)
+    private static void WriteWindow(CommitmentEmitter emitter, ulong block, ChildVector children)
     {
         using (emitter)
         {
@@ -316,14 +316,14 @@ public class CommitmentEmitterTests
         return store.TryGetExact(prefix[..prefixLength], window);
     }
 
-    private static byte[]?[] Children(params int[] present)
+    private static ChildVector Children(params int[] present)
     {
-        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        ChildVector children = ChildVector.Rent();
         foreach (int index in present)
         {
             byte[] hash = new byte[Hash256.Size];
             hash[0] = (byte)(index + 1);
-            children[index] = hash;
+            children.Set(index, hash);
         }
 
         return children;

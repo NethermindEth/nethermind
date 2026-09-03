@@ -23,16 +23,11 @@ internal sealed class StorageSubtreeReplayer(
         in TreePath slotPrefix,
         StoragePartitionRows rows,
         IReadOnlyList<ClearRecord> clears,
-        ulong from,
-        ulong to,
-        CommitmentEmitter? emitter,
-        SeriesWriter series,
+        in WalkReplayContext context,
         bool writeSeries,
-        MismatchSink sink,
-        WalkProgress progress,
-        int item,
-        CancellationToken token)
+        MismatchSink sink)
     {
+        (ulong from, ulong to, CommitmentEmitter? emitter, SeriesWriter series, WalkProgress progress, int item, CancellationToken token) = context;
         long replayed = 0;
         Contract[] contracts = new Contract[rows.Identities.Count];
         for (int i = 0; i < contracts.Length; i++)
@@ -61,7 +56,7 @@ internal sealed class StorageSubtreeReplayer(
                 HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to, token);
                 if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && !HistoryRowScanner.KilledByClear(clears, contract.Identity, writtenAt, asOf: from))
                 {
-                    contract.Tree!.Set(slot, start, rlpEncode: !rlpWrapSlots);
+                    AccountRowRlp.SetSlot(contract.Tree!, slot, start, rlpWrapSlots);
                 }
 
                 streams.Add(new StreamedSlot(contractIndex, slot, cursor, cursor.MoveNext()));
@@ -69,7 +64,7 @@ internal sealed class StorageSubtreeReplayer(
 
             foreach (StorageRowRef row in rows.Start)
             {
-                contracts[row.Contract].Tree!.Set(row.Slot, rows.Arena.Slice(row.Offset, row.Length).ToArray(), rlpEncode: !rlpWrapSlots);
+                AccountRowRlp.SetSlot(contracts[row.Contract].Tree!, row.Slot, rows.Arena.Slice(row.Offset, row.Length), rlpWrapSlots);
             }
 
             emitter?.BeginBlock(from);
@@ -124,7 +119,7 @@ internal sealed class StorageSubtreeReplayer(
                 while (nextDelta < rows.Deltas.Count && rows.Deltas[nextDelta].Block == block)
                 {
                     StorageRowRef row = rows.Deltas[nextDelta++];
-                    contracts[row.Contract].Tree!.Set(row.Slot, rows.Arena.Slice(row.Offset, row.Length).ToArray(), rlpEncode: !rlpWrapSlots);
+                    AccountRowRlp.SetSlot(contracts[row.Contract].Tree!, row.Slot, rows.Arena.Slice(row.Offset, row.Length), rlpWrapSlots);
                     touched.Add(row.Contract);
                 }
 
@@ -132,7 +127,7 @@ internal sealed class StorageSubtreeReplayer(
                 {
                     if (!stream.HasRow || stream.Rows.Block != block) continue;
 
-                    contracts[stream.Contract].Tree!.Set(stream.Slot, stream.Rows.Value.ToArray(), rlpEncode: !rlpWrapSlots);
+                    AccountRowRlp.SetSlot(contracts[stream.Contract].Tree!, stream.Slot, stream.Rows.Value, rlpWrapSlots);
                     touched.Add(stream.Contract);
                     stream.HasRow = stream.Rows.MoveNext();
                 }
@@ -179,13 +174,13 @@ internal sealed class StorageSubtreeReplayer(
         public void Reset(CommitmentEmitter? emitter, ILogManager logManager)
         {
             _emitter = emitter;
-            _store = new RawScopedTrieStore(new MemDb());
+            _store ??= new RawScopedTrieStore(new MemDb());
             Tree = new StorageTree(_store, logManager);
         }
 
         public void Recompute()
         {
-            if (_emitter is not null) _changes.Collect(Tree!.RootRef);
+            if (_emitter is not null) _changes.Collect(Tree!.RootRef, _emitter.StorageRecordDepth);
             Tree!.UpdateRootHash();
             if (_emitter is not null) _changes.RecordStorage(_emitter, Identity, slotPrefix.Length);
         }

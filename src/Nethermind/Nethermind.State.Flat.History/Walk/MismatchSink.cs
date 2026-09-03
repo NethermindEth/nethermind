@@ -56,6 +56,8 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
         lock (_mismatches)
         {
             int pendingTaken = Math.Min(pending?.Count ?? 0, Math.Max(0, capacity - _mismatches.Count));
+            if (_mismatches.Count + pendingTaken == 0) return [];
+
             byte[] encoded = new byte[(_mismatches.Count + pendingTaken) * RecordLength];
             int offset = 0;
             foreach (HistoryWalkMismatch mismatch in _mismatches) Write(encoded.AsSpan(offset, RecordLength), mismatch, ref offset);

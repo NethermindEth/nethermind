@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.State.Flat.History.Walk;
@@ -9,7 +10,8 @@ internal sealed class NodeSeriesState : IDisposable
 {
     private readonly ChildVector _refs = ChildVector.Rent();
     private NodeViewKind _kind = NodeViewKind.Empty;
-    private byte[]? _wholeRlp;
+    private byte[]? _whole;
+    private int _wholeLength;
     private ushort _presence;
 
     public void Apply(ReadOnlySpan<byte> row)
@@ -23,7 +25,15 @@ internal sealed class NodeSeriesState : IDisposable
         if (ParentRowCodec.IsWholeNodeRow(row))
         {
             Clear(NodeViewKind.Whole);
-            _wholeRlp = ParentRowCodec.WholeNodeRlp(row).ToArray();
+            ReadOnlySpan<byte> rlp = ParentRowCodec.WholeNodeRlp(row);
+            if (_whole is null || _whole.Length < rlp.Length)
+            {
+                if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
+                _whole = ArrayPool<byte>.Shared.Rent(rlp.Length);
+            }
+
+            rlp.CopyTo(_whole);
+            _wholeLength = rlp.Length;
             return;
         }
 
@@ -67,7 +77,7 @@ internal sealed class NodeSeriesState : IDisposable
             case NodeViewKind.Empty:
                 return NodeView.Empty;
             case NodeViewKind.Whole:
-                return NodeView.Whole(_wholeRlp!);
+                return NodeView.Whole(_whole.AsSpan(0, _wholeLength));
             default:
                 if (_presence == 0) return NodeView.Empty;
                 if (Missing() != 0) throw new InvalidDataException("A commitment series row lists a child it never carried a reference for.");
@@ -92,10 +102,15 @@ internal sealed class NodeSeriesState : IDisposable
     private void Clear(NodeViewKind kind)
     {
         _kind = kind;
-        _wholeRlp = null;
+        _wholeLength = 0;
         _presence = 0;
         _refs.Clear();
     }
 
-    public void Dispose() => ChildVector.Return(_refs);
+    public void Dispose()
+    {
+        ChildVector.Return(_refs);
+        if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
+        _whole = null;
+    }
 }

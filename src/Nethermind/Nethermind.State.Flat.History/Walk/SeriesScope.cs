@@ -26,11 +26,11 @@ internal readonly struct SeriesScope(bool isStorage, in ValueHash256 identity)
         if (isStorage)
         {
             if (view.Kind == NodeViewKind.Empty) emitter.RecordStorageEmpty(_identity, path);
-            else emitter.RecordStorageNode(_identity, path, view.Rlp!, changedChildren);
+            else emitter.RecordStorageNode(_identity, path, view.Rlp, changedChildren);
             return;
         }
 
         if (view.Kind == NodeViewKind.Empty) emitter.RecordAccountEmpty(path);
-        else emitter.RecordAccountNode(path, view.Rlp!, changedChildren);
+        else emitter.RecordAccountNode(path, view.Rlp, changedChildren);
     }
 }

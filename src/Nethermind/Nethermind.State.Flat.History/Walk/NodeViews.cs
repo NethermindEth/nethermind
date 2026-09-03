@@ -11,26 +11,30 @@ namespace Nethermind.State.Flat.History.Walk;
 
 internal static class NodeViews
 {
+    private const int MaxNibbles = 2 * Hash256.Size;
+
     public static NodeView FromRoot(TrieNode? root, int depth, ITrieNodeResolver resolver)
     {
         if (root is null) return NodeView.Empty;
 
-        byte[] rootRlp = root.FullRlp.ToArray()!;
-        if (depth == 0) return root.IsBranch ? AsBranch(rootRlp) : NodeView.Whole(rootRlp);
+        ReadOnlySpan<byte> rootRlp = root.FullRlp.AsSpan();
+        if (depth == 0) return root.IsBranch ? AsBranch(rootRlp, root.Keccak) : NodeView.Whole(rootRlp, root.Keccak);
         if (root.IsBranch) throw new InvalidOperationException("A partial trie holding one prefix cannot have a branch at its root.");
 
         byte[] key = root.Key!;
         if (key.Length < depth) throw new InvalidOperationException("A partial trie's root does not cover the prefix it was built for.");
 
         ReadOnlySpan<byte> rest = key.AsSpan(depth);
-        if (root.IsLeaf) return NodeView.Whole(LeafRlp(rest, root.Value.AsSpan()));
+        if (root.IsLeaf) return NodeView.Leaf(rest, root.Value.AsSpan());
 
         TreePath path = TreePath.Empty;
         TrieNode child = root.GetChild(resolver, ref path, 0) ?? throw new InvalidOperationException("An extension node lost its child between commit and view.");
-        byte[] childRlp = child.FullRlp.ToArray()!;
-        if (rest.IsEmpty) return child.IsBranch ? AsBranch(childRlp) : NodeView.Whole(childRlp);
+        ReadOnlySpan<byte> childRlp = child.FullRlp.AsSpan();
+        if (rest.IsEmpty) return child.IsBranch ? AsBranch(childRlp, child.Keccak) : NodeView.Whole(childRlp, child.Keccak);
 
-        return NodeView.Whole(ExtensionRlp(rest, BranchRlp.ReferenceOf(childRlp)));
+        Span<byte> reference = stackalloc byte[Hash256.Size];
+        int referenceLength = BranchRlp.ReferenceOf(childRlp, reference);
+        return NodeView.Extension(rest, reference[..referenceLength]);
     }
 
     public static NodeView Combine(ReadOnlySpan<NodeView> children)
@@ -59,67 +63,51 @@ internal static class NodeViews
         {
             Span<byte> reference = stackalloc byte[Hash256.Size];
             child.CopyReferenceTo(reference);
-            return NodeView.Whole(ExtensionRlp([(byte)only], reference[..child.ReferenceLength]));
+            return NodeView.Extension([(byte)only], reference[..child.ReferenceLength]);
         }
 
-        (byte[] nibbles, bool isLeaf, byte[] payload) = DecodeShortNode(child.Rlp!);
-        byte[] merged = new byte[nibbles.Length + 1];
+        Span<byte> merged = stackalloc byte[MaxNibbles + 1];
         merged[0] = (byte)only;
-        nibbles.CopyTo(merged, 1);
-        return NodeView.Whole(isLeaf ? LeafRlp(merged, payload) : ExtensionRlp(merged, payload));
+        bool isLeaf = DecodeShortNode(child.Rlp, merged[1..], out int nibbleCount, out ReadOnlySpan<byte> payload);
+        ReadOnlySpan<byte> nibbles = merged[..(nibbleCount + 1)];
+        return isLeaf ? NodeView.Leaf(nibbles, payload) : NodeView.Extension(nibbles, payload);
     }
 
-    public static byte[] ExtensionRlp(ReadOnlySpan<byte> nibbles, ReadOnlySpan<byte> childReference)
-    {
-        byte[] hexPrefix = HexPrefix.ToBytes(nibbles.ToArray(), isLeaf: false);
-        int referenceLength = childReference.Length == Hash256.Size ? 1 + Hash256.Size : childReference.Length;
-        int contentLength = Rlp.LengthOf(hexPrefix) + referenceLength;
-        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
-        int position = Rlp.StartSequence(rlp, 0, contentLength);
-        position = Rlp.Encode(rlp, position, hexPrefix);
-        if (childReference.Length == Hash256.Size)
-        {
-            Rlp.Encode(rlp, position, childReference);
-        }
-        else
-        {
-            childReference.CopyTo(rlp.AsSpan(position));
-        }
-
-        return rlp;
-    }
-
-    public static byte[] LeafRlp(ReadOnlySpan<byte> nibbles, ReadOnlySpan<byte> value)
-    {
-        byte[] hexPrefix = HexPrefix.ToBytes(nibbles.ToArray(), isLeaf: true);
-        int contentLength = Rlp.LengthOf(hexPrefix) + Rlp.LengthOf(value);
-        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
-        int position = Rlp.StartSequence(rlp, 0, contentLength);
-        position = Rlp.Encode(rlp, position, hexPrefix);
-        Rlp.Encode(rlp, position, value);
-        return rlp;
-    }
-
-    private static NodeView AsBranch(byte[] rlp)
+    private static NodeView AsBranch(ReadOnlySpan<byte> rlp, Hash256? knownHash)
     {
         ChildVector children = ChildVector.Rent();
         BranchRlp.ReadChildren(rlp, children);
-        return NodeView.Branch(children);
+        return NodeView.Branch(children, rlp, knownHash);
     }
 
-    private static (byte[] Nibbles, bool IsLeaf, byte[] Payload) DecodeShortNode(byte[] rlp)
+    private static bool DecodeShortNode(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload)
     {
         RlpReader reader = new(rlp);
         reader.ReadSequenceLength();
-        (byte[] nibbles, bool isLeaf) = HexPrefix.FromBytes(reader.DecodeByteArraySpan());
-        if (isLeaf) return (nibbles, true, reader.DecodeByteArraySpan().ToArray());
+        ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+        bool isLeaf = (hexPrefix[0] & 0x20) != 0;
+        nibbleCount = 0;
+        if ((hexPrefix[0] & 0x10) != 0) nibbles[nibbleCount++] = (byte)(hexPrefix[0] & 0x0F);
+        for (int index = 1; index < hexPrefix.Length; index++)
+        {
+            nibbles[nibbleCount++] = (byte)(hexPrefix[index] >> 4);
+            nibbles[nibbleCount++] = (byte)(hexPrefix[index] & 0x0F);
+        }
+
+        if (isLeaf)
+        {
+            payload = reader.DecodeByteArraySpan();
+            return true;
+        }
 
         if (reader.IsSequenceNext())
         {
             (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            return (nibbles, false, reader.Read(prefixLength + contentLength).ToArray());
+            payload = reader.Read(prefixLength + contentLength);
+            return false;
         }
 
-        return (nibbles, false, reader.DecodeByteArraySpan().ToArray());
+        payload = reader.DecodeByteArraySpan();
+        return false;
     }
 }

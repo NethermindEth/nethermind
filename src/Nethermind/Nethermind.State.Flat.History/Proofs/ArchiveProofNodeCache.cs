@@ -8,21 +8,9 @@ namespace Nethermind.State.Flat.History.Proofs;
 
 internal sealed class ArchiveProofNodeCache(int capacity)
 {
-    private readonly LruCache<ValueHash256, byte[]> _nodes = new(capacity, nameof(ArchiveProofNodeCache));
+    private readonly ClockCache<ValueHash256, byte[]> _nodes = new(capacity);
 
-    public bool TryGet(in ValueHash256 hash, out byte[]? rlp)
-    {
-        lock (_nodes)
-        {
-            return _nodes.TryGet(hash, out rlp);
-        }
-    }
+    public bool TryGet(in ValueHash256 hash, out byte[]? rlp) => _nodes.TryGet(hash, out rlp);
 
-    public void Set(in ValueHash256 hash, byte[] rlp)
-    {
-        lock (_nodes)
-        {
-            _nodes.Set(hash, rlp);
-        }
-    }
+    public void Set(in ValueHash256 hash, byte[] rlp) => _nodes.Set(hash, rlp);
 }
