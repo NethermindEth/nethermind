@@ -20,7 +20,7 @@ namespace Nethermind.Evm;
 using HalfWord = Vector128<byte>;
 
 [StructLayout(LayoutKind.Auto)]
-public ref struct EvmStack
+public ref partial struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
@@ -1537,16 +1537,7 @@ public ref struct EvmStack
         }
         else
         {
-#if ZK_EVM
             WriteBeWord(ref head, in value);
-#else
-            ulong u3 = Bytes.Bswap64(value.u3);
-            ulong u2 = Bytes.Bswap64(value.u2);
-            ulong u1 = Bytes.Bswap64(value.u1);
-            ulong u0 = Bytes.Bswap64(value.u0);
-
-            head = Vector256.Create(u3, u2, u1, u0).AsByte();
-#endif
         }
 
         if (TTracingInst.IsActive)
@@ -1570,52 +1561,6 @@ public ref struct EvmStack
         Head = head;
         return true;
     }
-
-#if ZK_EVM
-    // Writes a UInt256 as one big-endian 32-byte stack word — the counterpart of ReadBeWord,
-    // with the same small-value shortcut: pushed values are dominated by counters and offsets
-    // whose high limbs are zero, which need one lane swapped instead of four.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteBeWord(ref EvmWord head, in UInt256 value)
-    {
-        ref ulong d = ref Unsafe.As<EvmWord, ulong>(ref head);
-        ulong low = ZkEvmBitOperations.Bswap64(value.u0);
-        if ((value.u1 | value.u2 | value.u3) == 0)
-        {
-            d = 0;
-            Unsafe.Add(ref d, 1) = 0;
-            Unsafe.Add(ref d, 2) = 0;
-            Unsafe.Add(ref d, 3) = low;
-        }
-        else
-        {
-            ZkEvmBitOperations.Bswap256(in value, ref head);
-        }
-    }
-
-    // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no byte-swap
-    // instruction, so reversing endianness is a software shuffle. Words produced by
-    // PUSH0/PUSH1/PUSH2 and the like have their high 24 bytes zero, so the common case
-    // swaps only the low limb instead of all four.
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static UInt256 ReadBeWord(ref byte bytes)
-    {
-        ulong r0 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-        ulong r1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
-        ulong r2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
-        ulong r3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
-        ulong low = ZkEvmBitOperations.Bswap64(r3);
-        return (r0 | r1 | r2) == 0
-            ? new UInt256(low, 0, 0, 0)
-            : new UInt256(
-                low,
-                ZkEvmBitOperations.Bswap64(r2),
-                ZkEvmBitOperations.Bswap64(r1),
-                ZkEvmBitOperations.Bswap64(r0)
-            );
-    }
-#endif
 
     /// <summary>
     /// Pops an UInt256 written in big endian.
@@ -1657,17 +1602,7 @@ public ref struct EvmStack
         }
         else
         {
-#if ZK_EVM
             result = ReadBeWord(ref bytes);
-#else
-            // Combine read and switch endianness to movbe reg, mem
-            ulong u3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref bytes));
-            ulong u2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
-            ulong u1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
-            ulong u0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
-
-            result = new UInt256(u0, u1, u2, u3);
-#endif
         }
 
         return true;
@@ -1726,26 +1661,7 @@ public ref struct EvmStack
         }
         else
         {
-#if ZK_EVM
-            b = ReadBeWord(ref bytes);
-            a = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
-#else
-            // Scalar path - interleave loads across both values
-            ulong b3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref bytes));
-            ulong a3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
-
-            ulong b2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
-            ulong a2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
-
-            ulong b1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
-            ulong a1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
-
-            ulong b0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
-            ulong a0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
-
-            b = new UInt256(b0, b1, b2, b3);
-            a = new UInt256(a0, a1, a2, a3);
-#endif
+            ReadBeWords(ref bytes, out a, out b);
         }
 
         return true;
@@ -1814,38 +1730,7 @@ public ref struct EvmStack
         }
         else
         {
-#if ZK_EVM
-            c = ReadBeWord(ref bytes);
-            b = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
-            a = ReadBeWord(ref Unsafe.Add(ref bytes, 64));
-#else
-            // Scalar path - interleave loads across all three values
-            // to break dependency chains and hide load-to-use latency.
-            // Modern CPUs can have 10+ loads in flight simultaneously.
-            // Round 1: high qwords (u3) from each value
-            ulong c3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref bytes));
-            ulong b3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
-            ulong a3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64)));
-
-            // Round 2: u2 from each value
-            ulong c2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
-            ulong b2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
-            ulong a2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72)));
-
-            // Round 3: u1 from each value
-            ulong c1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
-            ulong b1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
-            ulong a1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80)));
-
-            // Round 4: low qwords (u0) from each value
-            ulong c0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
-            ulong b0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
-            ulong a0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88)));
-
-            c = new UInt256(c0, c1, c2, c3);
-            b = new UInt256(b0, b1, b2, b3);
-            a = new UInt256(a0, a1, a2, a3);
-#endif
+            ReadBeWords(ref bytes, out a, out b, out c);
         }
 
         return true;
@@ -1922,43 +1807,7 @@ public ref struct EvmStack
         }
         else
         {
-#if ZK_EVM
-            d = ReadBeWord(ref bytes);
-            c = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
-            b = ReadBeWord(ref Unsafe.Add(ref bytes, 64));
-            a = ReadBeWord(ref Unsafe.Add(ref bytes, 96));
-#else
-            // Scalar path - interleave loads across all four values
-            // to maximise load unit utilisation and hide latency
-            // Round 1: high qwords (u3)
-            ulong d3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref bytes));
-            ulong c3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
-            ulong b3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64)));
-            ulong a3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 96)));
-
-            // Round 2: u2
-            ulong d2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
-            ulong c2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
-            ulong b2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72)));
-            ulong a2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 104)));
-
-            // Round 3: u1
-            ulong d1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
-            ulong c1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
-            ulong b1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80)));
-            ulong a1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 112)));
-
-            // Round 4: low qwords (u0)
-            ulong d0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
-            ulong c0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
-            ulong b0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88)));
-            ulong a0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 120)));
-
-            d = new UInt256(d0, d1, d2, d3);
-            c = new UInt256(c0, c1, c2, c3);
-            b = new UInt256(b0, b1, b2, b3);
-            a = new UInt256(a0, a1, a2, a3);
-#endif
+            ReadBeWords(ref bytes, out a, out b, out c, out d);
         }
 
         return true;
