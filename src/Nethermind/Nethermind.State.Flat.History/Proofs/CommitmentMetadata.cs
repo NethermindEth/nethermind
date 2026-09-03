@@ -103,21 +103,22 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
 
     private void DiscardAll()
     {
+        ReadOnlySpan<byte> first = [0x00];
         Span<byte> last = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];
         last.Fill(0xFF);
-        Discard(_column, last);
-        Discard(_storageColumn, last);
+        Discard(_column, first, last);
+        Discard(_storageColumn, first, last);
         lock (_storageTrieDepths)
         {
             _storageTrieDepths.Clear();
         }
     }
 
-    private static void Discard(IDb column, ReadOnlySpan<byte> last)
+    private static void Discard(IDb column, ReadOnlySpan<byte> first, ReadOnlySpan<byte> last)
     {
         IRangeRemovableKeyValueStore removable = (IRangeRemovableKeyValueStore)column;
-        removable.RemoveRange([], last);
-        removable.ReclaimRange([], last);
+        removable.RemoveRange(first, last);
+        removable.ReclaimRange(first, last);
     }
 
     public void WriteStamp(CommitmentDepthPolicy policy)

@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;

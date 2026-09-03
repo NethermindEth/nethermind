@@ -111,6 +111,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                     HistoryWalkVerifier verifier = _verifierFactory!(resources.RowsPerPartition);
                     if (_logger.IsInfo) _logger.Info($"History walk sized for this machine: {resources}.");
 
+                    _retrofit?.Prepare();
                     ulong from = 0;
                     ulong to = watermark;
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
@@ -119,8 +120,6 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                         to = pendingTo;
                         if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
                     }
-
-                    _retrofit?.Prepare();
                     while (true)
                     {
                         if (_logger.IsInfo) _logger.Info(
