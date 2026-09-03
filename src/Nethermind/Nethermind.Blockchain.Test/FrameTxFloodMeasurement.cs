@@ -543,6 +543,11 @@ public class FrameTxFloodMeasurement
         Func<int, FloodOutcome> measureAtRate)
     {
         int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
+
+        // The fixture warm-up exercises block processing only, so the first flood of a ramp pays the
+        // generator's cold start and can miss the lag budget at a rate the node otherwise sustains.
+        measureAtRate(rates[0]);
+
         double lastSustained = 0;
         bool sustainedEveryRate = true;
         double firstFailedRate = 0;
