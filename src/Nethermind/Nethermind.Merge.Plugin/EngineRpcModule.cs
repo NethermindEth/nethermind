@@ -132,17 +132,7 @@ public partial class EngineRpcModule(
 
         try
         {
-            Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
-            bytes.Clear();
-            for (int i = 0; i < BlobCellMask.CellCount; i++)
-            {
-                if (custodyColumns.Get(i))
-                {
-                    bytes[i >> 3] |= (byte)(1 << (i & 7));
-                }
-            }
-
-            _blobCustodyTracker.Update(BlobCellMask.FromBytes(bytes));
+            _blobCustodyTracker.Update(BlobCellBits.ToMask(custodyColumns));
         }
         catch (Exception ex)
         {
