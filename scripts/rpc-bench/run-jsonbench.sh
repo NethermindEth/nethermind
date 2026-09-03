@@ -291,6 +291,9 @@ if [[ -d "$work/io/out" ]]; then
       || die "corpus run produced no valid aggregate summary — raw output retained on the runner under $work/io/out"
   else
     cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
+    # requests.csv is k6's pre-generated fixture (rps x duration full request bodies); nothing reads it and a
+    # heavy eth_call rate ladder of them outgrows the arm runner's root disk.
+    rm -f "$OUT_DIR/requests.csv"
   fi
 fi
 cp "$clients_yaml" "$OUT_DIR/clients.yaml" 2>/dev/null || true
