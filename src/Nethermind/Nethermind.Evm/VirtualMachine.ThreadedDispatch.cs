@@ -18,6 +18,9 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
+    // Poll cancellation every 1024 opcodes (low bits of the per-frame op counter).
+    private const int CancellationCheckMask = 1023;
+
     private struct ThreadedState
     {
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref ThreadedState, EvmExceptionType>* OpcodeHandlers;
@@ -55,8 +58,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
+    /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
+    /// <returns>The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts.</returns>
     [SkipLocalsInit]
-    private partial EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
+    private EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ref nint programCounter)
