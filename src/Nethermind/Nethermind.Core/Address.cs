@@ -21,7 +21,7 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public sealed class Address : IEquatable<Address>, IComparable<Address>
+    public sealed partial class Address : IEquatable<Address>, IComparable<Address>
     {
         public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
@@ -163,27 +163,17 @@ namespace Nethermind.Core
                 return true;
             }
 
-            // Address must be 20 bytes long Vector128 + uint
-            ref byte bytes0 = ref Unsafe.AsRef(in FirstByte);
-            ref byte bytes1 = ref Unsafe.AsRef(in other.FirstByte);
-#if ZK_EVM
-            // RISC-V has no SIMD, so a Vector128 compare lowers to a slow software
-            // helper. Compare the 20 bytes as two ulongs plus a uint instead.
-            return Unsafe.ReadUnaligned<ulong>(ref bytes0)
-                       == Unsafe.ReadUnaligned<ulong>(ref bytes1)
-                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes0, 8))
-                       == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes1, 8))
-                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes0, 16))
-                       == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes1, 16));
-#else
-            // Compare first 16 bytes with Vector128 and last 4 bytes with uint
-            return
-                Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
-                Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
-#endif
+            return BytesEqual(ref Unsafe.AsRef(in FirstByte), ref Unsafe.AsRef(in other.FirstByte));
         }
+
+        /// <summary>Compares two addresses byte for byte.</summary>
+        /// <remarks>
+        /// Split by target rather than written once: RISC-V has no SIMD, and a <see cref="Vector128{T}"/> compare
+        /// lowers to a software helper there.
+        /// </remarks>
+        /// <param name="a">Reference to the first byte of one 20-byte address.</param>
+        /// <param name="b">Reference to the first byte of the other.</param>
+        internal static partial bool BytesEqual(ref byte a, ref byte b);
 
         // Same comparison as Equals(Address) but against raw bytes, skipping the
         // length-dispatching SequenceEqual helper on hot paths.
@@ -192,16 +182,7 @@ namespace Nethermind.Core
         {
             if (other.Length != Size) return false;
 
-            ref byte a = ref Unsafe.AsRef(in FirstByte);
-            ref byte b = ref MemoryMarshal.GetReference(other);
-#if ZK_EVM
-            return Unsafe.ReadUnaligned<ulong>(ref a) == Unsafe.ReadUnaligned<ulong>(ref b)
-                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))
-                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref a, 16)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
-#else
-            return Unsafe.As<byte, Vector128<byte>>(ref a) == Unsafe.As<byte, Vector128<byte>>(ref b)
-                && Unsafe.As<byte, uint>(ref Unsafe.Add(ref a, Vector128<byte>.Count)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref b, Vector128<byte>.Count));
-#endif
+            return BytesEqual(ref Unsafe.AsRef(in FirstByte), ref MemoryMarshal.GetReference(other));
         }
 
         public static Address FromNumber(in UInt256 number)
@@ -310,6 +291,7 @@ namespace Nethermind.Core
             return result;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
 
 #if ZK_EVM
@@ -371,13 +353,28 @@ namespace Nethermind.Core
         public static implicit operator Address(AddressAsKey key) => key._key;
         public static implicit operator AddressAsKey(Address key) => new(key);
 
-        public bool Equals(AddressAsKey other) => _key == other._key;
+        public bool Equals(AddressAsKey other) => Equals(in other);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
         public override string ToString() => _key?.ToString() ?? "<null>";
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
 
-        public bool Equals(in AddressAsKey other) => _key == other._key;
+        /// <remarks>
+        /// The checks are spelled out and the compare goes straight to <see cref="Address.BytesEqual"/>, rather than
+        /// through <see cref="Address.Equals(Address)"/>, which carries no inlining hint and so becomes a call on the
+        /// hot path of every cache probe.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(in AddressAsKey other)
+        {
+            Address a = _key;
+            Address b = other._key;
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null) return false;
+
+            return Address.BytesEqual(ref MemoryMarshal.GetReference(a.Bytes), ref MemoryMarshal.GetReference(b.Bytes));
+        }
     }
 
     public ref struct AddressStructRef

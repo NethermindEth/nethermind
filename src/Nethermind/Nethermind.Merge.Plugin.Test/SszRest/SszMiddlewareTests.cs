@@ -1415,6 +1415,32 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task GetInclusionList_bogota_forwards_the_parent_block_hash_from_the_path()
+    {
+        InclusionListBytes inclusionList = new(1) { new ArrayPoolList<byte>((ReadOnlySpan<byte>)[0x01, 0x02]) };
+        _engineModule.engine_getInclusionListV1(TestItem.KeccakA)
+            .Returns(ResultWrapper<InclusionListBytes>.Success(inclusionList));
+
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v1/inclusion_list/{TestItem.KeccakA}", fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_getInclusionListV1(TestItem.KeccakA);
+    }
+
+    [Test]
+    public async Task GetInclusionList_bogota_rejects_a_malformed_parent_block_hash()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/inclusion_list/0xdeadbeef", fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        await _engineModule.DidNotReceive().engine_getInclusionListV1(Arg.Any<Hash256?>());
+    }
+
+    [Test]
     public async Task Legacy_v2_base_path_is_no_longer_routed()
     {
         DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads", BuildMinimalV1NewPayloadRequest(), fork: "paris");
