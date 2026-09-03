@@ -12,10 +12,10 @@ namespace Nethermind.Kademlia;
 /// Runs active random Kademlia lookups and streams discovered nodes.
 /// </summary>
 /// <remarks>
-/// Jobs iterate at <see cref="MinimumIterationDuration"/> while the routing table is still underfilled or while
-/// lookups keep admitting nodes into it. Once the table is filled and a lookup admits nothing, the job doubles its
-/// interval up to <see cref="MaximumIterationDuration"/>, so a node with a healthy table stops behaving like a
-/// crawler. Periodic bootstrap and bucket refresh in <see cref="IKademlia{TKey,TNode}.Run"/> are unaffected.
+/// Jobs iterate at <see cref="MinimumIterationDuration"/> while the routing table is still underfilled. Once the table
+/// is healthy, each job backs off to <see cref="MaximumProductiveIterationDuration"/> while nodes are still being
+/// admitted and to <see cref="MaximumIterationDuration"/> when idle. Periodic bootstrap and bucket refresh in
+/// <see cref="IKademlia{TKey,TNode}.Run"/> are unaffected.
 /// </remarks>
 public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     IKademlia<TKey, TNode> kademlia,
@@ -30,6 +30,15 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     where TKadKey : notnull
 {
     private static readonly TimeSpan MinimumIterationDuration = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Longest interval used while a healthy routing table is still admitting nodes.
+    /// </summary>
+    /// <remarks>
+    /// At the default ten jobs this keeps one active random walk starting about every three seconds, while preventing
+    /// ordinary routing churn from pinning every job at the one-second bootstrap pace.
+    /// </remarks>
+    private static readonly TimeSpan MaximumProductiveIterationDuration = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Longest interval an idle job backs off to.
@@ -175,18 +184,19 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     }
 
     /// <summary>
-    /// Returns the pace for the next iteration, resetting it when the last lookup was worth running.
+    /// Returns the pace for the next iteration, retaining a sustainable crawl rate while the table changes.
     /// </summary>
     /// <param name="current">Pace the finished iteration ran at.</param>
     /// <param name="admittedNodes">Whether the routing table admitted a node since the previous iteration decided its pace.</param>
     private TimeSpan NextIterationDuration(TimeSpan current, bool admittedNodes)
     {
-        if (admittedNodes || IsUnderfilled())
+        if (IsUnderfilled())
         {
             return MinimumIterationDuration;
         }
 
-        return TimeSpan.FromTicks(Math.Min(current.Ticks * 2, MaximumIterationDuration.Ticks));
+        TimeSpan maximum = admittedNodes ? MaximumProductiveIterationDuration : MaximumIterationDuration;
+        return TimeSpan.FromTicks(Math.Min(current.Ticks * 2, maximum.Ticks));
     }
 
     private bool IsUnderfilled()
@@ -202,8 +212,8 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     /// <remarks>
     /// Jobs compare this counter across their whole iteration, so admissions made by a concurrent job or by inbound
     /// traffic count too. Attributing an admission to the lookup that caused it would mean threading a lookup
-    /// identity through every protocol adapter, and the imprecision is one-sided: an admission this job did not
-    /// cause still means the table is changing, and reading it as productive only keeps discovery eager.
+    /// identity through every protocol adapter. An admission this job did not cause can therefore keep it at the
+    /// sustainable productive pace, but cannot return it to the one-second bootstrap pace once the table is healthy.
     /// </remarks>
     private sealed class AdmissionCounter
     {
