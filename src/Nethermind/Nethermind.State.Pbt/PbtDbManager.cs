@@ -284,7 +284,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => [];
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => [];
         public byte[]? GetNode(PbtNodePath path) => null;
-        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))

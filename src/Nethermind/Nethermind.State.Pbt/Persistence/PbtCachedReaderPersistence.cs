@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Db;
@@ -126,7 +127,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => inner.EnumerateLeaves();
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => inner.EnumerateLeaves(prefix);
         public byte[]? GetNode(PbtNodePath path) => inner.GetNode(path);
-        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
         public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes() => inner.EnumerateNodes();
         public ulong GetCodeReference(in ValueHash256 codeHash) => inner.GetCodeReference(codeHash);
         public bool TryLease() => TryAcquireLease();

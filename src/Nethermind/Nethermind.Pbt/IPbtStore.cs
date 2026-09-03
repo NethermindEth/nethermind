@@ -16,13 +16,15 @@ public interface IPbtStore
     /// <summary>Gets the encoded canonical node at <paramref name="path"/>, or <see langword="null"/> when absent.</summary>
     byte[]? GetNode(PbtNodePath path);
 
-    /// <summary>Gets an owned, read-only lease for the complete group containing <paramref name="groupKey"/>.</summary>
+    /// <summary>Gets a caller-owned lease for the complete group containing <paramref name="groupKey"/>.</summary>
     /// <remarks>
-    /// The returned lease owns its payload until disposed. Its memory is read-only and is invalid after
-    /// disposal. A missing group returns <see langword="null"/>. Implementations validate that the key is
-    /// at a four-level boundary even when the group is absent.
+    /// A non-null result transfers exactly one reference to the caller, which must invoke
+    /// <see cref="IDisposable.Dispose"/> exactly once. Consumers must treat the memory returned by
+    /// <see cref="RefCountingMemory.GetSpan"/> as read-only. The reference keeps the payload valid until
+    /// released, independently of the store. A missing group returns <see langword="null"/>. Implementations
+    /// validate that the key is at a four-level boundary even when the group is absent.
     /// </remarks>
-    PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+    RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
@@ -42,7 +44,7 @@ public interface IPbtStore
         try
         {
             PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
-            return PbtNodeGroupPayload.FromLease(writer.Detach()!);
+            return writer.Detach()!;
         }
         catch
         {

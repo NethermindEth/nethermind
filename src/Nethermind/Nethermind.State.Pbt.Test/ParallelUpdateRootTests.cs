@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using NUnit.Framework;
@@ -149,7 +150,7 @@ public class ParallelUpdateRootTests
 
         public byte[]? GetNode(PbtNodePath path) => throw new AssertionException("TrieUpdater must use grouped reads.");
 
-        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => _inner.SetLeaf(key, value);
 

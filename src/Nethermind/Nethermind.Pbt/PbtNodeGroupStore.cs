@@ -86,7 +86,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
-    public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+    public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(groupKey);
@@ -95,7 +95,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         if (!_groups.TryGetValue(groupKey, out RefCountingMemory? payload)) return null;
 
         payload.AcquireLease();
-        return PbtNodeGroupPayload.FromLease(payload);
+        return payload;
     }
 
     /// <inheritdoc/>

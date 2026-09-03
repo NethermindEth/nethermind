@@ -49,9 +49,9 @@ public sealed class PbtReadOnlySnapshotBundle(
         return reader.GetNode(path);
     }
 
-    internal PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => GetNodeGroup(groupKey, []);
+    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => GetNodeGroup(groupKey, []);
 
-    internal PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtSnapshotContent> additionalLayers)
+    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtSnapshotContent> additionalLayers)
     {
         GuardDispose();
         ArgumentNullException.ThrowIfNull(groupKey);
@@ -59,59 +59,56 @@ public sealed class PbtReadOnlySnapshotBundle(
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
-        PbtNodeGroupPayload? basePayload = reader.GetNodeGroup(groupKey);
-        ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
-        bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
-        bool changed = false;
+        RefCountingMemory? baseLease = reader.GetNodeGroup(groupKey);
         try
         {
-            if (basePayload is not null)
+            ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
+            bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
+            if (baseLease is not null)
             {
-                PbtNodeGroupReader baseReader = new(groupKey, basePayload.Span);
+                PbtNodeGroupReader baseReader = new(groupKey, baseLease.GetSpan());
                 for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
                 {
                     if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
                     if (baseReader.TryGetNodeRange(position, out int offset, out int length))
                     {
-                        encodings[position] = basePayload.Memory.Slice(offset, length);
+                        encodings[position] = baseLease.Memory.Slice(offset, length);
                         present[position] = true;
                     }
                 }
             }
 
+            bool changed = false;
             for (int index = 0; index < snapshots.Count; index++)
                 changed |= snapshots[index].Content.ApplyNodeGroupDeltas(groupKey, encodings, present);
             for (int index = 0; index < additionalLayers.Count; index++)
                 changed |= additionalLayers[index].ApplyNodeGroupDeltas(groupKey, encodings, present);
 
-            if (!changed) return basePayload;
+            if (!changed)
+            {
+                RefCountingMemory? result = baseLease;
+                baseLease = null;
+                return result;
+            }
+
             bool anyPresent = false;
             for (int position = 0; position < present.Length; position++) anyPresent |= present[position];
-            if (!anyPresent)
-            {
-                basePayload?.Dispose();
-                basePayload = null;
-                return null;
-            }
+            if (!anyPresent) return null;
 
             BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
             try
             {
                 PbtNodeGroupCodec.Encode(ref writer, groupKey, encodings, present);
-                PbtNodeGroupPayload result = PbtNodeGroupPayload.FromLease(writer.Detach()!);
-                basePayload?.Dispose();
-                return result;
+                return writer.Detach()!;
             }
-            catch
+            finally
             {
                 writer.Dispose();
-                throw;
             }
         }
-        catch
+        finally
         {
-            basePayload?.Dispose();
-            throw;
+            ((IDisposable?)baseLease)?.Dispose();
         }
     }
 

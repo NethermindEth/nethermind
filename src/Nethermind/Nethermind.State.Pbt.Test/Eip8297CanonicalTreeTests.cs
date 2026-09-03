@@ -146,8 +146,9 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Reads, Is.GreaterThan(0), "prefix conflicts are detected during traversal");
-            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -160,10 +161,7 @@ public class Eip8297CanonicalTreeTests
         Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, Batch(
             ([0x20], Value(3)), ([0x80, 0x01], Value(4)))));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
-        }
+        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -518,15 +516,16 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
             Assert.That(metrics.GroupFrameResolutions, Is.GreaterThanOrEqualTo(metrics.PhysicalGroupFetches));
             Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
-            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     [Test]
     public void Empty_batch_returns_supplied_root_without_storage_access()
     {
         CountingPbtStore store = new();
-        ValueHash256 suppliedRoot = new([0xEE]);
+        ValueHash256 suppliedRoot = new(Value(0xEE));
         ValueHash256 result = TrieUpdater.UpdateRoot(store, suppliedRoot, new PbtWriteBatch());
 
         using (Assert.EnterMultipleScope())
@@ -545,7 +544,7 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 actualRoot = TrieUpdater.UpdateRoot(source, default, Batch(
             ([0x12], Value(1)), ([0x92], Value(2)), ([0xF0], Value(3))));
         PbtPhysicalPayload[] initialPayloads = [.. source.ExportPhysicalPayloads()];
-        ValueHash256 staleRoot = useDefaultRoot ? default : new ValueHash256([0xEE]);
+        ValueHash256 staleRoot = useDefaultRoot ? default : new ValueHash256(Value(0xEE));
         PbtWriteBatch changes = Batch(([0x12], Value(4)), ([0xA0], Value(5)));
 
         using PbtNodeGroupStore staleStore = PbtNodeGroupStore.FromPhysicalPayloads(initialPayloads);
@@ -608,15 +607,24 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Group_leases_are_released_when_decode_or_apply_fails(bool applyFailure)
+    [TestCase(false, 0)]
+    [TestCase(false, 1)]
+    [TestCase(true, 0)]
+    public void Group_leases_are_released_when_decode_or_apply_fails(bool applyFailure, int malformedPayloadLength)
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
         int appliesBeforeFailure = store.Applies;
         if (applyFailure) store.ThrowOnApply = true;
-        else store.OverrideGroup = static _ => PbtNodeGroupPayload.FromLease(RefCountingMemory.Wrapping([0x01]));
+        else
+        {
+            store.OverrideGroup = _ =>
+            {
+                RefCountingMemory memory = store.MemoryProvider.Rent(malformedPayloadLength);
+                if (malformedPayloadLength != 0) memory.GetSpan()[0] = 0x01;
+                return memory;
+            };
+        }
 
         Action update = () => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(2))));
         if (applyFailure) Assert.Throws<InvalidOperationException>(update);
@@ -625,8 +633,9 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure + (applyFailure ? 1 : 0)));
-            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -635,7 +644,6 @@ public class Eip8297CanonicalTreeTests
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1)), ([0x92], Value(2))));
         int appliesBeforeFailure = store.Applies;
-        store.IssuedGroupPayloads.Clear();
         store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
 
         Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(3)))));
@@ -643,8 +651,9 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure));
-            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -681,7 +690,6 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1)), ([0x92], Value(2))));
         PbtPhysicalPayload[] before = [.. store.Inner.ExportPhysicalPayloads()];
         int appliesBeforeFailure = store.Applies;
-        store.IssuedGroupPayloads.Clear();
         store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
 
         Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(3)))));
@@ -690,8 +698,9 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure));
             Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
-            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch
@@ -782,18 +791,28 @@ public class Eip8297CanonicalTreeTests
 
     private static string[] PhysicalRecords(PbtPhysicalPayload[] payloads) => PhysicalRecords((IEnumerable<PbtPhysicalPayload>)payloads);
 
+    private static void AssertAllMemoryReleased(CountingPbtStore store)
+    {
+        store.Inner.Dispose();
+        Assert.That(store.UnreleasedMemoryCount, Is.Zero);
+    }
+
     private sealed class CountingPbtStore : IPbtStore
     {
-        internal PbtNodeGroupStore Inner { get; } = new();
+        internal TrackingMemoryProvider MemoryProvider { get; } = new();
+        internal PbtNodeGroupStore Inner { get; }
+
+        internal CountingPbtStore() => Inner = new(MemoryProvider);
+
+        internal int UnreleasedMemoryCount => TrackingMemoryProvider.CountUnreleased(MemoryProvider.Rented);
         internal int Reads { get; private set; }
         internal int NodeReads { get; private set; }
         internal int Applies { get; private set; }
         internal int LastNodeWrites { get; private set; }
         internal Dictionary<PbtFullKey, ValueHash256?> LastLeafMutations { get; } = [];
         internal Dictionary<PbtNodePath, int> GroupReads { get; } = [];
-        internal List<PbtNodeGroupPayload> IssuedGroupPayloads { get; } = [];
         internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
-        internal Func<PbtNodePath, PbtNodeGroupPayload?>? OverrideGroup { get; set; }
+        internal Func<PbtNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
         internal bool ThrowOnApply { get; set; }
 
         public byte[]? GetNode(PbtNodePath path)
@@ -803,14 +822,13 @@ public class Eip8297CanonicalTreeTests
             return OverrideNode is { } overrideNode ? overrideNode(path) : Inner.GetNode(path);
         }
 
-        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             Reads++;
             GroupReads[groupKey] = GroupReads.GetValueOrDefault(groupKey) + 1;
             if (OverrideGroup is { } overrideGroup)
             {
-                PbtNodeGroupPayload? overriddenPayload = overrideGroup(groupKey);
-                if (overriddenPayload is not null) IssuedGroupPayloads.Add(overriddenPayload);
+                RefCountingMemory? overriddenPayload = overrideGroup(groupKey);
                 return overriddenPayload;
             }
             if (OverrideNode is { } overrideNode)
@@ -825,12 +843,11 @@ public class Eip8297CanonicalTreeTests
                 }
 
                 if (records.Count == 0) return null;
-                BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
+                BufferWriter writer = new(MemoryProvider);
                 try
                 {
                     PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
-                    PbtNodeGroupPayload payload = PbtNodeGroupPayload.FromLease(writer.Detach()!);
-                    IssuedGroupPayloads.Add(payload);
+                    RefCountingMemory payload = writer.Detach()!;
                     return payload;
                 }
                 catch
@@ -839,8 +856,7 @@ public class Eip8297CanonicalTreeTests
                     throw;
                 }
             }
-            PbtNodeGroupPayload? innerPayload = Inner.GetNodeGroup(groupKey);
-            if (innerPayload is not null) IssuedGroupPayloads.Add(innerPayload);
+            RefCountingMemory? innerPayload = Inner.GetNodeGroup(groupKey);
             return innerPayload;
         }
 
@@ -863,18 +879,6 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    private static bool IsDisposed(PbtNodeGroupPayload payload)
-    {
-        try
-        {
-            _ = payload.Memory;
-            return false;
-        }
-        catch (ObjectDisposedException)
-        {
-            return true;
-        }
-    }
 
     private static byte[] Hash(byte[] preimage)
     {

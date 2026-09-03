@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using NUnit.Framework;
@@ -152,34 +153,32 @@ public class PbtNodeGroupTests
 
         using PbtNodeGroupStore store = new(provider);
         store.SetNode(rootPath, firstEncoding);
-        using PbtNodeGroupPayload firstLease = store.GetNodeGroup(rootPath)!;
+        RefCountingMemory firstLease = store.GetNodeGroup(rootPath)!;
 
         store.SetNode(rootPath, secondEncoding);
-        using PbtNodeGroupPayload secondLease = store.GetNodeGroup(rootPath)!;
-        Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
+        RefCountingMemory secondLease = store.GetNodeGroup(rootPath)!;
+        Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
 
         store.SetNode(rootPath, null);
-        Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
-        Assert.That(secondLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
+        Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
+        Assert.That(secondLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
 
         store.SetNode(rootPath, thirdEncoding);
-        using PbtNodeGroupPayload thirdLease = store.GetNodeGroup(rootPath)!;
+        RefCountingMemory thirdLease = store.GetNodeGroup(rootPath)!;
         store.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
-            Assert.That(secondLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
-            Assert.That(thirdLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, thirdEncoding)])));
+            Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
+            Assert.That(secondLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
+            Assert.That(thirdLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, thirdEncoding)])));
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(3));
         }
 
-        thirdLease.Dispose();
-        thirdLease.Dispose();
-        Assert.That(() => thirdLease.Span.ToArray(), Throws.TypeOf<ObjectDisposedException>());
+        ((IDisposable)thirdLease).Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(2));
-        firstLease.Dispose();
-        secondLease.Dispose();
+        ((IDisposable)firstLease).Dispose();
+        ((IDisposable)secondLease).Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
 

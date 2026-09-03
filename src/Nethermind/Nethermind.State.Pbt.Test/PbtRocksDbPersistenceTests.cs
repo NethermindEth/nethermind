@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -167,7 +168,7 @@ public class PbtRocksDbPersistenceTests
         PbtNodePath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
         byte[] originalNode = BranchNode(1);
         byte[] replacementNode = BranchNode(2);
-        PbtNodeGroupPayload payload;
+        RefCountingMemory payload;
 
         try
         {
@@ -181,7 +182,7 @@ public class PbtRocksDbPersistenceTests
             using (IPbtPersistence.IReader reader = persistence.CreateReader())
             {
                 payload = reader.GetNodeGroup(groupKey)!;
-                Assert.That(new PbtNodeGroupReader(groupKey, payload.Span).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+                Assert.That(new PbtNodeGroupReader(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
                     Is.EqualTo(originalNode));
             }
 
@@ -192,11 +193,9 @@ public class PbtRocksDbPersistenceTests
                 batch.Commit();
             }
 
-            Assert.That(new PbtNodeGroupReader(groupKey, payload.Span).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+            Assert.That(new PbtNodeGroupReader(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
                 Is.EqualTo(originalNode));
-            payload.Dispose();
-            payload.Dispose();
-            Assert.That(() => payload.Span.ToArray(), Throws.TypeOf<ObjectDisposedException>());
+            ((IDisposable)payload).Dispose();
         }
         finally
         {
@@ -357,8 +356,15 @@ public class PbtRocksDbPersistenceTests
 
     private static byte[] BranchNode(byte marker) => PbtNodeCodec.Encode(new PbtBranchNode(
         new PbtBitPrefix([], 0),
-        new ValueHash256([marker]),
-        new ValueHash256([(byte)(marker + 1)])));
+        new ValueHash256(Value(marker)),
+        new ValueHash256(Value((byte)(marker + 1)))));
+
+    private static byte[] Value(byte marker)
+    {
+        byte[] value = new byte[32];
+        value[^1] = marker;
+        return value;
+    }
 
     private static byte[] Epoch(int epoch)
     {

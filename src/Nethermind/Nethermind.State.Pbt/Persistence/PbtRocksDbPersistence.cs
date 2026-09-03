@@ -171,14 +171,14 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
             MemoryManager<byte>? owned = snapshot.GetColumn(PbtColumns.NodeGroups).GetOwnedMemory(groupKey.Encode());
-            return owned is null ? null : PbtNodeGroupPayload.FromLease(RefCountingMemory.OwningRocksDb(owned));
+            return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
         public byte[]? GetNode(PbtNodePath path)

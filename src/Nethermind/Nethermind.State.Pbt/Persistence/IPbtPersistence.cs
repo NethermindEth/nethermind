@@ -30,18 +30,19 @@ public interface IPbtPersistence
 
         byte[]? GetNode(PbtNodePath path);
 
-        /// <summary>Gets an owned, read-only lease for the complete group identified by <paramref name="groupKey"/>.</summary>
+        /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
-        /// The caller must dispose a non-null result. The lease keeps its payload valid independently of
-        /// the reader until disposal; its memory is invalid after disposal. A missing group returns
-        /// <see langword="null"/>. Implementations validate that <paramref name="groupKey"/> is at a
-        /// four-level boundary even when the group is absent.
+        /// A non-null result transfers exactly one reference to the caller, which must invoke
+        /// <see cref="IDisposable.Dispose"/> exactly once. Consumers must treat the memory returned by
+        /// <see cref="RefCountingMemory.GetSpan"/> as read-only. The reference keeps the payload valid until
+        /// released, independently of the reader. A missing group returns <see langword="null"/>. Implementations
+        /// validate that <paramref name="groupKey"/> is at a four-level boundary even when the group is absent.
         /// </remarks>
         /// <param name="groupKey">The four-level-boundary key identifying the group.</param>
-        /// <returns>An owned payload lease, or <see langword="null"/> when the group is absent.</returns>
+        /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="groupKey"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
-        PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+        RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
@@ -61,7 +62,7 @@ public interface IPbtPersistence
             try
             {
                 PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
-                return PbtNodeGroupPayload.FromLease(writer.Detach()!);
+                return writer.Detach()!;
             }
             catch
             {

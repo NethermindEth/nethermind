@@ -4,38 +4,8 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Buffers;
 
 namespace Nethermind.Pbt;
-
-/// <summary>Owns read-only access to a complete canonical node-group payload.</summary>
-/// <remarks>
-/// The lease keeps the source payload alive until disposed. <see cref="Memory"/> and <see cref="Span"/>
-/// are invalid after disposal and never expose writable backing storage through this type.
-/// </remarks>
-public sealed class PbtNodeGroupPayload : IDisposable
-{
-    private RefCountingMemory? _lease;
-
-    private PbtNodeGroupPayload(RefCountingMemory lease) => _lease = lease;
-
-    /// <summary>Gets the leased payload as read-only memory.</summary>
-    public ReadOnlyMemory<byte> Memory => GetLease().Memory;
-
-    /// <summary>Gets the leased payload as a read-only span.</summary>
-    public ReadOnlySpan<byte> Span => GetLease().GetSpan();
-
-    /// <summary>Releases this payload lease.</summary>
-    public void Dispose() => ((IDisposable?)Interlocked.Exchange(ref _lease, null))?.Dispose();
-
-    internal static PbtNodeGroupPayload FromLease(RefCountingMemory lease)
-    {
-        ArgumentNullException.ThrowIfNull(lease);
-        return new(lease);
-    }
-
-    private RefCountingMemory GetLease() => _lease ?? throw new ObjectDisposedException(nameof(PbtNodeGroupPayload));
-}
 
 /// <summary>Encodes and reads a four-level node group's canonical node payload.</summary>
 /// <remarks>
