@@ -408,6 +408,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             OpCodeCount += opCodeCount;
         }
 
+        // Every path out of the loop reaches this, but only a handler can have set the flag: a block
+        // precharge that does not fit leaves it clear (TryConsume does not set it) and falls to the metered
+        // loop, which reports a set flag as MeteredOutcome.OutOfGas rather than BreakLoop.
         if (TGasPolicy.IsOutOfGas(in gas))
             goto OutOfGas;
 

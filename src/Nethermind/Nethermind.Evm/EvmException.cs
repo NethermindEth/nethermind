@@ -27,7 +27,11 @@ public enum EvmExceptionType
     Other,
     Revert,
     InvalidCode,
-    /// <summary>Not a failure: the frame yielded a child call/create frame and is suspended until it returns.</summary>
+    /// <summary>
+    /// Not a failure: the frame yielded a child call/create frame and is suspended until it returns.
+    /// Never observed outside the dispatch loops, which fold it into the success path before the frame's
+    /// result is built.
+    /// </summary>
     Suspend,
 }
 

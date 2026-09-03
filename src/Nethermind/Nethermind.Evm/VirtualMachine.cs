@@ -70,11 +70,12 @@ public static class VirtualMachineStatics
     /// </summary>
     /// <remarks>
     /// Branch-free, so the per-opcode epilogue is a single test; the exit path re-reads the out-of-gas flag
-    /// to tell the two apart, out-of-gas taking priority.
+    /// to tell the two apart, out-of-gas taking priority. Subtracting <see cref="EvmExceptionType.None"/>
+    /// folds away while it is 0 and keeps the fold correct if it is ever renumbered.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool ShouldExitFrame(EvmExceptionType status, bool outOfGas) =>
-        ((int)status | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
+        (((int)status - (int)EvmExceptionType.None) | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
 
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
