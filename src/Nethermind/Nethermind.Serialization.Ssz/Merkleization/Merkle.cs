@@ -3,17 +3,11 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
-
-using SHA256 =
-#if ZK_EVM
-    Merkle.Sha256;
-#else
-    System.Security.Cryptography.SHA256;
-#endif
 
 public static partial class Merkle
 {
@@ -21,22 +15,17 @@ public static partial class Merkle
 
     private static void BuildZeroHashes()
     {
-        Span<UInt256> concatenation = stackalloc UInt256[2];
         // ZeroHashes[0] will be UInt256.Zero
         for (int i = 1; i < 64; i++)
         {
             UInt256 previous = ZeroHashes[i - 1];
-            MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation[..1]);
-            MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
-            ZeroHashes[i] = new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(concatenation)));
+            ZeroHashes[i] = HashPair(in previous, in previous);
         }
     }
 
     static Merkle() => BuildZeroHashes();
 
     public static int NextPowerOfTwoExponent(ulong v) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
-
-    private static UInt256 Compute(Span<UInt256> span) => MemoryMarshal.Cast<byte, UInt256>(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
 
     internal static UInt256 HashConcatenation(UInt256 left, UInt256 right, int level)
     {
@@ -45,10 +34,24 @@ public static partial class Merkle
             return ZeroHashes[level + 1];
         }
 
+        return HashPair(in left, in right);
+    }
+
+    /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256.</summary>
+    /// <remarks>Hashes into the result: a <c>byte[32]</c> per merkle node cost the guest ~140 steps
+    /// each, several times the hash itself.</remarks>
+    [SkipLocalsInit]
+    private static UInt256 HashPair(in UInt256 left, in UInt256 right)
+    {
         Span<UInt256> concatenation = stackalloc UInt256[2];
         concatenation[0] = left;
         concatenation[1] = right;
-        return Compute(concatenation);
+
+        Unsafe.SkipInit(out UInt256 result);
+        Sha256(
+            MemoryMarshal.AsBytes(concatenation),
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
+        return result;
     }
 
     private static bool IsZeroHash(UInt256 span, int level) => span.Equals(ZeroHashes[level]);
@@ -174,18 +177,4 @@ public static partial class Merkle
 
         merkleizer.CalculateRoot(out root);
     }
-
-#if ZK_EVM
-    internal static class Sha256
-    {
-        internal static byte[] HashData(ReadOnlySpan<byte> data)
-        {
-            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
-
-            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, output);
-
-            return output;
-        }
-    }
-#endif
 }

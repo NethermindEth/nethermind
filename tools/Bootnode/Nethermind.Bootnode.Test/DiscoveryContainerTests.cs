@@ -96,7 +96,7 @@ public class DiscoveryContainerTests
             BucketSize = 16,
             Concurrency = 3,
             DiscoveryIntervalMs = 30000,
-            LocalIp = "127.0.0.1",
+            LocalIp = "::",
             ExternalIp = null,
             ExternalIpV4 = "192.0.2.1",
             ExternalIpV6 = "2001:db8::1",

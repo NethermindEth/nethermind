@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -40,6 +41,7 @@ namespace Nethermind.State
         private bool _isInScope;
         private readonly ILogger _logger;
         private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
+        private readonly Func<IWorldStateScopeProvider.IBlockChangeSnapshot> _takeBlockChangeSnapshot;
 
         public Hash256 StateRoot
         {
@@ -60,6 +62,9 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
             _onAccountUpdated = (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+            _takeBlockChangeSnapshot = () => new BlockChangeSnapshot(
+                _stateProvider.CopyAccountChanges(),
+                _persistentStorageProvider.DetachBlockChanges());
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -224,6 +229,9 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
+            // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
+            _currentScope.WriteBackCommittedState(_takeBlockChangeSnapshot);
+            _stateProvider.ClearRemovedAccounts();
             _persistentStorageProvider.ClearStorageMap();
         }
 
@@ -411,6 +419,38 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
+        }
+
+        /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>
+        private sealed class BlockChangeSnapshot(
+            ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> accounts,
+            IWorldStateScopeProvider.IBlockChangeSnapshot storage) : IWorldStateScopeProvider.IBlockChangeSnapshot
+        {
+            // Accounts first is safe only because a storage clear cannot drop an account write; the ordering that
+            // matters, every storage clear before every slot write, is the storage snapshot's own.
+            public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+            {
+                foreach (KeyValuePair<AddressAsKey, Account?> account in accounts)
+                {
+                    writeBatch.Set(account.Key.Value, account.Value);
+                }
+
+                storage.WriteTo(writeBatch);
+            }
+
+            public void Dispose()
+            {
+                // The storage half owns the pooled contract states and the world state's spare collections, so it is
+                // released even if returning the account copy fails.
+                try
+                {
+                    accounts.Dispose();
+                }
+                finally
+                {
+                    storage.Dispose();
+                }
+            }
         }
     }
 }
