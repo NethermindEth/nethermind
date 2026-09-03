@@ -93,7 +93,8 @@ public class FrameTxFloodMeasurement
     {
         ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285),
         ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000),
-        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 510_000),
+        // The result key records the actual ceiling; sweep-500k is the generator's artifact name.
+        ["groth16-510k"] = new Groth16Sweep("sweep-500k", 510_000),
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000),
     };
 
@@ -101,7 +102,7 @@ public class FrameTxFloodMeasurement
     {
         foreach (string shape in new string[]
                  {
-                     "keccak-wide", "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke",
+                     "keccak-wide", "groth16-236k", "groth16-300k", "groth16-510k", "groth16-soispoke",
                      "signature-stuffed"
                  })
         {
@@ -135,7 +136,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> Groth16RateCases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-510k", "groth16-soispoke" })
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -154,7 +155,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> Groth16Cases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-510k", "groth16-soispoke" })
         {
             yield return new TestCaseData(shape);
         }
@@ -471,7 +472,7 @@ public class FrameTxFloodMeasurement
         double w0After = Percentile(baselineAfter, 0.50);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
 
-        Emit($"case=flood_delay shape={shape} ceiling={ceiling} cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+        Emit($"case=flood_delay shape={shape} ceiling={ceiling} {Groth16FitField(shape)}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + $"W0_after_p50_us={w0After:F1} baseline_drift_pct={baselineDriftPct:F1} "
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
@@ -526,7 +527,7 @@ public class FrameTxFloodMeasurement
         double w0 = Percentile(baseline, 0.50);
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        RunRateRamp(ceiling, shape, "rate_ramp", "r_max", extraFields: "", w0,
+        RunRateRamp(ceiling, shape, "rate_ramp", "r_max", Groth16FitField(shape), w0,
             rate => MeasureUnderFlood(rate, rejectionCounter));
     }
 
@@ -534,6 +535,9 @@ public class FrameTxFloodMeasurement
         shape == "signature-stuffed"
             ? () => Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid
             : null;
+
+    private static string Groth16FitField(string shape) =>
+        shape == "groth16-510k" ? "fits_500k=no " : "";
 
     [TestCaseSource(nameof(RetryCases))]
     public async Task Sustainable_rejection_rate_by_ramp_with_retries(ulong ceiling, int kRetry)
