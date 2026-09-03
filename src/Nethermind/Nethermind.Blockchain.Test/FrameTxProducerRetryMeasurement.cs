@@ -165,6 +165,8 @@ public class FrameTxProducerRetryMeasurement
     /// that is evicted after <paramref name="kRetry"/> failed attempts.
     /// </summary>
     [TestCase(100_000ul, 1)]
+    [TestCase(100_000ul, 2)]
+    [TestCase(100_000ul, 4)]
     [TestCase(100_000ul, 8)]
     [TestCase(236_285ul, 1)]
     [TestCase(300_000ul, 1)]
