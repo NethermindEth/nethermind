@@ -27,7 +27,7 @@ internal sealed class BootnodeNodeRecordProvider(
     private readonly string _sequenceStatePath = Path.Combine(dataDir, "enr-state.json");
     private Task<NodeRecord>? _nodeRecordTask;
 
-    public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
     {
         Task<NodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
         if (task is null)
@@ -38,7 +38,15 @@ internal sealed class BootnodeNodeRecordProvider(
             }
         }
 
-        return new ValueTask<NodeRecord>(task.WaitAsync(cancellationToken));
+        try
+        {
+            return await task.WaitAsync(cancellationToken);
+        }
+        catch when (task.IsFaulted)
+        {
+            _ = Interlocked.CompareExchange(ref _nodeRecordTask, null, task);
+            throw;
+        }
     }
 
     private async Task<NodeRecord> PrepareNodeRecord(CancellationToken cancellationToken)

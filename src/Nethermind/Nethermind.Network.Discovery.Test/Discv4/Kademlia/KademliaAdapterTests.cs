@@ -356,25 +356,31 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 m.FarAddress!.Equals(_receiver.Address)));
         }
 
-        [TestCase("0.0.0.0", 30303, "192.0.2.10", "0.0.0.0", "192.0.2.10")]
-        [TestCase("::1", 0, "192.0.2.10", "0.0.0.0", "192.0.2.10")]
-        [TestCase("0.0.0.0", 30303, null, "0.0.0.0", null)]
-        [TestCase("0.0.0.0", 30303, null, "192.0.2.20", "192.0.2.20")]
+        [TestCase("192.168.1.2", "0.0.0.0", 30303, "192.0.2.10", "2001:db8::10", "0.0.0.0", "192.0.2.10")]
+        [TestCase("192.168.1.2", "::1", 0, "192.0.2.10", "2001:db8::10", "0.0.0.0", "192.0.2.10")]
+        [TestCase("192.168.1.2", "0.0.0.0", 30303, null, "2001:db8::10", "0.0.0.0", "0.0.0.0")]
+        [TestCase("192.168.1.2", "0.0.0.0", 30303, null, "2001:db8::10", "192.0.2.20", "192.0.2.20")]
+        [TestCase("2001:db8::20", "::", 30303, "192.0.2.10", null, "::", "::")]
+        [TestCase("2001:db8::20", "0.0.0.0", 0, "192.0.2.10", "2001:db8::10", "0.0.0.0", null)]
         [CancelAfter(10000)]
         public async Task Ping_UsesOnlyBoundAndAdvertisedSourceFamily(
+            string receiverAddress,
             string rlpxAddress,
             int expectedTcpPort,
             string? externalIpv4Text,
+            string? externalIpv6Text,
             string discoveryAddress,
             string? expectedSourceText,
             CancellationToken token)
         {
             await _adapter.DisposeAsync();
             IPAddress? externalIpv4 = externalIpv4Text is null ? null : IPAddress.Parse(externalIpv4Text);
-            IPAddress externalIpv6 = IPAddress.Parse("2001:db8::10");
+            IPAddress? externalIpv6 = externalIpv6Text is null ? null : IPAddress.Parse(externalIpv6Text);
+            IPAddress primaryExternalIp = IPAddress.Parse(externalIpv4Text is null ? "2001:db8::30" : "192.0.2.30");
             _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
-                new IIPResolver.NethermindIp(IPAddress.IPv6Any, externalIpv6, externalIpv4, externalIpv6)));
-            _kademliaConfig.CurrentNodeId = new Node(TestItem.PublicKeyA, externalIpv6.ToString(), 30303, 30304);
+                new IIPResolver.NethermindIp(IPAddress.IPv6Any, primaryExternalIp, externalIpv4, externalIpv6)));
+            _kademliaConfig.CurrentNodeId = new Node(TestItem.PublicKeyA, primaryExternalIp.ToString(), 30303, 30304);
+            _receiver = new Node(TestItem.PublicKeyB, receiverAddress, 30303);
             NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
             listenerState.SetDiscoveryAddress(IPAddress.Parse(discoveryAddress));
             listenerState.SetRlpxAddress(IPAddress.Parse(rlpxAddress));

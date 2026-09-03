@@ -276,14 +276,6 @@ public class KademliaAdapter(
             _ => null
         };
 
-        IPAddress currentAddress = currentNode.DiscoveryAddress.Address;
-        if (sourceIp is null &&
-            !currentAddress.IsWildcardOrNone &&
-            DiscoveryAddressSupport.GetFamily(currentAddress) == family)
-        {
-            sourceIp = currentAddress;
-        }
-
         if (sourceIp is null &&
             !listenerAddress.IsWildcardOrNone &&
             DiscoveryAddressSupport.GetFamily(listenerAddress) == family)
@@ -291,8 +283,10 @@ public class KademliaAdapter(
             sourceIp = listenerAddress.NormalizeMappedIPv4();
         }
 
-        sourceAddress = sourceIp is null ? null : new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
-        return sourceAddress is not null;
+        // Discv4 recipients use the UDP envelope source; retain the bound family when no advertised address is known.
+        sourceIp ??= family == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any;
+        sourceAddress = new IPEndPoint(sourceIp, currentNode.DiscoveryPort);
+        return true;
     }
 
     private int GetSourceTcpPort(AddressFamily family)

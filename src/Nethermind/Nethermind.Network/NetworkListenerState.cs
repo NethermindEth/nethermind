@@ -20,7 +20,10 @@ public sealed class NetworkListenerState
     private readonly ILogger _logger;
 
     /// <summary>Initializes the shared listener state from the resolved and configured local addresses.</summary>
-    /// <remarks>Construction waits for the initial IP resolution because both listeners must use the same fallback address.</remarks>
+    /// <remarks>
+    /// Construction joins the resolver's cached task during network startup. Startup already depends on that resolution,
+    /// and completing it here gives both listeners the same immutable fallback address before either can bind.
+    /// </remarks>
     /// <param name="networkConfig">The network listener configuration.</param>
     /// <param name="ipResolver">The resolver that supplies the fallback local address.</param>
     /// <param name="logManager">The log manager used to report subscriber failures.</param>

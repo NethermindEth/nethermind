@@ -26,6 +26,22 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
+    [TestCase("0.0.0.0")]
+    [TestCase("127.0.0.1")]
+    [TestCase("::1")]
+    public void SingleFamilyServerSocket_DoesNotRequireExclusiveAddressUse(string addressText)
+    {
+        IPAddress address = IPAddress.Parse(addressText);
+        if (address.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        using Socket socket = RlpxHost.CreateServerSocket(address);
+
+        Assert.That(socket.ExclusiveAddressUse, Is.False);
+    }
+
     [TestCase(true, false, null, "203.0.113.1", "203.0.113.1", false, Description = "Exact match: blocks same IP")]
     [TestCase(true, false, null, "203.0.113.1", "198.51.100.1", true, Description = "Exact match: allows different IP")]
     [TestCase(true, true, null, "203.0.113.1", "203.0.113.50", false, Description = "Subnet bucketing: blocks same subnet")]

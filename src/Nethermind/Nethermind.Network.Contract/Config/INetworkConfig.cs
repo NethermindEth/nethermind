@@ -25,7 +25,7 @@ public interface INetworkConfig : IConfig
     /// </summary>
     /// <remarks>
     /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv4 address.
-    /// This address is only advertised when the node listens on IPv4. Set this together with
+    /// This address is advertised only when every currently bound inbound transport serves IPv4.
     /// On platforms with dual-mode wildcard support, set this together with <see cref="ExternalIpV6"/>
     /// and leave <see cref="LocalIp"/> unset or set it to <c>::</c> to advertise both families.
     /// </remarks>

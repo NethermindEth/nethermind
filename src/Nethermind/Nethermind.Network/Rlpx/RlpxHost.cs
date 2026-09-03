@@ -231,17 +231,22 @@ namespace Nethermind.Network.Rlpx
                 return _channelFactory.CreateServer();
             }
 
+            return new TcpServerSocketChannel(CreateServerSocket(address));
+        }
+
+        internal static Socket CreateServerSocket(IPAddress address)
+        {
             Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             try
             {
-                // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
-                socket.ExclusiveAddressUse = true;
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     socket.DualMode = DiscoveryAddressSupport.SupportsFamily(address, AddressFamily.InterNetwork);
+                    // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
+                    socket.ExclusiveAddressUse = socket.DualMode;
                 }
 
-                return new TcpServerSocketChannel(socket);
+                return socket;
             }
             catch
             {
@@ -341,7 +346,7 @@ namespace Nethermind.Network.Rlpx
             return false;
         }
 
-        private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp = null)
+        private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
         {
             if (session.Direction == ConnectionDirection.In)
             {
@@ -605,7 +610,7 @@ namespace Nethermind.Network.Rlpx
             protected override void InitChannel(IChannel channel)
             {
                 Session session = new(_rlpxHost.LocalPort, _node, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
-                _rlpxHost.InitializeChannel(channel, session);
+                _rlpxHost.InitializeChannel(channel, session, inboundRemoteIp: null);
             }
         }
 

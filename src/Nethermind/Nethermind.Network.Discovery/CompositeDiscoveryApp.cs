@@ -107,7 +107,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
                 CreateDatagramChannel,
                 _networkConfig.DiscoveryPort);
             // A failed bind closes stateful discovery handlers, so attach them only to the successful channel.
-            // Run on the event loop to complete HandlerAdded callbacks before the protocol apps start.
+            // Datagrams can be discarded until this event-loop work completes, before the protocol apps start.
             await channel.EventLoop.SubmitAsync(() =>
             {
                 InitializeChannel(channel);
@@ -140,6 +140,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
             .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
             .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2))
             ;
+        // Bootstrap validation requires an initializer even though the stateful handlers attach after binding.
         bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(static _ => { }));
         return bootstrap;
     }

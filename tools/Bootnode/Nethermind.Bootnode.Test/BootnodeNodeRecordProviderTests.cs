@@ -124,6 +124,36 @@ public class BootnodeNodeRecordProviderTests
         AssertEndpointEntries(decoded, "192.0.2.1", expectedIp6: null);
     }
 
+    [Test]
+    public async Task GetCurrentAsync_RetriesAfterListenerBinds()
+    {
+        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir);
+
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
+        NetworkConfig networkConfig = new() { DiscoveryPort = 30303, P2PPort = 0 };
+        IPAddress externalIp = IPAddress.Parse("192.0.2.1");
+        IIPResolver.NethermindIp resolvedIp = new(IPAddress.Any, externalIp, externalIpV4: externalIp, externalIpV6: null);
+        NetworkListenerState listenerState = new(resolvedIp.LocalIp, resolvedIp.LocalIp, LimboLogs.Instance);
+        BootnodeNodeRecordProvider provider = new(
+            protectedPrivateKey,
+            new EthereumEcdsa(1),
+            networkConfig,
+            resolvedIp,
+            listenerState,
+            LimboLogs.Instance,
+            dataDir);
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await provider.GetCurrentAsync());
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+
+        NodeRecord nodeRecord = await provider.GetCurrentAsync();
+
+        AssertEndpointEntries(NodeRecord.FromEnrString(nodeRecord.ToString()), "192.0.2.1", expectedIp6: null);
+    }
+
     [TestCase("0.0.0.0", "192.0.2.1", "2001:db8::1", "192.0.2.1", null, "External IPv6 address", 0)]
     [TestCase("fd00:beef:cafe::11", "192.0.2.1", "2001:db8::1", null, "2001:db8::1", "External IPv4 address", 0)]
     [TestCase("0.0.0.0", null, "2001:db8::1", null, null, "External IPv6 address", 1)]
