@@ -35,6 +35,7 @@ namespace Nethermind.Benchmarks.State;
 [WarmupCount(3)]
 [MinIterationCount(3)]
 [MaxIterationCount(10)]
+[InvocationCount(1)]
 public class PbtScopeProviderBenchmark
 {
     public enum Backend
