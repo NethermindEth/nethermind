@@ -32,7 +32,13 @@ public static class TrieUpdater
         // PbtWriteBatch supplies unique keys with deletions preceding writes.
         PbtWriteOperation[] operations = [.. changes.Operations];
 
-        return FoldMutations(store, metrics, null, RootPath, currentRoot, operations.AsSpan());
+        if (currentRoot == default)
+            return FoldMutations(store, metrics, null, RootPath, currentRoot, operations.AsSpan());
+
+        using GroupFrame rootGroup = Resolve(store, metrics, null, RootPath, out _);
+        if (operations.Length > 1)
+            BucketizeByGroupBoundary(operations, rootGroup.BitDepth);
+        return FoldMutationsInGroup(store, metrics, rootGroup, RootPath, currentRoot, operations.AsSpan());
     }
 
     private static ValueHash256 FoldMutations(
@@ -72,7 +78,7 @@ public static class TrieUpdater
             return setCount == 0 ? default : BuildSubtreeInGroup(store, metrics, group, path, operations[..setCount]);
         }
 
-        PbtNode current = Load(store, metrics, group, path, expectedHash, out group);
+        PbtNode current = group.Load(path, expectedHash);
         if (current is PbtLeafNode leaf)
         {
             PbtNode? surviving = leaf;
@@ -134,8 +140,18 @@ public static class TrieUpdater
         if (divergentSets.Length == 0) return reconciledHash;
         if (reconciledHash == default)
             return BuildSubtree(store, metrics, group, path, divergentSets);
-        PbtNode reconciled = Load(store, metrics, group, path, reconciledHash, out GroupFrame reconciledGroup);
+        GroupFrame reconciledGroup = Resolve(store, metrics, group, path, out _);
         bool ownsReconciledGroup = !ReferenceEquals(reconciledGroup, group);
+        PbtNode reconciled;
+        try
+        {
+            reconciled = reconciledGroup.Load(path, reconciledHash);
+        }
+        catch
+        {
+            if (ownsReconciledGroup) reconciledGroup.Dispose();
+            throw;
+        }
         try
         {
             return InsertSetsIntoNode(store, metrics, reconciledGroup, path, reconciled, divergentSets);
@@ -184,8 +200,18 @@ public static class TrieUpdater
         int remainingDirection = leftHash != default ? 0 : 1;
         PbtNodePath remainingPath = remainingDirection == 0 ? leftPath : rightPath;
         ValueHash256 remainingHash = remainingDirection == 0 ? leftHash : rightHash;
-        PbtNode remaining = Load(store, metrics, group, remainingPath, remainingHash, out GroupFrame remainingGroup);
+        GroupFrame remainingGroup = Resolve(store, metrics, group, remainingPath, out _);
         bool ownsRemainingGroup = !ReferenceEquals(remainingGroup, group);
+        PbtNode remaining;
+        try
+        {
+            remaining = remainingGroup.Load(remainingPath, remainingHash);
+        }
+        catch
+        {
+            if (ownsRemainingGroup) remainingGroup.Dispose();
+            throw;
+        }
         try
         {
             Remove(remainingGroup, remainingPath);
@@ -228,7 +254,7 @@ public static class TrieUpdater
         in ValueHash256 expectedHash,
         Span<PbtWriteOperation> sets)
     {
-        PbtNode current = Load(store, metrics, group, path, expectedHash, out group);
+        PbtNode current = group.Load(path, expectedHash);
         return InsertSetsIntoNode(store, metrics, group, path, current, sets);
     }
 
@@ -557,28 +583,6 @@ public static class TrieUpdater
         return new GroupFrame(store, location.GroupKey, metrics);
     }
 
-    private static PbtNode Load(
-        IPbtStore store,
-        TrieUpdaterMetrics? metrics,
-        GroupFrame? activeGroup,
-        PbtNodePath path,
-        in ValueHash256 expectedHash,
-        out GroupFrame group)
-    {
-        group = Resolve(store, metrics, activeGroup, path, out int position);
-        try
-        {
-            PbtNode node = group.Load(position);
-            if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
-            return node;
-        }
-        catch
-        {
-            if (!ReferenceEquals(group, activeGroup)) group.Dispose();
-            throw;
-        }
-    }
-
     private static GroupFrame Store(
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
@@ -630,7 +634,15 @@ public static class TrieUpdater
             return true;
         }
 
-        internal PbtNode Load(int position)
+        internal PbtNode Load(PbtNodePath path, in ValueHash256 expectedHash)
+        {
+            TryGetPosition(path, out int position);
+            PbtNode node = Load(position);
+            if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
+            return node;
+        }
+
+        private PbtNode Load(int position)
         {
             EnsurePositionKnown(position);
             switch (_states[position])
