@@ -44,6 +44,10 @@ namespace Nethermind.JsonRpc
         [Description("Number of EVM-executing JSON RPC requests shed after waiting JsonRpc.MaxQueueWaitMs without being granted a slot (lighter requests are served first). A sustained rate means the node is saturated rather than bursty.")]
         public static long RpcAdmissionWaitTimeoutRejections { get; set; }
 
+        [CounterMetric]
+        [Description("Number of EVM-executing JSON RPC requests dropped from the queue because the caller disconnected before a slot was granted. A rate close to the served rate means clients give up faster than the node serves them; consider a lower JsonRpc.MaxQueueWaitMs.")]
+        public static long RpcAdmissionCancellations { get; set; }
+
         [GaugeMetric]
         [Description("Exponentially weighted moving average of the service time per weight unit (128 KiB of params) of EVM-executing JSON RPC requests, in milliseconds.")]
         public static double RpcAdmissionServiceTimeMs { get; set; }

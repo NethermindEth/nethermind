@@ -147,8 +147,10 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Cancelled_waiter_is_skipped_at_the_next_grant_and_never_takes_a_permit()
     {
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
         EvmAdmissionGate gate = CreateGate(SinglePermit());
         using CancellationTokenSource cancellation = new();
         Lease held = await Admit(gate);
@@ -168,6 +170,7 @@ public class EvmAdmissionGateTests
         {
             Assert.That(gate.Queued, Is.EqualTo(0));
             Assert.That(gate.InFlight, Is.EqualTo(0), "no live waiter remained, so the permit must have been returned");
+            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
         }
 
         ValueTask<Lease> fresh = Admit(gate);
@@ -207,6 +210,7 @@ public class EvmAdmissionGateTests
     public async Task Cancelled_waiter_is_settled_by_the_sweep(bool atDeadline)
     {
         long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
         EvmAdmissionGate gate = CreateGate(SinglePermit());
         using CancellationTokenSource cancellation = new();
         using Lease held = await Admit(gate);
@@ -225,6 +229,7 @@ public class EvmAdmissionGateTests
             Assert.That(gate.Queued, Is.EqualTo(1));
             Assert.That(gate.InFlight, Is.EqualTo(1));
             Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore));
+            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
         }
     }
 

@@ -62,7 +62,7 @@ internal sealed class EvmAdmissionGate
     private readonly int _maxQueued;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
-    private ITimer? _sweepTimer;
+    private readonly ITimer _sweepTimer;
     private int _queued;
     private int _inFlight;
     private double _serviceTimeMs;
@@ -83,6 +83,8 @@ internal sealed class EvmAdmissionGate
 
         _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.MaxQueueWaitMs));
         _maxQueued = Math.Max(0, config.RequestQueueLimit);
+        // Created up front so that arming, which happens after a waiter is already queued and counted, can only Change and never throw.
+        _sweepTimer = _timeProvider.CreateTimer(static state => ((EvmAdmissionGate)state!).Sweep(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         for (int w = MinWeight; w <= MaxWeight; w++)
         {
             _queues[w] = new Queue<Waiter>();
@@ -208,6 +210,7 @@ internal sealed class EvmAdmissionGate
                         }
 
                         // A caller that has gone never takes the permit.
+                        Metrics.RpcAdmissionCancellations++;
                         head.NextSettled = cancelled;
                         cancelled = head;
                     }
@@ -219,7 +222,9 @@ internal sealed class EvmAdmissionGate
                 }
                 else
                 {
-                    // The permit passes straight on, so in-flight is unchanged.
+                    // The permit passes straight on, so in-flight is unchanged. Stamped at grant rather than when the grantee resumes:
+                    // the wait for a pool thread is latency the caller pays, so including it makes the gate shed sooner when the pool
+                    // itself is the bottleneck.
                     grantTimestamp = _timeProvider.GetTimestamp();
                 }
             }
@@ -275,6 +280,7 @@ internal sealed class EvmAdmissionGate
                     Metrics.RpcAdmissionQueued = --_queued;
                     if (isCancelled)
                     {
+                        Metrics.RpcAdmissionCancellations++;
                         head.NextSettled = cancelled;
                         cancelled = head;
                     }
@@ -328,7 +334,6 @@ internal sealed class EvmAdmissionGate
         TimeSpan due = _budget - _timeProvider.GetElapsedTime(earliest, now);
         due = due <= TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromMilliseconds(Math.Ceiling(due.TotalMilliseconds));
 
-        _sweepTimer ??= _timeProvider.CreateTimer(static state => ((EvmAdmissionGate)state!).Sweep(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _sweepTimer.Change(due, Timeout.InfiniteTimeSpan);
     }
 

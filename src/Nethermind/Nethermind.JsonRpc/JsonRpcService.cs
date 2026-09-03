@@ -180,6 +180,8 @@ public sealed class JsonRpcService : IJsonRpcService
                 // that same env concurrently, so the rental has to last until the response is disposed.
                 if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
                 {
+                    // The permit is released in the outer finally, so a gated method that streams would re-execute ungated.
+                    if (method.IsEvmExecution && _logger.IsError) _logger.Error($"{methodName} is admission-gated but returned a streamable result; its execution while the response is written runs without a permit.");
                     returnImmediately = false;
                     returnAction = ReturnRental;
                 }
