@@ -7,7 +7,10 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -568,6 +571,31 @@ public sealed class SnapshotBundle : IDisposable
         finally
         {
             transientResource.ReleaseLease();
+        }
+    }
+
+    internal IWorldStateScopeProvider.ITrieWarmerScope CreateTrieWarmerScope(
+        in StateId baseState,
+        ITrieWarmer trieWarmer,
+        ILogManager logManager)
+    {
+        TransientResource? transientResource = null;
+        try
+        {
+            transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv);
+            FlatTrieWarmerScope scope = new(
+                baseState,
+                this,
+                transientResource,
+                _trieNodeCache,
+                trieWarmer,
+                logManager);
+            transientResource = null;
+            return scope;
+        }
+        finally
+        {
+            transientResource?.ReleaseLease();
         }
     }
 

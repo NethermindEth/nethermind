@@ -29,7 +29,6 @@ public class PreBlockCaches
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
     private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _survivingPrecompileCache;
-    private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
@@ -53,16 +52,6 @@ public class PreBlockCaches
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
     public ClockCache<PrecompileCacheKey, Result<byte[]>> SurvivingPrecompileCache => _survivingPrecompileCache;
-
-    /// <summary>
-    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
-    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
-    /// </summary>
-    public IWorldStateScopeProvider.IScope? MainScope
-    {
-        get => _mainScope;
-        set => _mainScope = value;
-    }
 
     /// <summary>
     /// Starts a thread-local capture of backing-store storage misses made through this block cache.
