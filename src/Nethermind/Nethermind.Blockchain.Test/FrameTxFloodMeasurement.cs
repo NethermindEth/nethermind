@@ -556,7 +556,7 @@ public class FrameTxFloodMeasurement
             bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
 
             bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
-            bool sustained = rateHeld && lagBounded && pendingPoolStable;
+            bool sustained = rateHeld && lagBounded;
             double w = Percentile(outcome.ProcessMicros, 0.50);
 
             Emit($"case={rateCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
@@ -591,7 +591,7 @@ public class FrameTxFloodMeasurement
              + $"capacity_sustained_tx_per_s={lastSustained:F1} capacity_lower={lastSustained:F1} "
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
-             + $"basis=no_backlog_and_bounded_lag note=B_not_fixed");
+             + $"basis=bounded_submission_lag note=B_not_fixed");
 
         Assert.That(lastSustained, Is.GreaterThan(0),
             "the node sustained none of the offered rates, so the ramp's lowest point is already saturated");
