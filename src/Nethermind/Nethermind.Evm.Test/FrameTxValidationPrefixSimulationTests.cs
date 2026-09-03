@@ -39,6 +39,7 @@ public class FrameTxValidationPrefixSimulationTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressD;
     private static readonly Address Factory = TestItem.AddressB;
+    private static readonly Address IdentityPrecompile = Address.FromNumber(4);
     private static readonly byte[] Salt = new byte[32];
 
     [SetUp]
@@ -216,6 +217,58 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(tracer.Payer, Is.EqualTo(Sender));
         }
+    }
+
+    [Test]
+    // A precompile carries no code, so classifying targets on code alone would refuse the one class whose
+    // behaviour no account state can move.
+    public void Simulate_PrefixCallsPrecompile_Allowed() =>
+        AssertPrefixCallTarget(IdentityPrecompile, violates: false);
+
+    [Test]
+    public void Simulate_PrefixCallsDelegatedTarget_RecordsViolation()
+    {
+        // The target is a contract, but its EIP-7702 authority can repoint the designation, so the code
+        // the prefix runs is third-party mutable.
+        DeployContract(TestItem.AddressE, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(TestItem.AddressC, [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressE.Bytes]);
+
+        AssertPrefixCallTarget(TestItem.AddressC, violates: true);
+    }
+
+    // EXTCODECOPY's operands are all zero, which reads as a forbidden target itself, so only its allowed
+    // row tells a correct target slot from a wrong one; the refused row alone would pass on either.
+    [TestCase(Instruction.EXTCODESIZE, 0, false, TestName = "EXTCODESIZE of a helper contract is allowed")]
+    [TestCase(Instruction.EXTCODESIZE, 0, true, TestName = "EXTCODESIZE of a codeless target is refused")]
+    [TestCase(Instruction.EXTCODEHASH, 0, true, TestName = "EXTCODEHASH of a codeless target is refused")]
+    [TestCase(Instruction.EXTCODECOPY, 3, false, TestName = "EXTCODECOPY of a helper contract is allowed")]
+    [TestCase(Instruction.EXTCODECOPY, 3, true, TestName = "EXTCODECOPY of a codeless target is refused")]
+    public void Simulate_PrefixReadsForeignCode_IsClassifiedByTheTarget(Instruction opcode, int extraOperands, bool violates)
+    {
+        if (!violates) DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Prepare prologue = Prepare.EvmCode;
+        for (int i = 0; i < extraOperands; i++) prologue = prologue.PushData(0);
+        byte[] code = prologue.PushData(TestItem.AddressC).Op(opcode)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
+    }
+
+    // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
+    private void AssertPrefixCallTarget(Address target, bool violates)
+    {
+        byte[] code = Prepare.EvmCode
+            .StaticCall(target, 50_000)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
     }
 
     // The banned list is the security surface of admission, so it is swept whole: any of these in the
@@ -577,13 +630,20 @@ public class FrameTxValidationPrefixSimulationTests
 
     // The deploy frame is the one non-static prefix frame, so it is the only place a funded CALL is
     // reachable at all: it executes or pushes zero on the caller's balance, which a third party can move.
-    [TestCase(0, false, TestName = "Simulate_DeployFrameMakesAZeroValueCall_Allowed")]
-    [TestCase(1, true, TestName = "Simulate_DeployFrameMakesAValueCarryingCall_RecordsViolation")]
-    public void Simulate_DeployFrameCallCarryingValue_IsRefused(int value, bool violates)
+    // CALLCODE carries its own endowment at the same stack depth, so it reaches the caller's balance the
+    // same way even though it runs the target's code in place.
+    [TestCase(0, false, false, TestName = "Simulate_DeployFrameMakesAZeroValueCall_Allowed")]
+    [TestCase(1, true, false, TestName = "Simulate_DeployFrameMakesAValueCarryingCall_RecordsViolation")]
+    [TestCase(0, false, true, TestName = "Simulate_DeployFrameMakesAZeroValueCallCode_Allowed")]
+    [TestCase(1, true, true, TestName = "Simulate_DeployFrameMakesAValueCarryingCallCode_RecordsViolation")]
+    public void Simulate_DeployFrameCallCarryingValue_IsRefused(int value, bool violates, bool callCode)
     {
         DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
-        byte[] prologue = Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, (UInt256)value).Op(Instruction.POP).Done;
+        byte[] prologue = (callCode
+                ? Prepare.EvmCode.CallCode(TestItem.AddressC, 50_000, (UInt256)value)
+                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, (UInt256)value))
+            .Op(Instruction.POP).Done;
         Address deployed = InstallFactory(initCode, prologue);
         FundAccount(deployed, 1.Ether);
         Transaction tx = DeployTx(deployed);

@@ -4262,13 +4262,122 @@ namespace Nethermind.TxPool.Test
             Assert.That(overBound, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
         }
 
+        [Test]
+        public void Frame_transaction_replacement_releases_only_the_reservation_it_displaced()
+        {
+            // Admission adds the bump on top of the incumbent's reservation and leaves the displacement to
+            // the pool, so the ledger settles only once the replaced transaction's removal releases it.
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+
+            // Priced from the transactions themselves rather than scaled off one of them: the reservation
+            // is not linear in the fee, and a balance guessed from a unit cost would not sit on the bound.
+            UInt256 balance = MaxCostOf(SelfPayingFrameTx(nonce: 0, feePerGas: 3)) + MaxCostOf(SelfPayingFrameTx(nonce: 1, feePerGas: 2));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, balance);
+
+            Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 2), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            AcceptTxResult bump = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 3), TxHandlingOptions.None);
+
+            // The balance leaves room for the bump and one more nonce, and nothing beyond it. Holding the
+            // displaced reservation as well would refuse the second nonce.
+            AcceptTxResult withinBalance = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 1, feePerGas: 2), TxHandlingOptions.None);
+            AcceptTxResult overBalance = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 2, feePerGas: 1), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bump, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(withinBalance, Is.EqualTo(AcceptTxResult.Accepted), "the displaced reservation must have been released");
+                Assert.That(overBalance, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the bound must still bind, or the case above proves nothing");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "the bump must have displaced the incumbent rather than joined it");
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_replacement_leaves_its_paymaster_holding_exactly_one_slot()
+        {
+            // The cap counts the bump before the pool displaces the incumbent, so the sponsor is briefly at
+            // two. Settling at anything but one locks it out the moment the survivor leaves.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction bump = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, feePerGas: 2.GWei);
+
+            AcceptTxResult admitted = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            AcceptTxResult replaced = _txPool.SubmitTx(bump, TxHandlingOptions.None);
+            // One pending, so the sponsor is still at the cap: another sender must be turned away.
+            AcceptTxResult whileHeld = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(bump.Hash);
+            // Repriced so it is a new hash: the one turned away above is remembered as already known.
+            AcceptTxResult afterRemoval = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD, feePerGas: 3.GWei), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admitted, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(replaced, Is.EqualTo(AcceptTxResult.Accepted), "a fee bump discounts the slot the incumbent holds");
+                Assert.That(whileHeld, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the survivor still owes the sponsor a slot");
+                Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.Accepted), "the displaced transaction must not have kept a slot");
+            }
+        }
+
+        [Test]
+        public async Task Frame_transactions_surviving_a_head_leave_both_ledgers_empty_when_drained()
+        {
+            // Drives the pool's own bookkeeping check, which walks both ledgers per head and is compiled
+            // into debug builds only; the release-observable half is that a drained pool re-admits.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            // Exactly one self-paying transaction's worth, so a reservation left behind refuses the next one.
+            // The retargeted shape is the dearer of the two, so the plain resubmission below fits it.
+            Transaction selfPaying = SelfPayingFrameTx(nonce: 0, feePerGas: 2, distinctHash: true);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, MaxCostOf(selfPaying));
+
+            Assert.That(_txPool.SubmitTx(selfPaying, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "both must still be pending, or the check walked an empty pool");
+
+            foreach (Transaction pending in _txPool.GetPendingTransactions())
+            {
+                _txPool.RemoveTransaction(pending.Hash);
+            }
+
+            // Both re-priced or re-shaped, since the pool remembers what it has already seen.
+            AcceptTxResult resubmitted = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 2), TxHandlingOptions.None);
+            AcceptTxResult responsored = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD, feePerGas: 3.GWei), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resubmitted, Is.EqualTo(AcceptTxResult.Accepted), "the payer's whole balance is free again");
+                Assert.That(responsored, Is.EqualTo(AcceptTxResult.Accepted), "the sponsor's cap slot is free again");
+            }
+        }
+
+        private static UInt256 MaxCostOf(Transaction tx)
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Eip8141Prototype.Instance, out UInt256 maxCost), Is.True);
+            return maxCost;
+        }
+
         /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
         private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false, UInt256[] nonceKeys = null)
         {
             Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
                 maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas, nonceKeys: nonceKeys);
-            // Naming the sender explicitly is still a self_verify frame and prices identically, so this
-            // varies the hash without touching any input the reservation is computed from.
+            // Naming the sender explicitly is still a self_verify frame, so this varies the hash; the
+            // target costs 12 more intrinsic gas, so the retargeted shape reserves slightly more.
             if (distinctHash)
             {
                 int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);
@@ -4392,7 +4501,7 @@ namespace Nethermind.TxPool.Test
         }
 
         // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
-        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null, ulong? deadline = null)
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null, ulong? deadline = null, UInt256? feePerGas = null)
         {
             // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
             TxFrame[] frames = deadline is null
@@ -4421,8 +4530,8 @@ namespace Nethermind.TxPool.Test
                     new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
                 ],
                 GasLimit = 1_000_000,
-                GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 1.GWei,
+                GasPrice = feePerGas ?? 1.GWei,
+                DecodedMaxFeePerGas = feePerGas ?? 1.GWei,
             };
             // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
             // signatures are taken with the entries already installed, then their bytes are filled in.
