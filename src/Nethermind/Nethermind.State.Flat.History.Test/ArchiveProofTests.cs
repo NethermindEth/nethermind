@@ -186,6 +186,35 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_partition_that_splits_on_the_resumed_run_does_not_duplicate_the_findings_its_checkpoint_carried()
+    {
+        Address hot = _accounts[5];
+        byte partition = Keccak.Compute(hot.Bytes).Bytes[0];
+        for (ulong block = 1; block <= Blocks; block++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, hot, block, new Account(block, 7000 + block, block == 20 ? Keccak.Compute("moved") : Keccak.EmptyTreeHash, Keccak.OfAnEmptyString));
+        }
+
+        foreach (Address neighbour in AddressesSortingAfter(hot, count: 2))
+        {
+            for (ulong block = 10; block <= 50; block += 10) HistoryColumnsWriter.RecordAccount(_historyColumns, neighbour, block, new Account(1, block, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString));
+        }
+
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected.Count(static m => m.Kind == HistoryWalkMismatchKind.MissingSlotHistory), Is.EqualTo(2), "precondition: the hot account's root moves out and back without slot rows");
+
+        using CancellationTokenSource interrupt = new();
+        Assert.That(
+            () => CreateVerifyOnlyVerifier(maxRowsPerPartition: 12).VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item == partition) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the hot account streams, its neighbours fit, and the partition is cut at its checkpoint with the streamed moves persisted");
+
+        HistoryWalkVerdict resumed = CreateVerifyOnlyVerifier(maxRowsPerPartition: 6).VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "a smaller budget splits the partition on resume; its children replay the whole range, so what the checkpoint carried must be dropped or it is reported twice");
+    }
+
+    [Test]
     public void Mismatches_found_before_a_checkpoint_survive_the_restart()
     {
         CorruptEveryStorageRow();
@@ -467,10 +496,24 @@ public class ArchiveProofTests
 
     private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
 
-    private HistoryWalkVerifier CreateVerifyOnlyVerifier()
+    private HistoryWalkVerifier CreateVerifyOnlyVerifier(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null);
+        return new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null);
+    }
+
+    private static IEnumerable<Address> AddressesSortingAfter(Address anchor, int count)
+    {
+        ValueHash256 anchorPath = Keccak.Compute(anchor.Bytes).ValueHash256;
+        for (int seed = 0; count > 0; seed++)
+        {
+            Address candidate = new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[12..]);
+            ValueHash256 path = Keccak.Compute(candidate.Bytes).ValueHash256;
+            if (path.Bytes[0] != anchorPath.Bytes[0] || path.CompareTo(anchorPath) <= 0) continue;
+
+            count--;
+            yield return candidate;
+        }
     }
 
     private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);

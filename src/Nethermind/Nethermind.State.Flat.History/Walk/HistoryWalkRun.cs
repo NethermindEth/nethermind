@@ -214,6 +214,7 @@ internal sealed class HistoryWalkRun
             if (outcome == ScanOutcome.Split)
             {
                 rows.Reset();
+                if (prefix.Length == AccountPartitionDepth) found.Clear();
                 for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
                 {
                     _progress.EnterChild(item, nibble, BranchRlp.ChildCount);

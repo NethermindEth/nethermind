@@ -33,6 +33,14 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
         }
     }
 
+    public void Clear()
+    {
+        lock (_mismatches)
+        {
+            _mismatches.Clear();
+        }
+    }
+
     public void AddRange(MismatchSink other)
     {
         lock (other._mismatches)
@@ -55,11 +63,11 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
     {
         lock (_mismatches)
         {
-            int count = _mismatches.Count + (pending?.Count ?? 0);
-            byte[] encoded = new byte[count * RecordLength];
+            int pendingTaken = Math.Min(pending?.Count ?? 0, Math.Max(0, capacity - _mismatches.Count));
+            byte[] encoded = new byte[(_mismatches.Count + pendingTaken) * RecordLength];
             int offset = 0;
             foreach (HistoryWalkMismatch mismatch in _mismatches) Write(encoded.AsSpan(offset, RecordLength), mismatch, ref offset);
-            if (pending is not null) foreach (HistoryWalkMismatch mismatch in pending) Write(encoded.AsSpan(offset, RecordLength), mismatch, ref offset);
+            for (int i = 0; i < pendingTaken; i++) Write(encoded.AsSpan(offset, RecordLength), pending![i], ref offset);
             return encoded;
         }
     }
