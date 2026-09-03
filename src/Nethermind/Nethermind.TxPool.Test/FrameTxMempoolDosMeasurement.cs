@@ -753,7 +753,15 @@ public class FrameTxMempoolDosMeasurement
 
         AssertSeededCodeIsVisibleAtHead(head.Header, senderCode);
 
-        TxPoolConfig txPoolConfig = new() { GasLimit = BlockGasLimit, FrameTxMaxVerifyGas = verifyGasCeiling };
+        // The per-head budget sheds admission after a second of simulation against one head. This harness
+        // times single rejections against a fixed head, so leaving it at the default would measure the
+        // shed path instead of the prefix; the flood harness is where shedding belongs.
+        TxPoolConfig txPoolConfig = new()
+        {
+            GasLimit = BlockGasLimit,
+            FrameTxMaxVerifyGas = verifyGasCeiling,
+            FrameTxSimulationBudgetPerHeadMs = int.MaxValue,
+        };
         _realSimulator = new FrameTxPrefixSimulator(
             new HarnessEnvFactory(_worldStateManager, _specProvider, _logManager),
             _blockTree,
@@ -794,11 +802,11 @@ public class FrameTxMempoolDosMeasurement
             headInfo,
             txPoolConfig,
             new TxValidator(_specProvider.ChainId),
+            new SpecChangeTxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
             ShouldGossip.Instance,
             incomingTxFilters: null,
-            new HeadTxValidator(),
             thereIsPriorityContract: false,
             frameTxPrefixSimulator);
     }
