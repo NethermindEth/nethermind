@@ -18,7 +18,12 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]>(Environment.ProcessorCount, capacity, Bytes.EqualityComparer);
+            // The capacity overload also opts out of lock-array growth, so it is worth taking only
+            // when there is a presize to gain: otherwise every MemDb would be pinned to
+            // ProcessorCount locks instead of growing them with the table.
+            _db = capacity > 0
+                ? new ConcurrentDictionary<byte[], byte[]>(Environment.ProcessorCount, capacity, Bytes.EqualityComparer)
+                : new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
             _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
     }

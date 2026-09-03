@@ -20,11 +20,11 @@ namespace Nethermind.Db
         public MemDb(string name)
             : this(0, 0) => Name = name;
 
+        /// <summary>Creates a database presized for a known number of entries.</summary>
+        /// <remarks>A factory rather than a constructor so it cannot be confused with the
+        /// <c>(writeDelay, readDelay)</c> overload.</remarks>
         /// <param name="capacity">The expected number of entries; presizing avoids rehashing during bulk loads.</param>
-        public MemDb(int capacity)
-            : this(0, 0, capacity)
-        {
-        }
+        public static MemDb WithCapacity(int capacity) => new(0, 0, capacity);
 
         public static MemDb CopyFrom(IDb anotherDb)
         {

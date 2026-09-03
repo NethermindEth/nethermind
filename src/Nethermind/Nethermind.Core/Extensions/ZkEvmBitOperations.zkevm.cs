@@ -45,7 +45,8 @@ public static partial class ZkEvmBitOperations
     /// <summary>Writes <paramref name="value"/> to <paramref name="destination"/> with all 32 bytes reversed.</summary>
     /// <remarks>Shares the swap masks across the four lanes and stores lanes directly; per-lane
     /// <see cref="Bswap64"/> calls rematerialize the mask constants for every lane, and composing the
-    /// result through <see cref="Vector256"/> round-trips it through memory.</remarks>
+    /// result through <see cref="Vector256"/> round-trips it through memory. Lanes are stored as they
+    /// are computed, so <paramref name="destination"/> must not overlap <paramref name="value"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Bswap256(in UInt256 value, ref Vector256<byte> destination)
     {

@@ -2,21 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
-using Nethermind.Int256;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public static partial class Merkle
 {
-    private static UInt256 Compute(Span<UInt256> span) =>
-        MemoryMarshal.Cast<byte, UInt256>(System.Security.Cryptography.SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
-
-    private static UInt256 HashPair(in UInt256 left, in UInt256 right)
-    {
-        Span<UInt256> concatenation = stackalloc UInt256[2];
-        concatenation[0] = left;
-        concatenation[1] = right;
-        return Compute(concatenation);
-    }
+    /// <summary>Hashes <paramref name="data"/> into <paramref name="output"/> with SHA-256.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Sha256(ReadOnlySpan<byte> data, Span<byte> output) => SHA256.HashData(data, output);
 }
