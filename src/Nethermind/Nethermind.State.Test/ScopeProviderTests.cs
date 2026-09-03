@@ -404,6 +404,8 @@ public class ScopeProviderTests(bool useFlat)
 
         PreBlockCaches caches = new();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
@@ -415,16 +417,18 @@ public class ScopeProviderTests(bool useFlat)
             scope.Get(TestItem.AddressA);
         }
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        trieWarmupSession.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
     }
 
     [Test]
-    public void Test_PopulatorHintWarmSlot_RoutesToMainScope()
+    public void Test_PopulatorHintWarmSlot_RoutesToMainScopeWarmupSession()
     {
         using Context ctx = new(useFlat);
 
         PreBlockCaches caches = new();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
@@ -435,7 +439,7 @@ public class ScopeProviderTests(bool useFlat)
             scope.HintWarmSlot(in addressA, (UInt256)1);
         }
 
-        mainScope.Received(1).HintWarmSlot(addressA, (UInt256)1);
+        trieWarmupSession.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
     [Test]

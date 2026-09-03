@@ -1246,6 +1246,8 @@ public class StorageProviderTests(bool useFlat)
     {
         PreBlockCaches caches = new();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
 
         using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
@@ -1253,7 +1255,7 @@ public class StorageProviderTests(bool useFlat)
         ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
 
         if (populator)
-            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+            trieWarmupSession.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
         else
             mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
     }

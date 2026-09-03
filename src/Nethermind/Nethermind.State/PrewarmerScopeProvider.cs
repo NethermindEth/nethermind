@@ -53,23 +53,29 @@ public class PrewarmerScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
+        PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
         IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
         IWorldStateScopeProvider.IScope? processingScope = null;
+        bool registeredMainScope = false;
         try
         {
             processingScope = baseProvider.BeginScope(baseBlock, metrics);
-            lock (preBlockCaches)
+            lock (preBlockCaches.MainScopeLock)
             {
                 if (isPrewarmer)
                 {
-                    trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
+                    if (storageReadCapture is null)
+                    {
+                        trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
+                    }
                 }
                 else
                 {
                     preBlockCaches.MainScope = processingScope;
+                    registeredMainScope = true;
                 }
             }
-            PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
+
             ScopeWrapper scope = new(processingScope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics);
             processingScope = null;
             trieWarmupSession = null;
@@ -77,6 +83,14 @@ public class PrewarmerScopeProvider(
         }
         finally
         {
+            if (registeredMainScope)
+            {
+                lock (preBlockCaches.MainScopeLock)
+                {
+                    if (ReferenceEquals(preBlockCaches.MainScope, processingScope)) preBlockCaches.MainScope = null;
+                }
+            }
+
             try
             {
                 processingScope?.Dispose();
@@ -108,28 +122,26 @@ public class PrewarmerScopeProvider(
         {
             if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
 
+            if (_measureMetric && _writeBatchTime != 0)
+            {
+                _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
+            }
+
             try
             {
                 trieWarmupSession?.Dispose();
             }
             finally
             {
-                if (_measureMetric && _writeBatchTime != 0)
-                {
-                    _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
-                }
                 if (!isPrewarmer)
                 {
-                    lock (preBlockCaches)
+                    lock (preBlockCaches.MainScopeLock)
                     {
                         if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
-                        baseScope.Dispose();
                     }
                 }
-                else
-                {
-                    baseScope.Dispose();
-                }
+
+                baseScope.Dispose();
             }
         }
 

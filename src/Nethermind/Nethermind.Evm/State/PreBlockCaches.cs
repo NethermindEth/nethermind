@@ -54,6 +54,9 @@ public class PreBlockCaches
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
     public ClockCache<PrecompileCacheKey, Result<byte[]>> SurvivingPrecompileCache => _survivingPrecompileCache;
 
+    /// <summary>Synchronizes registration and session creation for <see cref="MainScope"/>.</summary>
+    public Lock MainScopeLock { get; } = new();
+
     /// <summary>
     /// The main processing scope, registered for its lifetime as the source of independently owned trie warm-up sessions;
     /// may disappear at any time.

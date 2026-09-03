@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -1236,7 +1235,6 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(trieWarmer.EnterCount, Is.EqualTo(2));
         }
 
-        resourcePool.Dispose();
     }
 
     [Test]
@@ -1249,7 +1247,7 @@ public class FlatWorldStateScopeProviderTests
             new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty());
         ITrieNodeCache trieNodeCache = Substitute.For<ITrieNodeCache>();
         FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, trieNodeCache);
-        DeferredTrieWarmer trieWarmer = new();
+        using DeferredTrieWarmer trieWarmer = new();
         using FlatScopeProvider provider = new(
             new TestMemDb(),
             flatDbManager,
@@ -1260,41 +1258,45 @@ public class FlatWorldStateScopeProviderTests
             isReadOnly: false);
         using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
             Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject, new LocalMetrics());
-        FlatTrieWarmupSession scope = (FlatTrieWarmupSession)ordinaryScope.CreateTrieWarmupSession();
+        FlatTrieWarmupSession session = (FlatTrieWarmupSession)ordinaryScope.CreateTrieWarmupSession();
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
         ordinaryScope.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.Zero);
+            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
             Assert.That(reader.DisposeCount, Is.Zero);
         }
 
+        using ManualResetEventSlim disposalWaiting = new(false);
+        session.OnWaitingForJobs = disposalWaiting.Set;
         Task firstDisposeTask = Task.Factory.StartNew(
-            scope.Dispose,
+            session.Dispose,
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
-        Assert.That(SpinWait.SpinUntil(() => scope.IsDisposing, TimeSpan.FromSeconds(5)), Is.True);
+        Assert.That(disposalWaiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
         Task secondDisposeTask = Task.Factory.StartNew(
-            scope.Dispose,
+            session.Dispose,
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
-        bool firstDisposeCompletedBeforeJob = firstDisposeTask.Wait(TimeSpan.FromMilliseconds(100));
-        bool secondDisposeCompletedBeforeJob = secondDisposeTask.Wait(TimeSpan.FromMilliseconds(100));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstDisposeTask.IsCompleted, Is.False,
+                "the first disposal returned before its accepted job completed");
+            Assert.That(secondDisposeTask.IsCompleted, Is.False,
+                "the concurrent disposal returned before teardown completed");
+        }
+
         trieWarmer.CompleteAccountJob();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstDisposeCompletedBeforeJob, Is.False,
-                "the first disposal returned before its accepted job completed");
-            Assert.That(secondDisposeCompletedBeforeJob, Is.False,
-                "the concurrent disposal returned before teardown completed");
             Assert.That(firstDisposeTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(secondDisposeTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
@@ -1355,7 +1357,7 @@ public class FlatWorldStateScopeProviderTests
         public void Dispose() { }
     }
 
-    private sealed class DeferredTrieWarmer : ITrieWarmer
+    private sealed class DeferredTrieWarmer : ITrieWarmer, IDisposable
     {
         private ITrieWarmer.IAddressWarmer? _addressWarmer;
         private Address? _address;
@@ -1382,11 +1384,9 @@ public class FlatWorldStateScopeProviderTests
 
         public void OnEnterScope() => EnterCount++;
 
-        public void OnExitScope()
-        {
-            ExitCount++;
-            JobAccepted.Dispose();
-        }
+        public void OnExitScope() => ExitCount++;
+
+        public void Dispose() => JobAccepted.Dispose();
     }
 
     private sealed class ThrowingEnterTrieWarmer(int throwOnEnter) : ITrieWarmer
@@ -1408,52 +1408,19 @@ public class FlatWorldStateScopeProviderTests
         public void OnExitScope() { }
     }
 
-    private sealed class RecordingPersistenceReader(
-        MemDb? trieDb = null,
-        Address? address = null,
-        Account? account = null,
-        UInt256 slot = default,
-        byte[]? slotValue = null) : IPersistence.IPersistenceReader
+    private sealed class RecordingPersistenceReader : IPersistence.IPersistenceReader
     {
         public int DisposeCount { get; private set; }
-        public int StateTrieReads { get; private set; }
-        public int StorageTrieReads { get; private set; }
         public StateId CurrentState => StateId.PreGenesis;
         public bool IsPreimageMode => false;
 
-        public Account? GetAccount(Address requestedAddress) => requestedAddress == address ? account : null;
+        public Account? GetAccount(Address requestedAddress) => null;
 
-        public bool TryGetSlot(Address requestedAddress, in UInt256 requestedSlot, ref SlotValue outValue)
-        {
-            if (requestedAddress != address || requestedSlot != slot || slotValue is null) return false;
-            outValue = SlotValue.FromSpanWithoutLeadingZero(slotValue);
-            return true;
-        }
+        public bool TryGetSlot(Address requestedAddress, in UInt256 requestedSlot, ref SlotValue outValue) => false;
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
-        {
-            StateTrieReads++;
-            TreePath requestedPath = path;
-            return trieDb?.GetAll()
-                .FirstOrDefault(entry => entry.Key.Length == 42
-                    && entry.Key[0] <= 1
-                    && entry.Key[9] == requestedPath.Length
-                    && entry.Key.AsSpan(1, 8).SequenceEqual(requestedPath.Path.BytesAsSpan[..8]))
-                .Value;
-        }
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
 
-        public byte[]? TryLoadStorageRlp(Hash256 requestedAddress, in TreePath path, ReadFlags flags)
-        {
-            StorageTrieReads++;
-            TreePath requestedPath = path;
-            return trieDb?.GetAll()
-                .FirstOrDefault(entry => entry.Key.Length == 74
-                    && entry.Key[0] == 2
-                    && entry.Key.AsSpan(1, 32).SequenceEqual(requestedAddress.Bytes)
-                    && entry.Key[41] == requestedPath.Length
-                    && entry.Key.AsSpan(33, 8).SequenceEqual(requestedPath.Path.BytesAsSpan[..8]))
-                .Value;
-        }
+        public byte[]? TryLoadStorageRlp(Hash256 requestedAddress, in TreePath path, ReadFlags flags) => null;
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
 

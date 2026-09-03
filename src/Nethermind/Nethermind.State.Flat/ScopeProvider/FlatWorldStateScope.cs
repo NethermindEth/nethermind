@@ -41,6 +41,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
+    private readonly Lock _stateIdLock = new();
     internal volatile bool _pausePrewarmer = false;
 
     private CancellationTokenSource? _hintBalCts;
@@ -158,8 +159,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
 
-    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
-        _snapshotBundle.CreateTrieWarmupSession(_currentStateId, _warmer, _logManager);
+    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession()
+    {
+        lock (_stateIdLock)
+        {
+            return new FlatTrieWarmupSession(_currentStateId, _snapshotBundle, _warmer, _logManager);
+        }
+    }
 
     public void UpdateRootHash()
     {
@@ -486,7 +492,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
         }
 
-        _currentStateId = newStateId;
+        lock (_stateIdLock)
+        {
+            _currentStateId = newStateId;
+        }
         _pausePrewarmer = false;
     }
 
