@@ -10,7 +10,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NSubstitute;
 using NUnit.Framework;
-using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -75,6 +74,18 @@ public class EncryptionHandshakeServiceTests
     private void Ack() => _ack = _recipientService.Ack(_recipientHandshake, _auth);
 
     private void Agree() => _initiatorService.Agree(_initiatorHandshake, _ack);
+
+    private static void Decrypt(IHandshakeService service, bool authMessage, Packet packet)
+    {
+        if (authMessage)
+        {
+            service.Ack(new EncryptionHandshake(), packet);
+        }
+        else
+        {
+            service.Agree(new EncryptionHandshake(), packet);
+        }
+    }
 
     private void InitializeRandom(bool preEip8Format = false)
     {
@@ -189,42 +200,22 @@ public class EncryptionHandshakeServiceTests
             LimboLogs.Instance);
         Packet malformedPacket = new(new byte[2]);
 
-        void Act()
-        {
-            if (authMessage)
-            {
-                service.Ack(new EncryptionHandshake(), malformedPacket);
-            }
-            else
-            {
-                service.Agree(new EncryptionHandshake(), malformedPacket);
-            }
-        }
-
-        Assert.Throws<NetworkingException>(Act);
+        Assert.Throws<NetworkingException>(() => Decrypt(service, authMessage, malformedPacket));
     }
 
     [TestCase(true, 0)]
     [TestCase(true, 1)]
+    [TestCase(true, 2)]
+    [TestCase(true, 82)]
     [TestCase(false, 0)]
     [TestCase(false, 1)]
-    public void Rejects_packet_shorter_than_eip8_size_prefix(bool authMessage, int length)
+    [TestCase(false, 2)]
+    [TestCase(false, 82)]
+    public void Rejects_undersized_eip8_packet(bool authMessage, int length)
     {
         Packet malformedPacket = new(new byte[length]);
 
-        void Act()
-        {
-            if (authMessage)
-            {
-                _recipientService.Ack(new EncryptionHandshake(), malformedPacket);
-            }
-            else
-            {
-                _initiatorService.Agree(new EncryptionHandshake(), malformedPacket);
-            }
-        }
-
-        Assert.Throws<NetworkingException>(Act);
+        Assert.Throws<NetworkingException>(() => Decrypt(authMessage ? _recipientService : _initiatorService, authMessage, malformedPacket));
     }
 
     [TestCase(true)]
@@ -237,19 +228,7 @@ public class EncryptionHandshakeServiceTests
         NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes.CopyTo(data, 2);
         Packet malformedPacket = new(data);
 
-        void Act()
-        {
-            if (authMessage)
-            {
-                _recipientService.Ack(new EncryptionHandshake(), malformedPacket);
-            }
-            else
-            {
-                _initiatorService.Agree(new EncryptionHandshake(), malformedPacket);
-            }
-        }
-
-        Assert.Throws<InvalidCipherTextException>(Act);
+        Assert.Throws<NetworkingException>(() => Decrypt(authMessage ? _recipientService : _initiatorService, authMessage, malformedPacket));
     }
 
     [TestCase(true)]

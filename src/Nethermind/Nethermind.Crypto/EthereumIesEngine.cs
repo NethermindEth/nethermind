@@ -67,7 +67,8 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         ArgumentNullException.ThrowIfNull(input);
         (byte[] kdfKey, IesWithCipherParameters iesParameters, byte[] iv) = GetInitializedParameters();
 
-        // Ensure that the length of the input is greater than the MAC in bytes
+        // GetOutputSize subtracts the MAC, so a shorter input yields a negative size and `new byte[]` throws OverflowException.
+        // `<=` (not `<`) also rejects a MAC-only body: no valid RLPx handshake message decrypts to empty plaintext.
         if (!_forEncryption && input.Length <= _mac.GetMacSize())
         {
             ThrowInputTooShort();
