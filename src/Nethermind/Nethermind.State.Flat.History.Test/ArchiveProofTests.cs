@@ -15,7 +15,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -557,6 +559,32 @@ public class ArchiveProofTests
                 Assert.That(actual.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()));
             }
         }
+    }
+
+    [Test]
+    public void A_rebuild_reads_one_row_per_account_rather_than_one_per_version()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        Address[] accounts = BuildAddresses(8);
+        for (ulong block = 1; block <= 200; block++)
+        {
+            foreach (Address account in accounts) HistoryColumnsWriter.RecordAccount(columns, account, block, new Account(block, (UInt256)(1000 + block)));
+        }
+
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        AccountHistoryScope scope = new(
+            (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            rowFormat,
+            new CommitmentStore(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), TestPolicy, 0),
+            TestPolicy);
+
+        List<TrieLeaf> leaves = [];
+        scope.EnumerateLeaves(TreePath.Empty, block: 150, new ResolutionBudget(accounts.Length * 4), leaves);
+
+        Assert.That(leaves, Has.Count.EqualTo(accounts.Length),
+            "eight accounts of two hundred versions each must cost a seek or two per account, not a row per version: a proof rebuilds the bottom of the path from these rows, and one busy neighbour would otherwise spend the whole budget before the node is built");
+        Assert.That(leaves.Select(leaf => Rlp.Decode<Account>(leaf.Value)!.Nonce), Is.All.EqualTo((ulong)150),
+            "each account resolves to its newest version at or below the queried block");
     }
 
     [Test]

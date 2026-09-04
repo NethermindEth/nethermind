@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence;
@@ -59,44 +60,87 @@ internal abstract class TrieHistoryScope(
         Span<byte> upper = stackalloc byte[MaxRowKeyLength];
         int boundLength = WriteScopedBounds(prefix, lower, upper);
 
-        using ISortedView view = rows.GetViewBetween(lower[..boundLength], upper[..boundLength], ReadFlags.HintCacheMiss);
+        int keyLength = RowKeyLength - sizeof(ulong);
+        Span<byte> cursor = stackalloc byte[MaxRowKeyLength + 1];
+        lower[..boundLength].CopyTo(cursor);
+        int cursorLength = boundLength;
+        Span<byte> seek = stackalloc byte[MaxRowKeyLength];
 
-        ValueHash256 currentPath = default;
-        bool haveGroup = false;
-        bool resolved = false;
-
-        while (view.MoveNext())
+        while (true)
         {
-            budget.ChargeRow();
-
-            ReadOnlySpan<byte> rowKey = view.CurrentKey;
-            if (rowKey.Length != RowKeyLength || !BelongsToScope(rowKey)) continue;
-
-            ReadOnlySpan<byte> pathBytes = rowKey.Slice(TriePathOffset, Hash256.Size);
-            if (!haveGroup || !pathBytes.SequenceEqual(currentPath.Bytes))
+            ReadOnlySpan<byte> rowKey;
+            ReadOnlySpan<byte> storedValue;
+            ulong rowBlock;
+            using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..boundLength], ReadFlags.HintCacheMiss))
             {
-                currentPath = new ValueHash256(pathBytes);
-                haveGroup = true;
-                resolved = false;
+                if (!view.MoveNext()) return;
+
+                budget.ChargeRow();
+                rowKey = view.CurrentKey;
+                if (rowKey.Length != RowKeyLength)
+                {
+                    cursorLength = Advance(cursor, rowKey);
+                    continue;
+                }
+
+                rowKey[..keyLength].CopyTo(seek);
+                rowBlock = rowFormat.DecodeSuffixBlock(rowKey[keyLength..]);
+                storedValue = view.CurrentValue;
+                if (rowBlock <= block && BelongsToScope(rowKey))
+                {
+                    Collect(seek[..keyLength], rowBlock, storedValue, block, leaves);
+                    cursorLength = SkipKey(cursor, seek[..keyLength]);
+                    continue;
+                }
             }
-            else if (resolved)
+
+            if (!BelongsToScope(seek[..keyLength]))
             {
+                cursorLength = SkipKey(cursor, seek[..keyLength]);
                 continue;
             }
 
-            ulong rowBlock = rowFormat.DecodeSuffixBlock(rowKey[^sizeof(ulong)..]);
-            if (rowBlock > block) continue;
+            BinaryPrimitives.WriteUInt64BigEndian(seek[keyLength..], ~block);
+            using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..boundLength], ReadFlags.HintCacheMiss))
+            {
+                if (!atBlock.MoveNext()) return;
 
-            resolved = true;
+                budget.ChargeRow();
+                ReadOnlySpan<byte> found = atBlock.CurrentKey;
+                if (found.Length == RowKeyLength && found[..keyLength].SequenceEqual(seek[..keyLength]))
+                {
+                    Collect(seek[..keyLength], rowFormat.DecodeSuffixBlock(found[keyLength..]), atBlock.CurrentValue, block, leaves);
+                }
+            }
 
-            ReadOnlySpan<byte> storedValue = view.CurrentValue;
-            if (storedValue.IsEmpty || !SurvivesTo(currentPath, rowBlock, block)) continue;
-
-            byte[]? leafValue = DecodeLeafValue(storedValue);
-            if (leafValue is null) continue;
-
-            leaves.Add(new TrieLeaf(currentPath, leafValue));
+            cursorLength = SkipKey(cursor, seek[..keyLength]);
         }
+    }
+
+    private void Collect(scoped ReadOnlySpan<byte> keyPart, ulong rowBlock, scoped ReadOnlySpan<byte> storedValue, ulong block, List<TrieLeaf> leaves)
+    {
+        ValueHash256 triePath = new(keyPart.Slice(TriePathOffset, Hash256.Size));
+        if (storedValue.IsEmpty || !SurvivesTo(triePath, rowBlock, block)) return;
+
+        byte[]? leafValue = DecodeLeafValue(storedValue);
+        if (leafValue is null) return;
+
+        leaves.Add(new TrieLeaf(triePath, leafValue));
+    }
+
+    private static int SkipKey(Span<byte> cursor, scoped ReadOnlySpan<byte> keyPart)
+    {
+        keyPart.CopyTo(cursor);
+        cursor.Slice(keyPart.Length, sizeof(ulong)).Fill(0xFF);
+        cursor[keyPart.Length + sizeof(ulong)] = 0x00;
+        return keyPart.Length + sizeof(ulong) + 1;
+    }
+
+    private static int Advance(Span<byte> cursor, scoped ReadOnlySpan<byte> rowKey)
+    {
+        rowKey.CopyTo(cursor);
+        cursor[rowKey.Length] = 0x00;
+        return rowKey.Length + 1;
     }
 
     protected static int WritePathBounds(in TreePath prefix, Span<byte> lower, Span<byte> upper, int offset)
