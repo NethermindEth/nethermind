@@ -227,14 +227,15 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode() =>
-#if ZK_EVM
-                // Always 20 bytes, so skip the length-dispatching FastHash and use the
-                // dedicated 20-byte hasher — the dominant Dictionary/FrozenSet probe on zkVM.
-                unchecked((int)GetHashCode64());
-#else
-                Bytes.FastHash();
-#endif
+        public override int GetHashCode() => GetHashCodeNonVirtual();
+
+        /// <summary>Returns exactly what <see cref="GetHashCode"/> returns, without a virtual call.</summary>
+        /// <remarks>
+        /// ILC lowers a <c>callvirt</c> on this sealed type's <see cref="GetHashCode"/> override to a vtable
+        /// dispatch rather than resolving it statically, so a caller on a hash-table probe path — chiefly
+        /// <see cref="AddressAsKey.GetHashCode"/> — pays an out-of-line call it cannot inline through.
+        /// </remarks>
+        internal partial int GetHashCodeNonVirtual();
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -293,24 +294,6 @@ namespace Nethermind.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
-
-#if ZK_EVM
-        // A precompile lives at a low address (top 16 bytes zero), so its trailing number
-        // IS the membership key. Returns that number when the top 16 bytes are zero, or -1
-        // otherwise — lets IReleaseSpec.IsPrecompile swap a FrozenSet hash+probe for a bitmask.
-        public int PrecompileIndexOrNegative()
-        {
-            ref byte b = ref Unsafe.AsRef(in FirstByte);
-            if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
-            {
-                return -1;
-            }
-
-            // bytes 16..19, big-endian
-            uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
-            return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
-        }
-#endif
     }
 
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
@@ -354,7 +337,9 @@ namespace Nethermind.Core
         public static implicit operator AddressAsKey(Address key) => new(key);
 
         public bool Equals(AddressAsKey other) => Equals(in other);
-        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode() => _key?.GetHashCodeNonVirtual() ?? 0;
         public override string ToString() => _key?.ToString() ?? "<null>";
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

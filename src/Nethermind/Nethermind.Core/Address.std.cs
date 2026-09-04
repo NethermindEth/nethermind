@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
 
@@ -14,4 +15,7 @@ public sealed partial class Address
         => Unsafe.As<byte, Vector128<byte>>(ref a) == Unsafe.As<byte, Vector128<byte>>(ref b)
             && Unsafe.As<byte, uint>(ref Unsafe.Add(ref a, Vector128<byte>.Count))
                 == Unsafe.As<byte, uint>(ref Unsafe.Add(ref b, Vector128<byte>.Count));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal partial int GetHashCodeNonVirtual() => Bytes.FastHash();
 }
