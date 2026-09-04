@@ -773,9 +773,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             private Comparer() { }
 
-            // Through UInt256's own equality rather than a vector compare written here: it carries the
-            // per-target form, and on a target without SIMD a Vector256 comparison expands to a
-            // byte-at-a-time element loop over each lane.
             public bool Equals(UInt256 x, UInt256 y) => x.Equals(in y);
 
             public int GetHashCode([DisallowNull] UInt256 obj)
