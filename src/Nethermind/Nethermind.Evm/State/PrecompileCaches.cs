@@ -200,31 +200,29 @@ public sealed class PrecompileCaches
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
-            bool tier1 = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
-            bool tier2 = entryBytes <= MaxSurvivingEntryBytes;
 
-            if (!tier1 && !tier2)
-            {
-                Interlocked.Add(ref _bytes, -reservation);
-                return false;
-            }
+            bool tier1 = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
+            if (!tier1) Interlocked.Add(ref _bytes, -reservation);
+
+            bool tier2 = entryBytes <= MaxSurvivingEntryBytes;
+            if (!tier1 && !tier2) return false;
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
+
+            if (tier1 && !_entries.TryAdd(copiedKey, result))
+            {
+                Interlocked.Add(ref _bytes, -reservation);
+                tier1 = false;
+            }
 
             if (tier2)
             {
                 _survivingCache.Set(copiedKey, result);
             }
 
-            if (!tier1 || !_entries.TryAdd(copiedKey, result))
-            {
-                Interlocked.Add(ref _bytes, -reservation);
-                return false;
-            }
-
-            return true;
+            return tier1;
         }
 
         internal void Clear()
