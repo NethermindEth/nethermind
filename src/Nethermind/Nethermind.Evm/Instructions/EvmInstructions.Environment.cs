@@ -438,6 +438,7 @@ public static partial class EvmInstructions
     /// <returns>
     /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if blob base fee not set.
     /// </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionBlobBaseFee<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -694,6 +695,7 @@ public static partial class EvmInstructions
     /// if there are insufficient elements on the stack.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionBlobHash<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
