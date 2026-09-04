@@ -32,6 +32,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag =>
         &ExecuteOpcode<TOpcode, TTracingInst, TCancelable>;
 
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+        JumpIfOpcodeHandler<TTracingInst, TCancelable>()
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        &ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
+
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
@@ -141,7 +147,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             : OpcodeHandler<SStoreUnmeteredOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.JUMP] = OpcodeHandler<JumpOpcode<TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.JUMPI] = OpcodeHandler<JumpIfOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.JUMPI] = JumpIfOpcodeHandler<TTracingInst, TCancelable>();
         lookup[(int)Instruction.PC] = OpcodeHandler<ProgramCounterOpcode<TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MSIZE] = OpcodeHandler<EnvUInt64Opcode<EvmInstructions.OpMSize<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.GAS] = OpcodeHandler<GasOpcode<TTracingInst>, TTracingInst, TCancelable>();
