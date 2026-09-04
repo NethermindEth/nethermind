@@ -255,6 +255,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionEnvUInt32<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt32<TGasPolicy>
@@ -289,6 +290,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionEnvUInt64<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt64<TGasPolicy>
@@ -311,6 +313,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionBlkUInt64<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpBlkUInt64<TGasPolicy>
@@ -359,6 +362,7 @@ public static partial class EvmInstructions
     /// Retrieves the length of the return data buffer and pushes it onto the stack.
     /// </summary>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionReturnDataSize<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -647,6 +651,7 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> if gas is available, or <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionGas<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
