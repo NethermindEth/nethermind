@@ -2356,6 +2356,44 @@ jobs:
           done
           exit 0
 
+      - name: Start pressure sampler
+        continue-on-error: true
+        shell: bash
+        run: |
+          # July's allocator ranking turned on memory, not latency, so sample the client's cgroup.
+          samples="${{ runner.temp }}/pressure-${{ matrix.tag }}-run${{ matrix.run }}.csv"
+          echo "PRESSURE_SAMPLES=${samples}" >> "${GITHUB_ENV}"
+          cat > "${{ runner.temp }}/sampler.sh" <<'SAMPLER'
+          #!/bin/bash
+          out=$1
+          echo "epoch,mem_current,anon,mem_psi_avg10,cpu_usec,nr_throttled" > "$out"
+          dir=
+          while :; do
+            if [ -z "$dir" ]; then
+              name=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -- '-nethermind$' | head -1)
+              if [ -n "$name" ]; then
+                id=$(docker inspect -f '{{.Id}}' "$name" 2>/dev/null)
+                [ -n "$id" ] && dir=$(find /sys/fs/cgroup -maxdepth 5 -type d -name "*$id*" 2>/dev/null | head -1)
+              fi
+            elif [ ! -d "$dir" ]; then
+              dir=
+            fi
+            if [ -n "$dir" ]; then
+              cur=$(cat "$dir/memory.current" 2>/dev/null)
+              anon=$(awk '$1 == "anon" { print $2 }' "$dir/memory.stat" 2>/dev/null)
+              psi=$(sed -n 's/^some .*avg10=\([0-9.]*\).*/\1/p' "$dir/memory.pressure" 2>/dev/null | head -1)
+              usec=$(awk '$1 == "usage_usec" { print $2 }' "$dir/cpu.stat" 2>/dev/null)
+              thr=$(awk '$1 == "nr_throttled" { print $2 }' "$dir/cpu.stat" 2>/dev/null)
+              [ -n "$cur" ] && echo "$(date +%s),${cur:-},${anon:-},${psi:-},${usec:-},${thr:-}" >> "$out"
+            fi
+            sleep 5
+          done
+          SAMPLER
+          chmod +x "${{ runner.temp }}/sampler.sh"
+          nohup "${{ runner.temp }}/sampler.sh" "${samples}" >/dev/null 2>&1 &
+          echo "SAMPLER_PID=$!" >> "${GITHUB_ENV}"
+          echo "Sampling the client cgroup every 5s into ${samples}"
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -2457,6 +2495,38 @@ jobs:
           wait "${tee_pid}"
 
           exit "${expb_exit_code}"
+
+      - name: Stop pressure sampler and report
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          [ -n "${SAMPLER_PID:-}" ] && kill "${SAMPLER_PID}" 2>/dev/null || true
+          samples="${PRESSURE_SAMPLES:-}"
+          if [ ! -s "${samples}" ]; then
+            echo "No pressure samples were collected."
+            exit 0
+          fi
+          awk -F, 'NR > 1 && $2 != "" {
+                 n++; mem += $2; if ($2 > memmax) memmax = $2
+                 a += $3; if ($3 > amax) amax = $3
+                 psi += $4; if (first == "") first = $5; last = $5; thr = $6
+               }
+               END {
+                 if (!n) { print "no usable samples"; exit }
+                 printf "samples          %d\n", n
+                 printf "mem.current mean %.2f GiB   max %.2f GiB\n", mem/n/1073741824, memmax/1073741824
+                 printf "anon        mean %.2f GiB   max %.2f GiB\n", a/n/1073741824, amax/1073741824
+                 printf "memory PSI avg10 mean %.3f\n", psi/n
+                 printf "cpu              %.1f s\n", (last-first)/1000000
+                 printf "nr_throttled     %s\n", thr
+               }' "${samples}" | tee "${{ runner.temp }}/pressure-summary.txt"
+          {
+            echo "### Pressure: ${{ matrix.tag }} run ${{ matrix.run }}"
+            echo '```'
+            cat "${{ runner.temp }}/pressure-summary.txt"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Analyze benchmark output
         id: analyze
