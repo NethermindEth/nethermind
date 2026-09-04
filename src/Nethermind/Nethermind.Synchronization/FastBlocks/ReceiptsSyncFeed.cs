@@ -275,12 +275,12 @@ namespace Nethermind.Synchronization.FastBlocks
                     bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
                     if (isValid)
                     {
-                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash);
+                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
                         if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
+                                if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockNumber} {blockInfo.BlockHash}");
                             }
 
                             _syncStatusList.MarkPending(blockInfo);
