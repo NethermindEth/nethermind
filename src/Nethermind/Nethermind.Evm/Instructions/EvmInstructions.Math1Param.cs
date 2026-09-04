@@ -152,34 +152,32 @@ public static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
-        if (!stack.PopWord256(out Span<byte> bytes))
-            goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+        if (!isValid) return EvmExceptionType.StackUnderflow;
 
-        // If the position is out-of-range, push zero. Using direct limb access avoids the
-        // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
-        // and skips the overflow-check path of `(int)a`.
-        if (!a.IsUint64 || a.u0 >= 32)
-        {
-            return stack.PushZero<TTracingInst>();
-        }
+        ref ulong result = ref As<byte, ulong>(ref topRef);
+        ref ulong position = ref Add(ref result, EvmStack.WordSize / sizeof(ulong));
+        ulong positionLow = Add(ref position, 3);
+        nint index = (nint)(positionLow >> 56);
+        byte selected = (position | Add(ref position, 1) | Add(ref position, 2) |
+            (positionLow & 0x00FF_FFFF_FFFF_FFFFUL)) == 0 && index < EvmStack.WordSize
+            ? Add(ref topRef, index)
+            : (byte)0;
 
-        // PopWord256 always returns 32 bytes and we've just checked a.u0 < 32, so bypass the
-        // span bounds check: JIT can't prove 0 <= (int)a.u0 < bytes.Length across the ulong->int cast.
-        return stack.PushByte<TTracingInst>(
-            Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)a.u0));
+        result = 0;
+        Add(ref result, 1) = 0;
+        Add(ref result, 2) = 0;
+        Add(ref result, 3) = (ulong)selected << 56;
 
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
     }
 
 #if !ZK_EVM
