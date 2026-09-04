@@ -107,7 +107,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestAllTracerWithOutput receipt = ExecuteUntraced(200_000_000UL, code);
+        const ulong gasLimit = 200_000_000UL;
+        TestAllTracerWithOutput receipt = ExecuteUntraced(gasLimit, code, blockGasLimit: gasLimit);
 
         using (Assert.EnterMultipleScope())
         {
@@ -188,9 +189,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code)
+    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code, blockGasLimit: blockGasLimit);
         NoInstructionTracer tracer = new();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
