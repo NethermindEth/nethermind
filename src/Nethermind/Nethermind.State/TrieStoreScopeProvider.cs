@@ -403,7 +403,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
             = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes]?.ToArray();
+        // The indexer already hands back an array of the store's own, and code is never mutated in
+        // place, so copying it only allocated a second one.
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes];
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 
