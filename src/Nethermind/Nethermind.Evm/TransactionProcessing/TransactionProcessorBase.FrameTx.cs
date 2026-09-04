@@ -506,10 +506,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // EIP-7928: fee accounting touches the beneficiary regardless of premium, so the credit is
-        // unconditional as in PayFees. PayFees' EIP-6780 self-destruct guard has no analogue here, the
-        // frame path never finalizing its destroy list.
+        // unconditional as in PayFees.
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+
+        // EIP-6780: finalize committed frames' self-destructs (reverted/unrolled entries already dropped from the tracker).
+        if (accessTracker.DestroyList.Count > 0)
+        {
+            bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
+            bool removeSelfdestructBurn = spec.IsEip8246Enabled;
+            bool trackBalance = spec.IsEip7708Enabled || removeSelfdestructBurn;
+            foreach (Address toBeDestroyed in accessTracker.DestroyList)
+            {
+                UInt256 destroyedBalance = trackBalance ? WorldState.GetBalance(toBeDestroyed) : default;
+                DestroyAccount(WorldState, toBeDestroyed, in destroyedBalance, commitDestroys, removeSelfdestructBurn);
+            }
+        }
 
         // CommitAndRestore asks for both, but a commit clears the journals the snapshot indexes into; the
         // frame path journals the whole transaction, so the restore alone suffices.

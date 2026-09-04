@@ -151,6 +151,22 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameCreatesAndSelfDestructsContractInSameTx_DeletesTheCreatedAccount()
+    {
+        byte[] childInitCode = Prepare.EvmCode.PushData(Beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        byte[] salt = new byte[32];
+        Address child = ContractAddress.From(Observer, salt, childInitCode);
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Create2(childInitCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer)));
+
+        Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
+        Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+    }
+
+    [Test]
     public void Execute_BlobCarryingFrameTx_ChargesAndBurnsBlobFee()
     {
         // With base fee 0 the whole gas premium goes to the beneficiary, so the only value that leaves
