@@ -785,6 +785,33 @@ internal static class RlpHelpers
         => throw new RlpException(
             $"Unexpected RLP prefix of {prefix} when decoding {nameof(Address)} at position {position} in the message of length {dataLength}.");
 
+    /// <summary>Decodes a byte string into an array, reusing the shared single-byte arrays.</summary>
+    /// <returns>The position past the string.</returns>
+    public static int DecodeByteArray(
+        ReadOnlySpan<byte> data, int position, RlpLimit? limit, int size, out byte[] value)
+    {
+        position = DecodeByteArraySpan(data, position, limit, size, out ReadOnlySpan<byte> span);
+        if (span.Length == 0)
+        {
+            value = [];
+            return position;
+        }
+
+        if (span.Length == 1)
+        {
+            int single = span[0];
+            byte[][] arrays = SingleByteArrays;
+            if ((uint)single < (uint)arrays.Length)
+            {
+                value = arrays[single];
+                return position;
+            }
+        }
+
+        value = span.ToArray();
+        return position;
+    }
+
     /// <summary>Decodes a 32-byte hash that must be present.</summary>
     /// <returns>The position past the hash.</returns>
     public static int DecodeKeccak(ReadOnlySpan<byte> data, int position, out Hash256 keccak)

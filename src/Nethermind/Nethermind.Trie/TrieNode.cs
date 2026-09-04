@@ -1393,16 +1393,6 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
-        private void SeekChild(ref RlpReader rlpReader, int index)
-        {
-            if (rlpReader.IsNull)
-            {
-                return;
-            }
-
-            rlpReader.Position = SeekChildPosition(rlpReader.Data, index);
-        }
-
         /// <summary>Returns the offset of child <paramref name="index"/> within this node's RLP.</summary>
         private int SeekChildPosition(ReadOnlySpan<byte> nodeRlp, int index)
         {

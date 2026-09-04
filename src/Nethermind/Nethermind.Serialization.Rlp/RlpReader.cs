@@ -392,23 +392,8 @@ public ref struct RlpReader
 
     public byte[] DecodeByteArray(RlpLimit? limit = null, int size = -1)
     {
-        ReadOnlySpan<byte> span = DecodeByteArraySpan(limit, size);
-        if (span.Length == 0)
-        {
-            return [];
-        }
-
-        if (span.Length == 1)
-        {
-            int value = span[0];
-            byte[][] arrays = RlpHelpers.SingleByteArrays;
-            if ((uint)value < (uint)arrays.Length)
-            {
-                return arrays[value];
-            }
-        }
-
-        return span.ToArray();
+        Position = RlpHelpers.DecodeByteArray(Data, Position, limit, size, out byte[] value);
+        return value;
     }
 
     public Memory<byte> DecodeByteArrayMemory(RlpLimit? limit = null, int size = -1)
@@ -554,23 +539,26 @@ public ref struct RlpReader
 
     public byte[][] DecodeByteArrays(RlpLimit? limit = null, int innerSize = -1)
     {
-        int length = ReadSequenceLength();
+        ReadOnlySpan<byte> data = Data;
+        int position = RlpHelpers.ReadSequenceLength(data, Position, out int length);
+        Position = position;
         if (length is 0)
         {
             return [];
         }
 
-        int checkPosition = Position + length;
+        int checkPosition = position + length;
         int itemsCountMax = (limit ?? RlpLimit.DefaultLimit).Limit + 1;
-        int itemsCount = PeekNumberOfItemsRemaining(checkPosition, itemsCountMax);
-        GuardLimit(itemsCount, limit);
+        int itemsCount = RlpHelpers.CountItems(data, position, checkPosition, itemsCountMax);
+        Rlp.GuardLimit(itemsCount, data.Length - position, limit);
         byte[][] result = new byte[itemsCount][];
 
         for (int i = 0; i < itemsCount; i++)
         {
-            result[i] = DecodeByteArray(size: innerSize);
+            position = RlpHelpers.DecodeByteArray(data, position, null, innerSize, out result[i]);
         }
 
+        Position = position;
         Check(checkPosition);
 
         return result;
@@ -644,25 +632,72 @@ public ref struct RlpReader
         decoder ??= Rlp.GetDecoder<T>()
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
 
-        int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(
-            checkPositions ? positionCheck : null,
-            (limit ?? RlpLimit.DefaultLimit).Limit + 1);
-        GuardLimit(count, limit);
+        ReadOnlySpan<byte> data = Data;
+        int position = RlpHelpers.ReadSequenceLength(data, Position, out int sequenceLength);
+        int positionCheck = position + sequenceLength;
+        int count = RlpHelpers.CountItems(
+            data, position, checkPositions ? positionCheck : data.Length, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        Rlp.GuardLimit(count, data.Length - position, limit);
         T?[] result = new T?[count];
+
+        // The element decoder takes the reader by reference, so the cursor has to be in the field
+        // across that call. Everything around it - the header, the null probe - stays in a local.
         for (int i = 0; i < result.Length; i++)
         {
-            if (PeekByte() == Rlp.EmptyListByte)
+            if (data[position] == Rlp.EmptyListByte)
             {
                 result[i] = defaultElement;
-                Position++;
+                position++;
             }
             else
             {
+                Position = position;
                 result[i] = decoder.Decode(ref this);
+                position = Position;
             }
         }
 
+        Position = position;
+
+        if (checkPositions)
+        {
+            Check(positionCheck);
+        }
+
+        return result;
+    }
+
+    /// <summary>Decodes a sequence whose element decoder threads the cursor by value.</summary>
+    /// <remarks>
+    /// Unlike the <see cref="IRlpDecoder{T}"/> and <see cref="DecodeRlpValue{T}"/> overloads, the whole
+    /// walk runs on a local: <typeparamref name="TDecoder"/> is a constrained call, so no element
+    /// boundary pushes the cursor back through <see cref="Position"/>.
+    /// </remarks>
+    public T?[] DecodeArray<T, TDecoder>(bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+        where TDecoder : ICursorRlpDecoder<T>
+    {
+        ReadOnlySpan<byte> data = Data;
+        int position = RlpHelpers.ReadSequenceLength(data, Position, out int sequenceLength);
+        int positionCheck = position + sequenceLength;
+        int count = RlpHelpers.CountItems(
+            data, position, checkPositions ? positionCheck : data.Length, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        Rlp.GuardLimit(count, data.Length - position, limit);
+        T?[] result = new T?[count];
+
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (data[position] == Rlp.EmptyListByte)
+            {
+                result[i] = defaultElement;
+                position++;
+            }
+            else
+            {
+                position = TDecoder.DecodeItem(data, position, out result[i]);
+            }
+        }
+
+        Position = position;
         if (checkPositions)
         {
             Check(positionCheck);
@@ -673,22 +708,32 @@ public ref struct RlpReader
 
     public T?[] DecodeArray<T>(DecodeRlpValue<T?> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
-        int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
-        GuardLimit(count, limit);
+        ReadOnlySpan<byte> data = Data;
+        int position = RlpHelpers.ReadSequenceLength(data, Position, out int sequenceLength);
+        int positionCheck = position + sequenceLength;
+        int count = RlpHelpers.CountItems(
+            data, position, checkPositions ? positionCheck : data.Length, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        Rlp.GuardLimit(count, data.Length - position, limit);
         T?[] result = new T?[count];
+
+        // The element decoder takes the reader by reference, so the cursor has to be in the field
+        // across that call. Everything around it - the header, the null probe - stays in a local.
         for (int i = 0; i < result.Length; i++)
         {
-            if (PeekByte() == Rlp.EmptyListByte)
+            if (data[position] == Rlp.EmptyListByte)
             {
                 result[i] = defaultElement;
-                Position++;
+                position++;
             }
             else
             {
+                Position = position;
                 result[i] = decodeItem(ref this);
+                position = Position;
             }
         }
+
+        Position = position;
 
         if (checkPositions)
         {
