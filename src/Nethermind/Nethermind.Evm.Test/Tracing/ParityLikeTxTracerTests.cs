@@ -6,12 +6,14 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -438,7 +440,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(instruction)
             .Done;
 
-        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(
+            (MainnetSpecProvider.ConstantinopleFixBlockNumber, Timestamp), code);
         byte[] pushed = trace.VmTrace.Operations[2].Push.Single();
 
         Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
@@ -889,6 +892,14 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (tracer.BuildResult(), block, transaction);
+    }
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, params byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
