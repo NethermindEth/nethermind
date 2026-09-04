@@ -69,8 +69,8 @@ public class RangeLimitedLogFinderTests
         inner.FindLogs(default!, default!, default!).ReturnsForAnyArgs([]);
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(callInfo => Header((int)callInfo.Arg<ulong>()));
+        blockFinder.FindHeader(Arg.Any<BlockParameter>(), Arg.Any<bool>())
+            .Returns(callInfo => Header((int)callInfo.Arg<BlockParameter>().BlockNumber!.Value));
 
         return new RangeLimitedLogFinder(inner, blockFinder, new ReceiptConfig { MaxBlockDepth = maxBlockDepth });
     }
