@@ -66,6 +66,26 @@ public static partial class EvmInstructions
     internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
         where TOpMath : struct, IOpMath1Param
     {
+        // Folding a word down to a scalar through an EvmWord value makes the operand address-taken, so
+        // targets with no 256-bit register home it on the frame and read it back limb by limb. These two
+        // read the slot where it lies.
+        if (!Vector256.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpIsZero) || typeof(TOpMath) == typeof(OpCLZ)))
+        {
+            if (!stack.EnsureDepth(1))
+                return EvmExceptionType.StackUnderflow;
+
+            ref byte slot = ref stack.PeekBytesByRefUnchecked();
+            ulong value = typeof(TOpMath) == typeof(OpIsZero)
+                ? (EvmStack.IsSlotZero(ref slot) ? 1UL : 0UL)
+                // CountLeadingZeroBits already answers 256 for a zero word, and it reads through the
+                // reference it is given rather than copying.
+                : (ulong)As<byte, EvmWord>(ref slot).CountLeadingZeroBits();
+
+            WriteSmallWordToSlot(ref slot, value);
+            return EvmExceptionType.None;
+        }
+
         if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpNot))
         {
             if (!stack.EnsureDepth(1))
@@ -114,15 +134,9 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
+        /// <remarks>Reached only where a 256-bit register exists; otherwise ISZERO never builds a value.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmWord Operation(EvmWord value)
-        {
-            if (Vector256.IsHardwareAccelerated)
-                return value == default ? OpBitwiseEq.One : default;
-
-            ref ulong p = ref As<EvmWord, ulong>(ref value);
-            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? CreateScalarWord(1) : default;
-        }
+        public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
     }
 
     /// <summary>
@@ -133,21 +147,12 @@ public static partial class EvmInstructions
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
 
+        /// <remarks>Reached only where a 256-bit register exists; otherwise CLZ never builds a value.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value)
-        {
-            if (Vector256.IsHardwareAccelerated)
-            {
-                return value == default
-                    ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
-                    : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
-            }
-
-            ref ulong parts = ref As<EvmWord, ulong>(ref value);
-            return (parts | Add(ref parts, 1) | Add(ref parts, 2) | Add(ref parts, 3)) == 0UL
-                ? CreateScalarWord(256)
-                : CreateScalarWord((ulong)value.CountLeadingZeroBits());
-        }
+            => value == default
+                ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
+                : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
     }
 
     /// <summary>
