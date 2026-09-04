@@ -30,6 +30,16 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-resolute@sha256:e12b240891f34144edd
 
 WORKDIR /nethermind
 
+# RocksDB statically links its own jemalloc; this puts tcmalloc under the rest of the native heap
+# (runtime, interop, networking) too. Bare soname resolves per-arch (amd64/arm64); the maps grep
+# fails the build if ld.so cannot preload it, since a bad soname is otherwise only a warning.
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends libtcmalloc-minimal4 && \
+  rm -rf /var/lib/apt/lists/* && \
+  LD_PRELOAD=libtcmalloc_minimal.so.4 sh -c 'grep -q tcmalloc /proc/self/maps'
+
+ENV LD_PRELOAD=libtcmalloc_minimal.so.4
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
