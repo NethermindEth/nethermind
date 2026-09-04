@@ -1556,6 +1556,7 @@ public ref partial struct EvmStack
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
     /// </remarks>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
