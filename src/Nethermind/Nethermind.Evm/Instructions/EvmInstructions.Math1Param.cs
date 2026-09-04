@@ -105,7 +105,7 @@ public static partial class EvmInstructions
                 return value == default ? OpBitwiseEq.One : default;
 
             ref ulong p = ref As<EvmWord, ulong>(ref value);
-            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? CreateOneWord() : default;
+            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? CreateScalarWord(1) : default;
         }
     }
 
@@ -117,9 +117,20 @@ public static partial class EvmInstructions
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
 
-        public static EvmWord Operation(EvmWord value) => value == default
-            ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
-            : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+        public static EvmWord Operation(EvmWord value)
+        {
+            if (Vector256.IsHardwareAccelerated)
+            {
+                return value == default
+                    ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
+                    : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+            }
+
+            ref ulong parts = ref As<EvmWord, ulong>(ref value);
+            return (parts | Add(ref parts, 1) | Add(ref parts, 2) | Add(ref parts, 3)) == 0UL
+                ? CreateScalarWord(256)
+                : CreateScalarWord((ulong)value.CountLeadingZeroBits());
+        }
     }
 
     /// <summary>
