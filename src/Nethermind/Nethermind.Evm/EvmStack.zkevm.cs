@@ -45,16 +45,15 @@ public ref partial struct EvmStack
         ulong r0 = Unsafe.ReadUnaligned<ulong>(ref bytes);
         ulong r1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
         ulong r2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
-        ulong r3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
-        ulong low = ZkEvmBitOperations.Bswap64(r3);
-        return (r0 | r1 | r2) == 0
-            ? new UInt256(low, 0, 0, 0)
-            : new UInt256(
-                low,
-                ZkEvmBitOperations.Bswap64(r2),
-                ZkEvmBitOperations.Bswap64(r1),
-                ZkEvmBitOperations.Bswap64(r0)
-            );
+        if ((r0 | r1 | r2) == 0)
+        {
+            return new UInt256(ZkEvmBitOperations.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24))), 0, 0, 0);
+        }
+
+        // Full-width values take the shared-mask swap; per-lane Bswap64 calls rematerialize the
+        // mask constants for every lane.
+        ZkEvmBitOperations.Bswap256(in bytes, out UInt256 result);
+        return result;
     }
 
     /// <inheritdoc cref="ReadBeWords(ref byte, out UInt256, out UInt256, out UInt256, out UInt256)"/>
