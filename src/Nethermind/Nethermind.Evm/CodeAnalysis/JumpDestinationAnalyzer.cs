@@ -21,6 +21,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
     private const int JUMPDEST = (int)Instruction.JUMPDEST;
+    private const int PUSH32 = (int)Instruction.PUSH32;
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
@@ -138,45 +139,52 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     [SkipLocalsInit]
     private static void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
     {
-        // We accumulate each array segment to a register and then flush to memory when we move to next.
+        // Flags for the 64-bit bitmap segment holding the last JUMPDEST seen; flushed only when a
+        // later JUMPDEST lands in a different segment (and once at the end), so the common bytes -
+        // neither JUMPDEST nor PUSH - pay a single unsigned range check and nothing else.
         long currentFlags = 0;
-        while (programCounter < (nuint)code.Length)
+        nuint flagsPosition = 0;
+        nuint length = (nuint)code.Length;
+        ref byte codeRef = ref MemoryMarshal.GetReference(code);
+        while (programCounter < length)
         {
-            // Grab the instruction from the code; zero length code
-            // doesn't enter this method and we check at end of loop if
-            // hit the last element and should exit, so skip bounds check
-            // access here.
-            int op = Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), programCounter);
-            // Set default programCounter increment to 1 for default case when we don't read a PUSH.
-            nuint move = 1;
+            int op = Unsafe.AddByteOffset(ref codeRef, programCounter);
+
+            // Everything outside [JUMPDEST, PUSH32] advances by one; this covers ~3/4 of real bytecode.
+            if ((uint)(op - JUMPDEST) > PUSH32 - JUMPDEST)
+            {
+                programCounter++;
+                continue;
+            }
 
             if (op == JUMPDEST)
             {
-                // Accumulate Jump Destinations to register, shift will wrap and single bit
-                // so can shift by the whole programCounter.
+                if ((programCounter ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
+                {
+                    MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
+                    currentFlags = 0;
+                }
+
+                // Shift wraps at 64, matching the bit's position within its segment.
                 currentFlags |= 1L << (int)programCounter;
+                flagsPosition = programCounter;
+                programCounter++;
             }
-            else if ((sbyte)op > PUSHx)
+            else if (op >= PUSH1)
             {
-                // Fast forward programCounter by the amount of data the push
-                // represents as don't need to analyze data for Jump Destinations.
-                move = (nuint)op - PUSH1 + 2;
+                // Fast forward past the push data; it holds no jump destinations.
+                programCounter += (nuint)op - PUSH1 + 2;
             }
-
-            nuint nextCounter = programCounter + move;
-            // Does the move mean we are moving to new segment of the long array?
-            // If we take the current index in flags, and add the move, are we at
-            // a new long segment, i.e. a larger than 64 position move.
-            if (currentFlags != 0 && ((programCounter & 63) + move >= 64 || nextCounter >= (nuint)code.Length))
+            else
             {
-                // Moving to next array element (or finishing) assign to array.
-                MarkJumpDestinations(bitmap, programCounter, currentFlags);
-                // Clear the flags in preparation for the next array segment.
-                currentFlags = 0;
+                // 0x5c-0x5f (TLOAD/TSTORE/MCOPY/PUSH0): no immediate data, single-byte advance.
+                programCounter++;
             }
+        }
 
-            // Move to next instruction.
-            programCounter = nextCounter;
+        if (currentFlags != 0)
+        {
+            MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
         }
     }
 
@@ -364,21 +372,24 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private static void MarkJumpDestinations(long[] jumpDestinationBitmap, int pos, long flags)
     {
         uint offset = (uint)pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(Span<long> jumpDestinationBitmap, nuint pos, long flags)
     {
         uint offset = (uint)pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(long[] jumpDestinationBitmap, nuint pos, long flags)
     {
         nuint offset = pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     public void Execute()
