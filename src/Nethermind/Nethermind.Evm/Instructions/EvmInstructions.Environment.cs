@@ -160,6 +160,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionEnvAddress<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvAddress<TGasPolicy>
@@ -186,6 +187,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionBlkAddress<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpBlkAddress<TGasPolicy>
@@ -211,6 +213,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionEnvUInt256<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt256<TGasPolicy>
@@ -233,6 +236,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionBlkUInt256<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpBlkUInt256<TGasPolicy>
@@ -336,6 +340,7 @@ public static partial class EvmInstructions
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionEnv32Bytes<TGasPolicy, TOpEnv, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnv32Bytes<TGasPolicy>
