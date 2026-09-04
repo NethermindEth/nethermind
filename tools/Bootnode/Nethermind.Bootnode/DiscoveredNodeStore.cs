@@ -14,6 +14,7 @@ namespace Nethermind.Bootnode;
 
 internal sealed class DiscoveredNodeStore
 {
+    private const string EnrPrefix = "enr:";
     private const int DefaultMaxRetainedNodes = 100_000;
     internal const int DefaultNodePageSize = 1_000;
     internal const int MaxNodePageSize = 1_000;
@@ -21,8 +22,8 @@ internal sealed class DiscoveredNodeStore
     private readonly Dictionary<Hash256, TrackedNode> _nodes;
     private readonly RetentionList _activeRetentionOrder = new(active: true);
     private readonly RetentionList _inactiveRetentionOrder = new(active: false);
-    private readonly SortedSet<Hash256> _orderedNodes = [];
-    private readonly SortedSet<Hash256> _orderedActiveNodes = [];
+    private readonly BucketedNodeIndex _orderedNodes = new();
+    private readonly BucketedNodeIndex _orderedActiveNodes = new();
     private readonly Lock _lock = new();
     private readonly int _maxRetainedNodes;
     private int _activeCount;
@@ -162,6 +163,13 @@ internal sealed class DiscoveredNodeStore
         return true;
     }
 
+    internal static string ToEnrString(byte[] rlp) =>
+        string.Create(EnrPrefix.Length + Base64Url.GetEncodedLength(rlp.Length), rlp, static (chars, state) =>
+        {
+            EnrPrefix.CopyTo(chars);
+            Base64Url.EncodeToChars(state, chars[EnrPrefix.Length..]);
+        });
+
     private DiscoverySnapshot CreateSnapshotCore() =>
         new(
             _activeCount,
@@ -286,26 +294,18 @@ internal sealed class DiscoveredNodeStore
             }
 
             nodeViews = new TrackedNodeView[resultCount];
-            int matchedNodes = 0;
             int resultIndex = 0;
-            SortedSet<Hash256> orderedNodes = activeOnly ? _orderedActiveNodes : _orderedNodes;
-            foreach (Hash256 idHash in orderedNodes)
+            BucketedNodeIndex.Enumerator enumerator =
+                (activeOnly ? _orderedActiveNodes : _orderedNodes).GetEnumerator(offset);
+            while (resultIndex < resultCount && enumerator.MoveNext())
             {
+                Hash256 idHash = enumerator.Current;
                 if (!_nodes.TryGetValue(idHash, out TrackedNode? trackedNode))
                 {
                     continue;
                 }
 
-                if (matchedNodes++ < offset)
-                {
-                    continue;
-                }
-
                 nodeViews[resultIndex++] = trackedNode.CreateView();
-                if (resultIndex == resultCount)
-                {
-                    break;
-                }
             }
 
             if (resultIndex != resultCount)
@@ -332,6 +332,100 @@ internal sealed class DiscoveredNodeStore
         else
         {
             _orderedActiveNodes.Remove(idHash);
+        }
+    }
+
+    private sealed class BucketedNodeIndex
+    {
+        // High-bit buckets preserve hash order while making offset seeks independent of the number of skipped nodes.
+        private const int BucketCount = 1 << 12;
+        private readonly List<Hash256>?[] _buckets = new List<Hash256>?[BucketCount];
+
+        public void Add(Hash256 idHash)
+        {
+            int bucketIndex = GetBucketIndex(idHash);
+            List<Hash256> bucket = _buckets[bucketIndex] ??= [];
+            int index = bucket.BinarySearch(idHash);
+            if (index < 0)
+            {
+                bucket.Insert(~index, idHash);
+            }
+        }
+
+        public void Remove(Hash256 idHash)
+        {
+            int bucketIndex = GetBucketIndex(idHash);
+            List<Hash256>? bucket = _buckets[bucketIndex];
+            if (bucket is null)
+            {
+                return;
+            }
+
+            int index = bucket.BinarySearch(idHash);
+            if (index >= 0)
+            {
+                bucket.RemoveAt(index);
+                if (bucket.Count == 0)
+                {
+                    _buckets[bucketIndex] = null;
+                }
+            }
+        }
+
+        public Enumerator GetEnumerator(int offset) => new(_buckets, offset);
+
+        private static int GetBucketIndex(Hash256 idHash)
+        {
+            ReadOnlySpan<byte> bytes = idHash.Bytes;
+            return (bytes[0] << 4) | (bytes[1] >> 4);
+        }
+
+        public struct Enumerator
+        {
+            private readonly List<Hash256>?[] _buckets;
+            private int _bucketIndex;
+            private int _nodeIndex;
+
+            public Hash256 Current { get; private set; }
+
+            public Enumerator(List<Hash256>?[] buckets, int offset)
+            {
+                _buckets = buckets;
+                _bucketIndex = 0;
+                _nodeIndex = -1;
+                Current = null!;
+
+                while (_bucketIndex < buckets.Length)
+                {
+                    int bucketCount = buckets[_bucketIndex]?.Count ?? 0;
+                    if (offset < bucketCount)
+                    {
+                        _nodeIndex = offset - 1;
+                        return;
+                    }
+
+                    offset -= bucketCount;
+                    _bucketIndex++;
+                }
+            }
+
+            public bool MoveNext()
+            {
+                while (_bucketIndex < _buckets.Length)
+                {
+                    List<Hash256>? bucket = _buckets[_bucketIndex];
+                    if (bucket is not null && ++_nodeIndex < bucket.Count)
+                    {
+                        Current = bucket[_nodeIndex];
+                        return true;
+                    }
+
+                    _bucketIndex++;
+                    _nodeIndex = -1;
+                }
+
+                return false;
+            }
         }
     }
 
@@ -486,7 +580,7 @@ internal sealed class DiscoveredNodeStore
                 TcpPort,
                 DiscoveryPort,
                 Enode,
-                EnrRlp is null ? null : string.Concat("enr:", Base64Url.EncodeToString(EnrRlp)),
+                EnrRlp is null ? null : ToEnrString(EnrRlp),
                 ProtocolToString(Protocol),
                 Active,
                 IsBootnode,

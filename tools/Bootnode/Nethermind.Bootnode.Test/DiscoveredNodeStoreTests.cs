@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Text;
 using System.Net;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
@@ -243,6 +244,23 @@ public class DiscoveredNodeStoreTests
     }
 
     [Test]
+    public void Enr_formatting_does_not_allocate_an_intermediate_encoding()
+    {
+        byte[] rlp = new byte[300];
+        _ = DiscoveredNodeStore.ToEnrString(rlp);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        string enr = DiscoveredNodeStore.ToEnrString(rlp);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enr, Is.EqualTo($"enr:{Base64Url.EncodeToString(rlp)}"));
+            Assert.That(allocated, Is.LessThanOrEqualTo(enr.Length * sizeof(char) + 128));
+        }
+    }
+
+    [Test]
     public void Removing_one_protocol_keeps_node_active_on_the_other_protocol()
     {
         using PrivateKeyGenerator generator = new();
@@ -277,17 +295,28 @@ public class DiscoveredNodeStoreTests
         using PrivateKey firstKey = generator.Generate();
         using PrivateKey secondKey = generator.Generate();
         using PrivateKey thirdKey = generator.Generate();
+        Node firstNode = CreateNode(firstKey, 30303);
+        Node secondNodeEntry = CreateNode(secondKey, 30304);
+        Node thirdNode = CreateNode(thirdKey, 30305);
         DiscoveredNodeStore store = new();
-        store.AddOrUpdate(CreateNode(firstKey, 30303), "discv4", isActive: true);
-        store.AddOrUpdate(CreateNode(secondKey, 30304), "discv4", isActive: true);
-        store.AddOrUpdate(CreateNode(thirdKey, 30305), "discv5", isActive: false);
+        store.AddOrUpdate(firstNode, "discv4", isActive: true);
+        store.AddOrUpdate(secondNodeEntry, "discv4", isActive: true);
+        store.AddOrUpdate(thirdNode, "discv5", isActive: false);
 
         NodeDto[] allNodes = store.GetAllNodes(limit: 3);
         NodeDto[] secondNode = store.GetAllNodes(offset: 1, limit: 1);
         NodeDto[] secondActiveNode = store.GetActiveNodes(offset: 1, limit: 1);
+        string[] expectedOrder =
+        [
+            firstNode.IdHash.ToString(),
+            secondNodeEntry.IdHash.ToString(),
+            thirdNode.IdHash.ToString()
+        ];
+        Array.Sort(expectedOrder, StringComparer.Ordinal);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Array.ConvertAll(allNodes, static node => node.IdHash), Is.EqualTo(expectedOrder));
             Assert.That(secondNode, Has.Length.EqualTo(1));
             Assert.That(secondNode[0].IdHash, Is.EqualTo(allNodes[1].IdHash));
             Assert.That(secondActiveNode, Has.Length.EqualTo(1));
