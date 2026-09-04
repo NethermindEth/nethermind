@@ -23,6 +23,19 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <inheritdoc cref="Nibbles.PackNibbles" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
+        {
+            // Raw refs rather than spans, as in ExpandNibbles: the doubled source index defeats the
+            // JIT's bounds-check elimination.
+            for (int i = 0; i < count; i++)
+            {
+                Unsafe.Add(ref bytes, i) =
+                    (byte)((Unsafe.Add(ref nibbles, i * 2) << 4) | Unsafe.Add(ref nibbles, i * 2 + 1));
+            }
+        }
+
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)

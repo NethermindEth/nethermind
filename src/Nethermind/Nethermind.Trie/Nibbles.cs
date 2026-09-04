@@ -14,6 +14,14 @@ namespace Nethermind.Trie
     [DebuggerStepThrough]
     public static partial class Nibbles
     {
+        /// <summary>Packs <c>2 * count</c> nibble bytes into <paramref name="count"/> whole bytes.</summary>
+        /// <param name="nibbles">The nibbles, high nibble first, each byte holding one nibble.</param>
+        /// <param name="bytes">Destination for the packed bytes.</param>
+        /// <param name="count">Number of bytes to write.</param>
+        /// <remarks>Split per target; see <c>Nibbles.std.cs</c> and <c>Nibbles.zkevm.cs</c>.
+        /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes and
+        /// <paramref name="bytes"/> has room for <paramref name="count"/>.</remarks>
+
         private const int StackAllocLengthLimit = 255;
 
         public static Nibble[] FromBytes(params byte[] bytes) => FromBytes(bytes.AsSpan());
