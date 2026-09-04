@@ -106,12 +106,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 return false;
             }
 
-            if (node.IsVerifiedEnr(record))
-            {
-                reachableNode.SetVerifiedEnr(record);
-            }
-
-            reachableNode.ObserveEnrSequence(node.HighestObservedEnrSequence);
+            PreserveDiscoveryState(reachableNode, node);
             return true;
         }
 

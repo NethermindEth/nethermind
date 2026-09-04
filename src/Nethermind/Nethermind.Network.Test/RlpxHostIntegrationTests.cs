@@ -112,11 +112,6 @@ public class RlpxHostIntegrationTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
-        if (configuredIp == "::" && OperatingSystem.IsMacOS())
-        {
-            acceptsIpv4 = false;
-        }
-
         int port = GetAvailablePort();
         (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, IPAddress.Parse(configuredIp), port);
         try
@@ -218,29 +213,36 @@ public class RlpxHostIntegrationTests
         using Socket releasedIpv4 = CreateTcpListenerSocket(IPAddress.Any, port);
     }
 
-    [TestCase(null, "0.0.0.0", false, Description = "Default listener with a reuse-enabled IPv4 blocker")]
-    [TestCase(null, "0.0.0.0", true, Description = "Default listener with an exclusive IPv4 blocker")]
-    [TestCase("127.0.0.1", "127.0.0.1", false, Description = "Explicit IPv4 listener")]
-    [TestCase("::1", "::1", false, Description = "Explicit IPv6 listener")]
-    public async Task Listener_SurfacesCollision(string? configuredIp, string addressText, bool blockerExclusiveAddressUse)
+    [TestCase(null, "0.0.0.0", "0.0.0.0", false, Description = "Default listener with a reuse-enabled IPv4 blocker")]
+    [TestCase(null, "0.0.0.0", "0.0.0.0", true, Description = "Default listener with an exclusive IPv4 blocker")]
+    [TestCase("127.0.0.1", "127.0.0.1", "127.0.0.1", false, Description = "Explicit IPv4 listener")]
+    [TestCase("::1", "::1", "::1", false, Description = "Explicit IPv6 listener")]
+    [TestCase("::", "::", "0.0.0.0", true, Description = "Explicit dual-stack listener with an IPv4 wildcard blocker")]
+    public async Task Listener_SurfacesCollision(
+        string? configuredIp,
+        string listenerAddressText,
+        string blockerAddressText,
+        bool blockerExclusiveAddressUse)
     {
-        IPAddress address = IPAddress.Parse(addressText);
-        if (address.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
+        IPAddress listenerAddress = IPAddress.Parse(listenerAddressText);
+        IPAddress blockerAddress = IPAddress.Parse(blockerAddressText);
+        if ((listenerAddress.AddressFamily == AddressFamily.InterNetworkV6 || blockerAddress.AddressFamily == AddressFamily.InterNetworkV6) &&
+            !Socket.OSSupportsIPv6)
         {
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
         int port;
-        using (Socket blocker = CreateTcpListenerSocket(address, 0, blockerExclusiveAddressUse))
+        using (Socket blocker = CreateTcpListenerSocket(blockerAddress, 0, blockerExclusiveAddressUse))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
-            (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, address, port);
+            (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, listenerAddress, port);
 
             Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
             Assert.That(listenerState.RlpxAddress, Is.Null);
         }
 
-        using Socket released = CreateTcpListenerSocket(address, port);
+        using Socket released = CreateTcpListenerSocket(blockerAddress, port);
     }
 
     [Test]

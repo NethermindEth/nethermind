@@ -155,12 +155,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
                 return;
             }
 
-            if (node.IsVerifiedEnr(record))
-            {
-                enrNode.SetVerifiedEnr(record);
-            }
-
-            enrNode.ObserveEnrSequence(node.HighestObservedEnrSequence);
+            PreserveDiscoveryState(enrNode, node);
             Kademlia.AddOrRefresh(enrNode);
         }
         catch (Exception e)
@@ -369,6 +364,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             }
             else if (!reachable.DiscoveryAddress.Equals(current.DiscoveryAddress))
             {
+                PreserveDiscoveryState(reachable, current);
                 Kademlia.Remove(current);
                 Kademlia.AddOrRefresh(reachable);
                 _bootNodes[i] = reachable;

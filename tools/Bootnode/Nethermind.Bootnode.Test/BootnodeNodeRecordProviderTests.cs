@@ -92,7 +92,7 @@ public class BootnodeNodeRecordProviderTests
         NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, resolvedIp).GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
-        AssertEndpointEntries(decoded, OperatingSystem.IsMacOS() ? null : "192.0.2.1", "2001:db8::1");
+        AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
     }
 
     [Test]

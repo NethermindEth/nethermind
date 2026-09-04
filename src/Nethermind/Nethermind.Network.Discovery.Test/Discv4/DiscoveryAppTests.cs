@@ -49,6 +49,7 @@ public class DiscoveryAppTests
     [TestCase("0.0.0.0", "8.8.8.8", 1)]
     [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
     [TestCase("2001:4860:4860::8844", "8.8.8.8", 0)]
+    [TestCase("::", "8.8.8.8", 1)]
     public void Should_only_use_bootnode_families_reachable_from_listener(
         string localIp,
         string bootnodeIp,
@@ -84,6 +85,7 @@ public class DiscoveryAppTests
         NodeRecord record = CreateAsymmetricDualStackRecord();
         Assert.That(Node.TryFromEnr(record, out Node? genericNode), Is.True);
         Assert.That(genericNode!.HasDiscoveryEndpoint, Is.False);
+        genericNode.IsBootnode = true;
         genericNode.SetVerifiedEnr(record);
         genericNode.ObserveEnrSequence(record.EnrSequence + 1);
 
@@ -99,6 +101,7 @@ public class DiscoveryAppTests
             Assert.That(reachableNode!.Host, Is.EqualTo("2001:db8::1"));
             Assert.That(reachableNode.Port, Is.EqualTo(30303));
             Assert.That(reachableNode.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(reachableNode.IsBootnode, Is.True);
             Assert.That(reachableNode.IsVerifiedEnr(record), Is.True);
             Assert.That(reachableNode.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence + 1));
         }

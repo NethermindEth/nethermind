@@ -362,6 +362,7 @@ public class KademliaAdapterTests
 
     [TestCase("0.0.0.0", "8.8.8.8")]
     [TestCase("::1", "2606:4700:4700::1111")]
+    [TestCase("::", "8.8.8.8")]
     public void TryGetAcceptableNode_SelectsFamilyReachableByLocalListener(string localIp, string expectedIp)
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(

@@ -67,6 +67,7 @@ public class NodesResponseHandlerTests
     [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
     [TestCase("::1", "8.8.8.8", 0)]
     [TestCase("::1", "2001:4860:4860::8888", 1)]
+    [TestCase("::", "8.8.8.8", 1)]
     [TestCase("::", "2001:4860:4860::8888", 1)]
     public void ShouldFilterRecordsOutsideLocalListenerAddressFamily(string localIp, string recordIp, int expectedCount)
     {

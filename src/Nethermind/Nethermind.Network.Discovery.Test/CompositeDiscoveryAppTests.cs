@@ -28,11 +28,6 @@ public class CompositeDiscoveryAppTests
     [TestCase("::ffff:0.0.0.0", AddressFamily.InterNetworkV6, true)]
     public void CreateDatagramSocket_MatchesListenerAddress(string localIp, AddressFamily expectedFamily, bool expectedDualMode)
     {
-        if (localIp == "::" && OperatingSystem.IsMacOS())
-        {
-            expectedDualMode = false;
-        }
-
         using Socket socket = CompositeDiscoveryApp.CreateDatagramSocket(IPAddress.Parse(localIp));
 
         Assert.That(socket.AddressFamily, Is.EqualTo(expectedFamily));

@@ -40,7 +40,7 @@ internal static class DiscoveryAddressSupport
             AddressFamily.InterNetwork =>
                 localIp.AddressFamily == AddressFamily.InterNetwork ||
                 localIp.IsIPv4MappedToIPv6 ||
-                localIp.Equals(IPAddress.IPv6Any) && Socket.OSSupportsIPv6 && !OperatingSystem.IsMacOS(),
+                localIp.Equals(IPAddress.IPv6Any) && Socket.OSSupportsIPv6,
             AddressFamily.InterNetworkV6 =>
                 localIp.AddressFamily == AddressFamily.InterNetworkV6 &&
                 !localIp.IsIPv4MappedToIPv6,

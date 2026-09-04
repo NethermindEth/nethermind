@@ -171,12 +171,7 @@ namespace Nethermind.Network.Rlpx
             try
             {
                 IChannel channel = await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(address, LocalPort), LocalPort);
-                IPEndPoint? endpoint = channel.LocalAddress switch
-                {
-                    IPEndPoint ipEndpoint => ipEndpoint,
-                    IIPEndpointSource source => source.IPEndpoint,
-                    _ => null
-                };
+                IPEndPoint? endpoint = channel.TryGetLocalIPEndpoint();
                 if (endpoint is not null)
                 {
                     _ = _listenerState.TrackRlpxAddress(endpoint.Address, channel.CloseCompletion);
@@ -186,7 +181,7 @@ namespace Nethermind.Network.Rlpx
             }
             catch
             {
-                await CloseFailedChannel(createdChannel);
+                await createdChannel.CloseFailedBindAsync(_logger, nameof(RlpxHost));
                 throw;
             }
         }
@@ -202,23 +197,6 @@ namespace Nethermind.Network.Rlpx
                 .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                 .ChildHandler(new InboundChannelInitializer(this));
-
-        private async Task CloseFailedChannel(IChannel? channel)
-        {
-            if (channel is null)
-            {
-                return;
-            }
-
-            try
-            {
-                await channel.CloseAsync();
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Failed to close an unsuccessful {nameof(RlpxHost)} bind attempt. {e}");
-            }
-        }
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowAlreadyInitialized()

@@ -138,6 +138,12 @@ public abstract class KademliaDiscoveryApp(
         _kademlia.OnNodeRemoved += OnKademliaNodeRemoved;
     }
 
+    private protected static void PreserveDiscoveryState(Node replacement, Node current)
+    {
+        replacement.IsBootnode = current.IsBootnode;
+        replacement.MergeEnrStateFrom(current);
+    }
+
     protected virtual async Task Initialize(CancellationToken cancellationToken)
     {
         IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);

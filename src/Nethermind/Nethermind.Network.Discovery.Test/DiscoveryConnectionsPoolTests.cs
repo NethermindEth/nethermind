@@ -32,11 +32,6 @@ public class DiscoveryConnectionsPoolTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
-        if (address.Equals(IPAddress.IPv6Any) && OperatingSystem.IsMacOS())
-        {
-            acceptsIpv4 = false;
-        }
-
         NetworkListenerState listenerState = CreateListenerState(configuredIp, address);
         DiscoveryConnectionsPool pool = CreatePool(listenerState);
         IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
@@ -171,14 +166,20 @@ public class DiscoveryConnectionsPoolTests
         using Socket releasedIpv4 = CreateUdpListenerSocket(IPAddress.Any, port);
     }
 
-    [Test]
-    public async Task DefaultListener_DoesNotClaimDualStackWhenIpv4PortIsOccupied()
+    [TestCase(null, "0.0.0.0", Description = "Default listener")]
+    [TestCase("::", "::", Description = "Explicit dual-stack listener")]
+    public async Task Listener_DoesNotClaimDualStackWhenIpv4PortIsOccupied(string? configuredIp, string localIp)
     {
+        if (localIp == "::" && !Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
         int port;
         using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
-            NetworkListenerState listenerState = CreateListenerState();
+            NetworkListenerState listenerState = CreateListenerState(configuredIp, IPAddress.Parse(localIp));
             DiscoveryConnectionsPool pool = CreatePool(listenerState);
             IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
             try

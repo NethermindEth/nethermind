@@ -469,6 +469,39 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
+    public async Task StartAsync_ShouldPreserveBootnodeStateWhenBoundFamilyChanges()
+    {
+        IPAddress ipv6 = IPAddress.Parse("2001:4860:4860::8888");
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("8.8.8.8"),
+            tcpPort: null,
+            udpPort: 9001,
+            configureExtras: record =>
+            {
+                record.SetEntry(new Ip6Entry(ipv6));
+                record.SetEntry(new Udp6Entry(9002));
+            });
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        await using DiscoveryV5App app = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>(),
+            localIp: IPAddress.IPv6Any,
+            boundDiscoveryIp: IPAddress.IPv6Loopback,
+            bootnodes: [new NetworkNode(enr.ToString())]);
+
+        await app.StartAsync();
+
+        kademlia.Received(1).AddOrRefresh(Arg.Is<Node>(node =>
+            DiscoveryAddressSupport.GetFamily(node.DiscoveryAddress.Address) == AddressFamily.InterNetworkV6 &&
+            node.IsBootnode &&
+            node.Enr != null &&
+            node.Enr.GetHex() == enr.GetHex() &&
+            node.IsVerifiedEnr(node.Enr) &&
+            node.HighestObservedEnrSequence == enr.EnrSequence));
+    }
+
+    [Test]
     public async Task Should_Restore_Persisted_Dual_Enr_Through_Acceptable_Address_Family()
     {
         await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(

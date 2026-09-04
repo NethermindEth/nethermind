@@ -81,12 +81,7 @@ internal sealed class DiscoveryConnectionsPool(
         try
         {
             IChannel channel = await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(address, port), port);
-            IPEndPoint? endpoint = channel.LocalAddress switch
-            {
-                IPEndPoint ipEndpoint => ipEndpoint,
-                IIPEndpointSource source => source.IPEndpoint,
-                _ => (channel as IIPEndpointSource)?.IPEndpoint
-            };
+            IPEndPoint? endpoint = channel.TryGetLocalIPEndpoint();
             if (endpoint is not null)
             {
                 _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, channel.CloseCompletion);
@@ -96,25 +91,8 @@ internal sealed class DiscoveryConnectionsPool(
         }
         catch
         {
-            await CloseFailedChannel(createdChannel);
+            await createdChannel.CloseFailedBindAsync(_logger, "discovery");
             throw;
-        }
-    }
-
-    private async Task CloseFailedChannel(IChannel? channel)
-    {
-        if (channel is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await channel.CloseAsync();
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failed to close an unsuccessful discovery bind attempt. {e}");
         }
     }
 

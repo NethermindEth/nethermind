@@ -184,7 +184,7 @@ public class NodeRecordProviderTests
         NodeRecord record = await provider.GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
 
-        AssertEndpointEntries(decoded, OperatingSystem.IsMacOS() ? null : "192.0.2.1", "2001:db8::1");
+        AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
     }
 
     [Test]
@@ -275,12 +275,6 @@ public class NodeRecordProviderTests
         bool expectTcp6,
         bool expectUdp6)
     {
-        if (OperatingSystem.IsMacOS() && (rlpxAddress == "::" || discoveryAddress == "::"))
-        {
-            expectTcp = false;
-            expectUdp = false;
-        }
-
         IIPResolver.NethermindIp resolvedIp = new(
             IPAddress.IPv6Any,
             IPAddress.Parse("192.0.2.1"),
