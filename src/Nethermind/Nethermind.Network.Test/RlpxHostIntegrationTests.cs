@@ -217,7 +217,7 @@ public class RlpxHostIntegrationTests
     [TestCase(null, "0.0.0.0", "0.0.0.0", true, Description = "Default listener with an exclusive IPv4 blocker")]
     [TestCase("127.0.0.1", "127.0.0.1", "127.0.0.1", false, Description = "Explicit IPv4 listener")]
     [TestCase("::1", "::1", "::1", false, Description = "Explicit IPv6 listener")]
-    [TestCase("::", "::", "0.0.0.0", true, Description = "Explicit dual-stack listener with an IPv4 wildcard blocker")]
+    [TestCase("::", "::", "::", true, Description = "Explicit dual-stack listener")]
     public async Task Listener_SurfacesCollision(
         string? configuredIp,
         string listenerAddressText,

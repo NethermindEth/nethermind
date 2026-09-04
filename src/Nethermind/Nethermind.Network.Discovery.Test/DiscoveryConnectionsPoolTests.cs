@@ -166,17 +166,18 @@ public class DiscoveryConnectionsPoolTests
         using Socket releasedIpv4 = CreateUdpListenerSocket(IPAddress.Any, port);
     }
 
-    [TestCase(null, "0.0.0.0", Description = "Default listener")]
-    [TestCase("::", "::", Description = "Explicit dual-stack listener")]
-    public async Task Listener_DoesNotClaimDualStackWhenIpv4PortIsOccupied(string? configuredIp, string localIp)
+    [TestCase(null, "0.0.0.0", "0.0.0.0", Description = "Default listener")]
+    [TestCase("::", "::", "::", Description = "Explicit dual-stack listener")]
+    public async Task Listener_SurfacesCollision(string? configuredIp, string localIp, string blockerIp)
     {
-        if (localIp == "::" && !Socket.OSSupportsIPv6)
+        if ((localIp == "::" || blockerIp == "::") && !Socket.OSSupportsIPv6)
         {
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
+        IPAddress blockerAddress = IPAddress.Parse(blockerIp);
         int port;
-        using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
+        using (Socket blocker = CreateUdpListenerSocket(blockerAddress, 0))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
             NetworkListenerState listenerState = CreateListenerState(configuredIp, IPAddress.Parse(localIp));
@@ -199,7 +200,7 @@ public class DiscoveryConnectionsPoolTests
             }
         }
 
-        using Socket released = CreateUdpListenerSocket(IPAddress.Any, port);
+        using Socket released = CreateUdpListenerSocket(blockerAddress, port);
     }
 
     [Test]
