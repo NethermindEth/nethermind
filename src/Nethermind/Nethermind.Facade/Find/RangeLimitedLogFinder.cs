@@ -14,7 +14,7 @@ namespace Nethermind.Facade.Find;
 /// <summary>
 /// Rejects logs queries whose block range exceeds <see cref="IReceiptConfig.MaxBlockDepth"/>.
 /// </summary>
-public sealed class RangeLimitedLogFinder(ILogFinder logFinder, IBlockFinder blockFinder, IReceiptConfig receiptConfig) : ILogFinder
+public sealed class RangeLimitedLogFinder(ILogFinder logFinder, IBlockFinder blockFinder, IReceiptConfig receiptConfig) : IRpcLogFinder
 {
     private readonly int _maxBlockDepth = receiptConfig.MaxBlockDepth;
 

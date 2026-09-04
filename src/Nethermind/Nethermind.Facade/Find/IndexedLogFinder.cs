@@ -32,7 +32,7 @@ public class IndexedLogFinder(
     IReceiptConfig? receiptConfig = null,
     IPrunedLogsRetention? prunedLogsRetention = null,
     IHistoryPruner? historyPruner = null)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention), IRpcLogFinder
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
