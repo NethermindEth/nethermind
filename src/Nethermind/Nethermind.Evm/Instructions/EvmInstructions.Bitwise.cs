@@ -176,6 +176,7 @@ public static partial class EvmInstructions
             0, 0, 0, 0, 0, 0, 0, 1
         );
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b)
         {
             if (Vector256.IsHardwareAccelerated)
