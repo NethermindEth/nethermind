@@ -138,16 +138,53 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // bytecode read is preceded by a program-counter bounds check, and a byte is a valid table index.
         fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
-            DispatchState state = new()
+            if (!TCancelable.IsActive)
+            {
+                DispatchState state = new()
+                {
+                    OpcodeHandlers = opcodeHandlers,
+                    Vm = this,
+                };
+
+                byte opcode = Unsafe.Add(ref stack.Code, programCounter);
+                EvmExceptionType ordinaryExceptionType = opcodeHandlers[opcode](ref stack, ref gas, ref state, programCounter, 0);
+                OpCodeCount += state.OpCodeCount;
+                programCounter = state.FinalProgramCounter;
+                return ordinaryExceptionType;
+            }
+
+            DispatchState cancelableState = new()
             {
                 OpcodeHandlers = opcodeHandlers,
                 Vm = this,
             };
 
-            byte opcode = Unsafe.Add(ref stack.Code, programCounter);
-            EvmExceptionType exceptionType = opcodeHandlers[opcode](ref stack, ref gas, ref state, programCounter, 0);
-            OpCodeCount += state.OpCodeCount;
-            programCounter = state.FinalProgramCounter;
+            if (_txTracer.IsCancelled)
+                ThrowOperationCanceledException();
+
+            nint pc = programCounter;
+            int opCodeCount = 0;
+            EvmExceptionType exceptionType;
+            while (true)
+            {
+                byte opcode = Unsafe.Add(ref stack.Code, pc);
+                exceptionType = opcodeHandlers[opcode](ref stack, ref gas, ref cancelableState, pc, opCodeCount);
+
+                // A boundary unwind is the only successful return with a complete batch and a successor.
+                if (exceptionType != EvmExceptionType.None ||
+                    (cancelableState.OpCodeCount & CancellationCheckMask) != 0 ||
+                    (nuint)cancelableState.FinalProgramCounter >= (nuint)stack.CodeLength)
+                    break;
+
+                if (_txTracer.IsCancelled)
+                    ThrowOperationCanceledException();
+
+                pc = cancelableState.FinalProgramCounter;
+                opCodeCount = cancelableState.OpCodeCount;
+            }
+
+            OpCodeCount += cancelableState.OpCodeCount;
+            programCounter = cancelableState.FinalProgramCounter;
             return exceptionType;
         }
     }
@@ -166,8 +203,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TContinuable : struct, IFlag
     {
         VirtualMachine<TGasPolicy> vm = state.Vm;
-        if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
-            ThrowOperationCanceledException();
 
         // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
         if (TTracingInst.IsActive)
@@ -203,6 +238,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // block returns exactly that, and one copy of it is smaller than two.
         if (next == 0)
             goto Exit;
+
+        if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0)
+        {
+            state.OpCodeCount = opCodeCount;
+            state.FinalProgramCounter = pc;
+            return EvmExceptionType.None;
+        }
 
         // Keep the target in a real local so InlineIL can place it above the outgoing arguments.
         IL.EnsureLocal(in next);
@@ -249,8 +291,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
     {
         VirtualMachine<TGasPolicy> vm = state.Vm;
-        if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
-            ThrowOperationCanceledException();
 
         if (TTracingInst.IsActive)
         {
@@ -274,6 +314,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+
+        if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0)
+        {
+            if ((nuint)pc >= (nuint)stack.CodeLength)
+                goto Exit;
+
+            state.OpCodeCount = opCodeCount;
+            state.FinalProgramCounter = pc;
+            return EvmExceptionType.None;
+        }
 
         // Each outcome resolves its own successor and transfers from its own site, so the predictor gets
         // a taken entry and a fall-through entry to learn separately. Sharing one lookup would let the
