@@ -133,6 +133,42 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public async Task AnUnfinishedWalkOverBlocksTheTipCommitted_IsDroppedRatherThanResumed()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems);
+        metadata.AdvanceTipSeries(2, 8, out _);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict, Is.Null, "an interrupted catch-up whose blocks the tip has already committed must be dropped, not resumed: resuming costs a scan of the whole key space to find blocks that are already there");
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "and its marks must go, or the next restart resumes it again");
+        }
+    }
+
+    [Test]
     public void WalkResources_UseTheCoresLeftAfterTheNodeAndTheMemoryTheBudgetLeaves()
     {
         FlatDbConfig auto = new() { HistoryEnabled = true };

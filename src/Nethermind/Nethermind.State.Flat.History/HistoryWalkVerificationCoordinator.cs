@@ -119,6 +119,14 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
                     {
+                        if (TipCovers(pendingFrom, pendingTo))
+                        {
+                            _metadata.ClearWalk(HistoryWalkRun.WorkItems);
+                            if (_logger.IsInfo) _logger.Info(
+                                $"History walk verification dropped its unfinished run over [{pendingFrom}, {pendingTo}]: the tip has committed those blocks itself, and a walk over them would scan the whole key space to find them.");
+                            return;
+                        }
+
                         from = pendingFrom;
                         to = pendingTo;
                         if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
@@ -148,10 +156,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                         if (!_availability.TryGetWatermark(out ulong latest) || latest <= to) return;
 
-                        if (_metadata.TryGetTipSeries(out ulong tipStart, out _) && tipStart <= to + 1)
+                        if (TipCovers(to + 1, latest))
                         {
                             if (_logger.IsInfo) _logger.Info(
-                                $"History walk verification is done at block {to}; the {latest - to} blocks captured meanwhile are already committed by the tip, whose series starts at {tipStart}, so the walk does not run again. A walk over those blocks would scan the whole key space to find them.");
+                                $"History walk verification is done at block {to}; the {latest - to} blocks captured meanwhile are already committed by the tip, so the walk does not run again. A walk over those blocks would scan the whole key space to find them.");
                             return;
                         }
 
@@ -177,6 +185,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
             if (_logger.IsError) _logger.Error("History walk verification crashed; the archive's content is UNVERIFIED, not disproven.", e);
         }
     }
+
+    private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>
+        _metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
 
     private void LogFailure(HistoryWalkVerdict verdict, TimeSpan elapsed)
     {
