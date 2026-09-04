@@ -41,14 +41,21 @@ namespace Nethermind.Facade.Find
         // availability.
         private readonly bool _bodiesOnDisk = receiptConfig?.DeriveFromState != true;
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
-        private readonly int _maxBlockDepth = receiptConfig?.MaxBlockDepth ?? 0;
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
+            (BlockHeader fromBlock, BlockHeader toBlock) = ResolveRange(_blockFinder, filter, cancellationToken);
+            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        /// <summary> Resolves a filter's block parameters into the headers bounding the scan. </summary>
+        /// <exception cref="ResourceNotFoundException"> Either parameter does not resolve to a known block. </exception>
+        internal static (BlockHeader FromBlock, BlockHeader ToBlock) ResolveRange(IBlockFinder blockFinder, LogFilter filter, CancellationToken cancellationToken)
+        {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
-                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+                blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
 
             cancellationToken.ThrowIfCancellationRequested();
             BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
@@ -57,31 +64,10 @@ namespace Nethermind.Facade.Find
                 toBlock :
                 FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
 
-            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+            return (fromBlock, toBlock);
         }
 
         public virtual IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
-        {
-            EnsureBlockRangeWithinLimit(filter, fromBlock, toBlock);
-            return FindLogsUnbounded(filter, fromBlock, toBlock, cancellationToken);
-        }
-
-        // cap block range of a logs query against unbounded sequential scans
-        protected virtual void EnsureBlockRangeWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
-        {
-            if (_maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
-                return;
-
-            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
-            if (rangeSize > (ulong)_maxBlockDepth)
-            {
-                throw new ArgumentException(
-                    $"Block range {rangeSize} exceeds the maximum of {_maxBlockDepth} blocks per logs request. " +
-                    $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.");
-            }
-        }
-
-        private IEnumerable<FilterLog> FindLogsUnbounded(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

@@ -411,56 +411,6 @@ public class LogFinderTests
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
-    [TestCase(2, true, TestName = "range 5 > limit 2 -> throws")]
-    [TestCase(5, false, TestName = "range 5 <= limit 5 -> allowed")]
-    [TestCase(0, false, TestName = "limit disabled -> allowed")]
-    public void FindLogs_enforces_max_block_depth(int maxBlockDepth, bool shouldThrow)
-    {
-        SetUp(true);
-        LogFinder logFinder = CreateLogFinder(receiptConfig: new ReceiptConfig { MaxBlockDepth = maxBlockDepth });
-        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(4).Build();
-
-        if (shouldThrow)
-        {
-            Assert.That(() => logFinder.FindLogs(filter).ToArray(),
-                Throws.TypeOf<ArgumentException>().With.Message.Contains(nameof(IReceiptConfig.MaxBlockDepth)));
-        }
-        else
-        {
-            Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.Nothing);
-        }
-    }
-
-    [TestCaseSource(nameof(LogIndexRangeCases))]
-    public void FindLogs_ignores_max_block_depth_when_log_index_enabled(ulong from, ulong to, int? indexFrom, int? indexTo, int? exFrom, int? exTo)
-    {
-        SetUp(true, chainLength: 10);
-
-        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(indexFrom, indexTo);
-
-        LogFilter filter = FilterBuilder.New().FromBlock(from).ToBlock(to).WithAddress(TestItem.AddressA).Build();
-
-        IndexedLogFinder logFinder = CreateIndexedLogFinder(logIndexStorage, new ReceiptConfig { MaxBlockDepth = 1 });
-
-        Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.Nothing);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void FindLogs_enforces_max_block_depth_when_index_is_opted_out()
-    {
-        SetUp(true, chainLength: 10);
-
-        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(4, 6);
-
-        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(9).WithAddress(TestItem.AddressA).Build();
-        filter.UseIndex = false;
-
-        IndexedLogFinder logFinder = CreateIndexedLogFinder(logIndexStorage, new ReceiptConfig { MaxBlockDepth = 1 });
-
-        Assert.That(() => logFinder.FindLogs(filter).ToArray(),
-            Throws.TypeOf<ArgumentException>().With.Message.Contains(nameof(IReceiptConfig.MaxBlockDepth)));
-    }
-
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_throws_descriptive_exception_when_receipts_exist_in_compact_encoding_but_block_missing()
     {
@@ -719,11 +669,11 @@ public class LogFinderTests
         }
     }
 
-    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null, IReceiptConfig? receiptConfig = null) =>
-        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, receiptConfig ?? new ReceiptConfig());
+    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, new ReceiptConfig());
 
-    private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage, IReceiptConfig? receiptConfig = null) =>
-        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, logIndexStorage, minBlocksToUseIndex: 1, receiptConfig: receiptConfig ?? new ReceiptConfig());
+    private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage) =>
+        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, logIndexStorage, minBlocksToUseIndex: 1);
 
     private static ILogIndexStorage CreateLogIndexStorage(int? indexFrom, int? indexTo)
     {

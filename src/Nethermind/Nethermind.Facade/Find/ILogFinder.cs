@@ -10,6 +10,9 @@ namespace Nethermind.Facade.Find
 {
     public interface ILogFinder
     {
+        /// <summary> DI key for consumers preferring range-limited finder, see <see cref="RangeLimitedLogFinder"/>. </summary>
+        const string RangeLimitedService = "range-limited-log-finder";
+
         IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
     }

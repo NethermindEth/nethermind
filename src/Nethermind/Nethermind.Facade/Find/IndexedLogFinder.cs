@@ -43,12 +43,6 @@ public class IndexedLogFinder(
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
             : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
 
-    protected override void EnsureBlockRangeWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
-    {
-        if (!filter.UseIndex) // index makes scan cost range-independent, so skip the limit only when it can serve the query
-            base.EnsureBlockRangeWithinLimit(filter, fromBlock, toBlock);
-    }
-
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)

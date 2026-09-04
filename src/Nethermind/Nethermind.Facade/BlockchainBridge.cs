@@ -57,7 +57,7 @@ namespace Nethermind.Facade
         FilterManager filterManager,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
-        ILogFinder logFinder,
+        [KeyFilter(ILogFinder.RangeLimitedService)] ILogFinder logFinder,
         IBlockAccessListStore balStore,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
