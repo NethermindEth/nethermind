@@ -135,6 +135,15 @@ on:
         required: false
         type: boolean
         default: false
+      cpu_max_frequency_khz:
+        description: >-
+          Cap every core's scaling_max_freq to this value (kHz) for the run. The amd64 runner is
+          power-limited, so its delivered all-core clock floats below the configured cap and drifts
+          run to run, which is the dominant run-to-run variance term (~90% of run-mean variance is a
+          uniform per-run offset). Pinning below the float range removes it, at the cost of a higher
+          AVG. Empty keeps the benchmark config's own value.
+        required: false
+        default: ""
       trace_blocks:
         description: >-
           Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
@@ -200,6 +209,7 @@ jobs:
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
+      cpu_max_frequency_khz: ${{ steps.resolve.outputs.cpu_max_frequency_khz }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
     steps:
@@ -231,6 +241,7 @@ jobs:
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
           DISPATCH_PERF: ${{ inputs.perf }}
+          DISPATCH_CPU_MAX_FREQUENCY_KHZ: ${{ inputs.cpu_max_frequency_khz }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
           DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
         run: |
@@ -283,6 +294,11 @@ jobs:
               false|"") dottrace_mode="" ;;
               *) echo "dottrace must be false, sampling, tracing, or timeline (got '${dottrace}')."; exit 1;;
             esac
+            cpu_max_frequency_khz="$(printf '%s' "${DISPATCH_CPU_MAX_FREQUENCY_KHZ:-}" | tr -d '[:space:]')"
+            if [[ -n "${cpu_max_frequency_khz}" ]] && ! [[ "${cpu_max_frequency_khz}" =~ ^[0-9]+$ ]]; then
+              echo "cpu_max_frequency_khz must be an integer in kHz, got '${cpu_max_frequency_khz}'."
+              exit 1
+            fi
             trace_blocks="$(printf '%s' "${DISPATCH_TRACE_BLOCKS:-}" | tr -d '[:space:]')"
             if [[ -n "${trace_blocks}" ]]; then
               if ! [[ "${trace_blocks}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
@@ -327,6 +343,7 @@ jobs:
             perf="false"
             dottrace_mode=""
             trace_blocks=""
+            cpu_max_frequency_khz=""
             client_env=""
           else
             branch="${PUSH_BRANCH}"
@@ -346,6 +363,7 @@ jobs:
             perf="false"
             dottrace_mode=""
             trace_blocks=""
+            cpu_max_frequency_khz=""
             client_env=""
           fi
 
@@ -487,6 +505,7 @@ jobs:
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
+            echo "cpu_max_frequency_khz=${cpu_max_frequency_khz}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
             echo "additional_extra_flags<<EOF"
@@ -747,6 +766,7 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          CPU_MAX_FREQUENCY_KHZ: ${{ needs.resolve.outputs.cpu_max_frequency_khz }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
@@ -826,6 +846,11 @@ jobs:
 
           # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
+          if [[ -n "${CPU_MAX_FREQUENCY_KHZ:-}" ]]; then
+            SK="${scenario_key}" V="${CPU_MAX_FREQUENCY_KHZ}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].cpu_max_frequency_khz = (strenv(V) | tonumber)' "${RENDERED_CONFIG_FILE}"
+            echo "Pinned scaling_max_freq to ${CPU_MAX_FREQUENCY_KHZ} kHz"
+          fi
           while IFS= read -r flag; do
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
@@ -2101,6 +2126,7 @@ jobs:
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          CPU_MAX_FREQUENCY_KHZ: ${{ needs.resolve.outputs.cpu_max_frequency_khz }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
@@ -2169,6 +2195,11 @@ jobs:
 
           # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
+          if [[ -n "${CPU_MAX_FREQUENCY_KHZ:-}" ]]; then
+            SK="${scenario_key}" V="${CPU_MAX_FREQUENCY_KHZ}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].cpu_max_frequency_khz = (strenv(V) | tonumber)' "${RENDERED_CONFIG_FILE}"
+            echo "Pinned scaling_max_freq to ${CPU_MAX_FREQUENCY_KHZ} kHz"
+          fi
           while IFS= read -r flag; do
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
