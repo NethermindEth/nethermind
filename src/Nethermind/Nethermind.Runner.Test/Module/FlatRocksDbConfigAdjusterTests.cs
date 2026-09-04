@@ -97,6 +97,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void FlatHistoryDatabase_WithoutRetention_LeavesCompactOnDeletionsOff()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetention.Returns(HistoryRetentionMode.None);
         _flatDbConfig.HistoryRetentionBlocks.Returns(0UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);

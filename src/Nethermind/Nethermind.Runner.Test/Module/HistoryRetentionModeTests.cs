@@ -31,7 +31,7 @@ public class HistoryRetentionModeTests
         FlatDbConfig config = Config(mode, blocks);
 
         Assert.That(config.IsHistoryWindowed(), Is.EqualTo(windowed),
-            "every windowed behaviour - row format, pruner, rocksdb tuning - keys off this one answer");
+            "the row format, the rocksdb deletion tuning and the capture-off refusal all key off this one answer");
         Assert.That(() => Build(config).Dispose(), Throws.Nothing,
             "a mode paired with the block count it requires is a complete, accepted configuration");
     }
