@@ -68,6 +68,30 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
+        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
+        {
+            ref byte addTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+            if (!isValid) goto StackUnderflow;
+
+            ref ulong top = ref As<byte, ulong>(ref addTopRef);
+            ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
+            System.UInt128 sum = (System.UInt128)BinaryPrimitives.ReverseEndianness(Add(ref top, 3)) +
+                BinaryPrimitives.ReverseEndianness(Add(ref popped, 3));
+            Add(ref top, 3) = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 2)) +
+                BinaryPrimitives.ReverseEndianness(Add(ref popped, 2));
+            Add(ref top, 2) = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 1)) +
+                BinaryPrimitives.ReverseEndianness(Add(ref popped, 1));
+            Add(ref top, 1) = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(top) +
+                BinaryPrimitives.ReverseEndianness(popped);
+            top = BinaryPrimitives.ReverseEndianness((ulong)sum);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
+            return EvmExceptionType.None;
+        }
+
         if (!Vector128.IsHardwareAccelerated &&
             (typeof(TOpMath) == typeof(OpLt) ||
              typeof(TOpMath) == typeof(OpGt) ||
