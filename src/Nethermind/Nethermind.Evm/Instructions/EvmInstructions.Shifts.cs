@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -70,7 +71,9 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // The 128-bit JIT lowers the paired pop/push path more efficiently than in-place conversion.
-        if (Vector128.IsHardwareAccelerated && !Vector256.IsHardwareAccelerated)
+        if (Vector128.IsHardwareAccelerated &&
+            !Vector256.IsHardwareAccelerated &&
+            (X86Base.IsSupported || typeof(TOpShift) == typeof(OpShl)))
         {
             if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
 
@@ -83,7 +86,8 @@ public static partial class EvmInstructions
             return stack.PushUInt256<TTracingInst>(in shifted);
         }
 
-        if (!Vector128.IsHardwareAccelerated &&
+        if ((!Vector128.IsHardwareAccelerated ||
+             (!X86Base.IsSupported && typeof(TOpShift) == typeof(OpShr))) &&
             (typeof(TOpShift) == typeof(OpShl) || typeof(TOpShift) == typeof(OpShr)))
         {
             return ShiftScalar<TOpShift, TTracingInst>(ref stack);
