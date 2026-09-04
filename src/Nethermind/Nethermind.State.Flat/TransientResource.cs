@@ -109,27 +109,17 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)
     {
-        ulong bloomKey = PrewarmKey(addressBytes, slot);
+        long hash = SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetReference(addressBytes));
+        if (slot is not null)
+        {
+            UInt256 slotValue = slot.Value;
+            hash ^= SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref slotValue));
+        }
+
+        ulong bloomKey = (ulong)hash;
         if (PrewarmedAddresses.MightContain(bloomKey)) return false;
         PrewarmedAddresses.Add(bloomKey);
         return true;
-    }
-
-    /// <summary>The deduplication key for an account, or for one of its storage slots.</summary>
-    /// <remarks>
-    /// Equal by construction to <see cref="AddressAsKey.GetHashCode64"/> and
-    /// <see cref="StorageCell.GetHashCode64"/>, which is what <c>PrewarmKey_MatchesTheKeyTypesOwnHashes</c>
-    /// pins. The filter mixes this key with a bijection, so it can relocate collisions but never remove them:
-    /// the key it is handed is the only thing that decides how often it lies. Hashing the address and the slot
-    /// in one keyed chain is what stops a pair chosen together from colliding on purpose.
-    /// </remarks>
-    internal static ulong PrewarmKey(ReadOnlySpan<byte> addressBytes, UInt256? slot)
-    {
-        ref byte address = ref MemoryMarshal.GetReference(addressBytes);
-        if (slot is null) return (ulong)SpanExtensions.FastHash64For20Bytes(ref address);
-
-        UInt256 slotValue = slot.Value;
-        return (ulong)SpanExtensions.FastHash64ForAddressAndSlot(ref address, ref Unsafe.As<UInt256, byte>(ref slotValue));
     }
 
     public void Dispose() => PrewarmedAddresses.Dispose();
