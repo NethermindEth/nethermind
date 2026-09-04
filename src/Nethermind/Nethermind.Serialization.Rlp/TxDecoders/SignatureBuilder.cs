@@ -15,12 +15,7 @@ public static class SignatureBuilder
         bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
         bool isSignatureOk = true;
         string? signatureError = null;
-        if (v < Signature.VOffset)
-        {
-            isSignatureOk = false;
-            signatureError = $"{TxErrorMessages.InvalidTxSignature} V must be at least {Signature.VOffset}.";
-        }
-        else if (rBytes.Length == 0 || sBytes.Length == 0)
+        if (rBytes.Length == 0 || sBytes.Length == 0)
         {
             isSignatureOk = false;
             signatureError = "VRS is 0 length when decoding Transaction";
@@ -39,6 +34,11 @@ public static class SignatureBuilder
         {
             isSignatureOk = false;
             signatureError = "Both 'r' and 's' are zero when decoding a transaction";
+        }
+
+        if (isSignatureOk && v < Signature.VOffset)
+        {
+            throw new RlpException($"{TxErrorMessages.InvalidTxSignature} V must be at least {Signature.VOffset}.");
         }
 
         return isSignatureOk
