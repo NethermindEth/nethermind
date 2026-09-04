@@ -491,6 +491,33 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That((parent.StateGasSpill, parent.StateGasSpillRefunded), Is.EqualTo((200L, 80L)));
     }
 
+    [TestCase(0, 200, 0, 1_000UL, 0, 0, TestName = "Successful_merge_without_reservoir_does_not_repay_spill")]
+    [TestCase(80, 200, 0, 1_080UL, 0, 80, TestName = "Successful_merge_uses_all_reservoir_to_partially_repay_spill")]
+    [TestCase(200, 80, 0, 1_080UL, 120, 80, TestName = "Successful_merge_repayment_is_capped_at_outstanding_spill")]
+    [TestCase(100, 200, 150, 1_050UL, 50, 200, TestName = "Successful_merge_repayment_excludes_already_refunded_spill")]
+    public void Successful_merge_repays_state_gas_spill_from_reservoir(
+        long reservoir,
+        long spill,
+        long spillRefunded,
+        ulong expectedGasLeft,
+        long expectedReservoir,
+        long expectedSpillRefunded)
+    {
+        EthereumGasPolicy gas = new()
+        {
+            Value = 1_000,
+            StateReservoir = reservoir,
+            StateGasSpill = spill,
+            StateGasSpillRefunded = spillRefunded,
+        };
+
+        EthereumGasPolicy.RepayStateGasSpill(ref gas);
+
+        Assert.That(
+            (gas.Value, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
+            Is.EqualTo((expectedGasLeft, expectedReservoir, spill, expectedSpillRefunded)));
+    }
+
     [Test]
     public void Revert_does_not_inherit_partially_refunded_child_spill()
     {

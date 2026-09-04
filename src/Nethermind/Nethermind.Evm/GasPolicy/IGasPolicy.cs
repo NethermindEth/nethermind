@@ -153,6 +153,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
+    /// <summary>Repays outstanding EIP-8037 state-gas spill from the reservoir after a successful child merge.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void RepayStateGasSpill(ref TSelf gas) { }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool ConsumeCreateStateGas(ref TSelf gas) =>
         TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost());

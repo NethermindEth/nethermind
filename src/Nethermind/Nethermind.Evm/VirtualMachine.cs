@@ -308,6 +308,8 @@ public partial class VirtualMachine<TGasPolicy>(
                             {
                                 IncorporateChildStateGasRefunds(previousState);
                             }
+
+                            TGasPolicy.RepayStateGasSpill(ref _currentState.Gas);
                         }
                     }
                     else
