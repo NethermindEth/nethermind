@@ -39,6 +39,8 @@ namespace Nethermind.Evm.Benchmark
         private IWorldState _stateProvider = null!;
         private IDisposable _stateScope = null!;
         private CodeInfo _computeLoopCode = null!;
+        private CodeInfo _neverTakenJumpIfLoopCode = null!;
+        private CodeInfo _alternatingJumpIfLoopCode = null!;
         private CodeInfo _nestedCallsCode = null!;
 
         [GlobalSetup]
@@ -57,6 +59,8 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
             _computeLoopCode = new CodeInfo(BuildComputeLoopCode());
+            _neverTakenJumpIfLoopCode = new CodeInfo(BuildNeverTakenJumpIfLoopCode());
+            _alternatingJumpIfLoopCode = new CodeInfo(BuildAlternatingJumpIfLoopCode());
             _nestedCallsCode = new CodeInfo(BuildNestedCallsCode());
 
             // Opcode tables periodically recapture promoted handler entry points. Complete that process before
@@ -73,6 +77,12 @@ namespace Nethermind.Evm.Benchmark
         /// <summary>Arithmetic/jump loop: measures pure dispatch and per-op bookkeeping.</summary>
         [Benchmark]
         public void ComputeLoop() => Execute(_computeLoopCode, gasLimit: 10_000_000);
+
+        [Benchmark]
+        public void NeverTakenJumpIfLoop() => Execute(_neverTakenJumpIfLoopCode, gasLimit: 10_000_000);
+
+        [Benchmark]
+        public void AlternatingJumpIfLoop() => Execute(_alternatingJumpIfLoopCode, gasLimit: 10_000_000);
 
         /// <summary>Straight-line STATICCALLs to a returning callee: measures the frame cycle.</summary>
         [Benchmark]
@@ -122,6 +132,52 @@ namespace Nethermind.Evm.Benchmark
                 .Op(Instruction.STOP);
             return code.Done;
         }
+
+        private static byte[] BuildNeverTakenJumpIfLoopCode() => Prepare.EvmCode
+            .PushData(LoopIterations)
+            .Op(Instruction.JUMPDEST)          // pc 3
+            .PushData(1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SUB)
+            .Op(Instruction.PUSH0)
+            .PushData(3)
+            .Op(Instruction.JUMPI)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.ISZERO)
+            .PushData(20)                      // exit JUMPDEST
+            .Op(Instruction.JUMPI)
+            .PushData(3)
+            .Op(Instruction.JUMP)
+            .Op(Instruction.JUMPDEST)          // pc 20
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        private static byte[] BuildAlternatingJumpIfLoopCode() => Prepare.EvmCode
+            .PushData(LoopIterations)
+            .Op(Instruction.JUMPDEST)          // pc 3
+            .Op(Instruction.DUP1)
+            .PushData(1)
+            .Op(Instruction.AND)
+            .PushData(14)                      // taken JUMPDEST
+            .Op(Instruction.JUMPI)
+            .PushData(15)                      // join JUMPDEST
+            .Op(Instruction.JUMP)
+            .Op(Instruction.JUMPDEST)          // pc 14
+            .Op(Instruction.JUMPDEST)          // pc 15
+            .PushData(1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.ISZERO)
+            .PushData(28)                      // exit JUMPDEST
+            .Op(Instruction.JUMPI)
+            .PushData(3)
+            .Op(Instruction.JUMP)
+            .Op(Instruction.JUMPDEST)          // pc 28
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
 
         private static byte[] BuildCalleeCode() => Prepare.EvmCode
             .PushData(42)
