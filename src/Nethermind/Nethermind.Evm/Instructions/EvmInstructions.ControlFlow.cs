@@ -3,9 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -201,7 +201,7 @@ public static partial class EvmInstructions
             return false;
         }
         // If the condition is non-zero (i.e., true), attempt to perform the jump.
-        return (Unsafe.As<byte, Vector256<ulong>>(ref condition) != default);
+        return !Bytes.IsZero32(ref condition);
     }
 
     /// <summary>
