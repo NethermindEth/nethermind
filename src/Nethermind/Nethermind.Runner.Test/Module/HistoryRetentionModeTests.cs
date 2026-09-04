@@ -28,12 +28,12 @@ public class HistoryRetentionModeTests
     [TestCase(HistoryRetentionMode.Rolling, 1024UL, true, TestName = "Windowed")]
     public void TheModeDecidesWhetherHistoryIsWindowed(HistoryRetentionMode mode, ulong blocks, bool windowed)
     {
-        IFlatDbConfig config = Config(mode, blocks);
+        FlatDbConfig config = Config(mode, blocks);
 
         Assert.That(config.IsHistoryWindowed(), Is.EqualTo(windowed),
             "every windowed behaviour - row format, pruner, rocksdb tuning - keys off this one answer");
-
-        using IContainer container = Build((FlatDbConfig)config);
+        Assert.That(() => Build(config).Dispose(), Throws.Nothing,
+            "a mode paired with the block count it requires is a complete, accepted configuration");
     }
 
     private static FlatDbConfig Config(HistoryRetentionMode mode, ulong blocks) => new()

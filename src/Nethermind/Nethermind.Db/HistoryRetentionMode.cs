@@ -3,8 +3,12 @@
 
 namespace Nethermind.Db;
 
+/// <summary>How captured flat history is retained. The mode, not the block count, selects the on-disk row format.</summary>
 public enum HistoryRetentionMode
 {
+    /// <summary>Unbounded retention from genesis or the pivot, never pruned. Not "no history" - that is <c>HistoryEnabled=false</c>.</summary>
     None,
+
+    /// <summary>A window of the most recent <c>HistoryRetentionBlocks</c> blocks; the pruner reclaims below it as the watermark advances.</summary>
     Rolling,
 }

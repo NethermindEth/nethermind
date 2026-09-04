@@ -118,10 +118,11 @@ public sealed class HistoryAvailability
         if (windowingConfigured && stamped == FormatVersion)
         {
             throw new InvalidConfigurationException(
-                "HistoryRetentionBlocks is set, but this flatHistory database already holds history captured in the " +
+                "HistoryRetention is Rolling, but this flatHistory database already holds history captured in the " +
                 "unwindowed (v2) format. Windowing requires the v3 pre-value row format, which cannot be converted " +
-                "from existing v2 data in place. Resync the flatHistory database to enable windowing, or unset " +
-                "HistoryRetentionBlocks to keep running unwindowed against the existing data.", -1);
+                "from existing v2 data in place. Resync the flatHistory database to enable windowing, or set " +
+                "HistoryRetention=None and unset HistoryRetentionBlocks to keep running unwindowed against the " +
+                "existing data.", -1);
         }
 
         return windowingConfigured || stamped == WindowedFormatVersion ? WindowedFormatVersion : FormatVersion;

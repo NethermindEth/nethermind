@@ -31,7 +31,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Size of the rolling flat-history window, in blocks below the watermark. Required when HistoryRetention is 'Rolling' and rejected otherwise.", DefaultValue = "0")]
     ulong HistoryRetentionBlocks { get; set; }
 
-    [ConfigItem(Description = "How many blocks the watermark must advance before an idle history window pruner wakes and re-evaluates the floor. A pruner still owing sweep work paces itself on its pass budget instead. Only consulted when HistoryRetentionBlocks is set.", DefaultValue = "1024")]
+    [ConfigItem(Description = "How many blocks the watermark must advance before an idle history window pruner wakes and re-evaluates the floor. A pruner still owing sweep work paces itself on its pass budget instead. Only consulted when HistoryRetention is 'Rolling'.", DefaultValue = "1024")]
     ulong HistoryPruneIntervalBlocks { get; set; }
 
     [ConfigItem(Description = "Per-pass wall-clock budget, in seconds, for the history window pruner's incremental scan-and-delete. A pass yields at the budget and resumes from its persisted cursor on the next pass rather than running unbounded. Must exceed the longest historical query the node serves: deletes wait for in-flight historical reads, and a read that outlives every pass blocks reclamation until it finishes.", DefaultValue = "5")]
