@@ -309,7 +309,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
         for (int i = 0; i < typeNames.Length; i++)
         {
-            Type? resolved = ResolveTypeParam(typeNames[i]);
+            Type? resolved = ResolveTypeParam(typeNames[i], method.DeclaringType);
             if (resolved is null)
             {
                 if (verbose)
@@ -336,12 +336,37 @@ internal sealed class MethodResolver(Assembly assembly)
         }
     }
 
-    private Type? ResolveTypeParam(string typeName)
+    private Type? ResolveTypeParam(string typeName, Type? declaringType = null)
     {
         // Check aliases first
         if (TypeAliases.TryGetValue(typeName, out Type? aliasType))
         {
             return aliasType;
+        }
+
+        if (declaringType is not null)
+        {
+            Type declaringTypeDefinition = declaringType.IsGenericType
+                ? declaringType.GetGenericTypeDefinition()
+                : declaringType;
+            string nestedTypeName = typeName[(typeName.LastIndexOf('+') + 1)..];
+            Type? nestedType = declaringTypeDefinition
+                .GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(type => type.Name == nestedTypeName);
+
+            if (nestedType is not null)
+            {
+                if (!nestedType.ContainsGenericParameters)
+                {
+                    return nestedType;
+                }
+
+                Type[] declaringTypeArguments = declaringType.GetGenericArguments();
+                if (nestedType.GetGenericArguments().Length == declaringTypeArguments.Length)
+                {
+                    return nestedType.MakeGenericType(declaringTypeArguments);
+                }
+            }
         }
 
         // Try the target assembly
