@@ -41,9 +41,6 @@ public sealed class PrecompileCaches
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
     internal const int MaxSurvivingEntryBytes = 2048;
 
-    /// <summary> Per-partition budget below which caching holds too few results to be enabled. </summary>
-    private const int MinUsefulPartitionBytes = 64 * 1024;
-
     /// <summary> Entry count above which a partition grows on demand instead of being sized upfront. </summary>
     private const int MaxPartitionCapacity = 32 * 1024;
 
@@ -88,14 +85,6 @@ public sealed class PrecompileCaches
         if (partitionCount == 0)
         {
             if (logger.IsTrace) logger.Trace("Precompile result caching is disabled.");
-        }
-        else if (partitionSize < MinUsefulPartitionBytes)
-        {
-            if (logger.IsWarn)
-            {
-                logger.Warn($"The per-block tier of the precompile result cache is effectively off: the budget leaves {partitionSize / 1024} KB per precompile. "
-                    + $"Raise {nameof(IBlocksConfig.PrecompileCacheMaxKilobytes)}, or set it to 0 to disable caching explicitly.");
-            }
         }
         else if (maxBytes >= ImplausibleTotalBytes)
         {
