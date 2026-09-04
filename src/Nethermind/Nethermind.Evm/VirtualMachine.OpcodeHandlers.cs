@@ -30,7 +30,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable>;
+        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+        TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
+        where TOpcode : struct, IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         JumpIfOpcodeHandler<TTracingInst, TCancelable>()
@@ -46,12 +53,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup =
             new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[byte.MaxValue + 1];
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType> badInstruction =
-            OpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
+            TerminatingOpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
 
         for (int i = 0; i < lookup.Length; i++)
             lookup[i] = badInstruction;
 
-        lookup[(int)Instruction.STOP] = OpcodeHandler<StopOpcode, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.STOP] = TerminatingOpcodeHandler<StopOpcode, TTracingInst, TCancelable>();
         lookup[(int)Instruction.ADD] = OpcodeHandler<Math2Opcode<EvmInstructions.OpAdd, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MUL] = OpcodeHandler<Math2Opcode<EvmInstructions.OpMul, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SUB] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSub, TTracingInst>, TTracingInst, TCancelable>();
@@ -248,7 +255,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             : OpcodeHandler<CreateOpcode<EvmInstructions.OpCreate, TTracingInst, OffFlag>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.CALL] = GetCallHandler<EvmInstructions.OpCall, TTracingInst, TCancelable>(spec);
         lookup[(int)Instruction.CALLCODE] = GetCallHandler<EvmInstructions.OpCallCode, TTracingInst, TCancelable>(spec);
-        lookup[(int)Instruction.RETURN] = OpcodeHandler<ReturnOpcode, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.RETURN] = TerminatingOpcodeHandler<ReturnOpcode, TTracingInst, TCancelable>();
         if (spec.DelegateCallEnabled)
             lookup[(int)Instruction.DELEGATECALL] = GetCallHandler<EvmInstructions.OpDelegateCall, TTracingInst, TCancelable>(spec);
         if (spec.Create2OpcodeEnabled)
@@ -260,15 +267,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.StaticCallEnabled)
             lookup[(int)Instruction.STATICCALL] = GetCallHandler<EvmInstructions.OpStaticCall, TTracingInst, TCancelable>(spec);
         if (spec.RevertOpcodeEnabled)
-            lookup[(int)Instruction.REVERT] = OpcodeHandler<RevertOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.REVERT] = TerminatingOpcodeHandler<RevertOpcode, TTracingInst, TCancelable>();
 
-        lookup[(int)Instruction.INVALID] = OpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.INVALID] = TerminatingOpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SELFDESTRUCT] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
         {
-            (true, true) => OpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag>, TTracingInst, TCancelable>(),
-            (true, false) => OpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag>, TTracingInst, TCancelable>(),
-            (false, true) => OpcodeHandler<SelfDestructOpcode<OffFlag, OnFlag>, TTracingInst, TCancelable>(),
-            (false, false) => OpcodeHandler<SelfDestructOpcode<OffFlag, OffFlag>, TTracingInst, TCancelable>(),
+            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag>, TTracingInst, TCancelable>(),
+            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag>, TTracingInst, TCancelable>(),
+            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OnFlag>, TTracingInst, TCancelable>(),
+            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OffFlag>, TTracingInst, TCancelable>(),
         };
 
         return lookup;

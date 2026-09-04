@@ -154,7 +154,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvmExceptionType ExecuteOpcode<TOpcode, TTracingInst, TCancelable>(
+    private static EvmExceptionType ExecuteOpcode<TOpcode, TTracingInst, TCancelable, TContinuable>(
         ref EvmStack stack,
         ref TGasPolicy gas,
         ref DispatchState state,
@@ -163,6 +163,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
+        where TContinuable : struct, IFlag
     {
         VirtualMachine<TGasPolicy> vm = state.Vm;
         if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
@@ -178,6 +179,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         pc++;
         opCodeCount++;
         EvmExceptionType exceptionType = TOpcode.Execute(ref stack, ref gas, vm, ref pc);
+
+        if (!TContinuable.IsActive)
+            goto Exit;
 
         // The counter is final here, so the target resolves before the halt checks instead of after them.
         // Its load chain then overlaps the rest of the handler. Zero means the counter ran off the end of
