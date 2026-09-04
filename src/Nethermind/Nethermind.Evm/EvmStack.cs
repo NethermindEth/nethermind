@@ -351,6 +351,12 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReadUInt256FromSlot(ref byte slot, out UInt256 value)
     {
+        if (!Vector128.IsHardwareAccelerated)
+        {
+            ReadUInt256FromSlotScalar(ref slot, out value);
+            return;
+        }
+
         Unsafe.SkipInit(out value);
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
         Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap();
@@ -364,8 +370,38 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteUInt256ToSlot(ref byte slot, in UInt256 value)
     {
+        if (!Vector128.IsHardwareAccelerated)
+        {
+            WriteUInt256ToSlotScalar(ref slot, in value);
+            return;
+        }
+
         EvmWord leBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
         Unsafe.As<byte, EvmWord>(ref slot) = leBytes.ByteSwap();
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReadUInt256FromSlotScalar(ref byte slot, out UInt256 value)
+    {
+        Unsafe.SkipInit(out value);
+        ref ulong source = ref Unsafe.As<byte, ulong>(ref slot);
+        ref ulong destination = ref Unsafe.As<UInt256, ulong>(ref value);
+        destination = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref source, 3));
+        Unsafe.Add(ref destination, 1) = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref source, 2));
+        Unsafe.Add(ref destination, 2) = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref source, 1));
+        Unsafe.Add(ref destination, 3) = BinaryPrimitives.ReverseEndianness(source);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteUInt256ToSlotScalar(ref byte slot, in UInt256 value)
+    {
+        ref ulong source = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in value));
+        ref ulong destination = ref Unsafe.As<byte, ulong>(ref slot);
+        destination = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref source, 3));
+        Unsafe.Add(ref destination, 1) = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref source, 2));
+        Unsafe.Add(ref destination, 2) = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref source, 1));
+        Unsafe.Add(ref destination, 3) = BinaryPrimitives.ReverseEndianness(source);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
