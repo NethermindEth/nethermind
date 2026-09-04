@@ -101,7 +101,18 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           dotnet restore ${{ matrix.project }}.csproj
-          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime.
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore --hangdump --hangdump-timeout 8m
+
+      - name: Upload hang dump
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # EEST fixtures under the flat state layout (formerly the Ethereum.Blockchain.Pyspec.Test
   # flat shards and their Amsterdam parallel/batch-read variant chunks) run through the
