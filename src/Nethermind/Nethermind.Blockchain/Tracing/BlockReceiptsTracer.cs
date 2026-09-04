@@ -178,9 +178,6 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
                 // successful; the status a caller sees has to be derived from the frames instead.
                 txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(_frameTxReceipts);
             }
-
-            _frameTxPayer = null;
-            _frameTxReceipts = null;
         }
 
         return txReceipt;
@@ -383,6 +380,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         CurrentTx = tx;
+        // Cleared per tx so a frame receipt reported for one transaction can never be read for the next:
+        // both fields are consumed unconditionally when building a receipt, but only ever set for a frame tx.
+        _frameTxPayer = null;
+        _frameTxReceipts = null;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
         return _currentTxTracer;
     }
