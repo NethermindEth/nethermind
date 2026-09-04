@@ -448,11 +448,8 @@ public class ReceiptsSyncFeedTests
 
         // Given no block number, the block tree resolves one from the block number index first, so a body whose
         // index entry is missing is only reachable when the number the feed already knows is passed along.
-        // These are the overloads the feed calls; the substitute intercepts each one separately.
-        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>())
-            .Returns(ci => _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
-        _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>())
-            .Returns(ci => ci.ArgAt<ulong?>(1) is null
+        _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<ulong?>(2) is null
                 ? null
                 : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
 
@@ -464,6 +461,29 @@ public class ReceiptsSyncFeedTests
 
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
         _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
+    public async Task If_header_is_missing_locally_then_does_not_report_breach_of_protocol_or_drop_the_rest_of_the_batch()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        Hash256 missingHeaderHash = batch!.Infos[0]!.BlockHash;
+        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<Hash256>(0) == missingHeaderHash
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
+
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        batch.ResponseSourcePeer = peerInfo;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+        _receiptStorage.Received(batch.Infos.Length - 1).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
     }
 
     [Test]

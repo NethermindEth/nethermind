@@ -204,12 +204,17 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
+        /// <param name="headerMissing">
+        /// <c>true</c> when the local header store has no header for <paramref name="blockInfo"/>, so the
+        /// rejection says nothing about the peer that sent <paramref name="receipts"/>.
+        /// </param>
+        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts, out bool headerMissing)
         {
-            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
+            headerMissing = header is null;
             if (header is null)
             {
-                if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");
+                if (_logger.IsWarn) _logger.Warn($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
                 preparedReceipts = null;
             }
             else
@@ -272,10 +277,11 @@ namespace Nethermind.Synchronization.FastBlocks
                         break;
                     }
 
-                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
+                    bool headerMissing = false;
+                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared, out headerMissing);
                     if (isValid)
                     {
-                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
                         if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
@@ -298,6 +304,10 @@ namespace Nethermind.Synchronization.FastBlocks
                                 _syncStatusList.MarkPending(blockInfo);
                             }
                         }
+                    }
+                    else if (headerMissing)
+                    {
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                     else
                     {
