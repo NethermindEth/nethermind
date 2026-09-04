@@ -522,6 +522,10 @@ public class StateProviderTests(bool useFlat)
         // Dropping the re-stage is only safe because the code is already durable, which is what lets
         // the account keep carrying its hash.
         Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+
+        (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
+        Assert.That(codeWrites, Is.Zero);
+        Assert.That(codeBytesWritten, Is.Zero);
     }
 
     [Test]

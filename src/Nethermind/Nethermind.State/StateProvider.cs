@@ -43,7 +43,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
-    private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
+    private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
@@ -175,7 +175,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             if (journalCode)
             {
-                _codeInsertJournal.Add((_changes.Count, codeHash));
+                _codeInsertJournal.Add((_changes.Count, codeHash, code.Length));
 
                 _metrics.IncrementCodeWrites();
                 _metrics.IncrementCodeBytesWritten(code.Length);
@@ -474,19 +474,23 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// reference it. Dropping it loses nothing: such code is already durable in CodeDb, which is why
     /// the account carries its hash, so the staging is a redundant re-write rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
-    /// same code would be suppressed and lost.
+    /// same code would be suppressed and lost. The staged-write counters are rolled back too, so on the
+    /// <see cref="Restore"/> and <see cref="Reset"/>-without-block-changes paths they keep reporting the
+    /// bytes that actually reach CodeDb; a full reset drops the whole batch after the counters have
+    /// already been flushed, so it does not roll them back.
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
-        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash, int Length)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
         int keep = entries.Length;
         while (keep > 0)
         {
-            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            ref readonly (int Position, ValueHash256 CodeHash, int Length) entry = ref entries[keep - 1];
             if (entry.Position <= snapshot) break;
 
             _codeBatchAlternate.Remove(entry.CodeHash);
             _blockCodeInsertFilter.Delete(entry.CodeHash);
+            _metrics.DecrementCodeWrite(entry.Length);
             keep--;
         }
 

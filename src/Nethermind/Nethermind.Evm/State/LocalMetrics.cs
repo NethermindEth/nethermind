@@ -90,6 +90,20 @@ public sealed class LocalMetrics
         if (ExecutionMetricsFlag.IsActive) CodeBytesWritten += bytes;
     }
 
+    /// <summary>
+    /// Undoes one <see cref="IncrementCodeWrites"/> and the matching
+    /// <see cref="IncrementCodeBytesWritten"/>, for code staged by a deployment that was later reverted.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecrementCodeWrite(int bytes)
+    {
+        if (ExecutionMetricsFlag.IsActive)
+        {
+            CodeWrites--;
+            CodeBytesWritten -= bytes;
+        }
+    }
+
     public void Reset()
     {
         StateTreeCacheHits = 0;
