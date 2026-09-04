@@ -49,6 +49,28 @@ namespace Nethermind.Evm.Test
             "0x8000000000000000000000000000000000000000000000000000000000000000",
             "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        // Only the most significant 64 bits carry the sign; every lower group compares unsigned.
+        // Each case below sets the top bit of a lower group, so comparing it signed flips the answer.
+        [TestCase(Instruction.SGT,
+            "0xffffffffffffffff7fffffffffffffffffffffffffffffffffffffffffffffff",
+            "0xffffffffffffffff800000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SLT,
+            "0x0000000000000000000000000000000080000000000000000000000000000000",
+            "0x000000000000000000000000000000007fffffffffffffffffffffffffffffff",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SGT,
+            "0xffffffffffffffffffffffffffffffffffffffffffffffff7fffffffffffffff",
+            "0xffffffffffffffffffffffffffffffffffffffffffffffff8000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.GT,
+            "0x000000000000000000000000000000007fffffffffffffffffffffffffffffff",
+            "0x0000000000000000000000000000000080000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001")]
+        [TestCase(Instruction.SLT,
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "0x0000000000000000000000000000000000000000000000000000000000000000")]
         public void Comparison_operations(Instruction instruction, string aHex, string bHex, string resultHex)
         {
             byte[] a = Bytes.FromHexString(aHex);
