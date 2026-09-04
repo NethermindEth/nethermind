@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
