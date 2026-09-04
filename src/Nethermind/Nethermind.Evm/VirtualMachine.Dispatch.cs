@@ -262,10 +262,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref gas, vm, pc);
         pc = result.ProgramCounter;
 
-        nint next = 0;
-        if ((nuint)pc < (nuint)stack.CodeLength)
-            next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
-
         if (ShouldExitFrame(result.Exception, TGasPolicy.IsOutOfGas(in gas)))
             goto Exit;
 
@@ -275,19 +271,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
-        if (next == 0)
-            goto Exit;
-
-        IL.EnsureLocal(in next);
-
+        // Each outcome resolves its own successor and transfers from its own site, so the predictor gets
+        // a taken entry and a fall-through entry to learn separately. Sharing one lookup would let the
+        // JIT fold the two transfers back into a single indirect branch.
         if (pc != fallthroughPc)
         {
+            if ((nuint)pc >= (nuint)stack.CodeLength)
+                goto Exit;
+
+            nint taken = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
+            IL.EnsureLocal(in taken);
+
             IL.Emit.Ldarg(nameof(stack));
             IL.Emit.Ldarg(nameof(gas));
             IL.Emit.Ldarg(nameof(state));
             IL.Emit.Ldarg(nameof(pc));
             IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(next);
+            IL.Push(taken);
             IL.Emit.Tail();
             IL.Emit.Calli(new StandAloneMethodSig(
                 CallingConventions.Standard,
@@ -301,12 +301,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         else
         {
+            if ((nuint)fallthroughPc >= (nuint)stack.CodeLength)
+                goto Exit;
+
+            nint notTaken = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, fallthroughPc)];
+            IL.EnsureLocal(in notTaken);
+
             IL.Emit.Ldarg(nameof(stack));
             IL.Emit.Ldarg(nameof(gas));
             IL.Emit.Ldarg(nameof(state));
             IL.Emit.Ldarg(nameof(pc));
             IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(next);
+            IL.Push(notTaken);
             IL.Emit.Tail();
             IL.Emit.Calli(new StandAloneMethodSig(
                 CallingConventions.Standard,
