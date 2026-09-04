@@ -68,7 +68,6 @@ public static partial class EvmInstructions
         vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
 
         TGasPolicy.Refund(ref gas, in childGas);
-        TGasPolicy.RepayStateGasSpill(ref gas);
 
         ReadOnlyMemory<byte> outputData = output.Data;
         vm.ReturnDataBuffer = outputData;

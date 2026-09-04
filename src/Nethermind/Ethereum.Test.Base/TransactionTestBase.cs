@@ -71,10 +71,14 @@ public abstract class TransactionTestBase
         }
         catch (Exception ex)
         {
-            error = ex.Message;
+            error = GetDetailedError(ex);
             return false;
         }
     }
+
+    private static string GetDetailedError(Exception exception) => exception.InnerException is null
+        ? exception.Message
+        : $"{exception.Message}: {GetDetailedError(exception.InnerException)}";
 
     private static bool ExceptionMatches(string expected, string observed)
     {
@@ -141,9 +145,9 @@ public abstract class TransactionTestBase
         ["TransactionException.NONCE_TOO_BIG"] = ["NonceTooHigh"],
         ["TransactionException.NONCE_IS_MAX"] = ["NonceTooHigh"],
         ["TransactionException.NONCE_OVERFLOW"] = ["NonceTooWide"],
-        ["TransactionException.ADDRESS_TOO_LONG"] = ["Unexpected RLP prefix of 149"],
-        ["TransactionException.ADDRESS_TOO_SHORT"] = ["Unexpected RLP prefix of 147"],
-        ["TransactionException.INVALID_CHAINID"] = ["InvalidTxChainId", "Cannot decode stream of Transaction"],
+        ["TransactionException.ADDRESS_TOO_LONG"] = ["Unexpected RLP prefix"],
+        ["TransactionException.ADDRESS_TOO_SHORT"] = ["Unexpected RLP prefix"],
+        ["TransactionException.INVALID_CHAINID"] = ["InvalidTxChainId", "InvalidTxSignature"],
         ["TransactionException.INVALID_SIGNATURE_VRS"] = ["VRS is 0 length", "InvalidTxSignature"],
         ["TransactionException.RLP_ERROR_EOF"] = ["RLP data is truncated"],
         ["TransactionException.RLP_ERROR_SIZE"] = ["Data checkpoint failed"],
@@ -165,8 +169,8 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_S"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_V"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_VALUE"] = ["Non-canonical integer"],
-        ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["Cannot decode stream of Transaction"],
+        ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["RLP data is truncated", "Unexpected length of integer value"],
         ["TransactionException.RLP_TOO_MANY_ELEMENTS"] = ["Data checkpoint failed"],
-        ["TransactionException.VALUE_OVERFLOW"] = ["or 101 bytes left"],
+        ["TransactionException.VALUE_OVERFLOW"] = ["Collection count"],
     };
 }

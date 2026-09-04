@@ -249,7 +249,6 @@ public static partial class EvmInstructions
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            TGasPolicy.RepayStateGasSpill(ref gas);
             // Self-call (always true for CALLCODE; runtime for CALL/STATICCALL when target == executing account):
             // the +/- value balance ops cancel and target is the currently-executing account (alive),
             // so skip both writes. AddTransferLog already no-ops when from == to.
