@@ -94,7 +94,7 @@ public sealed class PrecompileCaches
             if (logger.IsWarn)
             {
                 logger.Warn($"The per-block tier of the precompile result cache is effectively off: the budget leaves {partitionSize / 1024} KB per precompile. "
-                    + $"Raise {nameof(IBlocksConfig.PrecompileCacheMaxKilobytes)}, or set it to -1 to disable caching explicitly.");
+                    + $"Raise {nameof(IBlocksConfig.PrecompileCacheMaxKilobytes)}, or set it to 0 to disable caching explicitly.");
             }
         }
         else if (maxBytes >= ImplausibleTotalBytes)
@@ -194,27 +194,31 @@ public sealed class PrecompileCaches
             _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
 
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/> </summary>
+        /// <returns> Whether data was saved to the per-block cache. </returns>
         /// <remarks> Reserves before checking, so a concurrent reservation near the limit can refuse an entry the partition had room for. </remarks>
         public bool TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
+            bool tier1 = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
+            bool tier2 = entryBytes <= MaxSurvivingEntryBytes;
 
-            // we need to rebuild the key with data copy as the data can be changed by VM processing
-            // effective-input bounds are expected to remain the same
-            Key copiedKey = key.WithCopiedData();
-
-            // always populate surviving tier LRU
-            if (entryBytes <= MaxSurvivingEntryBytes) _survivingCache.Set(copiedKey, result);
-
-            // add to block tier only if enough space
-            if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
+            if (!tier1 && !tier2)
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 return false;
             }
 
-            if (!_entries.TryAdd(copiedKey, result))
+            // we need to rebuild the key with data copy as the data can be changed by VM processing
+            // effective-input bounds are expected to remain the same
+            Key copiedKey = key.WithCopiedData();
+
+            if (tier2)
+            {
+                _survivingCache.Set(copiedKey, result);
+            }
+
+            if (!tier1 || !_entries.TryAdd(copiedKey, result))
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 return false;
