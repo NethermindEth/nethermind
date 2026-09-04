@@ -26,7 +26,6 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
-
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
