@@ -521,10 +521,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
             bool removeSelfdestructBurn = spec.IsEip8246Enabled;
-            bool trackBalance = spec.IsEip7708Enabled || removeSelfdestructBurn;
             foreach (Address toBeDestroyed in accessTracker.DestroyList)
             {
-                UInt256 destroyedBalance = trackBalance ? WorldState.GetBalance(toBeDestroyed) : default;
+                UInt256 destroyedBalance = removeSelfdestructBurn ? WorldState.GetBalance(toBeDestroyed) : default;
                 DestroyAccount(WorldState, toBeDestroyed, in destroyedBalance, commitDestroys, removeSelfdestructBurn);
             }
         }
