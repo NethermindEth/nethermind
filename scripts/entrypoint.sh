@@ -73,4 +73,9 @@ if [[ -z "${DOTNET_ReadPGOData:-}" ]] && [[ -f "/nethermind/pgo/nethermind.jit" 
   echo "Edge/block PGO enabled: ${DOTNET_PGODataPath}"
 fi
 
+# Report which allocator is actually mapped in. LD_PRELOAD is inherited by the exec'd client, so
+# this shell's own maps prove whether ld.so honoured it (an unresolvable soname is only a warning).
+alloc_libs=$(awk '/jemalloc|tcmalloc|mimalloc/ { n = split($NF, p, "/"); print p[n] }' /proc/self/maps | sort -u || true)
+echo "Allocator probe: LD_PRELOAD=${LD_PRELOAD:-<none>} MALLOC_CONF=${MALLOC_CONF:-<none>} mapped=[$(echo ${alloc_libs:-none})]"
+
 exec ./nethermind "$@"
