@@ -1629,7 +1629,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((nuint)newHead * WordSize));
         // Memory layout: [b @ +0] [a @ +32]
 
         if (Avx2.IsSupported)
@@ -1690,7 +1690,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((nuint)newHead * WordSize));
         // Memory layout: [c @ +0] [b @ +32] [a @ +64]
 
         if (Avx2.IsSupported)
@@ -1761,7 +1761,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((nuint)newHead * WordSize));
         // Memory layout: [d @ +0] [c @ +32] [b @ +64] [a @ +96]
 
         if (Avx2.IsSupported)
@@ -1989,8 +1989,8 @@ public ref partial struct EvmStack
         }
         Head = newHead;
         ref byte baseRef = ref _stack;
-        ReadUInt256FromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out a);
-        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, (nint)((uint)newHead * WordSize)), WordSize);
+        ReadUInt256FromSlot(ref Unsafe.Add(ref baseRef, (nint)((nuint)(newHead + 1) * WordSize)), out a);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, (nint)((nuint)newHead * WordSize)), WordSize);
         return true;
     }
 
@@ -2144,9 +2144,9 @@ public ref partial struct EvmStack
 
         ref byte bytes = ref _stack;
 
-        nuint headOffset = (nuint)(nuint)Head * WordSize;
-        ref byte first = ref Unsafe.Add(ref bytes, headOffset - (nuint)(uint)n * WordSize);
-        ref byte second = ref Unsafe.Add(ref bytes, headOffset - (nuint)(uint)m * WordSize);
+        nuint headOffset = (nuint)Head * WordSize;
+        ref byte first = ref Unsafe.Add(ref bytes, headOffset - (nuint)n * WordSize);
+        ref byte second = ref Unsafe.Add(ref bytes, headOffset - (nuint)m * WordSize);
 
         EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref first);
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<EvmWord>(ref second));
