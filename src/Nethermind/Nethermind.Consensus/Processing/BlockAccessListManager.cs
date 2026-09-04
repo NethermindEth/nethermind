@@ -72,6 +72,7 @@ public partial class BlockAccessListManager(
     // Snapshot point for parallel workers' parent-reader scopes. Set only when
     // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
     private Hash256? _parentStateRoot;
+    private IReleaseSpec? _blockSpec;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
     // suggested index is built once at PrepareForProcessing; the generated index mirrors its
@@ -162,6 +163,7 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
+            _blockSpec = spec;
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
@@ -305,6 +307,7 @@ public partial class BlockAccessListManager(
         _blockExecutionContext = null;
         _gasRemaining = null;
         _parentStateRoot = null;
+        _blockSpec = null;
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);

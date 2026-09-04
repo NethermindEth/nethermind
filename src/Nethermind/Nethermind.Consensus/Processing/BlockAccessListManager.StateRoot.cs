@@ -50,9 +50,9 @@ public partial class BlockAccessListManager
         }
 
         Hash256? parentStateRoot = _parentStateRoot;
-        // Captured here rather than read in the work item: Reset() clears the execution context as
-        // soon as the block completes, which can happen before the queued comparison runs.
-        IReleaseSpec? spec = _blockExecutionContext?.Spec;
+        // Captured here rather than read in the work item: the block's fields are reset as soon as
+        // processing completes, which can happen before the queued comparison runs.
+        IReleaseSpec? spec = _blockSpec;
         ThreadPool.UnsafeQueueUserWorkItem(
             static state => state.self.RunShadowStateRootComparisonCore(state.block, state.parentStateRoot, state.spec),
             (self: this, block, parentStateRoot, spec),
@@ -67,7 +67,7 @@ public partial class BlockAccessListManager
             return;
         }
 
-        RunShadowStateRootComparisonCore(block, _parentStateRoot, _blockExecutionContext?.Spec);
+        RunShadowStateRootComparisonCore(block, _parentStateRoot, _blockSpec);
     }
 
     /// <summary>
