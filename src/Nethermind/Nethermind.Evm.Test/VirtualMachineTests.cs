@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Test.Tracing;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -49,6 +50,17 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
+    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
+    {
+        public int PollCount { get; private set; }
+
+        public override bool IsTracingInstructions => false;
+
+        bool ITxTracer.IsCancelable => true;
+
+        bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
+    }
+
     [Test]
     public void Stop()
     {
@@ -77,6 +89,38 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + (ulong)code.Length - 1), "gas");
             Assert.That(Machine.OpCodeCount, Is.EqualTo(code.Length), "opcode count");
         }
+    }
+
+    [TestCase(1023, true, 1)]
+    [TestCase(1024, false, 1)]
+    [TestCase(1024, true, 2)]
+    [TestCase(2048, true, 3)]
+    public void Cancellation_is_polled_before_the_first_opcode_and_each_complete_1024_opcode_batch(
+        int continuingOpcodeCount,
+        bool appendStop,
+        int expectedPollCount)
+    {
+        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        if (appendStop)
+            code[^1] = (byte)Instruction.STOP;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+    }
+
+    [Test]
+    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode()
+    {
+        byte[] code = new byte[1025];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[^1] = (byte)Instruction.STOP;
+        CountingCancellationTracer tracer = new(cancelAtPoll: 2);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
+        Assert.That(tracer.PollCount, Is.EqualTo(2));
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]
