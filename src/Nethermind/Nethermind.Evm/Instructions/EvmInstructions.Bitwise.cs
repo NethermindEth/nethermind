@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -11,6 +12,19 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmWord CreateScalarWord(ulong value)
+    {
+        Unsafe.SkipInit(out EvmWord word);
+        ref ulong parts = ref As<EvmWord, ulong>(ref word);
+        parts = 0;
+        Add(ref parts, 1) = 0;
+        Add(ref parts, 2) = 0;
+        Add(ref parts, 3) = BinaryPrimitives.ReverseEndianness(value);
+        return word;
+    }
+
     /// <summary>
     /// Represents a bitwise operation on 256-bit vectors.
     /// Implementers define a static operation that takes two 256-bit vectors and returns a result vector.
@@ -39,10 +53,9 @@ public static partial class EvmInstructions
     /// <param name="_">An unused virtual machine instance parameter.</param>
     /// <param name="stack">The EVM stack from which operands are retrieved and where the result is stored.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
@@ -52,12 +65,18 @@ public static partial class EvmInstructions
         return BitwiseCore<TOpBitwise>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
     {
+        if (!Vector128.IsHardwareAccelerated &&
+            (typeof(TOpBitwise) == typeof(OpBitwiseAnd) ||
+             typeof(TOpBitwise) == typeof(OpBitwiseOr) ||
+             typeof(TOpBitwise) == typeof(OpBitwiseXor)))
+            return BitwiseScalar<TOpBitwise>(ref stack);
+
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
@@ -76,6 +95,45 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType BitwiseScalar<TOpBitwise>(ref EvmStack stack)
+        where TOpBitwise : struct, IOpBitwise
+    {
+        ref byte aBytes = ref stack.PopBytesByRef();
+        if (IsNullRef(ref aBytes))
+            return EvmExceptionType.StackUnderflow;
+
+        ref byte bBytes = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bBytes))
+            return EvmExceptionType.StackUnderflow;
+
+        ref ulong a = ref As<byte, ulong>(ref aBytes);
+        ref ulong b = ref As<byte, ulong>(ref bBytes);
+        if (typeof(TOpBitwise) == typeof(OpBitwiseAnd))
+        {
+            b &= a;
+            Add(ref b, 1) &= Add(ref a, 1);
+            Add(ref b, 2) &= Add(ref a, 2);
+            Add(ref b, 3) &= Add(ref a, 3);
+        }
+        else if (typeof(TOpBitwise) == typeof(OpBitwiseOr))
+        {
+            b |= a;
+            Add(ref b, 1) |= Add(ref a, 1);
+            Add(ref b, 2) |= Add(ref a, 2);
+            Add(ref b, 3) |= Add(ref a, 3);
+        }
+        else
+        {
+            b ^= a;
+            Add(ref b, 1) ^= Add(ref a, 1);
+            Add(ref b, 2) ^= Add(ref a, 2);
+            Add(ref b, 3) ^= Add(ref a, 3);
+        }
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -118,12 +176,12 @@ public static partial class EvmInstructions
             0, 0, 0, 0, 0, 0, 0, 1
         );
 
-        // Returns a non-zero marker vector if the operands are equal.
-#if ZK_EVM
-        // The zkVM has no hardware SIMD, so Vector256<byte> == falls back to an 8-iteration element loop.
-        // EQ is hot, so compare as flat 4x ulong (endianness-agnostic for an equality test).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b)
         {
+            if (Vector256.IsHardwareAccelerated)
+                return a == b ? One : default;
+
             ref ulong pa = ref As<EvmWord, ulong>(ref AsRef(in a));
             ref ulong pb = ref As<EvmWord, ulong>(ref AsRef(in b));
             ulong diff = (pa ^ pb)
@@ -131,10 +189,7 @@ public static partial class EvmInstructions
                 | (Add(ref pa, 2) ^ Add(ref pb, 2))
                 | (Add(ref pa, 3) ^ Add(ref pb, 3));
 
-            return diff == 0UL ? One : default;
+            return diff == 0UL ? CreateScalarWord(1) : default;
         }
-#else
-        public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
-#endif
     }
 }

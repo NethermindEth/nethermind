@@ -58,8 +58,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             vm._worldState = state;
             vm._codeInfoRepository = codeInfoRepository;
 
-            RunOpCodes<OnFlag>(vm, state, vmState, spec);
-            RunOpCodes<OffFlag>(vm, state, vmState, spec);
+            WarmUpOpcodeHandlers<OffFlag, OffFlag>(vm, state, vmState);
+            WarmUpOpcodeHandlers<OffFlag, OnFlag>(vm, state, vmState);
+            WarmUpOpcodeHandlers<OnFlag, OffFlag>(vm, state, vmState);
+            WarmUpOpcodeHandlers<OnFlag, OnFlag>(vm, state, vmState);
         }
 
         TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
@@ -144,41 +146,44 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, VmState<TGasPolicy> vmState, IReleaseSpec spec)
+    private static void WarmUpOpcodeHandlers<TTracingInst, TCancelable>(
+        VirtualMachine<TGasPolicy> vm,
+        IWorldState state,
+        VmState<TGasPolicy> vmState)
         where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
     {
         const int WarmUpIterations = 40;
 
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        vmState.InitializeStacks(txTracer, vmState.Env.CodeInfo.CodeSpan, out EvmStack stack);
-        TGasPolicy gas = TGasPolicy.FromULong(ulong.MaxValue);
-        nint pc = 0;
+        // This drives RunByteCode directly, so it resolves the table itself rather than through a transaction.
+        vm.PrepareOpcodes<TTracingInst, TCancelable>();
+        byte[] code = new byte[EvmStack.WordSize + 2];
+        vmState.InitializeStacks(txTracer, code, out EvmStack stack);
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {
-            for (int i = 0; i < opcodes.Length; i++)
+            for (int i = 0; i <= byte.MaxValue; i++)
             {
-                // LOG4 needs 6 values on stack
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
+                code.AsSpan().Clear();
+                Instruction instruction = (Instruction)i;
+                code[0] = (byte)instruction;
+                if (instruction is Instruction.JUMP or Instruction.JUMPI)
+                    code[1] = (byte)Instruction.JUMPDEST;
+                else if (instruction is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
+                    code[1] = 0x80;
 
-                opcodes[i](vm, ref stack, ref gas, ref pc);
-                if (vm.ReturnData is VmState<TGasPolicy> returnState)
-                {
-                    returnState.Dispose();
-                    vm.ReturnData = null!;
-                }
+                for (int stackItem = 0; stackItem < 20; stackItem++)
+                    stack.PushOne<TTracingInst>();
+
+                vmState.ProgramCounter = 0;
+                vmState.Gas = TGasPolicy.FromULong(ulong.MaxValue);
+                CallResult callResult = vm.RunByteCode<TTracingInst, TCancelable>(ref stack, ref vmState.Gas);
+                callResult.StateToExecute?.Dispose();
 
                 state.Reset(resetBlockChanges: true);
                 stack.Head = 0;
-                gas = TGasPolicy.FromULong(ulong.MaxValue);
-                pc = 0;
             }
         }
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
@@ -12,6 +13,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Test.Tracing;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -48,11 +50,103 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
+    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
+    {
+        public int PollCount { get; private set; }
+
+        public override bool IsTracingInstructions => false;
+
+        bool ITxTracer.IsCancelable => true;
+
+        bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
+    }
+
     [Test]
     public void Stop()
     {
         TestAllTracerWithOutput receipt = Execute((byte)Instruction.STOP);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
+    }
+
+    [Test]
+    public void Warm_up_opcode_handlers_does_not_throw() =>
+        Assert.That(
+            () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
+            Throws.Nothing);
+
+    [Test]
+    public void Tail_call_opcode_table_dispatch_executes_maximum_length_code_without_growing_the_managed_stack()
+    {
+        byte[] code = new byte[CodeSizeConstants.MaxCodeSizeEip170];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[^1] = (byte)Instruction.STOP;
+
+        TestAllTracerWithOutput receipt = ExecuteUntraced(100_000UL, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + (ulong)code.Length - 1), "gas");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(code.Length), "opcode count");
+        }
+    }
+
+    [Test]
+    public void Tail_call_jumpi_dispatch_executes_a_deep_counted_loop_without_growing_the_managed_stack()
+    {
+        const int loopIterations = 2_000_000;
+        byte[] code = Prepare.EvmCode
+            .PushData(loopIterations)
+            .Op(Instruction.JUMPDEST)
+            .PushData(1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .PushData(4)
+            .Op(Instruction.JUMPI)
+            .Op(Instruction.STOP)
+            .Done;
+
+        const ulong gasLimit = 200_000_000UL;
+        TestAllTracerWithOutput receipt = ExecuteUntraced(gasLimit, code, blockGasLimit: gasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(7 * loopIterations + 2), "opcode count");
+        }
+    }
+
+    [TestCase(1023, true, 1)]
+    [TestCase(1024, false, 1)]
+    [TestCase(1024, true, 2)]
+    [TestCase(2048, true, 3)]
+    public void Cancellation_is_polled_before_the_first_opcode_and_each_complete_1024_opcode_batch(
+        int continuingOpcodeCount,
+        bool appendStop,
+        int expectedPollCount)
+    {
+        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        if (appendStop)
+            code[^1] = (byte)Instruction.STOP;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+    }
+
+    [Test]
+    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode()
+    {
+        byte[] code = new byte[1025];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[^1] = (byte)Instruction.STOP;
+        CountingCancellationTracer tracer = new(cancelAtPoll: 2);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
+        Assert.That(tracer.PollCount, Is.EqualTo(2));
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]
@@ -95,9 +189,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code)
+    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code, blockGasLimit: blockGasLimit);
         NoInstructionTracer tracer = new();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;

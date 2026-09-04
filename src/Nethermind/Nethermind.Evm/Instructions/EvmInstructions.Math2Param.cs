@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
@@ -40,16 +43,15 @@ public static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath2Param"/> that defines the specific operation.</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
@@ -60,20 +62,118 @@ public static partial class EvmInstructions
         return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType Math2ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
+        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
+        {
+            ref byte addTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+            if (!isValid) goto StackUnderflow;
+
+            ref ulong top = ref As<byte, ulong>(ref addTopRef);
+            ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
+            System.UInt128 sum = (System.UInt128)BinaryPrimitives.ReverseEndianness(Add(ref top, 3)) +
+                BinaryPrimitives.ReverseEndianness(Add(ref popped, 3));
+            Add(ref top, 3) = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 2)) +
+                BinaryPrimitives.ReverseEndianness(Add(ref popped, 2));
+            Add(ref top, 2) = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 1)) +
+                BinaryPrimitives.ReverseEndianness(Add(ref popped, 1));
+            Add(ref top, 1) = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(top) +
+                BinaryPrimitives.ReverseEndianness(popped);
+            top = BinaryPrimitives.ReverseEndianness((ulong)sum);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
+            return EvmExceptionType.None;
+        }
+
+        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpSub))
+        {
+            ref byte subtractTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+            if (!isValid) goto StackUnderflow;
+
+            ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
+            ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
+            ulong minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 3));
+            ulong difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 3));
+            ulong borrow = difference > minuendPart ? 1UL : 0UL;
+            Add(ref subtrahend, 3) = BinaryPrimitives.ReverseEndianness(difference);
+
+            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 2));
+            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 2));
+            ulong withoutBorrow = difference;
+            difference -= borrow;
+            borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
+            Add(ref subtrahend, 2) = BinaryPrimitives.ReverseEndianness(difference);
+
+            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 1));
+            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 1));
+            withoutBorrow = difference;
+            difference -= borrow;
+            borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
+            Add(ref subtrahend, 1) = BinaryPrimitives.ReverseEndianness(difference);
+
+            difference = BinaryPrimitives.ReverseEndianness(minuend) -
+                BinaryPrimitives.ReverseEndianness(subtrahend) - borrow;
+            subtrahend = BinaryPrimitives.ReverseEndianness(difference);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
+            return EvmExceptionType.None;
+        }
+
+        if (!X86Base.IsSupported &&
+            (typeof(TOpMath) == typeof(OpLt) ||
+             typeof(TOpMath) == typeof(OpGt) ||
+             typeof(TOpMath) == typeof(OpSLt) ||
+             typeof(TOpMath) == typeof(OpSGt)))
+        {
+            ref byte rawTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+            if (!isValid) goto StackUnderflow;
+
+            ref ulong resultParts = ref As<byte, ulong>(ref rawTopRef);
+            bool comparison = CompareScalar<TOpMath>(
+                ref Add(ref resultParts, EvmStack.WordSize / sizeof(ulong)), ref resultParts);
+            resultParts = 0;
+            Add(ref resultParts, 1) = 0;
+            Add(ref resultParts, 2) = 0;
+            Add(ref resultParts, 3) = BinaryPrimitives.ReverseEndianness(comparison ? 1UL : 0UL);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref rawTopRef);
+            return EvmExceptionType.None;
+        }
+
         // Pop a and peek the new top slot for in-place write; skips the push's overflow check
         // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
         ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
         if (!ok) goto StackUnderflow;
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpMath.Operation(in a, in b, out UInt256 result);
+        UInt256 result;
+        if (X86Base.IsSupported &&
+            (typeof(TOpMath) == typeof(OpLt) ||
+             typeof(TOpMath) == typeof(OpGt) ||
+             typeof(TOpMath) == typeof(OpSLt) ||
+             typeof(TOpMath) == typeof(OpSGt)))
+        {
+            bool comparison = typeof(TOpMath) == typeof(OpLt)
+                ? a < b
+                : typeof(TOpMath) == typeof(OpGt)
+                    ? a > b
+                    : typeof(TOpMath) == typeof(OpSLt)
+                        ? As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) < 0
+                        : As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) > 0;
+            result = comparison ? UInt256.One : default;
+        }
+        else
+        {
+            TOpMath.Operation(in a, in b, out result);
+        }
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
@@ -81,6 +181,36 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
+        where TOpMath : struct, IOpMath2Param
+    {
+        bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
+        bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
+
+        ulong aPart = BinaryPrimitives.ReverseEndianness(a);
+        ulong bPart = BinaryPrimitives.ReverseEndianness(b);
+        if (aPart != bPart)
+        {
+            bool less = signed ? (long)aPart < (long)bPart : aPart < bPart;
+            return lessThan ? less : !less;
+        }
+
+        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 1));
+        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 1));
+        if (aPart != bPart)
+            return lessThan ? aPart < bPart : aPart > bPart;
+
+        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 2));
+        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 2));
+        if (aPart != bPart)
+            return lessThan ? aPart < bPart : aPart > bPart;
+
+        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 3));
+        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 3));
+        return lessThan ? aPart < bPart : aPart > bPart;
     }
 
     /// <summary>
@@ -265,12 +395,11 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the program counter is pushed.</param>
     /// <param name="gas">Reference to the gas state; updated by the gas cost.</param>
-    /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

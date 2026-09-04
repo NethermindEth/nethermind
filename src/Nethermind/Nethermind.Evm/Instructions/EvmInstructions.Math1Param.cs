@@ -45,13 +45,12 @@ public static partial class EvmInstructions
     /// <param name="_">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; otherwise,
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
@@ -61,12 +60,26 @@ public static partial class EvmInstructions
         return Math1ParamCore<TOpMath>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
         where TOpMath : struct, IOpMath1Param
     {
+        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpNot))
+        {
+            ref byte valueBytes = ref stack.PeekBytesByRef();
+            if (IsNullRef(ref valueBytes))
+                return EvmExceptionType.StackUnderflow;
+
+            ref ulong value = ref As<byte, ulong>(ref valueBytes);
+            value = ~value;
+            Add(ref value, 1) = ~Add(ref value, 1);
+            Add(ref value, 2) = ~Add(ref value, 2);
+            Add(ref value, 3) = ~Add(ref value, 3);
+            return EvmExceptionType.None;
+        }
+
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
         ref byte bytesRef = ref stack.PeekBytesByRef();
@@ -100,18 +113,15 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
-#if ZK_EVM
-        // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
-        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
-        // (endianness-agnostic for a zero test).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value)
         {
+            if (Vector256.IsHardwareAccelerated)
+                return value == default ? OpBitwiseEq.One : default;
+
             ref ulong p = ref As<EvmWord, ulong>(ref value);
-            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? OpBitwiseEq.One : default;
+            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? CreateScalarWord(1) : default;
         }
-#else
-        public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
-#endif
     }
 
     /// <summary>
@@ -122,9 +132,21 @@ public static partial class EvmInstructions
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
 
-        public static EvmWord Operation(EvmWord value) => value == default
-            ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
-            : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmWord Operation(EvmWord value)
+        {
+            if (Vector256.IsHardwareAccelerated)
+            {
+                return value == default
+                    ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
+                    : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+            }
+
+            ref ulong parts = ref As<EvmWord, ulong>(ref value);
+            return (parts | Add(ref parts, 1) | Add(ref parts, 2) | Add(ref parts, 3)) == 0UL
+                ? CreateScalarWord(256)
+                : CreateScalarWord((ulong)value.CountLeadingZeroBits());
+        }
     }
 
     /// <summary>
@@ -132,34 +154,32 @@ public static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
-        if (!stack.PopWord256(out Span<byte> bytes))
-            goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+        if (!isValid) return EvmExceptionType.StackUnderflow;
 
-        // If the position is out-of-range, push zero. Using direct limb access avoids the
-        // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
-        // and skips the overflow-check path of `(int)a`.
-        if (!a.IsUint64 || a.u0 >= 32)
-        {
-            return stack.PushZero<TTracingInst>();
-        }
+        ref ulong result = ref As<byte, ulong>(ref topRef);
+        ref ulong position = ref Add(ref result, EvmStack.WordSize / sizeof(ulong));
+        ulong positionLow = Add(ref position, 3);
+        nint index = (nint)(positionLow >> 56);
+        byte selected = (position | Add(ref position, 1) | Add(ref position, 2) |
+            (positionLow & 0x00FF_FFFF_FFFF_FFFFUL)) == 0 && index < EvmStack.WordSize
+            ? Add(ref topRef, index)
+            : (byte)0;
 
-        // PopWord256 always returns 32 bytes and we've just checked a.u0 < 32, so bypass the
-        // span bounds check: JIT can't prove 0 <= (int)a.u0 < bytes.Length across the ulong->int cast.
-        return stack.PushByte<TTracingInst>(
-            Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)a.u0));
+        result = 0;
+        Add(ref result, 1) = 0;
+        Add(ref result, 2) = 0;
+        Add(ref result, 3) = (ulong)selected << 56;
 
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
     }
 
 #if !ZK_EVM
@@ -186,7 +206,7 @@ public static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume<LowGasCost>(ref gas);
@@ -212,20 +232,60 @@ public static partial class EvmInstructions
         // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
         sbyte sign = (sbyte)Add(ref bytesRef, position);
 
-#if ZK_EVM
-        // No hardware SIMD in the guest: a 32-element Vector256 fallback would cost more than the copy.
-        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
-        (sign >= 0 ? BytesZero32 : BytesMax32).AsSpan(0, position).CopyTo(bytes[..position]);
-#else
-        // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
-        // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
-        // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
-        // single load, so nothing here depends on `position` being a constant.
-        EvmWord fill = Vector256.Create((byte)(sign >> 7));
-        EvmWord mask = Vector256.LoadUnsafe(
-            ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
-        Vector256.ConditionalSelect(mask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+#if !ZK_EVM
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
+            // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
+            // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
+            // single load, so nothing here depends on `position` being a constant.
+            EvmWord fill = Vector256.Create((byte)(sign >> 7));
+            EvmWord prefixMask = Vector256.LoadUnsafe(
+                ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
+            Vector256.ConditionalSelect(prefixMask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+            return EvmExceptionType.None;
+        }
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            ref byte maskRef = ref Add(
+                ref MemoryMarshal.GetReference(SignExtendPrefixMask), EvmStack.WordSize - position);
+            Vector128<byte> fill = Vector128.Create((byte)(sign >> 7));
+            Vector128<byte> prefixMask = Vector128.LoadUnsafe(ref maskRef);
+            Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+            prefixMask = Vector128.LoadUnsafe(ref maskRef, (nuint)Vector128<byte>.Count);
+            Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count))
+                .StoreUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count);
+            return EvmExceptionType.None;
+        }
 #endif
+
+        ref ulong word = ref As<byte, ulong>(ref bytesRef);
+        ulong fillWord = (ulong)(long)(sign >> 7);
+        int wordIndex = position >> 3;
+        switch (wordIndex)
+        {
+            case 3:
+                word = fillWord;
+                Add(ref word, 1) = fillWord;
+                Add(ref word, 2) = fillWord;
+                break;
+            case 2:
+                word = fillWord;
+                Add(ref word, 1) = fillWord;
+                break;
+            case 1:
+                word = fillWord;
+                break;
+        }
+
+        int precedingBytes = position & (sizeof(ulong) - 1);
+        if (precedingBytes != 0)
+        {
+            ulong mask = (1UL << (precedingBytes * 8)) - 1;
+            ref ulong partialWord = ref Add(ref word, wordIndex);
+            partialWord ^= (partialWord ^ fillWord) & mask;
+        }
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
