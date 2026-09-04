@@ -122,11 +122,6 @@ namespace Nethermind.Core.Extensions
         /// either collapses a 14-bit bucket window to 2048-2679 distinct values on 4096 samples, the
         /// same failure the AES path documents at <see cref="FastHash64For20Bytes"/>. A second multiply
         /// buys nothing further, and <c>GuestMixerTests</c> covers every aligned offset.
-        /// <para>
-        /// The multiply stays against the <c>Lane0</c> literal rather than a frozen-array element:
-        /// measured at +197,621 guest steps (+0.04 %) on block 25532382, so the load costs more here
-        /// than the constant materialization it replaces elsewhere.
-        /// </para>
         /// </remarks>
         /// <param name="mixed">The combined lane products.</param>
         /// <param name="domain">

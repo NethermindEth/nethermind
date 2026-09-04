@@ -404,7 +404,6 @@ public sealed partial class KeccakHash
         // no such guarantee, hence ReadUnaligned, which costs nothing (riscv64 emits a plain ld for
         // both spellings, and every rate block starts on a multiple of eight anyway). The lanes are
         // spelled out as read-xor-write rather than `^=` for the reason given at the unrolled loop
-        // below: a compound assignment captures the element address in a temp and blocks folding.
         if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
         {
             ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);

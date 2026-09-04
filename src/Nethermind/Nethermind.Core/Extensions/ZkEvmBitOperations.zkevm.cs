@@ -21,13 +21,8 @@ namespace Nethermind.Core.Extensions;
 /// </remarks>
 public static partial class ZkEvmBitOperations
 {
-    // xxHash64 prime — good avalanche when folded against the high bits. Frozen-array load, not a
-    // literal: the riscv64 backend materializes 64-bit constants with five-instruction sequences.
     private static readonly ulong[] PrimeConstant = [0xD6E8FEB86659FD93UL];
 
-    // The swap masks live in a frozen array: as literals, the riscv64 backend materializes each
-    // 64-bit constant with a five-instruction sequence at every inlined use, which the profile shows
-    // on every stack word swap. An element load is two instructions and cannot be folded back.
     private static readonly ulong[] SwapMasks = [0x00FF00FF00FF00FFUL, 0x0000FFFF0000FFFFUL];
 
     // RISC-V has no byte-swap instruction; this all-64-bit form beats the BCL's ReverseEndianness.
