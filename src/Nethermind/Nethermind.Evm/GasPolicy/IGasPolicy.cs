@@ -157,7 +157,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <remarks>
     /// Implements the EIP-8037 <c>d = min(state_gas_reservoir, state_gas_from_gas_left)</c> merge step.
     /// Policies that retain total spill separately record <c>d</c> as repaid spill instead of reducing that total.
-    /// After this returns, a positive reservoir cannot coexist with outstanding spill.
+    /// Policies that implement this step leave either the reservoir or the outstanding spill exhausted.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RepayStateGasSpill(ref TSelf gas) { }
