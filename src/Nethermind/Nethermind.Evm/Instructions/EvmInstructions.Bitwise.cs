@@ -22,11 +22,26 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void WriteSmallWordToSlot(ref byte slot, ulong value)
     {
-        ref ulong parts = ref As<byte, ulong>(ref slot);
-        parts = 0;
-        Add(ref parts, 1) = 0;
-        Add(ref parts, 2) = 0;
-        Add(ref parts, 3) = BinaryPrimitives.ReverseEndianness(value);
+        // Clearing the slot at the widest store the target has, then overwriting the last limb, costs
+        // fewer stores than writing four limbs and leaves the value's own store independent of them.
+        if (Vector256.IsHardwareAccelerated)
+        {
+            EvmWord.Zero.StoreUnsafe(ref slot);
+        }
+        else if (Vector128.IsHardwareAccelerated)
+        {
+            Vector128<byte>.Zero.StoreUnsafe(ref slot);
+            Vector128<byte>.Zero.StoreUnsafe(ref slot, (nuint)Vector128<byte>.Count);
+        }
+        else
+        {
+            ref ulong parts = ref As<byte, ulong>(ref slot);
+            parts = 0;
+            Add(ref parts, 1) = 0;
+            Add(ref parts, 2) = 0;
+        }
+
+        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), BinaryPrimitives.ReverseEndianness(value));
     }
 
     /// <summary>
