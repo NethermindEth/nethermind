@@ -29,6 +29,7 @@ namespace Nethermind.Evm.Benchmark
     {
         private const int CallCount = 64;
         private const int LoopIterations = 1_000;
+        private const int WarmupTransactions = 100_000;
 
         private static readonly Address _calleeAddress = new("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
@@ -57,6 +58,13 @@ namespace Nethermind.Evm.Benchmark
 
             _computeLoopCode = new CodeInfo(BuildComputeLoopCode());
             _nestedCallsCode = new CodeInfo(BuildNestedCallsCode());
+
+            // Opcode tables periodically recapture promoted handler entry points. Complete that process before
+            // measurement so a benchmark iteration cannot mix tier-0 and tier-1 dispatch tables.
+            for (int i = 0; i < WarmupTransactions; i++)
+            {
+                Execute(_computeLoopCode, gasLimit: 10_000_000);
+            }
         }
 
         [GlobalCleanup]
