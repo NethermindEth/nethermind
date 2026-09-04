@@ -29,6 +29,8 @@ public class FrameTxDecoderTests
     private const int BlobVersionedHashesDecodeCap = ShardBlobNetworkWrapperRlp.BlobCountLimit;
     private const int SignaturesDecodeCap = 1024;
     private const int FrameDataDecodeCap = 30 * 1024 * 1024;
+    // The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).
+    private const int ShortSequencePrefixMax = 0xf7;
 
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -522,6 +524,33 @@ public class FrameTxDecoderTests
         }
     }
 
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    public void Decode_DeclaredLengthOverrunsTheBuffer_ReportsTruncatedReferences(int overrun)
+    {
+        // Inflating the declared payload length without adding bytes leaves the end-of-payload checkpoint
+        // past the last real field, so the decoder enters the trailing recent-root-reference list and reads
+        // off the end of the buffer. That must surface as an RLP error naming the list, not as a bare
+        // IndexOutOfRangeException and not as a truncated signature — a frame transaction has no envelope
+        // signature to truncate.
+        byte[] payload = EncodeConsensusPayload(CreateFrameTx());
+        // Byte 0 is the transaction type, byte 1 the payload sequence prefix.
+        Assert.That(payload[1] + overrun, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
+            "the overrun must keep the short-form prefix, or it declares a length of length instead");
+        payload[1] += (byte)overrun;
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+            .With.Message.Contains("RLP data is truncated").And.Message.Contains("recent root reference"));
+    }
+
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(tx, rlpBehaviors)];
@@ -531,13 +560,15 @@ public class FrameTxDecoderTests
         return _txDecoder.Decode(ref reader, rlpBehaviors)!;
     }
 
-    private static Hash256 ConsensusHash(Transaction tx)
+    // The consensus form ignores any network wrapper: keccak(type || rlp(tx_payload_body)).
+    private static Hash256 ConsensusHash(Transaction tx) => Keccak.Compute(EncodeConsensusPayload(tx));
+
+    private static byte[] EncodeConsensusPayload(Transaction tx)
     {
-        // The consensus form ignores any network wrapper: keccak(type || rlp(tx_payload_body)).
         byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
         RlpWriter writer = new(bytes);
         _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
-        return Keccak.Compute(bytes);
+        return bytes;
     }
 
     private static Transaction CreateBlobCarryingFrameTx(ProofVersion version, int blobCount)

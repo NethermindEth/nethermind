@@ -101,15 +101,27 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         return new Hash256(hash.GenerateValueHash());
     }
 
+    /// <inheritdoc/>
+    /// <remarks>A frame transaction carries no envelope signature, so its trailing element is EIP-8272's
+    /// recent-root-reference list. An overlong declared payload length leaves the end-of-payload checkpoint
+    /// past the last real field, so the list is read off the end of the buffer; that is reported as a
+    /// truncation naming the list rather than as a bare index-out-of-range.</remarks>
     protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
-        if (!decoderContext.IsSequenceNext())
+        try
         {
-            ThrowTrailingSignature();
-        }
+            if (!decoderContext.IsSequenceNext())
+            {
+                ThrowTrailingSignature();
+            }
 
-        transaction.RecentRootReferences = decoderContext.DecodeNonNullArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
-        transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
+            transaction.RecentRootReferences = decoderContext.DecodeNonNullArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+            transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            ThrowTruncatedReferences(e);
+        }
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
@@ -281,6 +293,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTruncatedReferences(Exception inner) =>
+        throw new RlpException("RLP data is truncated: frame transaction recent root reference list is incomplete.", inner);
 }
 
 /// <summary>
