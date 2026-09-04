@@ -13,6 +13,8 @@ namespace Nethermind.Core.Extensions
         private const ulong AesHashSeed1 = 0xBB67AE8584CAA73BUL;
         private const ulong AesHash20Seed0 = 0x510E527FADE682D1UL;
         private const ulong AesHash20Seed1 = 0x9B05688C2B3E6C1FUL;
+        private const ulong AesHashPairSeed0 = 0xCBBB9D5DC1059ED8UL;
+        private const ulong AesHashPairSeed1 = 0x629A292A367CD507UL;
         private const ulong AesHash32Seed0 = 0x1F83D9ABFB41BD6BUL;
         private const ulong AesHash32Seed1 = 0x5BE0CD19137E2179UL;
         private const ulong AesHashFinalSeed0 = 0x3C6EF372FE94F82BUL;
@@ -52,14 +54,14 @@ namespace Nethermind.Core.Extensions
         private static ulong SeededLane(ulong lane, int width) =>
             lane ^ ((ulong)ComputeSeed(width) << 1);
 
-        private static readonly ulong AddrLane0 = SeededLane(Lane0, Address.Size);
-        private static readonly ulong AddrLane1 = SeededLane(Lane1, Address.Size);
-        private static readonly ulong AddrLane2 = SeededLane(Lane2, Address.Size);
+        // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
+        // constant with a five-instruction sequence at every use, and an array element - unlike a
+        // static readonly primitive - cannot be folded back into one.
+        private static readonly ulong[] AddrLanes =
+            [SeededLane(Lane0, Address.Size), SeededLane(Lane1, Address.Size), SeededLane(Lane2, Address.Size)];
 
-        private static readonly ulong WordLane0 = SeededLane(Lane0, WordWidth);
-        private static readonly ulong WordLane1 = SeededLane(Lane1, WordWidth);
-        private static readonly ulong WordLane2 = SeededLane(Lane2, WordWidth);
-        private static readonly ulong WordLane3 = SeededLane(Lane3, WordWidth);
+        private static readonly ulong[] WordLanes =
+            [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
@@ -84,11 +86,15 @@ namespace Nethermind.Core.Extensions
 
         /// <summary>Mixes the twenty bytes of an address into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MixAddress(ref byte b) => Finish(
-            Unsafe.ReadUnaligned<ulong>(ref b) * AddrLane0 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * AddrLane1 ^
-            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * AddrLane2,
-            AddrLane0);
+        private static ulong MixAddress(ref byte b)
+        {
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes);
+            return Finish(
+                Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2),
+                lanes);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long FastHash64For32BytesFallback(ref byte start)
@@ -96,12 +102,16 @@ namespace Nethermind.Core.Extensions
 
         /// <summary>Mixes thirty-two bytes into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong Mix32(ref byte b) => Finish(
-            Unsafe.ReadUnaligned<ulong>(ref b) * WordLane0 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * WordLane1 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * WordLane2 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * WordLane3,
-            WordLane0);
+        private static ulong Mix32(ref byte b)
+        {
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes);
+            return Finish(
+                Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2) ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Unsafe.Add(ref lanes, 3),
+                lanes);
+        }
 
         /// <summary>Finishes a lane combination into a well-distributed 64-bit value.</summary>
         /// <remarks>
