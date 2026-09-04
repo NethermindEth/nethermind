@@ -33,6 +33,11 @@ jobs:
         run: |
           set -uo pipefail
           df -h /
+          echo "== top-level consumers on / =="
+          du -xsh /* 2>/dev/null | sort -rh | head -20
+          echo "== containerd store =="
+          du -xsh /var/lib/containerd 2>/dev/null || true
+          ctr --namespace moby images ls 2>/dev/null | head -20 || true
           docker system df || true
           du -xsh /root/actions-runner/_diag /root/actions-runner/_work /tmp /var/lib/docker 2>/dev/null | sort -rh || true
 
