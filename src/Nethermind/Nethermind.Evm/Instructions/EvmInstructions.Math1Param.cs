@@ -218,20 +218,60 @@ public static partial class EvmInstructions
         // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
         sbyte sign = (sbyte)Add(ref bytesRef, position);
 
-#if ZK_EVM
-        // No hardware SIMD in the guest: a 32-element Vector256 fallback would cost more than the copy.
-        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
-        (sign >= 0 ? BytesZero32 : BytesMax32).AsSpan(0, position).CopyTo(bytes[..position]);
-#else
-        // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
-        // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
-        // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
-        // single load, so nothing here depends on `position` being a constant.
-        EvmWord fill = Vector256.Create((byte)(sign >> 7));
-        EvmWord mask = Vector256.LoadUnsafe(
-            ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
-        Vector256.ConditionalSelect(mask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+#if !ZK_EVM
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
+            // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
+            // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
+            // single load, so nothing here depends on `position` being a constant.
+            EvmWord fill = Vector256.Create((byte)(sign >> 7));
+            EvmWord prefixMask = Vector256.LoadUnsafe(
+                ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
+            Vector256.ConditionalSelect(prefixMask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+            return EvmExceptionType.None;
+        }
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            ref byte maskRef = ref Add(
+                ref MemoryMarshal.GetReference(SignExtendPrefixMask), EvmStack.WordSize - position);
+            Vector128<byte> fill = Vector128.Create((byte)(sign >> 7));
+            Vector128<byte> prefixMask = Vector128.LoadUnsafe(ref maskRef);
+            Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+            prefixMask = Vector128.LoadUnsafe(ref maskRef, (nuint)Vector128<byte>.Count);
+            Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count))
+                .StoreUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count);
+            return EvmExceptionType.None;
+        }
 #endif
+
+        ref ulong word = ref As<byte, ulong>(ref bytesRef);
+        ulong fillWord = (ulong)(long)(sign >> 7);
+        int wordIndex = position >> 3;
+        switch (wordIndex)
+        {
+            case 3:
+                word = fillWord;
+                Add(ref word, 1) = fillWord;
+                Add(ref word, 2) = fillWord;
+                break;
+            case 2:
+                word = fillWord;
+                Add(ref word, 1) = fillWord;
+                break;
+            case 1:
+                word = fillWord;
+                break;
+        }
+
+        int precedingBytes = position & (sizeof(ulong) - 1);
+        if (precedingBytes != 0)
+        {
+            ulong mask = (1UL << (precedingBytes * 8)) - 1;
+            ref ulong partialWord = ref Add(ref word, wordIndex);
+            partialWord ^= (partialWord ^ fillWord) & mask;
+        }
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
