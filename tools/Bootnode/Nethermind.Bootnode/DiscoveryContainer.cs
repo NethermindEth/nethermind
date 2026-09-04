@@ -49,6 +49,8 @@ internal static class DiscoveryContainer
         BootnodeKademliaBucketRegistry bucketRegistry,
         CancellationToken cancellationToken)
     {
+        ConfigureNetworkBuffers();
+
         NetworkConfig networkConfig = new()
         {
             DiscoveryPort = options.DiscoveryPort,

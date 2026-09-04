@@ -33,6 +33,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     where TKadKey : notnull
 {
     private static readonly TimeSpan MinimumIterationDuration = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan OccupancyCacheDuration = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Longest interval used while a healthy routing table is still admitting nodes.
@@ -214,7 +215,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             long timestamp = _timeProvider.GetTimestamp();
             // Coalesce discovery jobs because GetOccupancy may walk the full table under its mutation lock.
             if (_hasCachedOccupancy &&
-                _timeProvider.GetElapsedTime(_lastOccupancyTimestamp, timestamp) < MinimumIterationDuration)
+                _timeProvider.GetElapsedTime(_lastOccupancyTimestamp, timestamp) < OccupancyCacheDuration)
             {
                 return _cachedUnderfilled;
             }

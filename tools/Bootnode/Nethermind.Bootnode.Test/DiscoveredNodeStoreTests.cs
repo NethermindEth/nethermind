@@ -59,6 +59,23 @@ public class DiscoveredNodeStoreTests
         }
     }
 
+    [TestCase("127.0.0.1")]
+    [TestCase("::ffff:127.0.0.1")]
+    [TestCase("2001:db8::1")]
+    public void Node_dto_host_matches_node_host(string address)
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node node = Node.FromDiscoveryEndpoint(
+            privateKey.PublicKey,
+            new IPEndPoint(IPAddress.Parse(address), 30303));
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(node, "discv4", isActive: true);
+
+        Assert.That(store.GetActiveNodes().Single().Host, Is.EqualTo(node.Host));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Retention_limit_prunes_inactive_nodes_before_active_nodes(bool deactivateAfterAdd)
@@ -175,6 +192,43 @@ public class DiscoveredNodeStoreTests
         GC.KeepAlive(store);
     }
 
+    [TestCase(1ul)]
+    [TestCase(2ul)]
+    public void Lower_or_equal_enr_sequence_does_not_replace_retained_enr(ulong candidateSequence)
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node original = CreateNodeWithEnr(privateKey, sequence: 2, udpPort: 30303);
+        Node candidate = CreateNodeWithEnr(privateKey, candidateSequence, udpPort: 30304);
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(original, "discv5", isActive: true);
+        store.AddOrUpdate(candidate, "discv5", isActive: true);
+
+        NodeDto retainedNode = store.GetAllNodes().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(candidate.Enr!.ToString(), Is.Not.EqualTo(original.Enr!.ToString()));
+            Assert.That(retainedNode.Enr, Is.EqualTo(original.Enr.ToString()));
+        }
+    }
+
+    [Test]
+    public void Unsigned_enr_is_not_retained()
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node node = new(privateKey.PublicKey, "127.0.0.1", 30303)
+        {
+            Enr = new NodeRecord()
+        };
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(node, "discv5", isActive: true);
+
+        Assert.That(store.GetAllNodes().Single().Enr, Is.Null);
+    }
+
     [Test]
     public void Removing_one_protocol_keeps_node_active_on_the_other_protocol()
     {
@@ -230,6 +284,17 @@ public class DiscoveredNodeStoreTests
 
     private static Node CreateNode(PrivateKey privateKey, int port) =>
         new(privateKey.PublicKey, "127.0.0.1", port);
+
+    private static Node CreateNodeWithEnr(PrivateKey privateKey, ulong sequence, int udpPort)
+    {
+        NodeRecord nodeRecord = new() { EnrSequence = sequence };
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        nodeRecord.SetEntry(new UdpEntry(udpPort));
+        new NodeRecordSigner(new Ecdsa(), privateKey).Sign(nodeRecord);
+        Node node = CreateNode(privateKey, udpPort);
+        node.SetVerifiedEnr(nodeRecord);
+        return node;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (WeakReference<Node>, WeakReference<NodeRecord>, string) AddNodeWithEnr(DiscoveredNodeStore store)

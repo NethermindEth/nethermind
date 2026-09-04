@@ -238,7 +238,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         ProcessExitSource processExitSource = new(shutdownSource.Token);
 
         BootnodeKademliaBucketRegistry bucketRegistry = new();
-        DiscoveryContainer.ConfigureNetworkBuffers();
         await using IContainer container = await DiscoveryContainer.BuildAsync(options, logManager, nodeKey, processExitSource, bucketRegistry, shutdownSource.Token);
         IDiscoveryApp discoveryApp = container.Resolve<IDiscoveryApp>();
         BootnodeDiscoverySource[] discoverySources = ResolveDiscoverySources(container, options.DiscoveryVersion);
