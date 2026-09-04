@@ -45,8 +45,17 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
     }
 
-    protected virtual void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
-        transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
+    protected virtual void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        try
+        {
+            transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
+        }
+    }
 
     protected static void CalculateHash(Transaction transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext)
     {
