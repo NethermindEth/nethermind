@@ -25,7 +25,7 @@ internal static class FrameTxPayerResolver
         // would wrongly report code on it.
         bool senderHasCode = !senderAccount.IsNull && senderAccount.HasCode;
 
-        int index = PrefixVerifyIndex(frames);
+        int index = FrameTxValidation.ApprovalSearchStart(frames);
 
         // Re-checked here, though FrameTxPayerlessFilter already rejects these, so a direct caller still gets NoPayer.
         if (IsStructurallyPayerless(frames, sender, index))
@@ -74,7 +74,7 @@ internal static class FrameTxPayerResolver
             return false;
         }
 
-        return IsStructurallyPayerless(frames, sender, PrefixVerifyIndex(frames));
+        return IsStructurallyPayerless(frames, sender, FrameTxValidation.ApprovalSearchStart(frames));
     }
 
     /// <summary>Structural NoPayer decision over a prefix whose optional leading expiry and deploy frames are already skipped to <paramref name="index"/>.</summary>
@@ -83,18 +83,6 @@ internal static class FrameTxPayerResolver
         index >= frames.Length
         || (FrameTxValidation.IsOnlyVerifyFrame(frames[index], sender) && index + 1 >= frames.Length);
 
-    /// <summary>The index of the VERIFY frame that names the payer, skipping an optional leading expiry_verify and deploy frame.</summary>
-    /// <remarks>The same prefix grammar <see cref="FrameTxValidation.ValidationWorkGas"/> prices admission against, so the two cannot drift.</remarks>
-    private static int PrefixVerifyIndex(TxFrame[] frames)
-    {
-        int index = FrameTxValidation.IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
-        if (index < frames.Length && FrameTxValidation.IsDeployFrame(frames[index]))
-        {
-            index++;
-        }
-
-        return index;
-    }
 
     /// <summary>Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature by the sender.</summary>
     /// <remarks>Cryptographic verification is a separate upstream gate.</remarks>

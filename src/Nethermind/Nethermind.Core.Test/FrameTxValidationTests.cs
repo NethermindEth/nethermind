@@ -247,6 +247,75 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModeSender, target: TestItem.AddressB), ExpiryFrame()], null);
     }
 
+    private static IEnumerable<TestCaseData> PrefixWalkCases()
+    {
+        static TestCaseData Walk(string name, TxFrame[] frames, bool boundaryFound, Address? paymaster, ulong workGas) =>
+            new TestCaseData(frames, boundaryFound, paymaster, workGas).SetName($"PrefixWalks_{name}");
+
+        // Frame gas limits are distinct powers of two, so the summed validation work names exactly which
+        // frames the recognized-prefix walk counted.
+        static TxFrame At(byte mode, byte flags, Address? target, ulong gas) =>
+            new(mode, flags, target, gas, UInt256.Zero, default);
+
+        Address sponsor = TestItem.AddressC;
+
+        // All three agree: a recognized prefix, its approving frame, and its priced length.
+        yield return Walk("SelfRelay_AllThreeAgree",
+            [At(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 1), At(TxFrame.ModeSender, 0, TestItem.AddressB, 2)],
+            true, null, 1);
+        yield return Walk("CanonicalPaymasterBehindADeploy_AllThreeAgree",
+            [ExpiryFrame(1), At(TxFrame.ModeDefault, 0, TestItem.AddressD, 2), At(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 4),
+             At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 8), At(TxFrame.ModeSender, 0, TestItem.AddressB, 16)],
+            true, sponsor, 15);
+
+        // No frame may approve payment at all, so there is no boundary for a trailing VERIFY frame to sit behind.
+        yield return Walk("NoApprovingFrame_NoBoundaryToSitBehind",
+            [At(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 1), At(TxFrame.ModeSender, 0, TestItem.AddressB, 2)],
+            false, null, 3);
+        yield return Walk("LoneDeployFrame_NoBoundaryToSitBehind",
+            [At(TxFrame.ModeDefault, 0, TestItem.AddressD, 1)],
+            false, null, 1);
+
+        // An extra leading VERIFY frame: the boundary and the payer still agree, the grammar no longer matches.
+        yield return Walk("ExtraLeadingVerifyFrame_GrammarAloneDiverges",
+            [At(TxFrame.ModeVerify, 0, TestItem.AddressD, 1), At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 2), At(TxFrame.ModeSender, 0, TestItem.AddressB, 4)],
+            true, sponsor, 7);
+        yield return Walk("CheckBetweenOnlyVerifyAndPay_GrammarAloneDiverges",
+            [At(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 1), At(TxFrame.ModeVerify, 0, TestItem.AddressD, 2),
+             At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 4), At(TxFrame.ModeSender, 0, TestItem.AddressB, 8)],
+            true, sponsor, 15);
+
+        // A non-VERIFY approving frame ends the payer walk but must still bound the VERIFY-behind-prefix scan.
+        yield return Walk("ApprovingDefaultFrame_OnlyTheBoundaryWalkFindsIt",
+            [At(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsor, 1), At(TxFrame.ModeSender, 0, TestItem.AddressB, 2)],
+            true, null, 3);
+        yield return Walk("PayFrameBehindASenderFrame_OnlyTheBoundaryWalkFindsIt",
+            [At(TxFrame.ModeSender, 0, TestItem.AddressB, 1), At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 2)],
+            true, null, 3);
+        yield return Walk("ApprovingDefaultBehindADeploy_OnlyTheBoundaryWalkFindsIt",
+            [At(TxFrame.ModeDefault, 0, TestItem.AddressD, 1), At(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, null, 2),
+             At(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 4)],
+            true, null, 7);
+    }
+
+    /// <summary>The three prefix walks answer different questions and are meant to disagree; a consolidation
+    /// that aligned any two of them would break a case here.</summary>
+    [TestCaseSource(nameof(PrefixWalkCases))]
+    public void PrefixWalks_AnswerTheirOwnQuestionsIndependently(TxFrame[] frames, bool boundaryFound, Address? paymaster, ulong workGas)
+    {
+        Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
+        // A trailing VERIFY frame is rejected only when the boundary walk found somewhere for it to sit behind.
+        Transaction probed = CreateValidFrameTx(t => t.Frames = [.. frames, Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApproveExecution)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.IsWellFormed(tx, postTxEnabled: true, out string? error), Is.True, error);
+            Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(probed), Is.EqualTo(boundaryFound));
+            Assert.That(FrameTxValidation.GetPrefixPaymaster(tx), Is.EqualTo(paymaster));
+            Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(workGas));
+        }
+    }
+
     private static TestCaseData Case(string name, Action<Transaction> mutate, string? expectedError) =>
         new TestCaseData(mutate, expectedError).SetName($"IsWellFormed_{name}");
 
@@ -268,8 +337,8 @@ public class FrameTxValidationTests
 
     private static TxFrame DefaultModeFrame() => Frame();
 
-    private static TxFrame ExpiryFrame() =>
-        new(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength]);
+    private static TxFrame ExpiryFrame(ulong gasLimit = 30_000) =>
+        new(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength]);
 
     private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 50_000, UInt256 value = default, byte[]? data = null) =>
         new(mode, flags, target, gasLimit, value, data ?? Array.Empty<byte>());

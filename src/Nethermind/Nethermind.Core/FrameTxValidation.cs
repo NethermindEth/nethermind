@@ -328,6 +328,8 @@ public static class FrameTxValidation
     /// validated, invalidating the whole transaction. The bound is taken at the first frame permitted to approve
     /// payment, at or before the frame that actually installs the payer, so it errs towards refusing a layout whose
     /// approving frame would not have installed one rather than admitting a frame behind the real prefix.
+    /// Deliberately not restricted to the leading VERIFY run <see cref="GetPrefixPaymaster"/> walks: an approving
+    /// DEFAULT frame, or one behind a SENDER frame, must still bound this scan even though no payer resolves there.
     /// </remarks>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
     {
@@ -398,11 +400,7 @@ public static class FrameTxValidation
             return transaction.PersistedPaymaster;
         }
 
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
-        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
-
-        for (int i = next; i < frames.Length; i++)
+        for (int i = ApprovalSearchStart(frames); i < frames.Length; i++)
         {
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
             if (frames[i].Mode != TxFrame.ModeVerify) break;
@@ -415,15 +413,25 @@ public static class FrameTxValidation
         return null;
     }
 
+    /// <summary>Where a search for a validation prefix's approving frame starts: past the optional leading
+    /// expiry-verify and deploy frames, neither of which may carry approval scope.</summary>
+    /// <remarks>A lower bound only — the frame at this index need not approve either. Shared by the three walks
+    /// that scan for the approving frame; the prefix simulation asks the same rule positionally and keeps its form.</remarks>
+    public static int ApprovalSearchStart(TxFrame[] frames)
+    {
+        int next = 0;
+        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
+        return next;
+    }
+
     /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>
     private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
     {
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
-        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
+        int next = ApprovalSearchStart(frames);
 
         if (next < frames.Length && IsSelfVerifyFrame(frames[next], sender))
         {
