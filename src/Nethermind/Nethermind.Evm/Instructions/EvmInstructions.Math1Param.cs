@@ -161,8 +161,8 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
-        if (!isValid) return EvmExceptionType.StackUnderflow;
+        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong result = ref As<byte, ulong>(ref topRef);
         ref ulong position = ref Add(ref result, EvmStack.WordSize / sizeof(ulong));
