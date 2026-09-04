@@ -71,6 +71,12 @@ public static partial class EvmInstructions
     internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
     {
+        if (!Vector128.IsHardwareAccelerated &&
+            (typeof(TOpBitwise) == typeof(OpBitwiseAnd) ||
+             typeof(TOpBitwise) == typeof(OpBitwiseOr) ||
+             typeof(TOpBitwise) == typeof(OpBitwiseXor)))
+            return BitwiseScalar<TOpBitwise>(ref stack);
+
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
@@ -89,6 +95,45 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType BitwiseScalar<TOpBitwise>(ref EvmStack stack)
+        where TOpBitwise : struct, IOpBitwise
+    {
+        ref byte aBytes = ref stack.PopBytesByRef();
+        if (IsNullRef(ref aBytes))
+            return EvmExceptionType.StackUnderflow;
+
+        ref byte bBytes = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bBytes))
+            return EvmExceptionType.StackUnderflow;
+
+        ref ulong a = ref As<byte, ulong>(ref aBytes);
+        ref ulong b = ref As<byte, ulong>(ref bBytes);
+        if (typeof(TOpBitwise) == typeof(OpBitwiseAnd))
+        {
+            b &= a;
+            Add(ref b, 1) &= Add(ref a, 1);
+            Add(ref b, 2) &= Add(ref a, 2);
+            Add(ref b, 3) &= Add(ref a, 3);
+        }
+        else if (typeof(TOpBitwise) == typeof(OpBitwiseOr))
+        {
+            b |= a;
+            Add(ref b, 1) |= Add(ref a, 1);
+            Add(ref b, 2) |= Add(ref a, 2);
+            Add(ref b, 3) |= Add(ref a, 3);
+        }
+        else
+        {
+            b ^= a;
+            Add(ref b, 1) ^= Add(ref a, 1);
+            Add(ref b, 2) ^= Add(ref a, 2);
+            Add(ref b, 3) ^= Add(ref a, 3);
+        }
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
