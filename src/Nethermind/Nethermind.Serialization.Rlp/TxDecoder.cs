@@ -18,8 +18,6 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 
     private TxDecoder(Func<Transaction> transactionFactory) : base(transactionFactory) { }
 
-    // Nothing here may touch Rlp: Rlp's own initializer builds decoders that read Instance, so a call back
-    // into Rlp deadlocks the two initializers against each other. Rlp registers this decoder itself.
     static TxDecoder()
     {
         TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
