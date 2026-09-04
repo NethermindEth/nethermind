@@ -73,7 +73,12 @@ public class DiscoveredNodeStoreTests
 
         store.AddOrUpdate(node, "discv4", isActive: true);
 
-        Assert.That(store.GetActiveNodes().Single().Host, Is.EqualTo(node.Host));
+        NodeDto[] activeNodes = store.GetActiveNodes();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(activeNodes, Has.Length.EqualTo(1));
+            Assert.That(activeNodes[0].Host, Is.EqualTo(node.Host));
+        }
     }
 
     [TestCase(false)]
@@ -192,9 +197,10 @@ public class DiscoveredNodeStoreTests
         GC.KeepAlive(store);
     }
 
-    [TestCase(1ul)]
-    [TestCase(2ul)]
-    public void Lower_or_equal_enr_sequence_does_not_replace_retained_enr(ulong candidateSequence)
+    [TestCase(1ul, false)]
+    [TestCase(2ul, false)]
+    [TestCase(3ul, true)]
+    public void Enr_sequence_controls_retained_enr_replacement(ulong candidateSequence, bool shouldReplace)
     {
         using PrivateKeyGenerator generator = new();
         using PrivateKey privateKey = generator.Generate();
@@ -205,11 +211,13 @@ public class DiscoveredNodeStoreTests
         store.AddOrUpdate(original, "discv5", isActive: true);
         store.AddOrUpdate(candidate, "discv5", isActive: true);
 
-        NodeDto retainedNode = store.GetAllNodes().Single();
+        NodeDto[] retainedNodes = store.GetAllNodes();
+        NodeRecord expected = shouldReplace ? candidate.Enr! : original.Enr!;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(retainedNodes, Has.Length.EqualTo(1));
             Assert.That(candidate.Enr!.ToString(), Is.Not.EqualTo(original.Enr!.ToString()));
-            Assert.That(retainedNode.Enr, Is.EqualTo(original.Enr.ToString()));
+            Assert.That(retainedNodes[0].Enr, Is.EqualTo(expected.ToString()));
         }
     }
 
@@ -226,7 +234,12 @@ public class DiscoveredNodeStoreTests
 
         store.AddOrUpdate(node, "discv5", isActive: true);
 
-        Assert.That(store.GetAllNodes().Single().Enr, Is.Null);
+        NodeDto[] retainedNodes = store.GetAllNodes();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedNodes, Has.Length.EqualTo(1));
+            Assert.That(retainedNodes[0].Enr, Is.Null);
+        }
     }
 
     [Test]
