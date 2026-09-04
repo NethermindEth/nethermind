@@ -69,7 +69,12 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
-        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
+        // ADD and SUB run on the stack's own big-endian limbs on every target. Going through UInt256
+        // costs three full-word endianness conversions around a vectorised carry chain that, on the
+        // 256-bit path, also has a data-dependent branch and a table lookup for the carry fix-up.
+        // Swapping each limb as it is read is cheaper than converting the words, and the carry chain
+        // is four dependent adds either way.
+        if (typeof(TOpMath) == typeof(OpAdd))
         {
             if (!stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte addTopRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -93,7 +98,7 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpSub))
+        if (typeof(TOpMath) == typeof(OpSub))
         {
             if (!stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte subtractTopRef = ref stack.Pop1Peek32BytesUnchecked();
