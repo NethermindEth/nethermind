@@ -30,8 +30,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly RlpLimit ReferencesCountLimit = RlpLimit.For<Transaction>(Eip8272Constants.MaxRecentRootReferences, nameof(Transaction.RecentRootReferences));
 
-    private static readonly byte[][] EmptyVersionedHashes = [];
-
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -110,7 +108,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             ThrowTrailingSignature();
         }
 
-        transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+        transaction.RecentRootReferences = decoderContext.DecodeNonNullArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
         transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
     }
 
@@ -122,8 +120,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress();
-        transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
-        transaction.FrameSignatures = decoderContext.DecodeArray(TxFrameSignatureDecoder.Instance, limit: SignaturesCountLimit);
+        transaction.Frames = decoderContext.DecodeNonNullArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
+        transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance, limit: SignaturesCountLimit);
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
@@ -213,11 +211,49 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         writer.Encode(transaction.GasPrice);
         writer.Encode(transaction.DecodedMaxFeePerGas);
         writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
-        writer.Encode(transaction.BlobVersionedHashes ?? EmptyVersionedHashes);
+        EncodeVersionedHashes(ref writer, transaction.BlobVersionedHashes);
         if (transaction.RecentRootReferences is { } references)
         {
             RecentRootReferenceDecoder.Instance.EncodeArray(ref writer, references);
         }
+    }
+
+    private static void EncodeVersionedHashes<TWriter>(ref TWriter writer, byte[]?[]? blobVersionedHashes)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        if (blobVersionedHashes is null)
+        {
+            writer.StartSequence(0);
+            return;
+        }
+
+        int contentLength = 0;
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            contentLength += Rlp.LengthOf(blobVersionedHashes[i] ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} contains a null versioned hash."));
+        }
+
+        writer.StartSequence(contentLength);
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            writer.Encode(blobVersionedHashes[i]!);
+        }
+    }
+
+    private static int GetVersionedHashesLength(byte[]?[]? blobVersionedHashes)
+    {
+        if (blobVersionedHashes is null)
+        {
+            return Rlp.LengthOfSequence(0);
+        }
+
+        int contentLength = 0;
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            contentLength += Rlp.LengthOf(blobVersionedHashes[i] ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} contains a null versioned hash."));
+        }
+
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static int GetFeesContentLength(Transaction transaction) =>
@@ -233,7 +269,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         + TxFrameDecoder.Instance.GetArrayLength(transaction.Frames)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
         + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
-        + Rlp.LengthOf(transaction.BlobVersionedHashes ?? EmptyVersionedHashes)
+        + GetVersionedHashesLength(transaction.BlobVersionedHashes)
         + (transaction.RecentRootReferences is { } references ? RecentRootReferenceDecoder.Instance.GetArrayLength(references) : 0);
 
     protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;

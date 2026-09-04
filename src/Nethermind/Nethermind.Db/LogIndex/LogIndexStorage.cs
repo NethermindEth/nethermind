@@ -332,7 +332,7 @@ namespace Nethermind.Db.LogIndex
             {
                 if (algoBytes.IsEmpty) // DB is empty
                 {
-                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
+                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgoName is not null && configAlgo is not null
                         ? KeyValuePair.Create(configAlgoName, configAlgo)
                         : CompressionAlgorithm.Best;
 
@@ -347,7 +347,7 @@ namespace Nethermind.Db.LogIndex
                 _metaDb.DangerousReleaseMemory(algoBytes);
             }
 
-            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm usedAlgo))
+            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm? usedAlgo))
             {
                 throw new NotSupportedException(
                     $"Used compression algorithm ({usedAlgoName}) is not supported on this platform. " +
@@ -563,7 +563,7 @@ namespace Nethermind.Db.LogIndex
 
                 foreach (TxReceipt receipt in receipts)
                 {
-                    if (receipt.Logs == null)
+                    if (receipt.Logs is null)
                         continue;
 
                     foreach (LogEntry log in receipt.Logs)

@@ -192,7 +192,7 @@ public class FrameTransactionForRpcTests
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":"0x0000000000000000000000000000000000000000000000000000000000000001","slot":"0x1","root":null}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceRoot_IsRejected")]
     public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
     {
-        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json)!;
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
 
@@ -366,7 +366,7 @@ public class FrameTransactionForRpcTests
             }
             """;
 
-        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
         Transaction tx = rpc.ToTransaction().Data!;
@@ -420,7 +420,7 @@ public class FrameTransactionForRpcTests
         if (throughJson)
         {
             EthereumJsonSerializer serializer = new();
-            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc));
+            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc))!;
         }
 
         TxReceipt roundTripped = receiptForRpc.ToReceipt();
@@ -523,7 +523,7 @@ public class FrameTransactionForRpcTests
     [Test]
     public void ReceiptForRpc_RejectsANullLogEntry()
     {
-        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""");
+        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""")!;
 
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }

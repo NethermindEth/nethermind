@@ -54,7 +54,7 @@ public class FrameTxReceiptDecoderTests
             encoder.EncodeToArrayPoolSpan([legacyReceipt, frameReceipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
         RlpReader ctx = new((System.ReadOnlySpan<byte>)rlp);
-        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage);
+        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage)!;
 
         Assert.That(decoded, Has.Length.EqualTo(2));
         Assert.That(decoded[0].Payer, Is.Null, "regular receipts carry no frame extension");
@@ -92,7 +92,7 @@ public class FrameTxReceiptDecoderTests
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
         RlpReader reader = new(encoded);
-        TxReceipt[] decoded = decoder.DecodeArray(ref reader, decodeBehaviors);
+        TxReceipt[] decoded = decoder.DecodeArray(ref reader, decodeBehaviors)!;
 
         Assert.That(decoded, Has.Length.EqualTo(3), "every receipt must decode, including the neighbour after the frame extension");
 
@@ -313,7 +313,7 @@ public class FrameTxReceiptDecoderTests
     {
         byte[] encoded = Bytes.FromHexString(compact ? OldSingleCompactHex : OldSingleNonCompactHex);
         RlpReader ctx = new(encoded);
-        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage);
+        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage)!;
 
         Assert.That(decoded, Has.Length.EqualTo(1));
         TxReceipt receipt = decoded[0];
@@ -334,7 +334,7 @@ public class FrameTxReceiptDecoderTests
     {
         byte[] encoded = Bytes.FromHexString(compact ? OldArrayCompactHex : OldArrayNonCompactHex);
         RlpReader ctx = new(encoded);
-        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage);
+        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage)!;
 
         Assert.That(decoded, Has.Length.EqualTo(3));
         Assert.That(decoded[0].Sender, Is.EqualTo(TestItem.AddressD), "leading regular receipt sender");

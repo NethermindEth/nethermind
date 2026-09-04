@@ -85,7 +85,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
@@ -413,7 +413,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Pop memory position and length for the return data.

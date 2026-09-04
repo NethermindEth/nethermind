@@ -193,7 +193,8 @@ public class NodeSourceTests
     public async Task DiscoverNodes_ShouldSkipRetainedEnrAfterNewerRecordWasObserved(CancellationToken token)
     {
         Node staleNode = CreateNode(1);
-        staleNode.ObserveEnrSequence(staleNode.Enr.EnrSequence + 1);
+        NodeRecord staleRecord = staleNode.Enr ?? throw new AssertionException("Expected the test node to contain an ENR.");
+        staleNode.ObserveEnrSequence(staleRecord.EnrSequence + 1);
         Node currentNode = CreateNode(2);
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         kademlia.IterateNodes().Returns([staleNode, currentNode]);
@@ -211,7 +212,7 @@ public class NodeSourceTests
     public async Task DiscoverNodes_ShouldPreserveProvenanceAndObservedSequence(bool isVerified, CancellationToken token)
     {
         Node discoveryNode = CreateNode(1);
-        NodeRecord record = discoveryNode.Enr;
+        NodeRecord record = discoveryNode.Enr ?? throw new AssertionException("Expected the test node to contain an ENR.");
         if (isVerified)
         {
             discoveryNode.SetVerifiedEnr(record);
