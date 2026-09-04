@@ -553,7 +553,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         UInt256 result = vm.WorldState.GetBalance(address);
-        return stack.PushUInt256<TTracingInst>(in result);
+        return PushBalance<TTracingInst>(ref stack, in result);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -580,8 +580,14 @@ public static partial class EvmInstructions
 
         // Get balance for currently executing account.
         UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
-        return stack.PushUInt256<TTracingInst>(in result);
+        return PushBalance<TTracingInst>(ref stack, in result);
     }
+
+    // Keep the 32-byte writer out of the already large state-access bodies.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static EvmExceptionType PushBalance<TTracingInst>(ref EvmStack stack, in UInt256 value)
+        where TTracingInst : struct, IFlag
+        => stack.PushUInt256<TTracingInst>(in value);
 
     /// <summary>
     /// Retrieves the code hash of an external account.
