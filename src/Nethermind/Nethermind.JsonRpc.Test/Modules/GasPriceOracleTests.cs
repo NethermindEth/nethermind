@@ -426,10 +426,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetMaxPriorityGasFeeEstimate_IfNoTipAboveIgnoreUnder_DoesNotUseGasPriceEstimate(ulong? lastMaxPriorityFeePerGas, ulong expected)
         {
             Transaction[] transactions =
-            {
+            [
                 Build.A.Transaction.WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject,
                 Build.A.Transaction.WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject
-            };
+            ];
             Block headBlock = Build.A.Block.Genesis.WithTransactions(transactions).WithBaseFeePerGas(10.GWei).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0UL).Returns(headBlock);
@@ -437,6 +437,33 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
             {
                 _gasPriceEstimation = new(null, 100.GWei),
+                _maxPriorityFeePerGasEstimation = new(null, lastMaxPriorityFeePerGas)
+            };
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo((UInt256)expected));
+        }
+
+        [TestCase(null, 20UL)]
+        [TestCase(25UL, 25UL)]
+        public void GetMaxPriorityGasFeeEstimate_IfSomeBlocksHaveNoTips_SubstituteIsSampledAlongsideTheTips(ulong? lastMaxPriorityFeePerGas, ulong expected)
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithMaxFeePerGas(100).WithMaxPriorityFeePerGas(10).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(100).WithMaxPriorityFeePerGas(20).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(100).WithMaxPriorityFeePerGas(30).WithType(TxType.EIP1559).TestObject
+            ];
+            Block headBlock = Build.A.Block.WithNumber(1).WithTransactions(transactions).WithBaseFeePerGas(10).TestObject;
+            Block blockWithoutTransactions = Build.A.Block.Genesis.WithBaseFeePerGas(10).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(1UL).Returns(headBlock);
+            blockFinder.FindBlock(0UL).Returns(blockWithoutTransactions);
+            blockFinder.Head.Returns(headBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
+            {
+                _gasPriceEstimation = new(null, 100),
                 _maxPriorityFeePerGasEstimation = new(null, lastMaxPriorityFeePerGas)
             };
 
