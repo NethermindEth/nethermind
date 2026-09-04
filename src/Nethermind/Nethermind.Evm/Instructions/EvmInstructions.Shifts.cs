@@ -197,7 +197,7 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        if (Vector128.IsHardwareAccelerated)
+        if (X86Base.IsSupported)
         {
             if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
 
