@@ -223,6 +223,7 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
