@@ -186,27 +186,76 @@ public static partial class EvmInstructions
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
-
-        // If the shift amount is 256 or more, the result depends solely on the sign of the value.
-        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
-        if (!a.IsUint64 || a.u0 >= 256)
+        if (Vector128.IsHardwareAccelerated)
         {
-            return As<UInt256, Int256>(ref b).Sign >= 0
-                ? stack.PushZero<TTracingInst>()
-                : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+            if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
+
+            if (!shift.IsUint64 || shift.u0 >= 256)
+            {
+                return As<UInt256, Int256>(ref value).Sign >= 0
+                    ? stack.PushZero<TTracingInst>()
+                    : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+            }
+
+            As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
+            return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref shifted));
         }
 
-        As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
-        return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+        return SarScalar<TTracingInst>(ref stack);
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType SarScalar<TTracingInst>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+        if (!isValid) return EvmExceptionType.StackUnderflow;
+
+        ref ulong value = ref As<byte, ulong>(ref topRef);
+        ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
+        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong fill = As<byte, sbyte>(ref topRef) < 0 ? ulong.MaxValue : 0;
+        if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
+        {
+            value = fill;
+            Add(ref value, 1) = fill;
+            Add(ref value, 2) = fill;
+            Add(ref value, 3) = fill;
+        }
+        else if (amount != 0)
+        {
+            int wordShift = (int)(amount >> 6);
+            int bitShift = (int)(amount & 63);
+            for (int offset = 0; offset < 4; offset++)
+            {
+                int destination = 3 - offset;
+                int source = destination - wordShift;
+                ulong shifted = source >= 0
+                    ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                    : fill;
+                if (bitShift != 0)
+                {
+                    ulong upper = source > 0
+                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1))
+                        : fill;
+                    shifted |= upper << (64 - bitShift);
+                }
+
+                Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+            }
+        }
+
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
     }
 
     /// <summary>
