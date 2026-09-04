@@ -189,7 +189,7 @@ public sealed class GCScheduler
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
     /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
-        GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
+        GCCollect(generation, mode, blocking, compacting, trimNativeMemory: false);
 
     private bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
     {
@@ -214,7 +214,8 @@ public sealed class GCScheduler
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         if (trimNativeMemory)
         {
-            // Also trim native memory used by Db
+            // RocksDB allocates its C++ heap from the allocator bundled in librocksdb.so, which
+            // glibc's malloc_trim cannot reach, so this only walks and locks the glibc arenas.
             _mallocHelper.MallocTrim((uint)1.MiB);
         }
         // Indicate that GC has finished
