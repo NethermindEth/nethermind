@@ -201,7 +201,7 @@ public static partial class EvmInstructions
             return false;
         }
         // If the condition is non-zero (i.e., true), attempt to perform the jump.
-        return (Unsafe.As<byte, Vector256<byte>>(ref condition) != default);
+        return (Unsafe.As<byte, Vector256<ulong>>(ref condition) != default);
     }
 
     /// <summary>
