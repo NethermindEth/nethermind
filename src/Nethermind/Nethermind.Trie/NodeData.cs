@@ -24,7 +24,7 @@ interface INodeWithKey : INodeData
     public byte[]? Key { get; set; }
 }
 
-public class BranchData : INodeData
+public sealed class BranchData : INodeData
 {
     public NodeType NodeType => NodeType.Branch;
     public int Length => TrieNode.BranchesCount;

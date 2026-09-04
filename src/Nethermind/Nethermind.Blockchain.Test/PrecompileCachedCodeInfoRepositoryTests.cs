@@ -24,7 +24,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     private static readonly Address PrecompileAddress = Address.FromNumber(100);
 
     private static PreBlockCaches CreateCaches(int survivingMaxEntries = 1024) =>
-        new(new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries });
+        new(TestPreBlockCachesConfig.Small with { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries });
 
     private static IReleaseSpec CreateSpecWithPrecompiles(params Address[] precompileAddresses)
     {

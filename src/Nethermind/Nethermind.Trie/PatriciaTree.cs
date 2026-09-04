@@ -589,7 +589,7 @@ namespace Nethermind.Trie
 
                 if (node.IsLeaf || node.IsExtension)
                 {
-                    int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
                         if (node.IsExtension)
@@ -936,7 +936,7 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -1001,7 +1001,7 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)

@@ -389,9 +389,11 @@ namespace Nethermind.Trie
                 ushort candidateMask = 0;
                 RlpReader rlpReader = item.RlpReader;
                 item.SeekChild(ref rlpReader, 0);
+                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
+                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object? data = item._nodeData![i];
+                    object? data = branchData[i];
                     if (data is null)
                     {
                         int length = rlpReader.PeekNextRlpLength();
@@ -507,9 +509,11 @@ namespace Nethermind.Trie
                 // sixteen short copies into two.
                 int runStart = -1;
                 int runLength = 0;
+                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
+                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object? data = item._nodeData![i];
+                    object? data = branchData[i];
                     if (data is null)
                     {
                         int length = rlpReader.PeekNextRlpLength();

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -35,8 +37,15 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
     private AccountChangesAtIndex? _lastReadStorageChanges;
-    private BlockAccessListAtIndex GeneratingBlockAccessList =>
-        _generatingBlockAccessList ?? throw new InvalidOperationException("Block access list tracing requires a generating block access list to be set.");
+    private BlockAccessListAtIndex GeneratingBlockAccessList
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _generatingBlockAccessList ?? ThrowGeneratingBlockAccessListNotSet();
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static BlockAccessListAtIndex ThrowGeneratingBlockAccessListNotSet() =>
+        throw new InvalidOperationException("Block access list tracing requires a generating block access list to be set.");
 
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
