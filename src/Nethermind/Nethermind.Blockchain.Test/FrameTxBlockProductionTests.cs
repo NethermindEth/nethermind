@@ -48,6 +48,11 @@ public class FrameTxBlockProductionTests
     private static readonly byte[] EmitSecondTopic = LogCode(SecondTopic);
     private static readonly byte[] WriteFreshSlot =
         Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+    // EIP-8038 refunds the write when a slot is restored to its original value, and credits the fresh
+    // slot's state gas back in-frame, so this scenario refunds without moving the state dimension.
+    private static readonly byte[] WriteThenRestoreSlot = Prepare.EvmCode
+        .PushData(1).PushData(0).Op(Instruction.SSTORE)
+        .PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
     private static readonly byte[] Inert = Prepare.EvmCode.Op(Instruction.STOP).Done;
     // Burns the whole verify budget without ever reaching APPROVE, so the transaction can never pay.
     private static readonly byte[] SpinForever =
@@ -77,7 +82,7 @@ public class FrameTxBlockProductionTests
         Assert.That(producedReceipt.Logs, Has.Length.EqualTo(1), "the SENDER frame's log must reach the produced receipt");
         Assert.That(producedReceipt.FrameReceipts, Has.Length.EqualTo(2));
 
-        TxReceipt[] validated = Validate(produced.Block, (Observer, EmitFirstTopic));
+        (TxReceipt[] validated, BlockHeader replayedHeader) = Validate(produced);
 
         Assert.That(validated, Has.Length.EqualTo(1));
         TxReceipt validatedReceipt = validated[0];
@@ -89,29 +94,50 @@ public class FrameTxBlockProductionTests
             Assert.That(validatedReceipt.Payer, Is.EqualTo(producedReceipt.Payer));
             Assert.That(validatedReceipt.Logs!.Length, Is.EqualTo(producedReceipt.Logs!.Length));
             Assert.That(ReceiptsRoot(validated), Is.EqualTo(ReceiptsRoot(produced.Receipts)));
+            // The header's two-dimensional total is production-specific, so a validating node must
+            // re-derive the same figure from the sealed transactions alone.
+            Assert.That(replayedHeader.GasUsed, Is.EqualTo(produced.Block.Header.GasUsed));
             // The header must commit to what survived selection, not to what was offered.
             Assert.That(produced.Block.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(produced.Block.Transactions)));
         }
     }
 
-    /// <summary>The two-dimensional block totals a producer carries must charge a frame transaction's
-    /// state growth to the state dimension and nowhere else.</summary>
-    [TestCase(false, 0UL, TestName = "A frame transaction that grows no state moves no state total")]
-    [TestCase(true, (ulong)GasCostOf.SSetState, TestName = "A fresh slot's growth charge lands in the block state total")]
-    public void Produced_block_totals_carry_the_state_dimension_of_a_frame_transaction(bool writesState, ulong expectedStateGas)
+    /// <summary>The <see href="https://eips.ethereum.org/EIPS/eip-8037">EIP-8037</see> block totals a
+    /// producer carries must charge a frame transaction's state growth to the state dimension and
+    /// nowhere else.</summary>
+    /// <remarks>A frame transaction nets its EIP-3529 refund before splitting the charge across the two
+    /// dimensions, so both totals and the receipt sit on one basis; the refunding case pins that, the
+    /// ordinary path instead keeping block gas pre-refund per
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7778">EIP-7778</see>.</remarks>
+    [TestCase(StateScenario.None, 0UL, false, TestName = "A frame transaction that grows no state moves no state total")]
+    [TestCase(StateScenario.FreshSlot, (ulong)GasCostOf.SSetState, false, TestName = "A fresh slot's growth charge lands in the block state total")]
+    [TestCase(StateScenario.RestoredSlot, 0UL, true, TestName = "A refunding frame transaction keeps the block totals on the receipt's basis")]
+    public void Produced_block_totals_carry_the_state_dimension_of_a_frame_transaction(
+        StateScenario scenario, ulong expectedStateGas, bool expectsRefund)
     {
         Transaction frameTx = FrameTx(
             SelfApprove(),
             new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
 
-        Produced produced = Produce([frameTx], (Observer, writesState ? WriteFreshSlot : Inert));
+        byte[] observerCode = scenario switch
+        {
+            StateScenario.FreshSlot => WriteFreshSlot,
+            StateScenario.RestoredSlot => WriteThenRestoreSlot,
+            _ => Inert,
+        };
+        Produced produced = Produce([frameTx], (Observer, observerCode));
 
         Assert.That(produced.Block.Transactions, Has.Length.EqualTo(1), "the producer skipped the frame transaction");
+        TxReceipt receipt = produced.Receipts[0];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(produced.StateGas, Is.EqualTo(expectedStateGas));
-            // The state charge leaves the execution dimension; counting it in both bills the block twice.
-            Assert.That(produced.ExecutionGas, Is.EqualTo(produced.Receipts[0].GasUsedTotal - expectedStateGas));
+            // The payer owes what the frames burned, less the one refund the transaction nets; charging
+            // the state dimension on top of the execution one instead would bill the block twice.
+            ulong grossGas = GrossFrameGas(frameTx, receipt);
+            Assert.That(receipt.GasUsedTotal, expectsRefund ? Is.LessThan(grossGas) : Is.EqualTo(grossGas));
+            // Both block totals partition that same charge, so the tracer's two accumulators must sum to it.
+            Assert.That(produced.ExecutionGas + produced.StateGas, Is.EqualTo(receipt.GasUsedTotal));
             // Both dimensions share the block limit, so the header carries whichever bound is tighter.
             Assert.That(produced.Block.Header.GasUsed, Is.EqualTo(Math.Max(produced.ExecutionGas, produced.StateGas)));
         }
@@ -144,7 +170,21 @@ public class FrameTxBlockProductionTests
         }
     }
 
-    private readonly record struct Produced(Block Block, TxReceipt[] Receipts, ulong ExecutionGas, ulong StateGas);
+    /// <summary>The state scenario a test's SENDER frame runs, which fixes both the state gas it moves
+    /// and the execution refund it earns.</summary>
+    public enum StateScenario { None, FreshSlot, RestoredSlot }
+
+    /// <summary>What the producer settled on, carrying the pre-state <see cref="Validate"/> must replay over.</summary>
+    private readonly record struct Produced(
+        Block Block,
+        TxReceipt[] Receipts,
+        ulong ExecutionGas,
+        ulong StateGas,
+        (Address Address, byte[] Code)[] Contracts);
+
+    /// <summary>The header both runs build on, so a replay cannot silently diverge from production.</summary>
+    private static BlockHeader ProductionHeader() =>
+        Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject.Header;
 
     /// <summary>Offers <paramref name="candidates"/> to the real production executor over a pre-state
     /// carrying <paramref name="contracts"/>, and returns what the producer settled on.</summary>
@@ -152,10 +192,7 @@ public class FrameTxBlockProductionTests
     {
         using Chain chain = new(contracts);
 
-        BlockToProduce blockToProduce = new(
-            Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject.Header,
-            candidates,
-            []);
+        BlockToProduce blockToProduce = new(ProductionHeader(), candidates, []);
 
         BlockProcessor.BlockProductionTransactionsExecutor executor = new(
             new BuildUpTransactionProcessorAdapter(chain.Processor),
@@ -173,31 +210,29 @@ public class FrameTxBlockProductionTests
         ulong stateGas = receiptsTracer.BlockStateGasUsed;
         receiptsTracer.EndBlockTrace();
 
-        Block sealed_ = new(blockToProduce.Header, blockToProduce.Transactions.ToArray(), []);
-        return new Produced(sealed_, receipts, executionGas, stateGas);
+        Block producedBlock = new(blockToProduce.Header, blockToProduce.Transactions.ToArray(), []);
+        return new Produced(producedBlock, receipts, executionGas, stateGas, contracts);
     }
 
     /// <summary>Replays <paramref name="produced"/> through the real validation executor over a
     /// freshly-built copy of the same pre-state, as a validating node would.</summary>
-    private static TxReceipt[] Validate(Block produced, params (Address Address, byte[] Code)[] contracts)
+    /// <returns>The replayed receipts and the header the validation tracer re-derived the totals into.</returns>
+    private static (TxReceipt[] Receipts, BlockHeader Header) Validate(Produced produced)
     {
-        using Chain chain = new(contracts);
+        using Chain chain = new(produced.Contracts);
 
         BlockProcessor.BlockValidationTransactionsExecutor executor = new(
             new ExecuteTransactionProcessorAdapter(chain.Processor),
             chain.State);
 
-        Block replayed = new(
-            Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject.Header,
-            produced.Transactions,
-            []);
+        Block replayed = new(ProductionHeader(), produced.Block.Transactions, []);
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(replayed);
         executor.SetBlockExecutionContext(new BlockExecutionContext(replayed.Header, chain.Spec));
         TxReceipt[] receipts = executor.ProcessTransactions(replayed, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
         receiptsTracer.EndBlockTrace();
-        return receipts;
+        return (receipts, replayed.Header);
     }
 
     /// <summary>Pre-state shared by both runs: a funded sender whose own code approves, plus the
@@ -264,6 +299,19 @@ public class FrameTxBlockProductionTests
 
     private static byte[] LogCode(Hash256 topic) =>
         Prepare.EvmCode.PushData(topic.Bytes.ToArray()).PushData(1).PushData(0).Op(Instruction.LOG1).Op(Instruction.STOP).Done;
+
+    /// <summary>The gas <paramref name="frameTx"/> burned before its transaction-level refund: the
+    /// intrinsic budget the processor prices it against, plus every frame receipt's two dimensions.</summary>
+    private static ulong GrossFrameGas(Transaction frameTx, TxReceipt receipt)
+    {
+        FrameTxValidation.TryCalculateGasBudget(frameTx, Eip8141Prototype.Instance, out ulong grossGas, out _, out _);
+        foreach (TxFrameReceipt frameReceipt in receipt.FrameReceipts!)
+        {
+            grossGas += frameReceipt.ExecutionGasUsed + frameReceipt.StateGasUsed;
+        }
+
+        return grossGas;
+    }
 
     private static Hash256 ReceiptsRoot(TxReceipt[] receipts) =>
         ReceiptTrie.CalculateRoot(Eip8141Prototype.Instance, receipts, new ReceiptMessageDecoder());
