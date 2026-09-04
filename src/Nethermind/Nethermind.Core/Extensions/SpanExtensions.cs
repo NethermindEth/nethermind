@@ -20,6 +20,20 @@ namespace Nethermind.Core.Extensions
     {
         private const ulong ShortInputDomain = 0xD6E8FEB86659FD93UL;
 
+        /// <summary>The hash seed a stateless run installs when the payload does not carry one.</summary>
+        public const uint DefaultHashSeed = 2098026241U;
+
+        /// <summary>Installs the seed the hash mixers derive their lane multipliers from.</summary>
+        /// <param name="instanceRandom">The per-run seed.</param>
+        /// <remarks>
+        /// A no-op on the host, which randomises its seed per process at start-up. The guest installs it
+        /// here rather than in a static initializer for two reasons: the seed comes from the payload, and
+        /// any static initializer gives the type a class constructor, after which every mixer call - the
+        /// hottest leaf in the guest - pays a class-initialisation check, a fence and a two-level static
+        /// load. Call once, before anything hashes a key.
+        /// </remarks>
+        public static partial void SeedHashes(uint instanceRandom);
+
         internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
