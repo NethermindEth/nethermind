@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
@@ -66,6 +68,27 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
+        if (!Vector128.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpLt) ||
+             typeof(TOpMath) == typeof(OpGt) ||
+             typeof(TOpMath) == typeof(OpSLt) ||
+             typeof(TOpMath) == typeof(OpSGt)))
+        {
+            ref byte rawTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+            if (!isValid) goto StackUnderflow;
+
+            ref ulong resultParts = ref As<byte, ulong>(ref rawTopRef);
+            bool comparison = CompareScalar<TOpMath>(
+                ref Add(ref resultParts, EvmStack.WordSize / sizeof(ulong)), ref resultParts);
+            resultParts = 0;
+            Add(ref resultParts, 1) = 0;
+            Add(ref resultParts, 2) = 0;
+            Add(ref resultParts, 3) = BinaryPrimitives.ReverseEndianness(comparison ? 1UL : 0UL);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref rawTopRef);
+            return EvmExceptionType.None;
+        }
+
         // Pop a and peek the new top slot for in-place write; skips the push's overflow check
         // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
         ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
@@ -80,6 +103,36 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
+        where TOpMath : struct, IOpMath2Param
+    {
+        bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
+        bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
+
+        ulong aPart = BinaryPrimitives.ReverseEndianness(a);
+        ulong bPart = BinaryPrimitives.ReverseEndianness(b);
+        if (aPart != bPart)
+        {
+            bool less = signed ? (long)aPart < (long)bPart : aPart < bPart;
+            return lessThan ? less : !less;
+        }
+
+        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 1));
+        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 1));
+        if (aPart != bPart)
+            return lessThan ? aPart < bPart : aPart > bPart;
+
+        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 2));
+        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 2));
+        if (aPart != bPart)
+            return lessThan ? aPart < bPart : aPart > bPart;
+
+        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 3));
+        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 3));
+        return lessThan ? aPart < bPart : aPart > bPart;
     }
 
     /// <summary>
