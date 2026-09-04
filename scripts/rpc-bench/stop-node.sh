@@ -16,6 +16,42 @@ NODE_ENV_FILE="${NODE_ENV_FILE:-$STATE_DIR/node.env}"
 source "$NODE_ENV_FILE"
 
 SUFFIX="${INSTANCE_SUFFIX:-}"
+
+# Best-effort instruction-level view of the hottest JIT-compiled methods. With DOTNET_PerfMapEnabled=1 the
+# runtime also writes a jitdump holding the machine code of every method it compiles; `perf inject --jit`
+# turns that into synthetic ELF objects so `perf annotate` can attribute samples to instructions inside
+# managed code, which the folded profile cannot (a giant inlined method is one opaque self-time bucket there).
+# Nothing here fails the run: a missing dump, an old perf, or no objdump only leave the annotation files out.
+annotate_jit_profile() {
+  local perf_data="$1" out_dir="$2" suffix="$3"
+  local jit_dump="/tmp/jit-${PERF_CONTAINER_PID}.dump" jit_data="$out_dir/perf$suffix.jit.data" report="$out_dir/perf-report-jit.txt"
+  if ! docker exec "$CONTAINER_NAME" sh -c 'test -s "$1"' sh "$jit_dump"; then
+    log "perf annotate: no jitdump at $jit_dump in the container - skipped"
+    return 0
+  fi
+  # perf inject resolves the dump by the path the runtime mmap'ed inside the container, so it must sit at
+  # the same path on the host.
+  if ! docker cp "$CONTAINER_NAME:$jit_dump" "$jit_dump" 2> "$out_dir/perf-inject.log"; then
+    log "WARN: perf annotate: could not copy $jit_dump out of the container"
+    return 0
+  fi
+  if ! perf inject --jit --input "$perf_data" --output "$jit_data" >> "$out_dir/perf-inject.log" 2>&1; then
+    log "WARN: perf inject --jit failed (see perf-inject.log)"
+    rm -f "$jit_data" "$jit_dump"
+    return 0
+  fi
+  perf report --stdio --no-children --sort sym --input "$jit_data" 2>/dev/null \
+    | grep -v -e '^#' -e '^$' | head -n 80 > "$report" || true
+  local n=0 sym
+  while IFS= read -r sym; do
+    [[ -n "$sym" ]] || continue
+    n=$((n + 1))
+    perf annotate --stdio --input "$jit_data" --symbol="$sym" 2>/dev/null | head -n 200000 > "$out_dir/perf-annotate-$n.txt" || true
+    (( n < 4 )) || break
+  done < <(sed -nE 's/^ *[0-9.]+% +[^ ]+ +\[\.\] (.*)$/\1/p' "$report" | head -n 4)
+  rm -f "$jit_data" "$jit_dump"
+  log "perf annotate: wrote $n symbol annotation(s) under $out_dir"
+}
 BASELINE_FILE="$STATE_DIR/db-baseline$SUFFIX.txt"
 FINAL_FILE="$STATE_DIR/db-final$SUFFIX.txt"
 STOP_GRACE="${STOP_GRACE:-180}"
@@ -115,6 +151,7 @@ if [[ "${PERF:-false}" == "true" ]]; then
           && bash "$HERE/../validate-folded-profile.sh" "$folded_tmp"; then
         mv "$folded_tmp" "$folded_profile"
         log "perf profile folded: $(wc -l < "$folded_profile") stacks"
+        annotate_jit_profile "$perf_data" "$DIAG_DIR/perf" "$SUFFIX"
       else
         rm -f "$folded_tmp"
         log "ERROR: perf folding failed or produced an empty perf.folded"

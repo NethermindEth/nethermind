@@ -249,6 +249,7 @@ perf_client_env=()
 if [[ "$PERF" == "true" ]]; then
   perf_client_env=(
     DOTNET_PerfMapEnabled=1
+    DOTNET_PerfMapJitDumpPath=/tmp
     DOTNET_PerfMapShowOptimizationTiers=1
     DOTNET_EnableWriteXorExecute=0
   )
