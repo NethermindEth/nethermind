@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -21,6 +22,9 @@ internal static class RlpHelpers
 
     /// <summary>RLP prefix byte introducing a 32-byte string, i.e. a hash.</summary>
     public const int KeccakRlpPrefix = Rlp.EmptyByteArrayByte + Hash256.Size;
+
+    /// <summary>RLP prefix byte introducing a 20-byte string, i.e. an address.</summary>
+    public const int AddressRlpPrefix = Rlp.EmptyByteArrayByte + Address.Size;
 
     internal static ReadOnlySpan<byte> SingleBytes => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127];
 
@@ -669,6 +673,117 @@ internal static class RlpHelpers
         byteSpan.CopyTo(dest.Slice(32 - byteSpan.Length));
         return position;
     }
+
+    /// <summary>Reads the fixed-size prefix introducing a hash.</summary>
+    /// <returns>The position past the prefix; <paramref name="hasValue"/> is false for an RLP null.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int ReadKeccakPrefix(ReadOnlySpan<byte> data, int position, bool allowNull, out bool hasValue)
+    {
+        int prefix = data[position++];
+        hasValue = prefix == KeccakRlpPrefix;
+        if (!hasValue && !(allowNull && prefix == Rlp.EmptyByteArrayByte))
+        {
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        return position;
+    }
+
+    /// <inheritdoc cref="ReadKeccakPrefix"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int ReadAddressPrefix(ReadOnlySpan<byte> data, int position, bool allowNull, out bool hasValue)
+    {
+        int prefix = data[position++];
+        hasValue = prefix == AddressRlpPrefix;
+        if (!hasValue && !(allowNull && prefix == Rlp.EmptyByteArrayByte))
+        {
+            ThrowAddressDecode(prefix, position, data.Length);
+        }
+
+        return position;
+    }
+
+    /// <summary>Decodes a 32-byte hash, or an RLP null.</summary>
+    /// <returns>The position past the item.</returns>
+    public static int DecodeKeccakOrNull(ReadOnlySpan<byte> data, int position, out Hash256? keccak)
+    {
+        position = ReadKeccakPrefix(data, position, allowNull: true, out bool hasValue);
+        if (!hasValue)
+        {
+            keccak = null;
+            return position;
+        }
+
+        keccak = InternKeccak(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    /// <inheritdoc cref="DecodeKeccakOrNull"/>
+    public static int DecodeValueKeccakOrNull(ReadOnlySpan<byte> data, int position, out ValueHash256? keccak)
+    {
+        position = ReadKeccakPrefix(data, position, allowNull: true, out bool hasValue);
+        if (!hasValue)
+        {
+            keccak = null;
+            return position;
+        }
+
+        keccak = InternValueKeccak(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    /// <summary>Decodes a 32-byte hash without interning, reporting an RLP null instead of throwing.</summary>
+    /// <returns>The position past the item.</returns>
+    public static int TryDecodeValueKeccak(ReadOnlySpan<byte> data, int position, out ValueHash256 keccak, out bool hasValue)
+    {
+        position = ReadKeccakPrefix(data, position, allowNull: true, out hasValue);
+        if (!hasValue)
+        {
+            Unsafe.SkipInit(out keccak);
+            return position;
+        }
+
+        keccak = new ValueHash256(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    /// <summary>Decodes a 20-byte address, or an RLP null.</summary>
+    /// <returns>The position past the item.</returns>
+    public static int DecodeAddress(ReadOnlySpan<byte> data, int position, bool allowNull, out Address? address)
+    {
+        position = ReadAddressPrefix(data, position, allowNull, out bool hasValue);
+        if (!hasValue)
+        {
+            address = null;
+            return position;
+        }
+
+        address = new Address(data.Slice(position, Address.Size));
+        return position + Address.Size;
+    }
+
+    /// <summary>Yields the span holding a bloom, tolerating the legacy sequence form.</summary>
+    /// <remarks>
+    /// Some nodes send receipt blooms wrapped in a sequence rather than as a plain 256-byte string;
+    /// see https://github.com/NethermindEth/nethermind/issues/113. An empty span means an RLP null.
+    /// </remarks>
+    /// <returns>The position past the item.</returns>
+    public static int DecodeBloomSpan(ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> bloomBytes)
+    {
+        if (data[position] == 249)
+        {
+            position += 5; // skip 249 1 2 129 127 and read 256 bytes
+            bloomBytes = data.Slice(position, Bloom.ByteLength);
+            return position + Bloom.ByteLength;
+        }
+
+        return DecodeByteArraySpan(data, position, RlpLimit.Bloom, -1, out bloomBytes);
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowAddressDecode(int prefix, int position, int dataLength)
+        => throw new RlpException(
+            $"Unexpected RLP prefix of {prefix} when decoding {nameof(Address)} at position {position} in the message of length {dataLength}.");
 
     /// <summary>Decodes a 32-byte hash that must be present.</summary>
     /// <returns>The position past the hash.</returns>

@@ -163,24 +163,14 @@ public ref struct RlpReader
 
     public Hash256? DecodeKeccakOrNull()
     {
-        if (!ReadKeccakPrefix(allowNull: true))
-        {
-            return null;
-        }
-
-        return DecodeKeccakPayload();
+        Position = RlpHelpers.DecodeKeccakOrNull(Data, Position, out Hash256? keccak);
+        return keccak;
     }
-
-    private Hash256 DecodeKeccakPayload() => RlpHelpers.InternKeccak(Read(Hash256.Size));
 
     public ValueHash256? DecodeValueKeccak()
     {
-        if (!ReadKeccakPrefix(allowNull: true))
-        {
-            return null;
-        }
-
-        return RlpHelpers.InternValueKeccak(Read(Hash256.Size));
+        Position = RlpHelpers.DecodeValueKeccakOrNull(Data, Position, out ValueHash256? keccak);
+        return keccak;
     }
 
     public ValueHash256 DecodeValueKeccakNonNull()
@@ -191,15 +181,8 @@ public ref struct RlpReader
 
     public bool TryDecodeValueKeccak(out ValueHash256 keccak)
     {
-        Unsafe.SkipInit(out keccak);
-
-        if (!ReadKeccakPrefix(allowNull: true))
-        {
-            return false;
-        }
-
-        keccak = new ValueHash256(Read(Hash256.Size));
-        return true;
+        Position = RlpHelpers.TryDecodeValueKeccak(Data, Position, out keccak, out bool hasValue);
+        return hasValue;
     }
 
     public Hash256? DecodeZeroPrefixKeccak()
@@ -289,18 +272,14 @@ public ref struct RlpReader
 
     public Address DecodeAddress()
     {
-        ReadAddressPrefix(allowNull: false);
-        return new Address(Read(Address.Size));
+        Position = RlpHelpers.DecodeAddress(Data, Position, allowNull: false, out Address? address);
+        return address!;
     }
 
     public Address? DecodeAddressOrNull()
     {
-        if (!ReadAddressPrefix(allowNull: true))
-        {
-            return null;
-        }
-
-        return new Address(Read(Address.Size));
+        Position = RlpHelpers.DecodeAddress(Data, Position, allowNull: true, out Address? address);
+        return address;
     }
 
     public void DecodeAddressStructRef(out AddressStructRef address)
@@ -360,25 +339,8 @@ public ref struct RlpReader
 
     public Bloom? DecodeBloomOrNull()
     {
-        ReadOnlySpan<byte> bloomBytes;
-
-        // Legacy workaround for receipt blooms sent in sequence form:
-        // https://github.com/NethermindEth/nethermind/issues/113
-        if (Data[Position] == 249)
-        {
-            Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
-            bloomBytes = Read(Bloom.ByteLength);
-        }
-        else
-        {
-            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
-            if (bloomBytes.Length == 0)
-            {
-                return null;
-            }
-        }
-
-        return CreateBloom(bloomBytes);
+        Position = RlpHelpers.DecodeBloomSpan(Data, Position, out ReadOnlySpan<byte> bloomBytes);
+        return bloomBytes.Length == 0 ? null : CreateBloom(bloomBytes);
     }
 
     public Bloom DecodeBloomNonNull() =>
@@ -400,24 +362,12 @@ public ref struct RlpReader
     internal void DecodeBloomStructRef(out BloomStructRef bloom, out bool wasMissing)
     {
         wasMissing = false;
-        ReadOnlySpan<byte> bloomBytes;
-
-        // tks: not sure why but some nodes send us Blooms in a sequence form
-        // https://github.com/NethermindEth/nethermind/issues/113
-        if (Data[Position] == 249)
+        Position = RlpHelpers.DecodeBloomSpan(Data, Position, out ReadOnlySpan<byte> bloomBytes);
+        if (bloomBytes.Length == 0)
         {
-            Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
-            bloomBytes = Read(Bloom.ByteLength);
-        }
-        else
-        {
-            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
-            if (bloomBytes.Length == 0)
-            {
-                wasMissing = true;
-                bloom = new BloomStructRef(Bloom.Empty.Bytes);
-                return;
-            }
+            wasMissing = true;
+            bloom = new BloomStructRef(Bloom.Empty.Bytes);
+            return;
         }
 
         if (bloomBytes.Length != Bloom.ByteLength)
@@ -1006,8 +956,7 @@ public ref struct RlpReader
 
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowAddressDecodeException(int prefix)
-        => throw new RlpException(
-            $"Unexpected RLP prefix of {prefix} when decoding {nameof(Address)} at position {Position} in the message of length {Data.Length}.");
+        => RlpHelpers.ThrowAddressDecode(prefix, Position, Data.Length);
 
     [StackTraceHidden]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
