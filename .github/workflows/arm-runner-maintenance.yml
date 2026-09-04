@@ -35,6 +35,10 @@ jobs:
           df -h /
           echo "== top-level consumers on / =="
           du -xsh /* 2>/dev/null | sort -rh | head -20
+          echo "== docker data-root and its filesystem =="
+          root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)"
+          echo "DockerRootDir=${root}"
+          [ -n "${root}" ] && df -h "${root}" || true
           echo "== containerd store =="
           du -xsh /var/lib/containerd 2>/dev/null || true
           ctr --namespace moby images ls 2>/dev/null | head -20 || true
