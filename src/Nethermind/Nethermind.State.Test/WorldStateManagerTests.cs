@@ -125,7 +125,8 @@ public class WorldStateManagerTests
                     .WithNumber(i - 1)
                     .TestObject;
 
-                // Model production: the driver clears prewarmer caches between blocks; do the same here.
+                // No driver here to prepare the caches for each block, so reset them rather than lean on the
+                // consumer scope's own staleness check.
                 preBlockCaches?.ClearCaches();
                 using (worldState.BeginScope(baseBlock))
                 {

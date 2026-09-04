@@ -33,12 +33,15 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 }
 
 /// <summary>
-/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills;
-/// relies on the driver clearing the caches between blocks (see <c>BranchProcessor</c>).
+/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills. When the
+/// consumer commits a block, the world state writes the block's final values back into the account and storage
+/// caches, so they carry over to the next block; the driver (<c>BlockCachePreWarmer</c>) keeps or clears them
+/// before any populator writes.
 /// </summary>
 /// <param name="prewarmerState">
 /// Carries the shared caches and <see cref="IPrewarmerState.IsPrewarmer"/>. On a cache hit a consumer seeds the
-/// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not.
+/// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers
+/// itself as the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
 /// </param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
@@ -48,6 +51,7 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+    private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -55,31 +59,41 @@ public class PrewarmerScopeProvider(
     {
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
         IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
-        IWorldStateScopeProvider.IScope? processingScope = null;
+        IWorldStateScopeProvider.IScope? scope = null;
+        bool consumerScopeOpened = false;
         bool registeredMainScope = false;
         try
         {
-            processingScope = baseProvider.BeginScope(baseBlock, metrics);
-            lock (preBlockCaches.MainScopeLock)
+            scope = baseProvider.BeginScope(baseBlock, metrics);
+            if (isPrewarmer)
             {
-                if (isPrewarmer)
+                if (storageReadCapture is null)
                 {
-                    if (storageReadCapture is null)
+                    lock (preBlockCaches.MainScopeLock)
                     {
                         trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
                     }
                 }
-                else
+            }
+            else
+            {
+                // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
+                consumerScopeOpened = true;
+                preBlockCaches.BeginConsumerScope();
+                lock (preBlockCaches.MainScopeLock)
                 {
-                    preBlockCaches.MainScope = processingScope;
+                    preBlockCaches.MainScope = scope;
                     registeredMainScope = true;
                 }
+                // The consumer reads the state at baseBlock through the caches, which may still describe another state.
+                preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
             }
 
-            ScopeWrapper scope = new(processingScope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics);
-            processingScope = null;
+            ScopeWrapper wrapper = new(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
+            scope = null;
             trieWarmupSession = null;
-            return scope;
+            consumerScopeOpened = false;
+            return wrapper;
         }
         finally
         {
@@ -87,22 +101,37 @@ public class PrewarmerScopeProvider(
             {
                 lock (preBlockCaches.MainScopeLock)
                 {
-                    if (ReferenceEquals(preBlockCaches.MainScope, processingScope)) preBlockCaches.MainScope = null;
+                    if (ReferenceEquals(preBlockCaches.MainScope, scope)) preBlockCaches.MainScope = null;
                 }
             }
 
             try
             {
-                processingScope?.Dispose();
+                scope?.Dispose();
             }
             finally
             {
-                trieWarmupSession?.Dispose();
+                try
+                {
+                    trieWarmupSession?.Dispose();
+                }
+                finally
+                {
+                    if (consumerScopeOpened) preBlockCaches.EndConsumerScope();
+                }
             }
         }
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession, PreBlockCaches.StorageReadCapture? storageReadCapture, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(
+        IWorldStateScopeProvider.IScope baseScope,
+        PreBlockCaches preBlockCaches,
+        ILogManager logManager,
+        bool isPrewarmer,
+        IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession,
+        PreBlockCaches.StorageReadCapture? storageReadCapture,
+        LocalMetrics metrics,
+        Hash256? baseStateRoot) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -117,31 +146,50 @@ public class PrewarmerScopeProvider(
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
         private int _isDisposed;
+        // Root of the state the next commit starts from: the base block's, then each committed root in turn.
+        private Hash256? _committedStateRoot = baseStateRoot;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
 
-            if (_measureMetric && _writeBatchTime != 0)
+            ObserveWriteBatchToDispose();
+            if (isPrewarmer)
             {
-                _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
+                try
+                {
+                    trieWarmupSession?.Dispose();
+                }
+                finally
+                {
+                    baseScope.Dispose();
+                }
+                return;
+            }
+
+            // Unregister before teardown so no new warm hints target a disposing scope.
+            lock (preBlockCaches.MainScopeLock)
+            {
+                if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
             }
 
             try
             {
-                trieWarmupSession?.Dispose();
+                baseScope.Dispose();
             }
             finally
             {
-                if (!isPrewarmer)
-                {
-                    lock (preBlockCaches.MainScopeLock)
-                    {
-                        if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
-                    }
-                }
+                // Only now are the scope's background readers (HintBal) drained, so only now may a session take over the caches.
+                int stillOpen = preBlockCaches.EndConsumerScope();
+                Debug.Assert(stillOpen >= 0, "a consumer scope was closed more often than it was opened");
+            }
+        }
 
-                baseScope.Dispose();
+        private void ObserveWriteBatchToDispose()
+        {
+            if (_measureMetric && _writeBatchTime != 0)
+            {
+                _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
         }
 
@@ -187,6 +235,21 @@ public class PrewarmerScopeProvider(
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
         }
 
+        // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
+        public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot)
+        {
+            if (isPrewarmer) return;
+
+            Hash256 stateRoot = baseScope.RootHash;
+            // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
+            // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
+            if (stateRoot == _committedStateRoot) return;
+
+            Hash256? baseStateRoot = _committedStateRoot;
+            _committedStateRoot = stateRoot;
+            preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
+        }
+
         public Hash256 RootHash => baseScope.RootHash;
 
         public void UpdateRootHash()
@@ -225,7 +288,6 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                if (storageReadCapture is null) trieWarmupSession?.HintWarmAccount(new ValueAddress(address.Bytes));
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
@@ -235,7 +297,7 @@ public class PrewarmerScopeProvider(
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         // Capturing (discovery) scopes execute on placeholder values, so their hinted addresses and slots can be
-        // fictitious. Populator hints otherwise target the independently owned scope for this build's base state.
+        // fictitious. Populator hints otherwise target the independently owned session for this build's base state.
         public void HintWarmAccount(in ValueAddress address)
         {
             if (storageReadCapture is not null) return;
@@ -367,6 +429,8 @@ public class PrewarmerScopeProvider(
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+
+        public bool AcceptsStorageWrites => baseWriteBatch.AcceptsStorageWrites;
 
         public void Dispose()
         {

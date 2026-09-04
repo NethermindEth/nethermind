@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)
         {
-            (Hash256, ulong)[] blockHashes = ctx.DecodeArray(static (ref RlpReader c) =>
+            (Hash256, ulong)[] blockHashes = ctx.DecodeNonNullArray(static (ref RlpReader c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
