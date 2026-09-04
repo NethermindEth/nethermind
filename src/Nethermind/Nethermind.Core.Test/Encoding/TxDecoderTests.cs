@@ -286,12 +286,12 @@ namespace Nethermind.Core.Test.Encoding
 
 
         [TestCaseSource(nameof(InvalidEncodingTestCases))]
-        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string error, Type exceptionType)
+        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string error, Type exceptionType, RlpBehaviors rlpBehaviors)
         {
             void DecodeStream()
             {
                 RlpReader ctx = new(invalidTxBytes);
-                _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                _txDecoder.Decode(ref ctx, rlpBehaviors);
             }
 
             Assert.That(DecodeStream, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
@@ -299,7 +299,7 @@ namespace Nethermind.Core.Test.Encoding
             void DecodeContext()
             {
                 RlpReader ctx = new(invalidTxBytes.AsSpan());
-                _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                _txDecoder.Decode(ref ctx, rlpBehaviors);
             }
 
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
@@ -473,8 +473,13 @@ namespace Nethermind.Core.Test.Encoding
 
         private static IEnumerable<TestCaseData> InvalidEncodingTestCases()
         {
-            static TestCaseData TestCase(string testName, byte[] invalidTxBytes, string? error = null, Type? exceptionType = null) =>
-                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpException)) { TestName = testName };
+            static TestCaseData TestCase(
+                string testName,
+                byte[] invalidTxBytes,
+                string? error = null,
+                Type? exceptionType = null,
+                RlpBehaviors rlpBehaviors = RlpBehaviors.SkipTypedWrapping) =>
+                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpException), rlpBehaviors) { TestName = testName };
 
             yield return TestCase("Missing storage keys array in access list",
                 Convert.FromHexString("01e3010101825208808080d6d5940000000000000000000000000000000000000001010101"),
@@ -496,6 +501,31 @@ namespace Nethermind.Core.Test.Encoding
             yield return TestCase(
                 "SetCode null auth element",
                 BuildSetCodeTxBytes(1)
+            );
+
+            yield return TestCase(
+                "Legacy transaction with v below 27",
+                Convert.FromHexString("C9808080808080800101"),
+                error: "InvalidTxSignature"
+            );
+
+            yield return TestCase(
+                "Legacy transaction with v below 27 when unsigned is allowed",
+                Convert.FromHexString("C9808080808080800101"),
+                error: "InvalidTxSignature",
+                rlpBehaviors: RlpBehaviors.SkipTypedWrapping | RlpBehaviors.AllowUnsigned
+            );
+
+            yield return TestCase(
+                "Legacy transaction with incomplete signature",
+                Convert.FromHexString("C88080808080801B01"),
+                error: "RLP data is truncated"
+            );
+
+            yield return TestCase(
+                "Legacy transaction with truncated signature length",
+                Convert.FromHexString("C98080808080801B01B8"),
+                error: "RLP data is truncated"
             );
         }
 

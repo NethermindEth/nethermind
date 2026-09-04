@@ -25,7 +25,7 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests-glamsterdam-devnet@v8.1.2
+        default: tests-glamsterdam-devnet@v8.1.4
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
@@ -76,7 +76,7 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests-glamsterdam-devnet@v8.1.2
+        default: tests-glamsterdam-devnet@v8.1.4
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
@@ -111,9 +111,9 @@ env:
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
   # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
   # fixtures for all forks (Frontier..Amsterdam) with the devnet-8 Amsterdam semantics
-  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v8.1.2) to pin.
+  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v8.1.4) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.2' }}
+  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.4' }}
   EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to the release whose stateless
