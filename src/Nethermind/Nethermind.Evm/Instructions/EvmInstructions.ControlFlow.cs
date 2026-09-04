@@ -6,8 +6,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
@@ -361,7 +361,7 @@ public static partial class EvmInstructions
     /// </summary>
     /// <param name="jumpDestination">The jump destination as a 256-bit unsigned integer.</param>
     /// <param name="programCounter">Reference to the program counter that will be updated if the destination is valid.</param>
-    /// <param name="env">The current execution environment containing code information.</param>
+    /// <param name="stack">The current EVM stack containing code information.</param>
     /// <returns>
     /// <c>true</c> if the destination is valid and the program counter is updated; otherwise, <c>false</c>.
     /// </returns>
@@ -381,8 +381,7 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Jump(int jumpDestination, ref nint programCounter, ref EvmStack stack)
     {
-        // The frame hoisted the code length and jump-destination bitmap at entry; the unsigned compare also
-        // rejects negative destinations.
+        // The unsigned compare rejects negative and out-of-range destinations before indexing the bitmap.
         if ((uint)jumpDestination >= (uint)stack.CodeLength
             || !JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination))
         {

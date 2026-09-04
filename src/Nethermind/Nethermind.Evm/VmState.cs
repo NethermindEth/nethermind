@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -257,7 +256,7 @@ public class VmState<TGasPolicy> : IDisposable
             DataStack = dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan, JumpDestinationBitmap);
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
     }
 
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
@@ -269,14 +268,11 @@ public class VmState<TGasPolicy> : IDisposable
             DataStack = dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan, JumpDestinationBitmap);
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static byte[] AllocateStacks() => StackPool.RentStacks();
-
-    // Frames built without code (tests, precompile stubs) get a bitmap with no valid destination.
-    private long[] JumpDestinationBitmap => Env?.CodeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
     private static ref byte As32AlignedRef(byte[] array)
     {

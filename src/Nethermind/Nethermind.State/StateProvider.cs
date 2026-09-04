@@ -61,7 +61,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
     // Invalidates the front cache when a restore/commit/reset recycles the change stacks.
-    partial void InvalidateFrontCache();
+    private void InvalidateFrontCache() => _epoch++;
     // Single-entry cache in front of _intraTxCache: the EVM accesses the same
     // account many times in a row. Pushes write the new value through when the
     // cached address matches, so a hit needs no staleness probe. Invalidated
@@ -70,8 +70,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private Account? _cachedAccount;
     private int _cachedEpoch = -1;
     private int _epoch;
-
-    partial void InvalidateFrontCache() => _epoch++;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
