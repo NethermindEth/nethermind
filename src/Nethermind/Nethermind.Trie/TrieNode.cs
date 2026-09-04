@@ -637,10 +637,11 @@ namespace Nethermind.Trie
         {
             Metrics.IncrementTreeNodeRlpDecodings();
 
-            rlpReader.ReadSequenceLength();
+            ReadOnlySpan<byte> data = rlpReader.Data;
+            int position = RlpHelpers.ReadSequenceLength(data, 0, out _);
 
             // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-            int numberOfItems = itemsCount = rlpReader.PeekNumberOfItemsRemaining(null, 3);
+            int numberOfItems = itemsCount = RlpHelpers.CountItems(data, position, data.Length, 3);
 
             if (numberOfItems < 2)
             {
@@ -652,11 +653,11 @@ namespace Nethermind.Trie
             }
             else
             {
-                ReadOnlySpan<byte> valueSpan = rlpReader.DecodeByteArraySpan();
+                position = RlpHelpers.DecodeByteArraySpan(data, position, null, -1, out ReadOnlySpan<byte> valueSpan);
                 (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
                 if (isLeaf)
                 {
-                    valueSpan = rlpReader.DecodeByteArraySpan();
+                    RlpHelpers.DecodeByteArraySpan(data, position, null, -1, out valueSpan);
                     CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
                     _nodeData = new LeafData(key, buffer);
@@ -1402,8 +1403,6 @@ namespace Nethermind.Trie
 
         private void SeekChildNotNull(ref RlpReader rlpReader, int index)
         {
-            rlpReader.Reset();
-            rlpReader.SkipLength();
             if (index == 0 && IsExtension)
             {
                 // Corner case, index is zero, but we are an extension
@@ -1411,7 +1410,8 @@ namespace Nethermind.Trie
                 index = 1;
             }
 
-            rlpReader.SkipItems(index);
+            ReadOnlySpan<byte> data = rlpReader.Data;
+            rlpReader.Position = RlpHelpers.SkipItems(data, RlpHelpers.SkipLength(data, 0), index);
         }
 
         private TrieNode CreateInlineChild(ReadOnlySpan<byte> fullRlp)
