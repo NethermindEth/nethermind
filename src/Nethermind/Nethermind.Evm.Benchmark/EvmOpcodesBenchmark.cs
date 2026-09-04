@@ -46,6 +46,7 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
     private const string OpcodeFilterEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_OPCODES";
+    private const string InvocationCountEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT";
 
     private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] _opcodeHandlers = null!;
     private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* _continuationHandlers;
@@ -1003,6 +1004,11 @@ public unsafe class EvmOpcodesBenchmark
     {
         public EvmOpcodesBenchmarkConfig()
         {
+            int invocationCount = int.TryParse(Environment.GetEnvironmentVariable(InvocationCountEnvironmentVariable), out int configuredInvocationCount)
+                && configuredInvocationCount > 0
+                ? configuredInvocationCount
+                : 1;
+
             // 2 process launches x 15 measurement iterations = 30 data points.
             // GcForce ensures a GC collection between iterations to reduce allocation noise.
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
@@ -1012,7 +1018,7 @@ public unsafe class EvmOpcodesBenchmark
                 .WithGcForce(true)
                 .WithEnvironmentVariable("DOTNET_GCServer", "1")
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
-                .WithInvocationCount(1)
+                .WithInvocationCount(invocationCount)
                 .WithUnrollFactor(1)
                 .WithLaunchCount(2)
                 .WithWarmupCount(15)
