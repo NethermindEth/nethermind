@@ -79,7 +79,7 @@ public ref partial struct EvmStack
             return ref Unsafe.NullRef<byte>();
         }
 
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
         return ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
     }
 
@@ -220,7 +220,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
 
@@ -414,7 +414,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -443,7 +443,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -472,7 +472,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -500,7 +500,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -528,7 +528,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -556,7 +556,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -584,7 +584,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -618,7 +618,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -647,7 +647,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -676,7 +676,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -705,7 +705,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -734,7 +734,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -763,7 +763,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -792,7 +792,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -821,7 +821,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -850,7 +850,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -879,7 +879,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -908,7 +908,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -937,7 +937,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -966,7 +966,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -995,7 +995,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1025,7 +1025,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1054,7 +1054,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1083,7 +1083,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1106,7 +1106,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1136,7 +1136,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1164,7 +1164,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1194,7 +1194,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1224,7 +1224,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1255,7 +1255,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1283,7 +1283,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1311,7 +1311,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
         {
@@ -1356,7 +1356,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
             ReportStackPush(ref start, used);
@@ -1453,7 +1453,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.OneByteSpan);
@@ -1477,7 +1477,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
@@ -1509,7 +1509,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         value = BinaryPrimitives.ReverseEndianness(value);
         // uint size
@@ -1535,7 +1535,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         value = Bytes.Bswap64(value);
         // ulong size
@@ -1567,7 +1567,7 @@ public ref partial struct EvmStack
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = (nint)newOffset;
 
         if (Avx2.IsSupported)
         {
@@ -1938,7 +1938,7 @@ public ref partial struct EvmStack
         {
             return ref Unsafe.NullRef<byte>();
         }
-        Head = (int)--head;
+        Head = (nint)(--head);
         return ref Unsafe.Add(ref baseRef, (nint)(head * WordSize));
     }
 
@@ -1965,7 +1965,7 @@ public ref partial struct EvmStack
             isValid = false;
             return ref baseRef;
         }
-        Head = (int)(head - 1);
+        Head = (nint)(head - 1);
         ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out a);
         isValid = true;
@@ -1984,7 +1984,7 @@ public ref partial struct EvmStack
             return ref baseRef;
         }
 
-        Head = (int)(head - 1);
+        Head = (nint)(head - 1);
         isValid = true;
         return ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
     }
@@ -2013,7 +2013,7 @@ public ref partial struct EvmStack
             isValid = false;
             return ref baseRef;
         }
-        Head = (int)(head - 2);
+        Head = (nint)(head - 2);
         ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 3) * WordSize));
         // Both popped slots sit above the peek slot at +WordSize and +2*WordSize.
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out b);
