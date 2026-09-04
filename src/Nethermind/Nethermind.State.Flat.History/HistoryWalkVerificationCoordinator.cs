@@ -148,6 +148,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                         if (!_availability.TryGetWatermark(out ulong latest) || latest <= to) return;
 
+                        if (_metadata.TryGetTipSeries(out ulong tipStart, out _) && tipStart <= to + 1)
+                        {
+                            if (_logger.IsInfo) _logger.Info(
+                                $"History walk verification is done at block {to}; the {latest - to} blocks captured meanwhile are already committed by the tip, whose series starts at {tipStart}, so the walk does not run again. A walk over those blocks would scan the whole key space to find them.");
+                            return;
+                        }
+
                         ulong granularity = _retrofit?.WindowGranularity ?? 1;
                         from = to - to % granularity;
                         to = latest;

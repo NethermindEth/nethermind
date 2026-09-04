@@ -99,6 +99,40 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public async Task WhenTheTipAlreadyCoversTheBlocksCapturedMeanwhile_TheWalkDoesNotRunAgain()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems);
+        metadata.AdvanceTipSeries(3, 8, out _);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.LessThanOrEqualTo(3),
+            "the walk covered blocks 0 to 2 and the tip series already commits 3 to 8, so a second walk would scan the whole key space to find a handful of blocks it does not need to build");
+    }
+
+    [Test]
     public void WalkResources_UseTheCoresLeftAfterTheNodeAndTheMemoryTheBudgetLeaves()
     {
         FlatDbConfig auto = new() { HistoryEnabled = true };
