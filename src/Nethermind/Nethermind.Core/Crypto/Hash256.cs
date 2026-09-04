@@ -57,10 +57,18 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
-        public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
-        public bool Equals(in ValueHash256 other) => _bytes.Equals(other._bytes);
+        public bool Equals(ValueHash256 other) => BytesEqual(in _bytes, in other._bytes);
+        public bool Equals(in ValueHash256 other) => BytesEqual(in _bytes, in other._bytes);
 
-        public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
+        public bool Equals(Hash256? other) => other is null ? IsZero : BytesEqual(in _bytes, in other.ValueHash256._bytes);
+
+        /// <remarks>Whole-word rather than <see cref="Vector256{T}"/> comparison: the guest build has no
+        /// SIMD behind the vector compare, where ILC expands it to a byte-at-a-time element loop.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool BytesEqual(in Vector256<byte> a, in Vector256<byte> b)
+            => Extensions.Bytes.AreEqual32(
+                ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in a)),
+                ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in b)));
 
         public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
 
@@ -97,14 +105,14 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
-        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : a.ValueHash256._bytes == b._bytes;
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : b.Equals(a);
         public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
         public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
         public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
         public UInt256 ToUInt256(bool isBigEndian = true) => new(Bytes, isBigEndian: isBigEndian);
         public Hash256 ToHash256() => new(this);
-        private bool IsZero => _bytes == default;
+        private bool IsZero => Extensions.Bytes.IsZero32(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>, IHash64bit<Hash256AsKey>

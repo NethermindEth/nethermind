@@ -1822,7 +1822,7 @@ public ref partial struct EvmStack
             return false;
         }
 
-        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize))) == default;
+        return Bytes.IsZero32(ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
