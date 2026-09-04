@@ -113,6 +113,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value)
         {
             if (Vector256.IsHardwareAccelerated)
@@ -131,6 +132,7 @@ public static partial class EvmInstructions
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value)
         {
             if (Vector256.IsHardwareAccelerated)
