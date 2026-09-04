@@ -168,6 +168,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         // Fan out Shanghai/Cancun/Prague/Osaka/Amsterdam timestamps via the shared HardforkLabels
         // table — same source of truth as the Parity loader, driven by Forks/*.cs.
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
+
+        ChainSpecLoader.ValidateParams(chainSpec.Parameters);
     }
 
     private readonly record struct BlobScheduleFork(int Order);

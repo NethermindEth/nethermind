@@ -329,10 +329,11 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_eip8141_prototype_time()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 10, \"eip8141PrototypeTime\": 15");
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(chainSpec.Parameters.Eip8037TransitionTimestamp, Is.EqualTo(10));
             Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15));
             Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
         }
@@ -342,8 +343,18 @@ public class GethGenesisLoaderTests
         {
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8141Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8037Enabled, Is.True);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.False);
         }
+    }
+
+    [Test]
+    public void Rejects_a_geth_genesis_enabling_eip8141_without_eip8037()
+    {
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 15"))!;
+        Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
+        Assert.That(exception.InnerException!.Message, Does.Contain("Eip8037TransitionTimestamp"));
     }
 
     [Test]

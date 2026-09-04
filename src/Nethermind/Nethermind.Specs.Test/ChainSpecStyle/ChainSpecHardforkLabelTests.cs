@@ -75,7 +75,10 @@ public class ChainSpecHardforkLabelTests
     [TestCaseSource(nameof(AllLabels))]
     public void Label_expands_to_all_constituent_transition_fields(IHardforkLabel label)
     {
-        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"");
+        bool needsEip8037Companion = label.EipPropertyNames.Contains(nameof(ChainParameters.Eip8141TransitionTimestamp))
+            && !label.EipPropertyNames.Contains(nameof(ChainParameters.Eip8037TransitionTimestamp));
+        string companion = needsEip8037Companion ? $"\"eip8037TransitionTimestamp\": \"0x{ActivationValue:x}\", " : "";
+        ChainSpec spec = Load($"{companion}\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"");
 
         foreach (string propName in label.EipPropertyNames)
         {

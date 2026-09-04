@@ -201,6 +201,55 @@ public class ChainSpecLoaderTests
         }
     }
 
+    [TestCase(null, 100UL, TestName = "Eip8141 without Eip8037 is rejected at load")]
+    [TestCase(200UL, 100UL, TestName = "Eip8037 activating after Eip8141 is rejected at load")]
+    public void Frame_transactions_require_Eip8037_no_later_than_their_activation(ulong? eip8037, ulong eip8141)
+    {
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(FrameChainSpecJson(eip8037, eip8141)));
+        ChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => loader.Load(stream))!;
+        Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
+        Assert.That(exception.InnerException!.Message, Does.Contain("Eip8037TransitionTimestamp"));
+    }
+
+    [TestCase(100UL, TestName = "Eip8037 activating before Eip8141 loads")]
+    [TestCase(200UL, TestName = "Eip8037 activating with Eip8141 in the same block loads")]
+    public void Frame_transactions_load_when_Eip8037_activates_no_later(ulong eip8037)
+    {
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(FrameChainSpecJson(eip8037, eip8141: 200UL)));
+        ChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        ChainSpec chainSpec = loader.Load(stream);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8037TransitionTimestamp, Is.EqualTo(eip8037));
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(200UL));
+        }
+    }
+
+    private static string FrameChainSpecJson(ulong? eip8037, ulong eip8141)
+    {
+        string eip8037Line = eip8037 is null ? "" : $"\"eip8037TransitionTimestamp\": \"0x{eip8037.Value:x}\",";
+        return $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": {
+                    {{eip8037Line}}
+                    "eip8141TransitionTimestamp": "0x{{eip8141:x}}"
+                },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+    }
+
     private static object? CreateTestValue(Type type)
     {
         Type underlyingType = Nullable.GetUnderlyingType(type) ?? type;

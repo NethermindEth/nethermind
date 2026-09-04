@@ -264,7 +264,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 : value
             : default;
 
-    private static void ValidateParams(ChainParameters parameters)
+    internal static void ValidateParams(ChainParameters parameters)
     {
         if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
             && parameters.Eip1283DisableTransition.HasValue)
@@ -276,6 +276,13 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             && parameters.Eip2200Transition.HasValue)
         {
             throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
+        }
+
+        if (parameters.Eip8141TransitionTimestamp.HasValue
+            && (parameters.Eip8037TransitionTimestamp is null
+                || parameters.Eip8037TransitionTimestamp > parameters.Eip8141TransitionTimestamp))
+        {
+            throw new InvalidOperationException("'Eip8141TransitionTimestamp' requires 'Eip8037TransitionTimestamp' to be set no later than it: EIP-8141 frame transactions compose only onto specs carrying EIP-8037.");
         }
     }
 
