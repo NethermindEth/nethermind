@@ -3,8 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
@@ -132,11 +130,10 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        if (!X86Base.IsSupported &&
-            (typeof(TOpMath) == typeof(OpLt) ||
-             typeof(TOpMath) == typeof(OpGt) ||
-             typeof(TOpMath) == typeof(OpSLt) ||
-             typeof(TOpMath) == typeof(OpSGt)))
+        if (typeof(TOpMath) == typeof(OpLt) ||
+            typeof(TOpMath) == typeof(OpGt) ||
+            typeof(TOpMath) == typeof(OpSLt) ||
+            typeof(TOpMath) == typeof(OpSGt))
         {
             if (!stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte rawTopRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -144,10 +141,7 @@ public static partial class EvmInstructions
             ref ulong resultParts = ref As<byte, ulong>(ref rawTopRef);
             bool comparison = CompareScalar<TOpMath>(
                 ref Add(ref resultParts, EvmStack.WordSize / sizeof(ulong)), ref resultParts);
-            resultParts = 0;
-            Add(ref resultParts, 1) = 0;
-            Add(ref resultParts, 2) = 0;
-            Add(ref resultParts, 3) = BinaryPrimitives.ReverseEndianness(comparison ? 1UL : 0UL);
+            WriteSmallWordToSlot(ref rawTopRef, comparison ? 1UL : 0UL);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref rawTopRef);
             return EvmExceptionType.None;
@@ -159,26 +153,7 @@ public static partial class EvmInstructions
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        UInt256 result;
-        if (X86Base.IsSupported &&
-            (typeof(TOpMath) == typeof(OpLt) ||
-             typeof(TOpMath) == typeof(OpGt) ||
-             typeof(TOpMath) == typeof(OpSLt) ||
-             typeof(TOpMath) == typeof(OpSGt)))
-        {
-            bool comparison = typeof(TOpMath) == typeof(OpLt)
-                ? a < b
-                : typeof(TOpMath) == typeof(OpGt)
-                    ? a > b
-                    : typeof(TOpMath) == typeof(OpSLt)
-                        ? As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) < 0
-                        : As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) > 0;
-            result = comparison ? UInt256.One : default;
-        }
-        else
-        {
-            TOpMath.Operation(in a, in b, out result);
-        }
+        TOpMath.Operation(in a, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
@@ -188,6 +163,11 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
+    /// <remarks>
+    /// Limbs are tested for equality where they lie, which needs no byte order. Only the pair that
+    /// differs is swapped into host order. Most operands are small and agree in their high limbs,
+    /// so the usual cost is one swap pair instead of four.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
         where TOpMath : struct, IOpMath2Param
@@ -195,26 +175,27 @@ public static partial class EvmInstructions
         bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
         bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
 
-        ulong aPart = BinaryPrimitives.ReverseEndianness(a);
-        ulong bPart = BinaryPrimitives.ReverseEndianness(b);
-        if (aPart != bPart)
+        // Only the most significant limb carries the sign; the rest always compare unsigned.
+        if (a != b)
         {
-            bool less = signed ? (long)aPart < (long)bPart : aPart < bPart;
+            ulong aHigh = BinaryPrimitives.ReverseEndianness(a);
+            ulong bHigh = BinaryPrimitives.ReverseEndianness(b);
+            bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
             return lessThan ? less : !less;
         }
 
-        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 1));
-        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 1));
-        if (aPart != bPart)
-            return lessThan ? aPart < bPart : aPart > bPart;
+        if (Add(ref a, 1) != Add(ref b, 1))
+            return CompareLimb(Add(ref a, 1), Add(ref b, 1), lessThan);
+        if (Add(ref a, 2) != Add(ref b, 2))
+            return CompareLimb(Add(ref a, 2), Add(ref b, 2), lessThan);
+        return CompareLimb(Add(ref a, 3), Add(ref b, 3), lessThan);
+    }
 
-        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 2));
-        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 2));
-        if (aPart != bPart)
-            return lessThan ? aPart < bPart : aPart > bPart;
-
-        aPart = BinaryPrimitives.ReverseEndianness(Add(ref a, 3));
-        bPart = BinaryPrimitives.ReverseEndianness(Add(ref b, 3));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CompareLimb(ulong a, ulong b, bool lessThan)
+    {
+        ulong aPart = BinaryPrimitives.ReverseEndianness(a);
+        ulong bPart = BinaryPrimitives.ReverseEndianness(b);
         return lessThan ? aPart < bPart : aPart > bPart;
     }
 
