@@ -49,12 +49,16 @@ namespace Nethermind.Trie
             }
         }
 
-        /// <inheritdoc cref="Nibbles.PackNibbles" />
+        /// <summary>Packs <c>2 * count</c> nibble bytes, high nibble first, into <paramref name="count"/> bytes.</summary>
         /// <remarks>
         /// SWAR, the inverse of <see cref="ExpandNibbles"/>: eight nibble bytes come in as one word, the
         /// high/low pair of each output byte is folded into the low byte of its 16-bit lane, and the four
-        /// lane bytes are gathered into a single 32-bit write. The indexed form it replaces spent more of
-        /// its instructions widening indices and checking bounds than on the nibbles themselves.
+        /// lane bytes are gathered into a single 32-bit write. Byte-wide accesses are among the most
+        /// expensive memory operations in the zkVM cost model.
+        /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes, each in <c>0..15</c>,
+        /// and that <paramref name="bytes"/> has room for <paramref name="count"/>. The range matters more
+        /// here than in the scalar form: a wider source byte spills out of its lane and the gather step
+        /// then ORs the spill into the neighbouring output byte, where the scalar form truncates locally.
         /// Little-endian only, for the reason given at <see cref="ExpandNibbles"/>; the host keeps the
         /// plain loop in <c>Nibbles.std.cs</c>.
         /// </remarks>

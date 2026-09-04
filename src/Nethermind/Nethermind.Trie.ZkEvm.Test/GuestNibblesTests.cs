@@ -162,23 +162,9 @@ public class GuestNibblesTests
         return nibbles;
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(31)]
-    [TestCase(32)]
-    [TestCase(33)]
-    public void Pack_nibbles_matches_the_scalar_reference(int count)
+    [Test]
+    public void Pack_nibbles_matches_the_scalar_reference(
+        [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33)] int count)
     {
         byte[] nibbles = Nibble(count * 2, seed: 3);
         byte[] expected = PackReference(nibbles);
@@ -194,15 +180,8 @@ public class GuestNibblesTests
     /// runs. Every high nibble is 0x0 and every low nibble 0xF, which catches a swapped pair that a
     /// symmetric value would hide - the failure a naive lane order produces.
     /// </remarks>
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    public void Pack_nibbles_keeps_the_high_nibble_first(int count)
+    [Test]
+    public void Pack_nibbles_keeps_the_high_nibble_first([Values(1, 2, 3, 4, 5, 7, 8, 9)] int count)
     {
         byte[] nibbles = new byte[count * 2];
         for (int i = 0; i < nibbles.Length; i++) nibbles[i] = (byte)(i % 2 == 0 ? 0x0 : 0xF);
@@ -215,15 +194,8 @@ public class GuestNibblesTests
     }
 
     /// <summary>Packing is the exact inverse of expanding, for every length either tail can take.</summary>
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(8)]
-    [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(33)]
-    public void Pack_undoes_expand(int count)
+    [Test]
+    public void Pack_undoes_expand([Values(1, 3, 4, 5, 8, 16, 17, 33)] int count)
     {
         byte[] bytes = Fill(count, seed: 11);
         byte[] nibbles = new byte[count * 2];

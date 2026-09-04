@@ -14,14 +14,6 @@ namespace Nethermind.Trie
     [DebuggerStepThrough]
     public static partial class Nibbles
     {
-        /// <summary>Packs <c>2 * count</c> nibble bytes into <paramref name="count"/> whole bytes.</summary>
-        /// <param name="nibbles">The nibbles, high nibble first, each byte holding one nibble.</param>
-        /// <param name="bytes">Destination for the packed bytes.</param>
-        /// <param name="count">Number of bytes to write.</param>
-        /// <remarks>Split per target; see <c>Nibbles.std.cs</c> and <c>Nibbles.zkevm.cs</c>.
-        /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes and
-        /// <paramref name="bytes"/> has room for <paramref name="count"/>.</remarks>
-
         private const int StackAllocLengthLimit = 255;
 
         public static Nibble[] FromBytes(params byte[] bytes) => FromBytes(bytes.AsSpan());
@@ -181,10 +173,10 @@ namespace Nethermind.Trie
         public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {
             byte[] bytes = new byte[nibbles.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
-            }
+            PackNibbles(
+                ref MemoryMarshal.GetReference(nibbles),
+                ref MemoryMarshal.GetArrayDataReference(bytes),
+                bytes.Length);
 
             return bytes;
         }
@@ -224,10 +216,10 @@ namespace Nethermind.Trie
         {
             int oddity = nibbles.Length % 2;
             byte[] bytes = new byte[nibbles.Length / 2 + 1];
-            for (int i = 0; i < bytes.Length - 1; i++)
-            {
-                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
-            }
+            PackNibbles(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), oddity),
+                ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), 1),
+                bytes.Length - 1);
 
             if (oddity == 1)
             {
