@@ -229,14 +229,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         long batchStartRefund = 0;
         long batchStartStateGas = 0;
         int batchStartJournal = 0;
-        int batchStartDestroys = 0;
+        int batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
 
         Snapshot prefixEndSnapshot = txSnapshot;
         int prefixEndIndex = -1;
         long prefixEndRefund = 0;
         long prefixEndStateGas = 0;
         int prefixEndJournal = 0;
-        int prefixEndDestroys = 0;
+        int prefixEndDestroys = accessTracker.DestroyList.TakeSnapshot();
         bool postTxReverted = false;
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.

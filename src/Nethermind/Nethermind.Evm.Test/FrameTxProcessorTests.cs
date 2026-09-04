@@ -192,25 +192,14 @@ public class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
         DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            Nonce = 0,
-            SenderAddress = smartSender,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeDefault, 0, factory, executionGasLimit: 1_000_000,
-                    stateGasLimit: (ulong)(2 * GasCostOf.NewAccountState + GasCostOf.CodeDepositState * (senderRuntime.Length + childRuntime.Length)),
-                    UInt256.Zero, default),
-                SelfVerifyFrame(),
-                Frame(TxFrame.ModeSender, target: child),
-                new TxFrame(TxFrame.ModePostTx, 0, reverter, executionGasLimit: 200_000, stateGasLimit: 0, UInt256.Zero, default),
-            ],
-            FrameSignatures = [],
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
-        };
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeDefault, 0, factory, executionGasLimit: 1_000_000,
+                stateGasLimit: (ulong)(2 * GasCostOf.NewAccountState + GasCostOf.CodeDepositState * (senderRuntime.Length + childRuntime.Length)),
+                UInt256.Zero, default),
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: child),
+            Frame(TxFrame.ModePostTx, target: reverter, stateGasLimit: 0));
+        tx.SenderAddress = smartSender;
 
         TransactionResult result = Process(tx);
 
@@ -218,6 +207,23 @@ public class FrameTxProcessorTests
         Assert.That(_stateProvider.AccountExists(child), Is.True,
             "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
         Assert.That(_stateProvider.GetCode(child), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+    }
+
+    [Test]
+    public void Execute_PayerlessRevertingPostTxFrame_IsRejectedNotThrown()
+    {
+        Address reverter = TestItem.AddressD;
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0, Frame(TxFrame.ModePostTx, target: reverter, stateGasLimit: 0));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False, "a frame transaction whose only frame is a reverting POST_TX approves no payer, so it is rejected");
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction), "the empty destroy-list snapshot restore on the POST_TX-revert path must not throw before the never-set-a-payer rejection is reached");
     }
 
     [Test]
