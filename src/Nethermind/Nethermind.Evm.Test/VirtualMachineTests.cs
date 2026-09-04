@@ -91,6 +91,31 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Tail_call_jumpi_dispatch_executes_a_deep_counted_loop_without_growing_the_managed_stack()
+    {
+        const int loopIterations = 2_000_000;
+        byte[] code = Prepare.EvmCode
+            .PushData(loopIterations)
+            .Op(Instruction.JUMPDEST)
+            .PushData(1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .PushData(4)
+            .Op(Instruction.JUMPI)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput receipt = ExecuteUntraced(200_000_000UL, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(7 * loopIterations + 2), "opcode count");
+        }
+    }
+
     [TestCase(1023, true, 1)]
     [TestCase(1024, false, 1)]
     [TestCase(1024, true, 2)]
