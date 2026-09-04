@@ -241,12 +241,14 @@ public class BalBulkApplyTests(bool useFlat)
         Hash256 parentRoot = CommitGenesis(worldState, genesisSetup);
         using BlockAccessListManager manager = new(
             worldState,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            NSubstitute.Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true, ParallelBalBulkApply = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static ws => new EthereumCodeInfoRepository(ws));
+            new BalTxProcessorFactory(
+                NSubstitute.Substitute.For<IBlockhashProvider>(),
+                new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+                LimboLogs.Instance,
+                static ws => new EthereumCodeInfoRepository(ws)));
 
         using IDisposable scope = worldState.BeginScope(ParentHeader(parentRoot));
         manager.ApplyBlockStateChanges(bal, worldState, Amsterdam.Instance, shouldComputeStateRoot: true);

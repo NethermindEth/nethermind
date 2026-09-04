@@ -261,12 +261,14 @@ public class BalShadowStateRootTests
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             new OneLoggerLogManager(new ILogger(capturingLogger)),
             new BlocksConfig { ParallelExecution = true, ParallelBalStateRootShadow = shadowEnabled },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(
+                Substitute.For<IBlockhashProvider>(),
+                new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+                LimboLogs.Instance,
+                static worldState => new EthereumCodeInfoRepository(worldState)),
             readOnlyTxProcessingEnvFactory: shadowEnvFactory ?? new SharedStoreEnvFactory(trieStore, codeDb));
 
         Block block = Build.A.Block

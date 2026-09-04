@@ -631,7 +631,7 @@ public static partial class EvmInstructions
     /// <param name="gas">The gas state, updated by the operation's cost.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -664,19 +664,19 @@ public static partial class EvmInstructions
         // stack traffic; only the final value is pushed. Disabled under instruction, access, or
         // storage tracing, which require per-opcode observability.
         if (!TTracingInst.IsActive
-            && (uint)programCounter < (uint)stack.CodeLength
+            && (nuint)programCounter < (nuint)stack.CodeLength
             && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD
             && !isTracingAccess && !tracer.IsTracingOpLevelStorage)
         {
             int extraOps = 0;
-            int codeLength = stack.CodeLength;
+            nint codeLength = stack.CodeLength;
             bool fusedOutOfGas = false;
             // Per-op cost of re-reading the cell accessed by the previous iteration. Mirrors
             // Consume(SLoadCost) + ConsumeStorageAccessGas for an already-warm cell; keep in sync
             // (SLoadFusionTests assert fused/unfused gas equality with hot-cold pricing on and off).
             ulong sameCellCost = spec.GasCosts.SLoadCost + (spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : 0);
 
-            while ((uint)programCounter < (uint)codeLength
+            while ((nuint)programCounter < (nuint)codeLength
                    && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD)
             {
                 UInt256 nextKey = new(value, isBigEndian: true);
@@ -686,7 +686,7 @@ public static partial class EvmInstructions
                     // in the run re-reads the same warm cell and pushes the same word: consume the
                     // run in constant time, bounded by the gas still affordable.
                     int runLength = 1;
-                    while ((uint)(programCounter + runLength) < (uint)codeLength
+                    while ((nuint)(programCounter + runLength) < (nuint)codeLength
                            && Unsafe.Add(ref stack.Code, programCounter + runLength) == (byte)Instruction.SLOAD)
                     {
                         runLength++;
