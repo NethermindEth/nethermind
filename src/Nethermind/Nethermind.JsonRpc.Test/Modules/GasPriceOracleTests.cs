@@ -486,5 +486,35 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(estimate, Is.EqualTo(minGasPrice ?? 1.Wei));
         }
+
+        [Test]
+        public async ValueTask GasPriceEstimate_IfHeadBodyIsMissing_FallsBackToMinimumGasPrice()
+        {
+            IBlockFinder blockFinder = GetBlockFinderWithoutBodies();
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance);
+
+            UInt256 estimate = await gasPriceOracle.GetGasPriceEstimate();
+
+            Assert.That(estimate, Is.EqualTo((10.GWei + 1.Wei) * 110 / 100));
+        }
+
+        [Test]
+        public void GetMaxPriorityGasFeeEstimate_IfHeadBodyIsMissing_FallsBackToMinGasPrice()
+        {
+            IBlockFinder blockFinder = GetBlockFinderWithoutBodies();
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance);
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo(1.Wei));
+        }
+
+        /// <summary>Head header is known but every body lookup fails, as on a node whose bodies were pruned.</summary>
+        private static IBlockFinder GetBlockFinderWithoutBodies()
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithBaseFeePerGas(10.GWei).TestObject);
+            return blockFinder;
+        }
     }
 }
