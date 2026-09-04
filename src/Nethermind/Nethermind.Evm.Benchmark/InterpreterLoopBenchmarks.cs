@@ -30,6 +30,7 @@ namespace Nethermind.Evm.Benchmark
         private const int CallCount = 64;
         private const int LoopIterations = 1_000;
         private const int WarmupTransactions = 100_000;
+        private const string CancelableEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_CANCELABLE";
 
         private static readonly Address _calleeAddress = new("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
@@ -42,6 +43,7 @@ namespace Nethermind.Evm.Benchmark
         private CodeInfo _neverTakenJumpIfLoopCode = null!;
         private CodeInfo _alternatingJumpIfLoopCode = null!;
         private CodeInfo _nestedCallsCode = null!;
+        private ITxTracer _tracer = null!;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -57,6 +59,9 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachine = new EthereumVirtualMachine(new TestBlockhashProvider(), MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
+            _tracer = Environment.GetEnvironmentVariable(CancelableEnvironmentVariable) == "1"
+                ? new CancellationTxTracer(NullTxTracer.Instance)
+                : NullTxTracer.Instance;
 
             _computeLoopCode = new CodeInfo(BuildComputeLoopCode());
             _neverTakenJumpIfLoopCode = new CodeInfo(BuildNeverTakenJumpIfLoopCode());
@@ -106,7 +111,7 @@ namespace Nethermind.Evm.Benchmark
                 new StackAccessTracker(),
                 _stateProvider.TakeSnapshot()))
             {
-                _virtualMachine.ExecuteTransaction<OffFlag>(vmState, _stateProvider, NullTxTracer.Instance);
+                _virtualMachine.ExecuteTransaction<OffFlag>(vmState, _stateProvider, _tracer);
             }
 
             _stateProvider.Reset();
