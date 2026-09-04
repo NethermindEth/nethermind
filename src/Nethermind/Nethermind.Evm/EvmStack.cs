@@ -1403,19 +1403,7 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
-        // - when viewed as bytes: all zeros except byte[31] == 1
-        if (Vector256.IsHardwareAccelerated)
-        {
-            // Single 32-byte store
-            head = CreateWordFromUInt64(1UL << 56);
-        }
-        else
-        {
-            ref HalfWord head128 = ref Unsafe.As<EvmWord, HalfWord>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, 1UL << 56).AsByte();
-        }
+        head = CreateWordFromUInt64(1UL << 56);
         return EvmExceptionType.None;
     }
 
