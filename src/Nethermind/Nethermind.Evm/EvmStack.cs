@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -334,9 +335,16 @@ public ref partial struct EvmStack
     /// Reads a UInt256 value from a stack slot with big-endian to native conversion (no bounds check).
     /// Used when the slot was already validated by a previous operation.
     /// </summary>
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt256 ReadUInt256FromSlot(ref byte slot)
     {
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
+        {
+            ReadUInt256FromSlotScalar(ref slot, out UInt256 swapped);
+            return swapped;
+        }
+
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
         EvmWord leBytes = beBytes.ByteSwap();
         return Unsafe.As<EvmWord, UInt256>(ref leBytes);
@@ -347,11 +355,18 @@ public ref partial struct EvmStack
     /// into <paramref name="value"/>, bypassing the 32-byte return-value staging buffer
     /// the JIT otherwise emits for a by-value UInt256 return.
     /// </summary>
+    /// <remarks>
+    /// The vector form needs a vector byte reversal to exist: <see cref="Vector256"/> covers AVX2
+    /// and AVX-512, AdvSimd covers ARM64, where the word is two 128-bit halves. Everywhere else
+    /// <see cref="EvmWordExtensions.ByteSwap"/> reverses the limbs of an <see cref="EvmWord"/> value
+    /// the target has no register for, so the word goes to the frame and comes back. Those targets
+    /// swap the limbs where they lie instead.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReadUInt256FromSlot(ref byte slot, out UInt256 value)
     {
-        if (!Vector128.IsHardwareAccelerated)
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
         {
             ReadUInt256FromSlotScalar(ref slot, out value);
             return;
@@ -370,7 +385,7 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteUInt256ToSlot(ref byte slot, in UInt256 value)
     {
-        if (!Vector128.IsHardwareAccelerated)
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
         {
             WriteUInt256ToSlotScalar(ref slot, in value);
             return;
