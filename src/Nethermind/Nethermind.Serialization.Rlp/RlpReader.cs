@@ -276,13 +276,13 @@ public ref struct RlpReader
             ReadByte();
             keccak = new Hash256StructRef(Keccak.Zero.Bytes);
         }
-        else if (prefix > KeccakRlpPrefix)
+        else if (prefix > RlpHelpers.KeccakRlpPrefix)
         {
             ReadByte();
             ThrowKeccakDecodeException(prefix);
             keccak = default;
         }
-        else if (prefix == KeccakRlpPrefix)
+        else if (prefix == RlpHelpers.KeccakRlpPrefix)
         {
             ReadByte();
             ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);

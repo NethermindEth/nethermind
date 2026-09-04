@@ -339,23 +339,13 @@ internal static class RlpHelpers
         => throw new DecodeKeccakRlpException(prefix, position, dataLength);
 
     // Used to avoid allocating detailed error strings on receipt fallback decode paths.
-    private class DecodeKeccakRlpException : RlpException
+    private sealed class DecodeKeccakRlpException(int prefix, int position, int dataLength) : RlpException(string.Empty)
     {
-        private readonly int _prefix;
-        private readonly int _position;
-        private readonly int _dataLength;
         private string? _message;
-
-        public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : base(string.Empty)
-        {
-            _prefix = prefix;
-            _position = position;
-            _dataLength = dataLength;
-        }
 
         public override string Message => _message ??= ConstructMessage();
 
-        private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
+        private string ConstructMessage() => $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {position} in the message of length {dataLength}.";
     }
 
     [DoesNotReturn, StackTraceHidden]
