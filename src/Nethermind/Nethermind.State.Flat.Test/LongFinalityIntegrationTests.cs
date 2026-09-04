@@ -311,6 +311,7 @@ public class LongFinalityIntegrationTests
 
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
+            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
             Substitute.For<ISnapshotCompactor>(),
