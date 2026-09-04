@@ -13,35 +13,29 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void KeccakF(Span<ulong> st) => Accelerators.KeccakF(st);
 
-    /// <inheritdoc cref="KeccakHash.AbsorbMessage" />
+    /// <inheritdoc cref="KeccakHash.AbsorbMessageIntoZeroState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial ReadOnlySpan<byte> AbsorbMessage(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
     {
-        // The first block lands in a state that is still all-zero, so XORing it in would read seventeen
-        // lanes already known to be zero: write it instead.
         AbsorbFirstBlock(stateBytes, input[..roundSize]);
         KeccakF(state);
         input = input[roundSize..];
 
-        while (input.Length >= roundSize)
+        if (input.Length >= roundSize)
         {
-            XorVectors(stateBytes, input[..roundSize]);
-            KeccakF(state);
-            input = input[roundSize..];
+            return AbsorbFullBlocks(state, stateBytes, input, roundSize);
         }
 
-        if (input.Length > 0)
-        {
-            // XOR the remaining input bytes into the state
-            XorVectors(stateBytes, input);
-        }
-
+        AbsorbTail(stateBytes, input);
         return input;
     }
 
     /// <summary>Writes a whole rate block into a state that is still all-zero.</summary>
-    /// <remarks>The assignment twin of the guest's unrolled absorb; lane spelling and the unaligned reads
-    /// match it, and a rate of any other width falls back to the XOR.</remarks>
+    /// <remarks>The assignment twin of the guest's unrolled absorb in <see cref="XorVectors"/>: same lane
+    /// spelling, and the same alignment reasoning — the state is a <c>MemoryMarshal.AsBytes</c> of a
+    /// <c>Span&lt;ulong&gt;</c>, hence ulong-aligned and safe to reinterpret, while the block is a
+    /// caller-supplied span with no such guarantee, hence <c>ReadUnaligned</c>. A rate of any other width
+    /// falls back to <see cref="XorVectors"/> — into an all-zero state, an XOR is a write.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
     {

@@ -16,24 +16,15 @@ public sealed partial class KeccakHash
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
 
-    /// <inheritdoc cref="KeccakHash.AbsorbMessage" />
+    /// <inheritdoc cref="KeccakHash.AbsorbMessageIntoZeroState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial ReadOnlySpan<byte> AbsorbMessage(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
     {
-        do
-        {
-            XorVectors(stateBytes, input[..roundSize]);
-            KeccakF(state);
-            input = input[roundSize..];
-        } while (input.Length >= roundSize);
+        // Held here rather than in the guest arm, which cannot run on a host: this is the arm a Debug test
+        // run executes, so it is the one that can catch a caller the guest arm would then hash wrongly.
+        Debug.Assert(!stateBytes.ContainsAnyExcept((byte)0), "the guest arm writes the first block, not XORs it");
 
-        if (input.Length > 0)
-        {
-            // XOR the remaining input bytes into the state
-            XorVectors(stateBytes, input);
-        }
-
-        return input;
+        return AbsorbFullBlocks(state, stateBytes, input, roundSize);
     }
 
     // update the state with given number of rounds

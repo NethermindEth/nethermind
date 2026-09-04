@@ -84,14 +84,43 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
-    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into the sponge.</summary>
+    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into a sponge that is still all-zero.</summary>
     /// <returns>What is left of <paramref name="input"/>: fewer than <paramref name="roundSize"/> bytes,
     /// already XORed into the state.</returns>
-    /// <remarks>Split per target. The guest writes the first block rather than XORing it into a state it
-    /// knows is still all-zero, which drops seventeen loads and seventeen XORs per message; peeling it
-    /// costs a host more in register pressure than the block saves, so the host form is the plain loop.
-    /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
-    private static partial ReadOnlySpan<byte> AbsorbMessage(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
+    /// <remarks>Requires <paramref name="state"/> all-zero and at least <paramref name="roundSize"/> bytes
+    /// of <paramref name="input"/> on entry; the guest arm writes the first block rather than XORing it,
+    /// so a caller that resumes a used sponge would get a wrong digest there and a right one on the host.
+    /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
+    /// more in register pressure than it saves, so the host form is the plain loop. See
+    /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
+
+    /// <summary>Absorbs the whole rate blocks of <paramref name="input"/>, of which there is at least one,
+    /// then XORs the sub-block tail into the state.</summary>
+    /// <returns>That tail: fewer than <paramref name="roundSize"/> bytes.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> AbsorbFullBlocks(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    {
+        do
+        {
+            XorVectors(stateBytes, input[..roundSize]);
+            KeccakF(state);
+            input = input[roundSize..];
+        } while (input.Length >= roundSize);
+
+        AbsorbTail(stateBytes, input);
+        return input;
+    }
+
+    /// <summary>XORs a sub-rate tail, possibly empty, into the state.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AbsorbTail(Span<byte> stateBytes, ReadOnlySpan<byte> input)
+    {
+        if (input.Length > 0)
+        {
+            XorVectors(stateBytes, input);
+        }
+    }
 
     [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
@@ -133,7 +162,7 @@ public sealed partial class KeccakHash
         }
         else if (input.Length >= roundSize)
         {
-            input = AbsorbMessage(state, stateBytes, input, roundSize);
+            input = AbsorbMessageIntoZeroState(state, stateBytes, input, roundSize);
         }
         else
         {
