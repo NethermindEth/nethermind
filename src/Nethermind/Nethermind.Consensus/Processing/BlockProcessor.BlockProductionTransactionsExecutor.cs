@@ -139,8 +139,10 @@ namespace Nethermind.Consensus.Processing
 
             /// <summary>Evicts a frame transaction whose frames approved no payment; nothing else evicts it, so every
             /// later block would re-burn its validation prefix for nothing.</summary>
-            /// <remarks>Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> qualifies: it means the
-            /// prefix failed on chain state, so the transaction may re-enter once that state changes.</remarks>
+            /// <remarks>Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> qualifies. Some of those
+            /// reasons turn on head state (an out-of-range recent-root reference, a SENDER frame reached before an
+            /// approval) and could become valid on a later head, so eviction here is a drop, not a permanent verdict:
+            /// the sender must resubmit if the transaction becomes valid again.</remarks>
             private void EvictUnpaidFrameTx(Transaction tx, in TransactionResult result)
             {
                 if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;
