@@ -492,6 +492,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [TestCase(0, 200, 0, 1_000UL, 0, 0, TestName = "Successful_merge_without_reservoir_does_not_repay_spill")]
+    [TestCase(-100, 200, 0, 1_000UL, -100, 0, TestName = "Successful_merge_with_overdrawn_reservoir_does_not_repay_spill")]
     [TestCase(80, 200, 0, 1_080UL, 0, 80, TestName = "Successful_merge_uses_all_reservoir_to_partially_repay_spill")]
     [TestCase(200, 80, 0, 1_080UL, 120, 80, TestName = "Successful_merge_repayment_is_capped_at_outstanding_spill")]
     [TestCase(100, 200, 150, 1_050UL, 50, 200, TestName = "Successful_merge_repayment_excludes_already_refunded_spill")]
@@ -516,6 +517,27 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That(
             (gas.Value, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
             Is.EqualTo((expectedGasLeft, expectedReservoir, spill, expectedSpillRefunded)));
+    }
+
+    [TestCase(false, TestName = "Reverted_child_does_not_repay_parent_spill")]
+    [TestCase(true, TestName = "Exceptionally_halted_child_does_not_repay_parent_spill")]
+    public void Unsuccessful_child_return_does_not_repay_parent_spill(bool exceptionalHalt)
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateGasSpill = 200 };
+        EthereumGasPolicy child = new() { StateReservoir = 80 };
+
+        if (exceptionalHalt)
+        {
+            EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child);
+        }
+        else
+        {
+            EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
+        }
+
+        Assert.That(
+            (parent.Value, parent.StateReservoir, parent.StateGasSpill, parent.StateGasSpillRefunded),
+            Is.EqualTo((1_000UL, 80L, 200L, 0L)));
     }
 
     [Test]
