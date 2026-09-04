@@ -68,9 +68,10 @@ public static partial class EvmInstructions
     {
         if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpNot))
         {
-            ref byte valueBytes = ref stack.PeekBytesByRef();
-            if (IsNullRef(ref valueBytes))
+            if (!stack.EnsureDepth(1))
                 return EvmExceptionType.StackUnderflow;
+
+            ref byte valueBytes = ref stack.PeekBytesByRefUnchecked();
 
             ref ulong value = ref As<byte, ulong>(ref valueBytes);
             value = ~value;
@@ -82,8 +83,8 @@ public static partial class EvmInstructions
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
-        ref byte bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+        ref byte bytesRef = ref stack.PeekBytesByRefUnchecked();
 
         // Read a 256-bit value from unaligned memory on the stack.
         EvmWord result = TOpMath.Operation(ReadUnaligned<EvmWord>(ref bytesRef));
@@ -211,23 +212,18 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume<LowGasCost>(ref gas);
 
-        // Pop the index to determine which byte to use for sign extension.
-        if (!stack.PopUInt256(out UInt256 a))
+        // The index and the word it applies to are adjacent, so one depth check covers both.
+        if (!stack.EnsureDepth(2))
             goto StackUnderflow;
+        ref byte bytesRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
+
         if (a >= BigInt32)
         {
             // If the index is out-of-range, no extension is needed.
-            if (!stack.EnsureDepth(1))
-                goto StackUnderflow;
             return EvmExceptionType.None;
         }
 
         int position = 31 - (int)a;
-
-        // Peek at the 256-bit word without removing it.
-        ref byte bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef))
-            goto StackUnderflow;
 
         // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
         sbyte sign = (sbyte)Add(ref bytesRef, position);

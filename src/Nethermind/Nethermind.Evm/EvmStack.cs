@@ -1874,16 +1874,16 @@ public ref partial struct EvmStack
         return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize))) == default;
     }
 
+    /// <summary>
+    /// The top slot, for callers that have already established <c>Head &gt;= 1</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly ref byte PeekBytesByRef()
+    public readonly ref byte PeekBytesByRefUnchecked()
     {
-        ref byte baseRef = ref _stack;
-        nint head = Head - 1;
-        if (head < 0)
-        {
-            return ref Unsafe.NullRef<byte>();
-        }
-        return ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
+        Debug.Assert(Head >= 1, "Caller must establish the depth before peeking unchecked");
+        return ref Unsafe.Add(ref _stack, (nint)(((nuint)Head - 1) * WordSize));
     }
 
     public readonly Span<byte> PeekWord256()
