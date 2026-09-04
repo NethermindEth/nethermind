@@ -67,22 +67,15 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath1Param
     {
         // Folding a word down to a scalar through an EvmWord value makes the operand address-taken, so
-        // targets with no 256-bit register home it on the frame and read it back limb by limb. These two
-        // read the slot where it lies.
-        if (!Vector256.IsHardwareAccelerated &&
-            (typeof(TOpMath) == typeof(OpIsZero) || typeof(TOpMath) == typeof(OpCLZ)))
+        // targets with no 256-bit register home it on the frame and read it back limb by limb. Test the
+        // slot where it lies instead.
+        if (!Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpIsZero))
         {
             if (!stack.EnsureDepth(1))
                 return EvmExceptionType.StackUnderflow;
 
             ref byte slot = ref stack.PeekBytesByRefUnchecked();
-            ulong value = typeof(TOpMath) == typeof(OpIsZero)
-                ? (EvmStack.IsSlotZero(ref slot) ? 1UL : 0UL)
-                // CountLeadingZeroBits already answers 256 for a zero word, and it reads through the
-                // reference it is given rather than copying.
-                : (ulong)As<byte, EvmWord>(ref slot).CountLeadingZeroBits();
-
-            WriteSmallWordToSlot(ref slot, value);
+            WriteSmallWordToSlot(ref slot, EvmStack.IsSlotZero(ref slot) ? 1UL : 0UL);
             return EvmExceptionType.None;
         }
 
@@ -140,19 +133,28 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Implements the CLZ opcode.
-    /// Counts leading 0's of 256‐bit vector
+    /// Implements the CLZ opcode (EIP-7939): counts the leading zero bits of the word on the stack.
     /// </summary>
-    public struct OpCLZ : IOpMath1Param
+    /// <remarks>
+    /// The count is read and written through the stack slot on every target. Passing the word by value
+    /// would make it address-taken, which on the 256-bit path homed it on the frame, called the counter
+    /// out of line to index its first non-zero byte, and reassembled the result through the frame again.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionCountLeadingZeros<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        static ulong IGasCost.GasCost => GasCostOf.Low;
+        TGasPolicy.Consume<LowGasCost>(ref gas);
 
-        /// <remarks>Reached only where a 256-bit register exists; otherwise CLZ never builds a value.</remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmWord Operation(EvmWord value)
-            => value == default
-                ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
-                : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+        if (!stack.EnsureDepth(1))
+            return EvmExceptionType.StackUnderflow;
+
+        ref byte slot = ref stack.PeekBytesByRefUnchecked();
+        // The counter already answers 256 for a zero word, so no special case is needed for it.
+        ulong count = (ulong)Bytes.CountLeadingZeroBits(ref slot);
+        WriteSmallWordToSlot(ref slot, count);
+        return EvmExceptionType.None;
     }
 
     /// <summary>

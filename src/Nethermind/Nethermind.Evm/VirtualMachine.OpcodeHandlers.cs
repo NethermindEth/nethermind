@@ -91,7 +91,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         if (spec.CLZEnabled)
-            lookup[(int)Instruction.CLZ] = OpcodeHandler<Math1Opcode<EvmInstructions.OpCLZ>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.CLZ] = OpcodeHandler<CountLeadingZerosOpcode, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.KECCAK256] = OpcodeHandler<KeccakOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
@@ -344,6 +344,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSignExtend(ref stack, ref gas, vm);
+    }
+
+    private readonly struct CountLeadingZerosOpcode : IOpcodeBody
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionCountLeadingZeros<TGasPolicy>(ref stack, ref gas);
     }
 
     private readonly struct ByteOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
