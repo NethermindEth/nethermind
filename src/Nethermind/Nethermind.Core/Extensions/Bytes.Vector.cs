@@ -15,12 +15,15 @@ namespace Nethermind.Core.Extensions;
 
 public static unsafe partial class Bytes
 {
-    // A field initializer rather than an explicit static constructor: the latter would leave the
-    // whole class lazily initialized, putting an initialization check on every static member access
-    // of this heavily used type wherever ILC cannot preinitialize it.
-    private static readonly Vector256<byte> ReverseMaskVec = Avx2.IsSupported
-        ? Vector256.Create((byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
-        : default;
+    private static Vector256<byte> ReverseMaskVec
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Vector256.Create(
+            0x08090a0b0c0d0e0ful,
+            0x0001020304050607ul,
+            0x08090a0b0c0d0e0ful,
+            0x0001020304050607ul).AsByte();
+    }
 
     // Internal method that requires AVX2 support - caller must check Avx2.IsSupported before calling
     internal static void Avx2Reverse256InPlace(Span<byte> bytes)
