@@ -45,6 +45,7 @@ public unsafe class EvmOpcodesBenchmark
     private const int KeccakWordSize = EvmStack.WordSize;
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
+    private const string OpcodeFilterEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_OPCODES";
 
     private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] _opcodeHandlers = null!;
     private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* _continuationHandlers;
@@ -129,7 +130,33 @@ public unsafe class EvmOpcodesBenchmark
             => LogThresholdPercent,
         _ => DefaultThresholdPercent,
     };
-    public IEnumerable<Instruction> Opcodes => AllValidLegacyOpcodes;
+    public IEnumerable<Instruction> Opcodes
+    {
+        get
+        {
+            string filter = Environment.GetEnvironmentVariable(OpcodeFilterEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(filter))
+            {
+                foreach (Instruction opcode in AllValidLegacyOpcodes)
+                {
+                    yield return opcode;
+                }
+
+                yield break;
+            }
+
+            foreach (string name in filter.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!Enum.TryParse(name, ignoreCase: true, out Instruction opcode) ||
+                    !Enum.IsDefined(opcode) || opcode == Instruction.INVALID)
+                {
+                    throw new ArgumentException($"Unknown EVM opcode '{name}'.", OpcodeFilterEnvironmentVariable);
+                }
+
+                yield return opcode;
+            }
+        }
+    }
 
     [ParamsSource(nameof(Opcodes))]
     public Instruction Opcode { get; set; }
