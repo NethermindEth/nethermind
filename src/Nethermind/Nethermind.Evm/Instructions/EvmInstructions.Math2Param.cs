@@ -110,7 +110,6 @@ public static partial class EvmInstructions
     public struct OpMul : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
