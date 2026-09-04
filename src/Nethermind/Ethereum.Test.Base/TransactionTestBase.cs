@@ -71,14 +71,10 @@ public abstract class TransactionTestBase
         }
         catch (Exception ex)
         {
-            error = GetDetailedError(ex);
+            error = ex.Message;
             return false;
         }
     }
-
-    private static string GetDetailedError(Exception exception) => exception.InnerException is null
-        ? exception.Message
-        : $"{exception.Message}: {GetDetailedError(exception.InnerException)}";
 
     private static bool ExceptionMatches(string expected, string observed)
     {

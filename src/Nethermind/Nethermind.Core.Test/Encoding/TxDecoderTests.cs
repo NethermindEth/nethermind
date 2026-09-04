@@ -497,6 +497,18 @@ namespace Nethermind.Core.Test.Encoding
                 "SetCode null auth element",
                 BuildSetCodeTxBytes(1)
             );
+
+            yield return TestCase(
+                "Legacy transaction with v below 27",
+                Convert.FromHexString("C9808080808080800101"),
+                error: "InvalidTxSignature"
+            );
+
+            yield return TestCase(
+                "Legacy transaction with incomplete signature",
+                Convert.FromHexString("C88080808080801B01"),
+                error: "RLP data is truncated"
+            );
         }
 
         private static IEnumerable<TestCaseData> NonCanonicalNonceTestCases()
