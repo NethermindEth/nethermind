@@ -99,18 +99,14 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
-#if ZK_EVM
-        // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
-        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
-        // (endianness-agnostic for a zero test).
         public static EvmWord Operation(EvmWord value)
         {
+            if (Vector256.IsHardwareAccelerated)
+                return value == default ? OpBitwiseEq.One : default;
+
             ref ulong p = ref As<EvmWord, ulong>(ref value);
-            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? OpBitwiseEq.One : default;
+            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? CreateOneWord() : default;
         }
-#else
-        public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
-#endif
     }
 
     /// <summary>
