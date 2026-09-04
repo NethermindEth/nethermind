@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -9,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
 
@@ -202,10 +202,21 @@ public static unsafe partial class Bytes
             return firstIdx * 8 + lzInByte;
         }
 
-        ref byte first = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
-        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(ref first, Vector256<byte>.Count);
-        UInt256 uint256 = new(span, true);
-        return uint256.CountLeadingZeros();
+        ref ulong parts = ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in v));
+        ulong part = BinaryPrimitives.ReverseEndianness(parts);
+        if (part != 0)
+            return BitOperations.LeadingZeroCount(part);
+
+        part = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref parts, 1));
+        if (part != 0)
+            return 64 + BitOperations.LeadingZeroCount(part);
+
+        part = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref parts, 2));
+        if (part != 0)
+            return 128 + BitOperations.LeadingZeroCount(part);
+
+        part = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref parts, 3));
+        return part == 0 ? 256 : 192 + BitOperations.LeadingZeroCount(part);
     }
 
     [StackTraceHidden, DoesNotReturn]

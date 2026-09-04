@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -13,14 +14,14 @@ public static partial class EvmInstructions
 {
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmWord CreateOneWord()
+    private static EvmWord CreateScalarWord(ulong value)
     {
         Unsafe.SkipInit(out EvmWord word);
         ref ulong parts = ref As<EvmWord, ulong>(ref word);
         parts = 0;
         Add(ref parts, 1) = 0;
         Add(ref parts, 2) = 0;
-        Add(ref parts, 3) = 1UL << 56;
+        Add(ref parts, 3) = BinaryPrimitives.ReverseEndianness(value);
         return word;
     }
 
@@ -142,7 +143,7 @@ public static partial class EvmInstructions
                 | (Add(ref pa, 2) ^ Add(ref pb, 2))
                 | (Add(ref pa, 3) ^ Add(ref pb, 3));
 
-            return diff == 0UL ? CreateOneWord() : default;
+            return diff == 0UL ? CreateScalarWord(1) : default;
         }
     }
 }
