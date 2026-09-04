@@ -52,7 +52,12 @@ public sealed partial class JumpDestinationAnalyzer
             }
             else if (op >= PUSH1 - JUMPDEST)
             {
-                // Fast forward past the push data; it holds no jump destinations.
+                // Fast forward past the push data; it holds no jump destinations. A truncated PUSH at
+                // the tail leaves `position` up to 32 bytes past `end`, i.e. a byref outside the object,
+                // which the guest gets away with only because it is single-threaded and this loop
+                // neither allocates nor calls out, so no GC can observe it. Clamping costs a subtract
+                // and a compare on every PUSH - about half this variant's whole win - hence the
+                // invariant instead. Do not reuse this shape where either condition fails.
                 position = ref Unsafe.Add(ref position, op - (PUSH1 - JUMPDEST) + 2);
             }
             else
