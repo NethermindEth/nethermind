@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
@@ -126,7 +127,7 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        if (!Vector128.IsHardwareAccelerated &&
+        if (!X86Base.IsSupported &&
             (typeof(TOpMath) == typeof(OpLt) ||
              typeof(TOpMath) == typeof(OpGt) ||
              typeof(TOpMath) == typeof(OpSLt) ||
@@ -154,7 +155,7 @@ public static partial class EvmInstructions
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         UInt256 result;
-        if (Vector128.IsHardwareAccelerated &&
+        if (X86Base.IsSupported &&
             (typeof(TOpMath) == typeof(OpLt) ||
              typeof(TOpMath) == typeof(OpGt) ||
              typeof(TOpMath) == typeof(OpSLt) ||
