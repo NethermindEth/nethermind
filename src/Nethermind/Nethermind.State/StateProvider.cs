@@ -43,7 +43,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
-    private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
+    private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
     private readonly List<Change> _keptInCache = [];
@@ -177,7 +177,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
             PushUpdate(address, changedAccount);
-            if (journalCode) _codeInsertJournal.Add((_changes.Count - 1, codeHash));
+            if (journalCode) _codeInsertJournal.Add((_changes.Count - 1, codeHash, code.Length));
         }
         else if (spec.IsEip158Enabled && !isGenesis)
         {
@@ -457,19 +457,21 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// An entry is anchored to the change-log position of the code-hash update referencing it, so
     /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
-    /// same code would be suppressed and lost.
+    /// same code would be suppressed and lost. The staged-write counters are rolled back too, so they
+    /// keep reporting the bytes that actually reach CodeDb.
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
-        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash, int Length)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
         int keep = entries.Length;
         while (keep > 0)
         {
-            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            ref readonly (int Position, ValueHash256 CodeHash, int Length) entry = ref entries[keep - 1];
             if (entry.Position <= snapshot) break;
 
             _codeBatchAlternate.Remove(entry.CodeHash);
             _blockCodeInsertFilter.Delete(entry.CodeHash);
+            _metrics.DecrementCodeWrite(entry.Length);
             keep--;
         }
 
