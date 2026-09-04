@@ -40,15 +40,20 @@ annotate_jit_profile() {
     rm -f "$jit_data" "$jit_dump"
     return 0
   fi
-  perf report --stdio --no-children --sort sym --input "$jit_data" 2>/dev/null \
-    | grep -v -e '^#' -e '^$' | head -n 80 > "$report" || true
+  # -g none keeps the report flat: one line per symbol as "<pct>%  [.] <symbol>". Managed signatures
+  # contain spaces, brackets and commas, so the symbol is everything after the "[.] " marker.
+  perf report --stdio --no-children -g none --sort sym --input "$jit_data" 2>/dev/null \
+    | grep -v -e '^#' -e '^$' | head -n 60 > "$report" || true
   local n=0 sym
   while IFS= read -r sym; do
     [[ -n "$sym" ]] || continue
     n=$((n + 1))
-    perf annotate --stdio --input "$jit_data" --symbol="$sym" 2>/dev/null | head -n 200000 > "$out_dir/perf-annotate-$n.txt" || true
+    printf '%s\n' "$sym" > "$out_dir/perf-annotate-$n.symbol"
+    perf annotate --stdio --input "$jit_data" --symbol="$sym" 2>/dev/null | head -n 20000 > "$out_dir/perf-annotate-$n.txt" || true
     (( n < 4 )) || break
-  done < <(sed -nE 's/^ *[0-9.]+% +[^ ]+ +\[\.\] (.*)$/\1/p' "$report" | head -n 4)
+  done < <(sed -nE 's/^ *[0-9.]+%[^[]*\[\.\] (.*)$/\1/p' "$report" | head -n 4)
+  # Fallback when no symbol name matches exactly: annotate everything above a percentage.
+  perf annotate --stdio --input "$jit_data" --percent-limit 2 2>/dev/null | head -n 40000 > "$out_dir/perf-annotate-all.txt" || true
   rm -f "$jit_data" "$jit_dump"
   log "perf annotate: wrote $n symbol annotation(s) under $out_dir"
 }
