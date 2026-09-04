@@ -84,7 +84,6 @@ public class ReceiptsSyncFeedTests
     private static readonly Scenario _256BodiesWithOneTxEach;
     private static readonly Scenario _64BodiesWithOneTxEach;
     private static readonly Scenario _64BodiesWithOneTxEachFollowedByEmpty;
-    private static readonly Scenario _1024EmptyBodies;
 
     private ProgressLogger _progressLogger = null!;
 
@@ -95,7 +94,6 @@ public class ReceiptsSyncFeedTests
         _256BodiesWithOneTxEach = new Scenario(_specProvider, 256, 1);
         _64BodiesWithOneTxEach = new Scenario(_specProvider, 64, 1);
         _64BodiesWithOneTxEachFollowedByEmpty = new Scenario(_specProvider, 64, 1, 1024 - 64);
-        _1024EmptyBodies = new Scenario(_specProvider, 0, 0, 1024);
     }
 
     [SetUp]
@@ -443,41 +441,24 @@ public class ReceiptsSyncFeedTests
         batch.Response = response;
     }
 
-    /// <summary>Answers every block the batch asks for with no receipts, as a peer does for empty bodies.</summary>
-    /// <returns>How many blocks the batch asked for.</returns>
-    private static int FillEmptyBatchResponses(ReceiptsSyncBatch batch)
-    {
-        ArrayPoolList<TxReceipt[]?> response = new(batch.Infos.Length, batch.Infos.Length);
-        int requested = 0;
-        for (int i = 0; i < response.Count; i++)
-        {
-            if (batch.Infos[i] is null) break;
-
-            response[i] = [];
-            requested++;
-        }
-
-        batch.Response = response;
-        return requested;
-    }
-
     [Test]
     public async Task Inserts_receipts_when_the_block_number_index_has_no_entry()
     {
-        LoadScenario(_1024EmptyBodies);
+        LoadScenario(_1024BodiesWithOneTxEach);
 
         // Given no block number, the block tree resolves one from the block number index first, so a body whose
         // index entry is missing is only reachable when the number the feed already knows is passed along.
         // These are the overloads the feed calls; the substitute intercepts each one separately.
         _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>())
-            .Returns(ci => _1024EmptyBodies.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
+            .Returns(ci => _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
         _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => ci.ArgAt<ulong?>(1) is null
                 ? null
-                : _1024EmptyBodies.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
 
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        int requested = FillEmptyBatchResponses(batch!);
+        FillBatchResponses(batch!);
+        int requested = batch!.Infos.Length;
 
         SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
 

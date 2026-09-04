@@ -280,7 +280,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockNumber} {blockInfo.BlockHash}");
+                                if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
                             }
 
                             _syncStatusList.MarkPending(blockInfo);
