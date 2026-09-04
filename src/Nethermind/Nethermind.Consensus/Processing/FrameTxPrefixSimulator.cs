@@ -22,7 +22,10 @@ namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IFrameTxPrefixSimulator"/>
 /// <remarks>Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout per
-/// simulation, and a cumulative per-head budget. A busy simulator sheds rather than queues.</remarks>
+/// simulation, and a cumulative per-head budget. A busy simulator sheds rather than queues.
+/// <para>Every prefix simulation node-wide serialises on one lock and runs with instruction/stack tracing on
+/// (the slow interpreter path), so frame-transaction admission throughput is capped at one simulation at a
+/// time. Under real frame-transaction volume this lock, not <c>MAX_VERIFY_GAS</c>, is the admission bottleneck.</para></remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
