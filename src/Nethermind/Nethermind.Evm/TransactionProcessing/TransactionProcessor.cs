@@ -248,18 +248,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            Address? recipient = tx.To;
-            bool useSimpleTransferFastPath = TryPrepareSimpleTransferFastPath(tx, spec, recipient, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);
+            Address? simpleTransferRecipient = PrepareSimpleTransferFastPath(tx, spec, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);
 
-            bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
+            bool commitBeforeExecution = commit && (simpleTransferRecipient is null || restore || tracer.IsTracingState);
             if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
 
-            if (useSimpleTransferFastPath)
+            if (simpleTransferRecipient is not null)
             {
-                Debug.Assert(recipient is not null, "The simple-transfer fast path requires a recipient.");
-                return ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, recipient, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee);
+                return ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, simpleTransferRecipient, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee);
             }
 
             return ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
@@ -267,26 +265,26 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isCodeOverridable)
-            => !isCodeOverridable && tx.To is not null && tx.AuthorizationList is null && !ForceSimpleTransferDisabled;
+            => !isCodeOverridable && tx.AuthorizationList is null && !ForceSimpleTransferDisabled;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
             => delegationAddress is null && codeInfo.IsEmpty;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool TryPrepareSimpleTransferFastPath(
+        private Address? PrepareSimpleTransferFastPath(
             Transaction tx,
             IReleaseSpec spec,
-            Address? recipient,
-            [NotNullWhen(true)] out CodeInfo? preloadedCodeInfo,
+            out CodeInfo? preloadedCodeInfo,
             out Address? preloadedDelegationAddress)
         {
             preloadedCodeInfo = null;
             preloadedDelegationAddress = null;
-            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return false;
+            Address? recipient = tx.To;
+            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return null;
 
             preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
-            return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
+            return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;
         }
 
         [SkipLocalsInit]

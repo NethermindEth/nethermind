@@ -127,8 +127,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
                 TrieNode? node = boundaryNodes[i];
                 if (node is null) break;
 
-                byte[] proof = node.FullRlp.ToArray() ?? throw new TrieException("A visited trie node must have encoded RLP.");
-                proofs.Add(proof);
+                proofs.Add(node.FullRlp.ToArray() ?? throw new TrieException("A visited trie node must have encoded RLP."));
 
                 if (node.IsBranch)
                     i++;

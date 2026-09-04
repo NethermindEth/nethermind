@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 RequestId = MessageConstants.Random.NextLong(),
                 StorageRange = new()
                 {
-                    RootHash = null!,
+                    RootHash = null,
                     Accounts = ArrayPoolList<PathWithAccount>.Empty(),
                     StartingHash = TestItem.KeccakB,
                     LimitHash = TestItem.KeccakC

@@ -50,7 +50,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         return Task.FromResult(new SlotsAndProofs()
         {
             PathsAndSlots = slots,
-            Proofs = proof ?? EmptyByteArrayList.Instance,
+            Proofs = proof,
         });
     }
 

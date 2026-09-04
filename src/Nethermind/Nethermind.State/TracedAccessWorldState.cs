@@ -18,9 +18,8 @@ namespace Nethermind.State;
 
 /// <remarks>
 /// Setup contract: <see cref="SetGeneratingBlockAccessList"/> must run with a non-null slice
-/// before any state-mutating method. Hot-path mutators dereference
-/// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
-/// <see cref="InvalidOperationException"/> at the first write rather than silently corrupting BAL output.
+/// before any operation that records or mutates the block access list. The guarded accessor fails fast
+/// with <see cref="InvalidOperationException"/> when setup is missing.
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {

@@ -51,7 +51,7 @@ public class SlotsAndProofsTests
     [Test]
     public void Null_fields_are_normalized_to_empty_owned_lists()
     {
-        SlotsAndProofs sut = new() { PathsAndSlots = null!, Proofs = null };
+        SlotsAndProofs sut = new() { PathsAndSlots = null, Proofs = null };
 
         using (Assert.EnterMultipleScope())
         {
