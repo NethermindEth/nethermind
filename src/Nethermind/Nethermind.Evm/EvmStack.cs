@@ -1456,17 +1456,7 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            // Single 32-byte store
-            head = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
-        }
-        else
-        {
-            ref Vector128<uint> head128 = ref Unsafe.As<EvmWord, Vector128<uint>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0U, 0U, 0U, value);
-        }
+        head = CreateWordFromUInt64((ulong)value << 32);
         return EvmExceptionType.None;
     }
 
