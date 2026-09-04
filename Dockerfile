@@ -39,6 +39,9 @@ RUN apt-get update && \
   LD_PRELOAD=libjemalloc.so.2 sh -c 'grep -q jemalloc /proc/self/maps'
 
 ENV LD_PRELOAD=libjemalloc.so.2
+# background_thread:true was the keeper lever in the 2026-07 allocator campaign: 3x tighter CV,
+# lowest RSS and throttle, latency flat.
+ENV MALLOC_CONF=background_thread:true
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
