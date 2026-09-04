@@ -1046,6 +1046,34 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [TestCase(-1, 0)]
+        [TestCase(0, 0)]
+        [TestCase(1, 1)]
+        [TestCase(2, 2)]
+        [TestCase(3, 6)]
+        [TestCase(4, 9)]
+        [TestCase(5, 67)]
+        public void SkipItems_advances_the_cursor_like_repeated_SkipItem(int count, int expectedPosition)
+        {
+            // 0x7F | "" | "abc" | [1, 2] | a 56-byte string, so a run crosses every prefix form
+            byte[] rlp = [0x7F, 0x80, 0x83, 0x61, 0x62, 0x63, 0xC2, 0x01, 0x02, 0xB8, 0x38, .. new byte[56]];
+
+            RlpReader batched = new(rlp);
+            batched.SkipItems(count);
+
+            RlpReader oneByOne = new(rlp);
+            for (int i = 0; i < count; i++)
+            {
+                oneByOne.SkipItem();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(batched.Position, Is.EqualTo(expectedPosition));
+                Assert.That(oneByOne.Position, Is.EqualTo(expectedPosition));
+            }
+        }
+
         private static byte[] BuildLongFormRlp(int prefix, int contentLength)
         {
             int lengthOfLength = prefix < 192 ? prefix - 183 : prefix - 247;

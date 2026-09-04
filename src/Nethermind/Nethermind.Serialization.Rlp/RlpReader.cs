@@ -749,9 +749,15 @@ public ref struct RlpReader
     /// <summary>Advances the cursor past <paramref name="count"/> whole items.</summary>
     /// <remarks>Keeps the cursor in a local for the walk, so it is read and written once instead of once
     /// per item. The cursor is a 4-byte field access, which the zkVM charges about eight times an aligned
-    /// 8-byte read and eleven times an 8-byte write.</remarks>
+    /// 8-byte read and eleven times an 8-byte write, so a non-positive <paramref name="count"/> returns
+    /// without touching it. A malformed item throws with the cursor still on the first item of the run.</remarks>
     public void SkipItems(int count)
     {
+        if (count <= 0)
+        {
+            return;
+        }
+
         ReadOnlySpan<byte> data = Data;
         int position = Position;
         for (int i = 0; i < count; i++)
