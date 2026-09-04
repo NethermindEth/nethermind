@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
@@ -689,10 +690,8 @@ public static class TrieUpdater
 
     private static int BoundarySlot(PbtFullKey key, int groupDepth)
     {
-        int slot = 0;
-        for (int level = 0; level < PbtFourLevelGroupGeometry.LevelsPerGroup; level++)
-            slot = (slot << 1) | key.GetBit(groupDepth + level);
-        return slot;
+        byte value = key.Bytes[groupDepth >> 3];
+        return (value >> (4 - (groupDepth & 4))) & 0x0F;
     }
 
     private static int MatchingPrefixBits(PbtBitPrefix prefix, PbtFullKey key, int keyOffset)
@@ -711,7 +710,7 @@ public static class TrieUpdater
         {
             if (prefix.GetBit(start + index) != 0) bytes[index >> 3] |= (byte)(1 << (7 - (index & 7)));
         }
-        return new PbtBitPrefix(bytes, count);
+        return PbtBitPrefix.TakeOwnership(bytes, count);
     }
 
     private static void Store(scoped ref GroupFrameReader group, PbtNodePath path, PbtNode node)
@@ -734,10 +733,7 @@ public static class TrieUpdater
         private readonly PbtNodePath _groupKey;
         private readonly TrieUpdaterMetrics? _metrics;
         private readonly ReadOnlySpan<byte> _payload;
-        private readonly int[] _offsets;
-        private readonly int[] _lengths;
-        private readonly PbtNode?[] _nodes;
-        private readonly SlotState[] _states;
+        private readonly FrameStorage _storage;
 
         internal GroupFrameReader(
             IPbtStore store,
@@ -748,10 +744,7 @@ public static class TrieUpdater
             _groupKey = groupKey;
             _metrics = metrics;
             _payload = default;
-            _offsets = new int[PbtNodeGroupCodec.PositionCount];
-            _lengths = new int[PbtNodeGroupCodec.PositionCount];
-            _nodes = new PbtNode[PbtNodeGroupCodec.PositionCount];
-            _states = new SlotState[PbtNodeGroupCodec.PositionCount];
+            _storage = new();
         }
 
         internal GroupFrameReader(
@@ -769,9 +762,9 @@ public static class TrieUpdater
                 if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
                 if (!reader.TryGetNodeRange(position, out int offset, out int length)) continue;
 
-                _offsets[position] = offset;
-                _lengths[position] = length;
-                _states[position] = SlotState.Persisted;
+                _storage.Offsets[position] = offset;
+                _storage.Lengths[position] = length;
+                _storage.States[position] = SlotState.Persisted;
             }
         }
 
@@ -793,12 +786,12 @@ public static class TrieUpdater
         internal PbtNode? TryLoad(PbtNodePath path)
         {
             TryGetPosition(path, out int position);
-            return _states[position] switch
+            return _storage.States[position] switch
             {
                 SlotState.Absent => null,
-                SlotState.Persisted => _nodes[position] ??= PbtNodeCodec.Decode(
-                    _payload.Slice(_offsets[position], _lengths[position])),
-                SlotState.Staged => _nodes[position],
+                SlotState.Persisted => _storage.Nodes[position] ??= PbtNodeCodec.Decode(
+                    _payload.Slice(_storage.Offsets[position], _storage.Lengths[position])),
+                SlotState.Staged => _storage.Nodes[position],
                 SlotState.Tombstone => throw new InvalidDataException("A referenced PBT node is missing."),
                 _ => throw new ArgumentOutOfRangeException(nameof(path)),
             };
@@ -807,11 +800,11 @@ public static class TrieUpdater
         internal PbtNode Load(PbtNodePath path)
         {
             TryGetPosition(path, out int position);
-            return _states[position] switch
+            return _storage.States[position] switch
             {
-                SlotState.Persisted => _nodes[position] ??= PbtNodeCodec.Decode(
-                    _payload.Slice(_offsets[position], _lengths[position])),
-                SlotState.Staged => _nodes[position]!,
+                SlotState.Persisted => _storage.Nodes[position] ??= PbtNodeCodec.Decode(
+                    _payload.Slice(_storage.Offsets[position], _storage.Lengths[position])),
+                SlotState.Staged => _storage.Nodes[position]!,
                 _ => throw new InvalidDataException("A referenced PBT node is missing."),
             };
         }
@@ -819,36 +812,36 @@ public static class TrieUpdater
         internal void Store(int position, PbtNode node)
         {
             byte[] encoding = PbtNodeCodec.Encode(node);
-            if (_states[position] == SlotState.Persisted && PersistedEncodingEquals(position, encoding))
+            if (_storage.States[position] == SlotState.Persisted && PersistedEncodingEquals(position, encoding))
             {
-                _nodes[position] = node;
+                _storage.Nodes[position] = node;
                 return;
             }
 
-            _states[position] = SlotState.Staged;
-            _nodes[position] = node;
+            _storage.States[position] = SlotState.Staged;
+            _storage.Nodes[position] = node;
             _store.SetNode(PbtFourLevelGroupGeometry.PathOf(_groupKey, position), encoding);
             _metrics?.AddEmittedNodeWrites(1);
         }
 
         internal void Remove(int position)
         {
-            if (_lengths[position] != 0)
+            if (_storage.Lengths[position] != 0)
             {
-                _states[position] = SlotState.Tombstone;
+                _storage.States[position] = SlotState.Tombstone;
                 _store.SetNode(PbtFourLevelGroupGeometry.PathOf(_groupKey, position), null);
                 _metrics?.AddEmittedNodeWrites(1);
             }
             else
             {
-                _states[position] = SlotState.Absent;
+                _storage.States[position] = SlotState.Absent;
             }
-            _nodes[position] = null;
+            _storage.Nodes[position] = null;
         }
 
         private bool PersistedEncodingEquals(int position, ReadOnlySpan<byte> encoding) =>
-            _lengths[position] != 0
-            && _payload.Slice(_offsets[position], _lengths[position]).SequenceEqual(encoding);
+            _storage.Lengths[position] != 0
+            && _payload.Slice(_storage.Offsets[position], _storage.Lengths[position]).SequenceEqual(encoding);
 
         private static bool StartsWith(ReadOnlySpan<byte> path, ReadOnlySpan<byte> prefix, int prefixBitCount)
         {
@@ -857,6 +850,38 @@ public static class TrieUpdater
             int remainingBits = prefixBitCount & 7;
             return remainingBits == 0
                 || ((path[completeBytes] ^ prefix[completeBytes]) & (0xFF << (8 - remainingBits))) == 0;
+        }
+
+        private sealed class FrameStorage
+        {
+            internal OffsetBuffer Offsets;
+            internal LengthBuffer Lengths;
+            internal NodeBuffer Nodes;
+            internal StateBuffer States;
+        }
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct OffsetBuffer
+        {
+            private int _element;
+        }
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct LengthBuffer
+        {
+            private int _element;
+        }
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct NodeBuffer
+        {
+            private PbtNode? _element;
+        }
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct StateBuffer
+        {
+            private SlotState _element;
         }
 
         private enum SlotState : byte

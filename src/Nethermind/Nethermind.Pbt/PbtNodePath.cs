@@ -23,6 +23,12 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
         BitDepth = bitDepth;
     }
 
+    private PbtNodePath(byte[] path, int bitDepth)
+    {
+        _path = path;
+        BitDepth = bitDepth;
+    }
+
     public int BitDepth { get; }
     public ReadOnlySpan<byte> Path => _path;
 
@@ -59,8 +65,10 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
         byte[] path = new byte[(bitDepth + 7) >> 3];
         key.Bytes[..path.Length].CopyTo(path);
         if (path.Length != 0 && (bitDepth & 7) != 0) path[^1] &= (byte)(0xFF << (8 - (bitDepth & 7)));
-        return new PbtNodePath(path, bitDepth);
+        return TakeOwnership(path, bitDepth);
     }
+
+    internal static PbtNodePath TakeOwnership(byte[] path, int bitDepth) => new(path, bitDepth);
 
     internal PbtNodePath Append(PbtBitPrefix prefix, int direction)
     {
@@ -79,7 +87,7 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
             int bit = depth - 1;
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
-        return new PbtNodePath(path, depth);
+        return TakeOwnership(path, depth);
     }
 
     public int CompareTo(PbtNodePath? other)

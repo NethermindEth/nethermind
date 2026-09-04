@@ -23,6 +23,12 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
         BitCount = bitCount;
     }
 
+    private PbtBitPrefix(byte[] bytes, int bitCount)
+    {
+        _bytes = bytes;
+        BitCount = bitCount;
+    }
+
     public int BitCount { get; }
     public ReadOnlySpan<byte> Bytes => _bytes;
 
@@ -45,8 +51,10 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
             if (key.GetBit(startBit + i) != 0) bytes[i >> 3] |= (byte)(1 << (7 - (i & 7)));
         }
 
-        return new PbtBitPrefix(bytes, bitCount);
+        return TakeOwnership(bytes, bitCount);
     }
+
+    internal static PbtBitPrefix TakeOwnership(byte[] bytes, int bitCount) => new(bytes, bitCount);
 
     internal static PbtBitPrefix Concat(PbtBitPrefix first, int direction, PbtBitPrefix second)
     {
@@ -57,7 +65,7 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
         CopyBits(first, bytes, 0);
         if (direction != 0) bytes[first.BitCount >> 3] |= (byte)(1 << (7 - (first.BitCount & 7)));
         CopyBits(second, bytes, first.BitCount + 1);
-        return new PbtBitPrefix(bytes, bitCount);
+        return TakeOwnership(bytes, bitCount);
     }
 
     public bool Equals(PbtBitPrefix? other) =>

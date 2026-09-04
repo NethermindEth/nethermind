@@ -117,7 +117,7 @@ public static class PbtFourLevelGroupGeometry
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
 
-        return new PbtNodePath(path, depth);
+        return PbtNodePath.TakeOwnership(path, depth);
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
@@ -145,7 +145,7 @@ public static class PbtFourLevelGroupGeometry
         byte[] prefix = path.Path[..byteLength].ToArray();
         if (byteLength != 0 && (depth & 7) != 0)
             prefix[^1] &= (byte)(0xFF << (8 - (depth & 7)));
-        return new PbtNodePath(prefix, depth);
+        return PbtNodePath.TakeOwnership(prefix, depth);
     }
 
     private static void ValidateGroupKey(PbtNodePath groupKey)
