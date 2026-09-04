@@ -14,7 +14,8 @@ namespace Nethermind.Core.ZkEvm.Test.Extensions;
 /// </summary>
 /// <remarks>
 /// Every byte and every bit gets its own case: the guest form folds the 32 bytes into four lanes, so a
-/// swapped lane index or a dropped lane shows up only for the byte positions that land in it.
+/// swapped lane index or a dropped lane shows up only for the byte positions that land in it, and a case
+/// per position names the broken lane instead of stopping at the first one.
 /// </remarks>
 public class WordEqualityTests
 {
@@ -34,39 +35,14 @@ public class WordEqualityTests
         Assert.That(Bytes.AreEqual32(ref a[0], ref b[0]), Is.True);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(23)]
-    [TestCase(24)]
-    [TestCase(31)]
-    public void A_difference_at_any_byte_compares_unequal(int index)
+    [Test]
+    public void A_difference_at_any_bit_matches_a_reference_comparison([Range(0, 31)] int index, [Range(0, 7)] int bit)
     {
         byte[] a = Pattern();
         byte[] b = Pattern();
-        b[index] ^= 0x80;
+        b[index] ^= (byte)(1 << bit);
 
-        Assert.That(Bytes.AreEqual32(ref a[0], ref b[0]), Is.False);
-    }
-
-    [Test]
-    public void Every_byte_and_bit_matches_a_reference_comparison()
-    {
-        byte[] a = Pattern();
-        for (int index = 0; index < 32; index++)
-        {
-            for (int bit = 0; bit < 8; bit++)
-            {
-                byte[] b = Pattern();
-                b[index] ^= (byte)(1 << bit);
-
-                Assert.That(Bytes.AreEqual32(ref a[0], ref b[0]),
-                    Is.EqualTo(((ReadOnlySpan<byte>)a).SequenceEqual(b)), $"byte {index}, bit {bit}");
-            }
-        }
+        Assert.That(Bytes.AreEqual32(ref a[0], ref b[0]), Is.EqualTo(((ReadOnlySpan<byte>)a).SequenceEqual(b)));
     }
 
     [Test]
@@ -78,18 +54,12 @@ public class WordEqualityTests
     }
 
     [Test]
-    public void Every_single_set_bit_makes_a_span_non_zero()
+    public void Any_single_set_bit_makes_a_span_non_zero([Range(0, 31)] int index, [Range(0, 7)] int bit)
     {
-        for (int index = 0; index < 32; index++)
-        {
-            for (int bit = 0; bit < 8; bit++)
-            {
-                byte[] bytes = new byte[32];
-                bytes[index] = (byte)(1 << bit);
+        byte[] bytes = new byte[32];
+        bytes[index] = (byte)(1 << bit);
 
-                Assert.That(Bytes.IsZero32(ref bytes[0]), Is.False, $"byte {index}, bit {bit}");
-            }
-        }
+        Assert.That(Bytes.IsZero32(ref bytes[0]), Is.False);
     }
 
     [Test]

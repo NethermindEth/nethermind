@@ -29,15 +29,7 @@ namespace Nethermind.Core
                     ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in other._index))))
                 return false;
 
-            // Inline 20-byte Address comparison: avoids the Address.Equals call
-            // that the JIT refuses to inline when called from deep inline chains
-            // (e.g. SeqlockCache.TryGetValue). Address.Bytes is always exactly 20 bytes.
-            Address a = _address.Value;
-            Address b = other._address.Value;
-            if (ReferenceEquals(a, b))
-                return true;
-
-            return Address.BytesEqual(ref MemoryMarshal.GetReference(a.Bytes), ref MemoryMarshal.GetReference(b.Bytes));
+            return _address.Equals(in other._address);
         }
 
         public bool Equals(StorageCell other) => Equals(in other);

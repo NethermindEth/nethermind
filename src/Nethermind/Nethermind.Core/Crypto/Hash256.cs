@@ -105,7 +105,7 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
-        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : b.Equals(a);
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => b.Equals(a);
         public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
         public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
         public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
