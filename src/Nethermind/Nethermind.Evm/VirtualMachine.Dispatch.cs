@@ -232,4 +232,104 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         return exceptionType;
     }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static EvmExceptionType ExecuteJumpIfOpcode<TTracingInst, TCancelable>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        ref DispatchState state,
+        nint pc,
+        int opCodeCount)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+    {
+        VirtualMachine<TGasPolicy> vm = state.Vm;
+        if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && vm._txTracer.IsCancelled)
+            ThrowOperationCanceledException();
+
+        if (TTracingInst.IsActive)
+        {
+            Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
+            vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
+        }
+
+        pc++;
+        opCodeCount++;
+        nint fallthroughPc = pc;
+        OpcodeResult result = TTracingInst.IsActive
+            ? EvmInstructions.InstructionJumpIf(ref stack, ref gas, vm, pc)
+            : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref gas, vm, pc);
+        pc = result.ProgramCounter;
+
+        nint next = 0;
+        if ((nuint)pc < (nuint)stack.CodeLength)
+            next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
+
+        if (ShouldExitFrame(result.Exception, TGasPolicy.IsOutOfGas(in gas)))
+            goto Exit;
+
+        Debug.Assert(vm.ReturnData is null,
+            "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
+
+        if (TTracingInst.IsActive)
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+
+        if (next == 0)
+            goto Exit;
+
+        IL.EnsureLocal(in next);
+
+        if (pc != fallthroughPc)
+        {
+            IL.Emit.Ldarg(nameof(stack));
+            IL.Emit.Ldarg(nameof(gas));
+            IL.Emit.Ldarg(nameof(state));
+            IL.Emit.Ldarg(nameof(pc));
+            IL.Emit.Ldarg(nameof(opCodeCount));
+            IL.Push(next);
+            IL.Emit.Tail();
+            IL.Emit.Calli(new StandAloneMethodSig(
+                CallingConventions.Standard,
+                TypeRef.Type<EvmExceptionType>(),
+                TypeRef.Type<EvmStack>().MakeByRefType(),
+                TypeRef.Type<TGasPolicy>().MakeByRefType(),
+                TypeRef.Type<DispatchState>().MakeByRefType(),
+                TypeRef.Type<nint>(),
+                TypeRef.Type<int>()));
+            IL.Emit.Ret();
+        }
+        else
+        {
+            IL.Emit.Ldarg(nameof(stack));
+            IL.Emit.Ldarg(nameof(gas));
+            IL.Emit.Ldarg(nameof(state));
+            IL.Emit.Ldarg(nameof(pc));
+            IL.Emit.Ldarg(nameof(opCodeCount));
+            IL.Push(next);
+            IL.Emit.Tail();
+            IL.Emit.Calli(new StandAloneMethodSig(
+                CallingConventions.Standard,
+                TypeRef.Type<EvmExceptionType>(),
+                TypeRef.Type<EvmStack>().MakeByRefType(),
+                TypeRef.Type<TGasPolicy>().MakeByRefType(),
+                TypeRef.Type<DispatchState>().MakeByRefType(),
+                TypeRef.Type<nint>(),
+                TypeRef.Type<int>()));
+            IL.Emit.Ret();
+        }
+
+        throw IL.Unreachable();
+
+    Exit:
+        state.OpCodeCount = opCodeCount;
+        state.FinalProgramCounter = pc;
+        if (TGasPolicy.IsOutOfGas(in gas))
+        {
+            TGasPolicy.SetOutOfGas(ref gas);
+            return EvmExceptionType.OutOfGas;
+        }
+
+        return result.Exception;
+    }
 }
