@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -22,9 +23,25 @@ namespace Nethermind.Blockchain.Test;
 public class PrecompileCachedCodeInfoRepositoryTests
 {
     private static readonly Address PrecompileAddress = Address.FromNumber(100);
+    private static readonly Address OtherPrecompileAddress = Address.FromNumber(101);
 
-    private static PreBlockCaches CreateCaches(int survivingMaxEntries = 1024) =>
-        new(new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries });
+    private const long UnconstrainedMaxBytes = 32 * 1024 * 1024;
+
+    // budget tests below feed 4-byte inputs, and TestPrecompile echoes them
+    private const int EntryCost = 4 * 2 + PrecompileCaches.EntryOverheadBytes;
+
+    private static IPrecompileProvider CreateProvider(params (Address Address, IPrecompile Precompile)[] precompiles)
+    {
+        FrozenDictionary<AddressAsKey, CodeInfo> map = precompiles
+            .ToDictionary(p => (AddressAsKey)p.Address, p => new CodeInfo(p.Precompile))
+            .ToFrozenDictionary();
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(map);
+        return provider;
+    }
+
+    private static PrecompileCaches CreateCaches(IPrecompileProvider provider, int survivingMaxEntries = 1024, long maxBytes = UnconstrainedMaxBytes) =>
+        new(provider, new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries }, maxBytes);
 
     private static IReleaseSpec CreateSpecWithPrecompiles(params Address[] precompileAddresses)
     {
@@ -33,21 +50,28 @@ public class PrecompileCachedCodeInfoRepositoryTests
         return spec;
     }
 
-    private static PrecompileCachedCodeInfoRepository BuildRepository(PreBlockCaches? caches, params (Address Address, IPrecompile Precompile)[] precompiles)
-    {
-        FrozenDictionary<AddressAsKey, CodeInfo> map = precompiles
-            .ToDictionary(p => (AddressAsKey)p.Address, p => new CodeInfo(p.Precompile))
-            .ToFrozenDictionary();
-        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
-        provider.GetPrecompiles().Returns(map);
-        return new PrecompileCachedCodeInfoRepository(Substitute.For<IWorldState>(), provider, Substitute.For<ICodeInfoRepository>(), caches);
-    }
+    private static PrecompileCachedCodeInfoRepository BuildRepository(PrecompileCaches? caches, IPrecompileProvider provider) =>
+        new(Substitute.For<IWorldState>(), provider, Substitute.For<ICodeInfoRepository>(), caches);
 
-    private static IPrecompile ResolvePrecompile(PreBlockCaches? caches, IPrecompile precompile, Address? address = null)
+    private static IPrecompile Resolve(PrecompileCachedCodeInfoRepository repository, Address address, params Address[] otherPrecompiles) =>
+        repository.GetCachedCodeInfo(address, false, CreateSpecWithPrecompiles([address, .. otherPrecompiles]), out _).Precompile!;
+
+    private static (IPrecompile Resolved, PrecompileCaches Caches) ResolveWithCache(
+        IPrecompile precompile,
+        Address? address = null,
+        int survivingMaxEntries = 1024,
+        long maxBytes = UnconstrainedMaxBytes)
     {
         address ??= PrecompileAddress;
-        PrecompileCachedCodeInfoRepository repository = BuildRepository(caches, (address, precompile));
-        return repository.GetCachedCodeInfo(address, false, CreateSpecWithPrecompiles(address), out _).Precompile!;
+        IPrecompileProvider provider = CreateProvider((address, precompile));
+        PrecompileCaches caches = CreateCaches(provider, survivingMaxEntries, maxBytes);
+        return (Resolve(BuildRepository(caches, provider), address), caches);
+    }
+
+    private static PrecompileCaches.Partition GetPartition(PrecompileCaches caches, Address? address = null)
+    {
+        caches.TryGetPartition(address ?? PrecompileAddress, out PrecompileCaches.Partition? partition);
+        return partition!;
     }
 
     [Test]
@@ -69,8 +93,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void GetCachedCodeInfo_AtGivenCachingSupport_WrapsOnlyCacheablePrecompiles(bool supportsCaching, bool withCaches, bool expectWrapped)
     {
         TestPrecompile precompile = new(supportsCaching);
+        IPrecompileProvider provider = CreateProvider((PrecompileAddress, precompile));
 
-        IPrecompile resolved = ResolvePrecompile(withCaches ? CreateCaches() : null, precompile);
+        IPrecompile resolved = Resolve(BuildRepository(withCaches ? CreateCaches(provider) : null, provider), PrecompileAddress);
 
         if (expectWrapped)
         {
@@ -84,11 +109,28 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
+    public void GetCachedCodeInfo_WithCachingDisabled_DoesNotWrap()
+    {
+        TestPrecompile precompile = new(supportsCaching: true);
+        IPrecompileProvider provider = CreateProvider((PrecompileAddress, precompile));
+        PrecompileCaches caches = CreateCaches(provider, maxBytes: -1);
+
+        IPrecompile resolved = Resolve(BuildRepository(caches, provider), PrecompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.TryGetPartition(PrecompileAddress, out _), Is.False, "a disabled budget must create no partitions");
+            Assert.That(resolved, Is.SameAs(precompile), "a disabled budget must leave the precompile unwrapped");
+        }
+    }
+
+    [Test]
     public void GetCachedCodeInfo_WithMixedRealPrecompiles_WrapsOnlyCachingOnes()
     {
-        PrecompileCachedCodeInfoRepository repository = BuildRepository(CreateCaches(),
+        IPrecompileProvider provider = CreateProvider(
             (Sha256Precompile.Address, Sha256Precompile.Instance),
             (IdentityPrecompile.Address, IdentityPrecompile.Instance));
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(CreateCaches(provider), provider);
         IReleaseSpec spec = CreateSpecWithPrecompiles(Sha256Precompile.Address, IdentityPrecompile.Address);
 
         IPrecompile sha256 = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _).Precompile!;
@@ -108,8 +150,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         int runCount = 0;
         byte[] fixedOutput = [10, 20, 30];
         TestPrecompile precompile = new(supportsCaching, onRun: () => runCount++, fixedOutput: fixedOutput);
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, precompile);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(precompile);
 
         byte[] input = [1, 2, 3];
         Result<byte[]> first = resolved.Run(input, Prague.Instance);
@@ -118,7 +159,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(expectedRuns), "a cacheable repeated input must compute exactly once");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(expectedEntries), "only cacheable results may enter the per-block tier");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(expectedEntries), "only cacheable results may enter the per-block tier");
             Assert.That(first.Data, Is.EqualTo(fixedOutput), "the computed result must be served");
             Assert.That(second.Data, Is.EqualTo(fixedOutput), "a hit must be indistinguishable from a computation");
         }
@@ -128,8 +169,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_ForDifferentInputs_CreatesSeparateEntries()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
         resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance);
@@ -139,15 +179,14 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(2), "each unique input must compute exactly once");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(2), "each unique input must have its own entry");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(2), "each unique input must have its own entry");
         }
     }
 
     [Test]
     public void Run_WithRealSha256_ServesTheComputedDigestFromTheCache()
     {
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, Sha256Precompile.Instance, Sha256Precompile.Address);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(Sha256Precompile.Instance, Sha256Precompile.Address);
 
         byte[] input = [1, 2, 3, 4, 5];
         Result<byte[]> first = resolved.Run(input, Prague.Instance);
@@ -157,7 +196,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         {
             Assert.That((bool)first, Is.True, "precondition: the real digest computation succeeds");
             Assert.That(second.Data, Is.EqualTo(first.Data), "the cached digest must match the computed one");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(1), "the digest must be cached");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the digest must be cached");
         }
     }
 
@@ -165,8 +204,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_WithNormalizedOversizedInputs_DeduplicatesToOneEntry()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, new TruncatingTestPrecompile(effectiveLength: 4, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TruncatingTestPrecompile(effectiveLength: 4, onRun: () => runCount++));
 
         Result<byte[]> first = resolved.Run(new byte[] { 1, 2, 3, 4, 0xAA, 0xBB }, Prague.Instance);
         Result<byte[]> second = resolved.Run(new byte[] { 1, 2, 3, 4, 0xCC, 0xDD, 0xEE }, Prague.Instance);
@@ -174,7 +212,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(1), "inputs equal after normalization must map to the same cache key");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(1));
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(1));
             Assert.That(second.Data, Is.EqualTo(first.Data));
         }
     }
@@ -183,8 +221,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_ForInvalidLengthResults_DoesNotCache()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, new FixedLengthTestPrecompile(validLength: 4, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new FixedLengthTestPrecompile(validLength: 4, onRun: () => runCount++));
 
         Result<byte[]> first = resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
         Result<byte[]> repeat = resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
@@ -194,7 +231,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That((bool)first, Is.False, "precondition: an invalid-length input must fail");
             Assert.That((bool)repeat, Is.False);
             Assert.That(runCount, Is.EqualTo(2), "invalid-length results must re-run instead of being cached");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "the block tier must remain empty for invalid-length results");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(0), "the block tier must remain empty for invalid-length results");
         }
     }
 
@@ -202,8 +239,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_ForDifferentSpecs_CreatesSeparateCacheEntries()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         byte[] input = [1, 2, 3];
         resolved.Run(input, Prague.Instance);
@@ -214,7 +250,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(2), "an entry cached under one spec must not be served under another");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(2), "each spec must have its own entry for the same input");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(2), "each spec must have its own entry for the same input");
         }
     }
 
@@ -222,20 +258,19 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_AfterPerBlockClear_ServesFromSurvivingTierWithoutRepopulating()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         byte[] input = [1, 2, 3];
         resolved.Run(input, Prague.Instance);
-        caches.ClearCaches();
-        Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "precondition: the per-block tier is cleared");
+        caches.ClearBlockCache();
+        Assert.That(caches.BlockCacheCount, Is.EqualTo(0), "precondition: the per-block tier is cleared");
 
         resolved.Run(input, Prague.Instance);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(1), "the surviving tier must serve the result across the per-block clear");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "a surviving-tier hit serves directly and does not repopulate the per-block tier");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(0), "a surviving-tier hit serves directly and does not repopulate the per-block tier");
         }
     }
 
@@ -243,8 +278,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_AtSurvivingTierCapacity_EvictsInsteadOfGrowing()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches(survivingMaxEntries: 2);
-        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++), survivingMaxEntries: 2);
 
         resolved.Run(new byte[] { 1 }, Prague.Instance);
         resolved.Run(new byte[] { 2 }, Prague.Instance);
@@ -253,7 +287,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(3), "precondition: three distinct inputs must each compute");
-            Assert.That(caches.SurvivingPrecompileCache.Count, Is.EqualTo(2), "the surviving tier must evict at capacity instead of growing");
+            Assert.That(caches.SurvivingCacheCount, Is.EqualTo(2), "the surviving tier must evict at capacity instead of growing");
         }
     }
 
@@ -261,22 +295,190 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_WithOversizedEntry_DoesNotSurviveTheBlock()
     {
         int runCount = 0;
-        PreBlockCaches caches = CreateCaches();
-        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         byte[] oversizedInput = new byte[4096];
         resolved.Run(oversizedInput, Prague.Instance);
         resolved.Run(oversizedInput, Prague.Instance);
         Assert.That(runCount, Is.EqualTo(1), "precondition: within the block the oversized entry is served by the per-block tier");
 
-        caches.ClearCaches();
+        caches.ClearBlockCache();
         resolved.Run(oversizedInput, Prague.Instance);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(2), "oversized entries must recompute after the per-block clear");
-            Assert.That(caches.SurvivingPrecompileCache.Count, Is.EqualTo(0), "entries above the byte cap must not enter the surviving tier");
+            Assert.That(caches.SurvivingCacheCount, Is.EqualTo(0), "entries above the byte cap must not enter the surviving tier");
         }
+    }
+
+    // TestPrecompile echoes its input, so an N-byte input costs 2N bytes
+    [TestCase(PrecompileCaches.MaxSurvivingEntryBytes / 2, 1, TestName = "Run_ForAnEntryAtTheSurvivingCap_Survives")]
+    [TestCase(PrecompileCaches.MaxSurvivingEntryBytes / 2 + 1, 0, TestName = "Run_ForAnEntryJustOverTheSurvivingCap_DoesNotSurvive")]
+    public void Run_AtTheSurvivingEntryCap_AdmitsUpToTheCapInclusive(int inputLength, int expectedSurviving)
+    {
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true));
+
+        resolved.Run(new byte[inputLength], Prague.Instance);
+
+        Assert.That(caches.SurvivingCacheCount, Is.EqualTo(expectedSurviving),
+            "the cap counts key plus output bytes and is inclusive");
+    }
+
+    [Test]
+    public void Run_AtPartitionByteBudget_StopsAdmitting()
+    {
+        const int admittedEntries = 5;
+
+        int runCount = 0;
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true, onRun: () => runCount++),
+            maxBytes: EntryCost * admittedEntries);
+
+        for (int i = 0; i <= admittedEntries; i++)
+            resolved.Run(new byte[] { (byte)i, 1, 2, 3 }, Prague.Instance);
+
+        PrecompileCaches.Partition partition = GetPartition(caches);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(admittedEntries + 1), "precondition: every input is distinct and computes");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(admittedEntries), "the per-block tier must stop admitting at its byte budget");
+            Assert.That(partition.UsedBytes, Is.EqualTo(EntryCost * admittedEntries), "a refused entry must not leave its reservation behind");
+        }
+    }
+
+    [Test]
+    public void Run_AtPartitionByteBudget_StillAddsToSurvivingTier()
+    {
+        int runCount = 0;
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true, onRun: () => runCount++),
+            maxBytes: EntryCost);
+
+        byte[] refused = [2, 1, 2, 3];
+        resolved.Run(new byte[] { 1, 1, 2, 3 }, Prague.Instance);
+        resolved.Run(refused, Prague.Instance);
+        Assert.That(caches.SurvivingCacheCount, Is.EqualTo(2), "the surviving tier takes an entry the full partition refused");
+
+        caches.ClearBlockCache();
+        resolved.Run(refused, Prague.Instance);
+
+        Assert.That(runCount, Is.EqualTo(2), "an entry the full partition refused must still be served from the surviving tier");
+    }
+
+    [Test]
+    public void Run_WhenPartitionIsFullAndEntryIsOversized_CachesInNeitherTier()
+    {
+        int runCount = 0;
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true, onRun: () => runCount++),
+            maxBytes: EntryCost);
+
+        resolved.Run(new byte[] { 1, 1, 2, 3 }, Prague.Instance);
+        byte[] oversized = new byte[PrecompileCaches.MaxSurvivingEntryBytes];
+        resolved.Run(oversized, Prague.Instance);
+        resolved.Run(oversized, Prague.Instance);
+
+        PrecompileCaches.Partition partition = GetPartition(caches);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(3), "an entry both tiers refuse must recompute on every call");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the full partition must not admit the oversized entry");
+            Assert.That(caches.SurvivingCacheCount, Is.EqualTo(1), "the oversized entry must not enter the surviving tier either");
+            Assert.That(partition.UsedBytes, Is.EqualTo(EntryCost), "an entry both tiers refuse must not keep its reservation");
+        }
+    }
+
+    [Test]
+    public void TryAdd_ForAKeyAlreadyPresent_RollsBackTheReservation()
+    {
+        PrecompileCaches caches = CreateCaches(CreateProvider((PrecompileAddress, new TestPrecompile(supportsCaching: true))));
+        PrecompileCaches.Partition partition = GetPartition(caches);
+        byte[] data = [1, 2, 3, 4];
+        PrecompileCaches.Key key = new(PrecompileAddress, data, Prague.Instance);
+
+        bool first = partition.TryAdd(key, data);
+        bool duplicate = partition.TryAdd(key, data);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.True, "precondition: the first add is admitted");
+            Assert.That(duplicate, Is.False, "a key a concurrent add already stored must not be admitted twice");
+            Assert.That(partition.UsedBytes, Is.EqualTo(EntryCost), "the refused duplicate must not keep its reservation");
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(1));
+            Assert.That(caches.SurvivingCacheCount, Is.EqualTo(1), "a duplicate must overwrite, not duplicate, the surviving entry");
+        }
+    }
+
+    [Test]
+    public void Run_WhenOnePartitionIsFull_LeavesAnotherPrecompileItsOwnBudget()
+    {
+        const int entriesPerPartition = 2;
+
+        IPrecompileProvider provider = CreateProvider(
+            (PrecompileAddress, new TestPrecompile(supportsCaching: true)),
+            (OtherPrecompileAddress, new TestPrecompile(supportsCaching: true)));
+
+        PrecompileCaches caches = CreateCaches(provider, maxBytes: EntryCost * entriesPerPartition * 2);
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(caches, provider);
+        IPrecompile precompile1 = Resolve(repository, PrecompileAddress, OtherPrecompileAddress);
+        IPrecompile precompile2 = Resolve(repository, OtherPrecompileAddress, PrecompileAddress);
+
+        for (int i = 0; i < entriesPerPartition + 2; i++)
+            precompile1.Run(new byte[] { (byte)i, 1, 2, 3 }, Prague.Instance);
+
+        precompile2.Run(new byte[] { 9, 1, 2, 3 }, Prague.Instance);
+        PrecompileCaches.Partition partition2 = GetPartition(caches, OtherPrecompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.BlockCacheCount, Is.EqualTo(entriesPerPartition + 1), "a full partition must not consume another precompile's share");
+            Assert.That(partition2.UsedBytes, Is.EqualTo(EntryCost), "the second precompile must still cache after the first one is full");
+        }
+    }
+
+    [Test]
+    public void Run_FromManyThreads_KeepsThePartitionAccountingExact()
+    {
+        const int admittedEntries = 64;
+
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true),
+            maxBytes: EntryCost * admittedEntries);
+
+        PrecompileCaches.Partition partition = GetPartition(caches);
+
+        Parallel.For(0, admittedEntries * 8, i =>
+            resolved.Run(new byte[] { (byte)i, (byte)(i >> 8), 2, 3 }, Prague.Instance)
+        );
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.BlockCacheCount, Is.GreaterThan(0), "precondition: concurrent admission still caches");
+            Assert.That(partition.UsedBytes, Is.LessThanOrEqualTo(partition.MaxBytes), "admission must never exceed the budget");
+            Assert.That(partition.UsedBytes, Is.EqualTo(caches.BlockCacheCount * (long)EntryCost), "every reserved byte must belong to an admitted entry");
+        }
+
+        caches.ClearBlockCache();
+        Assert.That(partition.UsedBytes, Is.Zero, "a rollback must not drift the counter across the block clear");
+    }
+
+    [Test]
+    public void Run_AfterBlockClear_ReclaimsThePartitionBudget()
+    {
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true), maxBytes: EntryCost);
+
+        resolved.Run(new byte[] { 1, 1, 2, 3 }, Prague.Instance);
+        resolved.Run(new byte[] { 2, 1, 2, 3 }, Prague.Instance);
+
+        caches.ClearBlockCache();
+        Assert.That(caches.BlockCacheCount, Is.Zero, "the clear must return the budget");
+
+        resolved.Run(new byte[] { 3, 1, 2, 3 }, Prague.Instance);
+
+        Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
