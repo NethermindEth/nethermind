@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -67,21 +69,108 @@ public static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        // Amortise the bounds check across both operands (mirrors InstructionSar).
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        // The 128-bit JIT lowers the paired pop/push path more efficiently than in-place conversion.
+        if (Vector128.IsHardwareAccelerated && !Vector256.IsHardwareAccelerated)
+        {
+            if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
+
+            if (!shift.IsUint64 || shift.u0 >= 256)
+            {
+                return stack.PushZero<TTracingInst>();
+            }
+
+            TOpShift.Operation(in shift, in value, out UInt256 shifted);
+            return stack.PushUInt256<TTracingInst>(in shifted);
+        }
+
+        if (!Vector128.IsHardwareAccelerated &&
+            (typeof(TOpShift) == typeof(OpShl) || typeof(TOpShift) == typeof(OpShr)))
+        {
+            return ShiftScalar<TOpShift, TTracingInst>(ref stack);
+        }
+
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool isValid);
+        if (!isValid) goto StackUnderflow;
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
         {
-            return stack.PushZero<TTracingInst>();
+            EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+            return EvmExceptionType.None;
         }
 
         // Perform the shift operation using the specific implementation.
+        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpShift.Operation(in a, in b, out UInt256 result);
-        return stack.PushUInt256<TTracingInst>(in result);
+        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType ShiftScalar<TOpShift, TTracingInst>(ref EvmStack stack)
+        where TOpShift : struct, IOpShift
+        where TTracingInst : struct, IFlag
+    {
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+        if (!isValid) return EvmExceptionType.StackUnderflow;
+
+        ref ulong value = ref As<byte, ulong>(ref topRef);
+        ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
+        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
+        {
+            value = 0;
+            Add(ref value, 1) = 0;
+            Add(ref value, 2) = 0;
+            Add(ref value, 3) = 0;
+        }
+        else if (amount != 0)
+        {
+            int wordShift = (int)(amount >> 6);
+            int bitShift = (int)(amount & 63);
+
+            if (typeof(TOpShift) == typeof(OpShl))
+            {
+                for (int destination = 0; destination < 4; destination++)
+                {
+                    int source = destination + wordShift;
+                    ulong shifted = source < 4
+                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) << bitShift
+                        : 0;
+                    if (bitShift != 0 && source + 1 < 4)
+                    {
+                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source + 1)) >> (64 - bitShift);
+                    }
+
+                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                }
+            }
+            else
+            {
+                for (int offset = 0; offset < 4; offset++)
+                {
+                    int destination = 3 - offset;
+                    int source = destination - wordShift;
+                    ulong shifted = source >= 0
+                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                        : 0;
+                    if (bitShift != 0 && source > 0)
+                    {
+                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1)) << (64 - bitShift);
+                    }
+
+                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                }
+            }
+        }
+
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
     }
 
     /// <summary>
