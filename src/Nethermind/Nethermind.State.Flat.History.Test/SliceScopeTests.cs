@@ -346,7 +346,7 @@ public class SliceScopeTests
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 30);
         HistoryColumnsWriter.SetPersistedAccount(_db, SlicedAddress, redeployed);
 
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 1000 };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 1000 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
@@ -368,7 +368,8 @@ public class SliceScopeTests
         FlatDbConfig config = new()
         {
             HistoryEnabled = true,
-            HistoryRetentionBlocks = retentionBlocks,
+            HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+                HistoryRetentionBlocks = retentionBlocks,
             HistoryPruneIntervalBlocks = 1,
             HistoryPrunePassBudgetSeconds = passBudgetSeconds,
             HistorySliceAddresses = sliceAddresses,

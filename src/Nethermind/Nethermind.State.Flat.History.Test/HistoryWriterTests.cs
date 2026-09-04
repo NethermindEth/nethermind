@@ -149,7 +149,7 @@ public class HistoryWriterTests
     [Test]
     public void A_throw_while_resolving_the_pending_rows_publishes_nothing()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ThrowingHistoryColumns throwing = new(_historyColumns, throwOnAccountWrite: 3);
         HistoryWriter writer = new(_db, throwing, config, availability, rowFormat, LimboLogs.Instance);
@@ -1387,7 +1387,8 @@ public class HistoryWriterTests
 
     private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+                HistoryRetentionBlocks = retentionBlocks };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);

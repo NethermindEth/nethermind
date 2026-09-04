@@ -25,7 +25,7 @@ public class PrunedReceiptRetentionModuleTests
             {
                 Enabled = true,
                 HistoryEnabled = true,
-                HistoryRetentionBlocks = 1024,
+                HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 1024,
                 HistorySliceAddresses = TestItem.AddressA.ToString()
             }))
             .Build();

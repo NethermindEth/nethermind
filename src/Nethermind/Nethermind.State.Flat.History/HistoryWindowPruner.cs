@@ -66,7 +66,7 @@ public sealed class HistoryWindowPruner(
     /// effects. No-op when retention is unbounded.</summary>
     public void Start()
     {
-        if (config.HistoryRetentionBlocks == 0 || _started) return;
+        if (config.HistoryRetention != HistoryRetentionMode.Rolling || _started) return;
         _started = true;
         _wakeSignal.Release();
         writer.WatermarkAdvanced += OnWatermarkAdvanced;
@@ -87,8 +87,8 @@ public sealed class HistoryWindowPruner(
         {
             throw new InvalidConfigurationException(
                 "FlatDb.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
-                "(HistoryRetentionBlocks is 0). Per-contract slices require the v3 pre-value format used by " +
-                "windowed retention; unset HistorySliceAddresses or set HistoryRetentionBlocks.", -1);
+                "(HistoryRetention is None). Per-contract slices require the v3 pre-value format used by " +
+                "windowed retention; unset HistorySliceAddresses or set HistoryRetention.", -1);
         }
 
         foreach (SliceScopeEntry entry in configured)

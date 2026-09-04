@@ -62,7 +62,7 @@ internal class FlatRocksDbConfigAdjuster(
             config = new AdjustedRocksdbConfig(config, additionalConfig, config.WriteBufferSize.GetValueOrDefault(), cacheHandle);
         }
 
-        if (databaseName == nameof(DbNames.FlatHistory) && flatDbConfig.HistoryRetentionBlocks > 0)
+        if (databaseName == nameof(DbNames.FlatHistory) && flatDbConfig.IsHistoryWindowed())
         {
             config = new AdjustedRocksdbConfig(config, "", config.WriteBufferSize.GetValueOrDefault(), compactOnDeletions: true);
         }

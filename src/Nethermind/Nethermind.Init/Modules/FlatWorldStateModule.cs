@@ -144,16 +144,33 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is Rolling but FlatDb.HistoryRetentionBlocks is 0, so the window has no " +
+                "size. Set the window size, or set FlatDb.HistoryRetention=None to retain history unbounded.", -1);
+        }
+
+        // The number alone used to select the windowed shape. Refusing here rather than inferring the mode keeps a
+        // configuration written against that behaviour from silently becoming an unbounded archive.
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.None && flatDbConfig.HistoryRetentionBlocks != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionBlocks is set to {flatDbConfig.HistoryRetentionBlocks} but " +
+                "FlatDb.HistoryRetention is None, which retains history unbounded and never prunes. Set " +
+                "FlatDb.HistoryRetention=Rolling to keep the window, or unset the block count.", -1);
+        }
+
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
         }
-        else if (flatDbConfig.HistoryRetentionBlocks != 0
+        else if (flatDbConfig.IsHistoryWindowed()
             || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
             || flatDbConfig.HistoryVerifyEveryBlock)
         {
             throw new InvalidConfigurationException(
-                "FlatDb.HistoryRetentionBlocks, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
+                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
                 "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
                 "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
