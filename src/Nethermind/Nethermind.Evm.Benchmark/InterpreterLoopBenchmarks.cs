@@ -29,7 +29,8 @@ namespace Nethermind.Evm.Benchmark
     {
         private const int CallCount = 64;
         private const int LoopIterations = 1_000;
-        private const int WarmupTransactions = 100_000;
+        private const int WorkloadWarmupTransactions = 100_000;
+        private const int OpcodeRefreshTransactions = 500_000;
         private const string CancelableEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_CANCELABLE";
 
         private static readonly Address _calleeAddress = new("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
@@ -43,6 +44,7 @@ namespace Nethermind.Evm.Benchmark
         private CodeInfo _neverTakenJumpIfLoopCode = null!;
         private CodeInfo _alternatingJumpIfLoopCode = null!;
         private CodeInfo _nestedCallsCode = null!;
+        private CodeInfo _stopCode = null!;
         private ITxTracer _tracer = null!;
 
         [GlobalSetup]
@@ -67,12 +69,25 @@ namespace Nethermind.Evm.Benchmark
             _neverTakenJumpIfLoopCode = new CodeInfo(BuildNeverTakenJumpIfLoopCode());
             _alternatingJumpIfLoopCode = new CodeInfo(BuildAlternatingJumpIfLoopCode());
             _nestedCallsCode = new CodeInfo(BuildNestedCallsCode());
+            _stopCode = new CodeInfo(new byte[] { (byte)Instruction.STOP });
 
-            // Opcode tables periodically recapture promoted handler entry points. Complete that process before
-            // measurement so a benchmark iteration cannot mix tier-0 and tier-1 dispatch tables.
-            for (int i = 0; i < WarmupTransactions; i++)
+            // Exercise every measured shape until hot, then advance the periodic opcode-table refreshes with STOP
+            // so no benchmark tiers its own handlers or frame paths during measurement.
+            for (int i = 0; i < WorkloadWarmupTransactions; i++)
             {
-                Execute(_computeLoopCode, gasLimit: 10_000_000);
+                CodeInfo codeInfo = (i & 3) switch
+                {
+                    0 => _computeLoopCode,
+                    1 => _neverTakenJumpIfLoopCode,
+                    2 => _alternatingJumpIfLoopCode,
+                    _ => _nestedCallsCode,
+                };
+                Execute(codeInfo, gasLimit: 10_000_000);
+            }
+
+            for (int i = WorkloadWarmupTransactions; i < OpcodeRefreshTransactions; i++)
+            {
+                Execute(_stopCode, gasLimit: 10_000_000);
             }
         }
 
