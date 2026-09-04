@@ -45,6 +45,8 @@ public unsafe class EvmOpcodesBenchmark
     private const int KeccakWordSize = EvmStack.WordSize;
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
+    private const int ExtendedStackDepth = 20;
+    private const byte ExtendedStackImmediate = 0x80;
     private const string OpcodeFilterEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_OPCODES";
     private const string InvocationCountEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT";
 
@@ -168,14 +170,14 @@ public unsafe class EvmOpcodesBenchmark
         (_stackBuffer, _stackOffset, _stackLength) = CreateStackBuffer();
         _gas = EthereumGasPolicy.FromULong(ulong.MaxValue);
 
-        // Pre-fill 20 stack slots with unique values for DUP/SWAP tests
-        for (int i = 0; i < 20; i++)
+        // Pre-fill stack slots with unique values for DUP/SWAP tests
+        for (int i = 0; i < ExtendedStackDepth; i++)
         {
             WriteStackSlot(i, new UInt256((ulong)(i + 1) * 0x0102030405060708UL));
         }
 
         // Create VM with opcode table - mirrors VirtualMachine.Warmup pattern
-        IReleaseSpec spec = Fork.GetLatest();
+        IReleaseSpec spec = IsExtendedStackOpcode(Opcode) ? Amsterdam.Instance : Fork.GetLatest();
         _vm = new BenchmarkVm(new NoOpBlockhashProvider(), MainnetSpecProvider.Instance, LimboLogs.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -235,6 +237,10 @@ public unsafe class EvmOpcodesBenchmark
 
         _opcodeCode = (byte[])bytecode.Clone();
         _opcodeCode[0] = (byte)Opcode;
+        if (Opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
+        {
+            _opcodeCode[1] = ExtendedStackImmediate;
+        }
 
         _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(ulong.MaxValue),
@@ -541,6 +547,11 @@ public unsafe class EvmOpcodesBenchmark
                 SetupCallStack(hasValue: false);
                 return 6;
 
+            case Instruction.DUPN:
+            case Instruction.SWAPN:
+            case Instruction.EXCHANGE:
+                return ExtendedStackDepth;
+
             case Instruction.EXTCODECOPY:
                 return SetupExtCodeCopyStack(runs);
 
@@ -825,6 +836,9 @@ public unsafe class EvmOpcodesBenchmark
             or Instruction.CALLCODE
             or Instruction.DELEGATECALL
             or Instruction.STATICCALL;
+
+    private static bool IsExtendedStackOpcode(Instruction opcode) =>
+        opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE;
 
     private static bool RequiresIndependentBinaryInputs(Instruction opcode) => opcode is Instruction.MUL
             or Instruction.DIV
