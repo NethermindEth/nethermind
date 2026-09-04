@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -20,9 +21,9 @@ public class PrecompileCachedCodeInfoRepository(
     ICodeInfoRepository baseCodeInfoRepository,
     PrecompileCaches? precompileCaches) : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCaches is null
+    private readonly PrecompileTable<CodeInfo> _cachedPrecompile = new(precompileCaches is null
         ? precompileProvider.GetPrecompiles()
-        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCaches));
+        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCaches)));
 
     public bool IsCodeOverridable => baseCodeInfoRepository.IsCodeOverridable;
 

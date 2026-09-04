@@ -30,6 +30,12 @@ public static partial class IReleaseSpecExtensions
         /// </summary>
         /// <param name="address">The address to check for precompile status.</param>
         /// <returns><c>true</c> if the address is a precompiled contract; otherwise, <c>false</c>.</returns>
-        public bool IsPrecompile(Address address) => spec.Precompiles.Contains(address);
+        /// <remarks>
+        /// Called for every call target, which is almost never a precompile, so a non-precompile is rejected by its
+        /// address shape alone and only a low address pays the set probe. Assumes every precompile lives at a low
+        /// address, as <see cref="Address.PrecompileIndexOrNegative"/> requires.
+        /// </remarks>
+        public bool IsPrecompile(Address address) =>
+            address.PrecompileIndexOrNegative() >= 0 && spec.Precompiles.Contains(address);
     }
 }

@@ -294,10 +294,13 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
 
-#if ZK_EVM
-        // A precompile lives at a low address (top 16 bytes zero), so its trailing number
-        // IS the membership key. Returns that number when the top 16 bytes are zero, or -1
-        // otherwise — lets IReleaseSpec.IsPrecompile swap a FrozenSet hash+probe for a bitmask.
+        /// <summary> The trailing number of a low address (top 16 bytes zero), or a negative value for any other address. </summary>
+        /// <remarks>
+        /// A precompile lives at a low address, so its trailing number IS the membership key: this lets
+        /// <see cref="Nethermind.Core.Specs.IReleaseSpecExtensions"/> reject a non-precompile without a hash+probe,
+        /// and lets <see cref="Nethermind.Core.Precompiles.PrecompileTable{T}"/> index precompiles by that number.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int PrecompileIndexOrNegative()
         {
             ref byte b = ref Unsafe.AsRef(in FirstByte);
@@ -310,7 +313,6 @@ namespace Nethermind.Core
             uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
             return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
         }
-#endif
     }
 
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>

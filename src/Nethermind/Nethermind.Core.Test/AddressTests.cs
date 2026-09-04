@@ -211,6 +211,14 @@ public class AddressTests
     public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
         spec.IsPrecompile(Address.FromNumber(0x0a));
 
+    [TestCase("0x0000000000000000000000000000000000000001", 0x01)]
+    [TestCase("0x0000000000000000000000000000000000000100", 0x100)]
+    [TestCase("0x0000000000000000000000000000000000010001", 0x10001)]
+    [TestCase("0x0000000000000001000000000000000000000001", -1)]
+    [TestCase("0x5a4eab120fb44eb6684e5e32785702ff45ea344d", -1)]
+    public void Precompile_index_is_the_trailing_number_of_a_low_address(string addressHex, int expected) =>
+        Assert.That(new Address(addressHex).PrecompileIndexOrNegative(), Is.EqualTo(expected));
+
     [TestCase(Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, true)]

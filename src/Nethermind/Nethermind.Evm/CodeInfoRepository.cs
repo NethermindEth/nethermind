@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Frozen;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
@@ -22,7 +22,6 @@ namespace Nethermind.Evm;
 /// </remarks>
 public class CodeInfoRepository : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
     /// <remarks>
     /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
@@ -32,6 +31,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     // Precompile CodeInfo indexed by precompile address number (0x01..0x100):
     // replaces a FrozenDictionary hash+probe on every precompile CALL.
     private readonly CodeInfo[] _localPrecompileArray = new CodeInfo[0x101];
+#else
+    private readonly PrecompileTable<CodeInfo> _localPrecompiles;
 #endif
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
@@ -41,15 +42,16 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader)
     {
-        _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _codeInfoLoader = codeInfoLoader;
 #if ZK_EVM
-        foreach (System.Collections.Generic.KeyValuePair<AddressAsKey, CodeInfo> kv in _localPrecompiles)
+        foreach (System.Collections.Generic.KeyValuePair<AddressAsKey, CodeInfo> kv in precompileProvider.GetPrecompiles())
         {
             int idx = ((Address)kv.Key).PrecompileIndexOrNegative();
             if ((uint)idx < (uint)_localPrecompileArray.Length) _localPrecompileArray[idx] = kv.Value;
         }
+#else
+        _localPrecompiles = new PrecompileTable<CodeInfo>(precompileProvider.GetPrecompiles());
 #endif
     }
 
