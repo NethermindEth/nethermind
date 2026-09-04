@@ -66,6 +66,20 @@ public static partial class EvmInstructions
     internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
         where TOpMath : struct, IOpMath1Param
     {
+        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpNot))
+        {
+            ref byte valueBytes = ref stack.PeekBytesByRef();
+            if (IsNullRef(ref valueBytes))
+                return EvmExceptionType.StackUnderflow;
+
+            ref ulong value = ref As<byte, ulong>(ref valueBytes);
+            value = ~value;
+            Add(ref value, 1) = ~Add(ref value, 1);
+            Add(ref value, 2) = ~Add(ref value, 2);
+            Add(ref value, 3) = ~Add(ref value, 3);
+            return EvmExceptionType.None;
+        }
+
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
         ref byte bytesRef = ref stack.PeekBytesByRef();
