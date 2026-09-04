@@ -12,17 +12,21 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
+    /// <summary>Writes a value below 2^64 into a stack slot, in the stack's big-endian layout.</summary>
+    /// <remarks>
+    /// For targets with no 256-bit register, building the word as an <see cref="EvmWord"/> value and
+    /// storing it makes the value address-taken, so it lands on the frame and is read back to be stored
+    /// again. Writing the four limbs where they belong skips the round trip.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmWord CreateScalarWord(ulong value)
+    internal static void WriteSmallWordToSlot(ref byte slot, ulong value)
     {
-        Unsafe.SkipInit(out EvmWord word);
-        ref ulong parts = ref As<EvmWord, ulong>(ref word);
+        ref ulong parts = ref As<byte, ulong>(ref slot);
         parts = 0;
         Add(ref parts, 1) = 0;
         Add(ref parts, 2) = 0;
         Add(ref parts, 3) = BinaryPrimitives.ReverseEndianness(value);
-        return word;
     }
 
     /// <summary>
@@ -71,6 +75,9 @@ public static partial class EvmInstructions
     internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
     {
+        if (!Vector256.IsHardwareAccelerated && typeof(TOpBitwise) == typeof(OpBitwiseEq))
+            return EqualsInSlot(ref stack);
+
         if (!Vector128.IsHardwareAccelerated &&
             (typeof(TOpBitwise) == typeof(OpBitwiseAnd) ||
              typeof(TOpBitwise) == typeof(OpBitwiseOr) ||
@@ -92,6 +99,44 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>EQ for targets with no 256-bit register, comparing the operands where they lie.</summary>
+    /// <remarks>
+    /// Folding two words down to one bit through <see cref="EvmWord"/> values makes both address-taken,
+    /// which homes them on the frame and reads them back limb by limb before the result is built the
+    /// same way. Comparing the slots removes that round trip.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType EqualsInSlot(ref EvmStack stack)
+    {
+        if (!stack.EnsureDepth(2))
+            return EvmExceptionType.StackUnderflow;
+
+        ref byte bBytes = ref stack.Pop1Peek32BytesUnchecked();
+        ref byte aBytes = ref Add(ref bBytes, EvmStack.WordSize);
+
+        bool equal;
+        if (Vector128.IsHardwareAccelerated)
+        {
+            Vector128<byte> difference =
+                (ReadUnaligned<Vector128<byte>>(ref aBytes) ^ ReadUnaligned<Vector128<byte>>(ref bBytes)) |
+                (ReadUnaligned<Vector128<byte>>(ref Add(ref aBytes, Vector128<byte>.Count)) ^
+                 ReadUnaligned<Vector128<byte>>(ref Add(ref bBytes, Vector128<byte>.Count)));
+            equal = difference == default;
+        }
+        else
+        {
+            ref ulong a = ref As<byte, ulong>(ref aBytes);
+            ref ulong b = ref As<byte, ulong>(ref bBytes);
+            equal = ((a ^ b)
+                | (Add(ref a, 1) ^ Add(ref b, 1))
+                | (Add(ref a, 2) ^ Add(ref b, 2))
+                | (Add(ref a, 3) ^ Add(ref b, 3))) == 0UL;
+        }
+
+        WriteSmallWordToSlot(ref bBytes, equal ? 1UL : 0UL);
+        return EvmExceptionType.None;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -178,20 +223,8 @@ public static partial class EvmInstructions
             );
         }
 
+        /// <remarks>Reached only where a 256-bit register exists; otherwise EQ never builds a value.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmWord Operation(in EvmWord a, in EvmWord b)
-        {
-            if (Vector256.IsHardwareAccelerated)
-                return a == b ? One : default;
-
-            ref ulong pa = ref As<EvmWord, ulong>(ref AsRef(in a));
-            ref ulong pb = ref As<EvmWord, ulong>(ref AsRef(in b));
-            ulong diff = (pa ^ pb)
-                | (Add(ref pa, 1) ^ Add(ref pb, 1))
-                | (Add(ref pa, 2) ^ Add(ref pb, 2))
-                | (Add(ref pa, 3) ^ Add(ref pb, 3));
-
-            return diff == 0UL ? CreateScalarWord(1) : default;
-        }
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
     }
 }
