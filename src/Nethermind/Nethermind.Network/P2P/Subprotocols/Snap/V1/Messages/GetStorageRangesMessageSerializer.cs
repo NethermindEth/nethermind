@@ -15,11 +15,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
         {
             ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
-            Hash256 rootHash = message.StorageRange.RootHash
-                ?? throw new InvalidOperationException("A storage range request requires a root hash.");
 
             writer.Encode(message.RequestId);
-            writer.Encode(rootHash);
+            writer.Encode(message.StorageRange.RootHash);
             ReadOnlySpan<PathWithAccount> accounts = message.StorageRange.Accounts.AsSpan();
             int accountsCount = accounts.Length;
             int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;

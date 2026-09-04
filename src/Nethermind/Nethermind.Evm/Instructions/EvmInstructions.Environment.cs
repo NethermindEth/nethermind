@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -708,10 +709,14 @@ public static partial class EvmInstructions
         byte[]?[]? versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
 
         // If versioned hashes are available and the index is within range, push the corresponding blob hash.
-        // Otherwise, push zero.
-        return versionedHashes is not null && result < versionedHashes.Length && versionedHashes[result.u0] is { } versionedHash
-            ? stack.PushBytes<TTracingInst>(versionedHash)
-            : stack.PushZero<TTracingInst>();
+        if (versionedHashes is not null && result < versionedHashes.Length)
+        {
+            byte[] versionedHash = versionedHashes[result.u0]
+                ?? throw new InvalidOperationException("Blob versioned hashes must not contain null elements.");
+            return stack.PushBytes<TTracingInst>(versionedHash);
+        }
+
+        return stack.PushZero<TTracingInst>();
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

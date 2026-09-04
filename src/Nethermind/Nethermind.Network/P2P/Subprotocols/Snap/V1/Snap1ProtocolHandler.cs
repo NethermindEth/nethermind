@@ -243,20 +243,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
 
         public async Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
         {
-            Hash256 rootHash = request.RootHash
-                ?? throw new ArgumentException("An account refresh request requires a root hash.", nameof(request));
             RlpPathGroupList groups = GetPathGroups(request);
 
-            return await GetTrieNodes(rootHash, groups, token);
+            return await GetTrieNodes(request.RootHash, groups, token);
         }
 
         public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
-        {
-            Hash256 rootHash = request.RootHash
-                ?? throw new ArgumentException("A trie node request requires a root hash.", nameof(request));
-
-            return await GetTrieNodes(rootHash, request.AccountAndStoragePaths, token);
-        }
+            => await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
 
         private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {

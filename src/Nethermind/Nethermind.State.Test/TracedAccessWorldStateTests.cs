@@ -539,7 +539,9 @@ public class TracedAccessWorldStateTests(bool parallel)
         using (scope)
         {
             tws.Set(cell, [0x01]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo(UInt256.One));
             tws.Set(cell, [0x02]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())

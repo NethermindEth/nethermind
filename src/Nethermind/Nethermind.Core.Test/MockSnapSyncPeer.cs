@@ -72,17 +72,13 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
         }
 
         using RlpPathGroupList encoded = PathGroup.EncodeToRlpPathGroupList(groups);
-        Hash256 rootHash = request.RootHash
-            ?? throw new InvalidOperationException("An account refresh request must have a root hash before it is dispatched.");
-        IByteArrayList? res = snapServer.GetTrieNodes(encoded, rootHash, token);
+        IByteArrayList? res = snapServer.GetTrieNodes(encoded, request.RootHash, token);
         return Task.FromResult(res ?? EmptyByteArrayList.Instance);
     }
 
     public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
-        Hash256 rootHash = request.RootHash
-            ?? throw new InvalidOperationException("A trie nodes request must have a root hash before it is dispatched.");
-        IByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, rootHash, token);
+        IByteArrayList? res = snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
         return Task.FromResult(res ?? EmptyByteArrayList.Instance);
     }
 }

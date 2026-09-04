@@ -24,21 +24,6 @@ public class CommitSetQueue
     }
 
     public bool IsEmpty => Count == 0;
-    public ulong? MinBlockNumber
-    {
-        get
-        {
-            lock (_queue) return _queue.Min?.BlockNumber;
-        }
-    }
-
-    public ulong? MaxBlockNumber
-    {
-        get
-        {
-            lock (_queue) return _queue.Max?.BlockNumber;
-        }
-    }
 
     internal bool TryGetBounds(out ulong minBlockNumber, out ulong maxBlockNumber)
     {

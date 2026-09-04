@@ -177,20 +177,11 @@ public class Snap1ProtocolHandlerTests
     }
 
     [Test]
-    public void GetTrieNodes_rejects_missing_root_hash()
-    {
-        Context ctx = new();
-
-        Assert.That(
-            async () => await ctx.Snap1ProtocolHandler.GetTrieNodes(new GetTrieNodesRequest(), CancellationToken.None),
-            Throws.ArgumentException);
-    }
-
-    [Test]
     public void GetPathGroups_rejects_missing_account_path()
     {
         using AccountsToRefreshRequest request = new()
         {
+            RootHash = Keccak.Zero,
             Paths = new ArrayPoolList<AccountWithStorageStartingHash>(1) { new() }
         };
 

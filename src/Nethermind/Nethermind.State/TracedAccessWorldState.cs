@@ -3,7 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -36,7 +36,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
     private AccountChangesAtIndex? _lastReadStorageChanges;
-    private bool _hasLastReadCell;
     private BlockAccessListAtIndex GeneratingBlockAccessList =>
         _generatingBlockAccessList ?? throw new InvalidOperationException("Block access list tracing requires a generating block access list to be set.");
 
@@ -78,17 +77,16 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         AccountChangesAtIndex accountChanges;
-        if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell) && _lastReadStorageChanges is not null)
+        if (_lastReadStorageChanges is { } cached && _lastReadStorageCell.Equals(storageCell))
         {
             // Already recorded this exact cell; reuse its entry and skip the read-recording.
-            accountChanges = _lastReadStorageChanges;
+            accountChanges = cached;
         }
         else
         {
             accountChanges = GeneratingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
             _lastReadStorageCell = storageCell;
             _lastReadStorageChanges = accountChanges;
-            _hasLastReadCell = true;
         }
         return GetInternal(accountChanges, in storageCell);
     }
@@ -232,7 +230,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         GeneratingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
     }
 
@@ -241,7 +238,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void Restore(Snapshot snapshot)
     {
         // A revert can un-record the last cell's slot, so drop the single-slot cache.
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
         GeneratingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
         base.Restore(snapshot);
@@ -351,7 +347,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         {
             // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
             // frame without allocating a new byte[32] per SLOAD.
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
+            change.Value.Value.CopyTo(_scratchStorage);
             return _scratchStorage;
         }
 

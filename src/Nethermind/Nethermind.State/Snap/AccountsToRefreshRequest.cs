@@ -12,7 +12,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Hash256? RootHash { get; set; }
+        public required Hash256 RootHash { get; set; }
 
         public IOwnedReadOnlyList<AccountWithStorageStartingHash> Paths { get; set; } = IOwnedReadOnlyList<AccountWithStorageStartingHash>.Empty;
 
