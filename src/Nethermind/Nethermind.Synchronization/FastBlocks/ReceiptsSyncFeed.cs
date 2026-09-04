@@ -214,7 +214,7 @@ namespace Nethermind.Synchronization.FastBlocks
             headerMissing = header is null;
             if (header is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
+                if (_logger.IsDebug) _logger.Debug($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
                 preparedReceipts = null;
             }
             else
@@ -259,6 +259,9 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
+            int missingHeaderCount = 0;
+            ulong lowestMissingHeader = ulong.MaxValue;
+            ulong highestMissingHeader = 0;
 
             BlockInfo?[] blockInfos = batch.Infos;
             for (int i = 0; i < blockInfos.Length; i++)
@@ -307,6 +310,9 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                     else if (headerMissing)
                     {
+                        missingHeaderCount++;
+                        lowestMissingHeader = Math.Min(lowestMissingHeader, blockInfo.BlockNumber);
+                        highestMissingHeader = Math.Max(highestMissingHeader, blockInfo.BlockNumber);
                         _syncStatusList.MarkPending(blockInfo);
                     }
                     else
@@ -330,6 +336,10 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                 }
             }
+
+            // The batch is re-pended and retried, so warn once per batch rather than once per block.
+            if (missingHeaderCount > 0 && _logger.IsWarn)
+                _logger.Warn($"Could not find headers for {missingHeaderCount} blocks in {lowestMissingHeader}-{highestMissingHeader}");
 
             UpdateSyncReport();
             LogPostProcessingBatchInfo(batch, validResponsesCount);
