@@ -1935,6 +1935,23 @@ public ref partial struct EvmStack
         return ref topRef;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop1Peek32Bytes(out bool isValid)
+    {
+        ref byte baseRef = ref _stack;
+        uint head = (uint)Head;
+        if (head < 2)
+        {
+            isValid = false;
+            return ref baseRef;
+        }
+
+        Head = (int)(head - 1);
+        isValid = true;
+        return ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
+    }
+
     /// <summary>
     /// Atomic pop-2 + peek-top for ternary ops that push exactly one result.
     /// Single bounds check (needs <c>Head &gt;= 3</c>). On success <c>Head</c> decrements by 2
