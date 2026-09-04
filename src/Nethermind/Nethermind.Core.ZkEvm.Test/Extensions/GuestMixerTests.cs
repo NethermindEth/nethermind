@@ -26,6 +26,12 @@ public class GuestMixerTests
 {
     private const int SampleCount = 4096;
 
+    /// <remarks>The guest installs its hash seed at start-up rather than in a static initializer, which
+    /// is what keeps a class-initialisation check off every mixer call; a test process reaches these
+    /// mixers without going through <c>StatelessExecutor.Execute</c>, so it has to do the same.</remarks>
+    [OneTimeSetUp]
+    public void SeedHashes() => SpanExtensions.SeedHashes(SpanExtensions.DefaultHashSeed);
+
     public static IEnumerable<TestCaseData> CounterOffsets()
     {
         foreach (int length in new[] { 20, 32 })

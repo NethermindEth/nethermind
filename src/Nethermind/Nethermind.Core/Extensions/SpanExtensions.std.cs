@@ -14,6 +14,11 @@ namespace Nethermind.Core.Extensions
     {
         // Ensure that hashes are different for every run of the node and every node, so if there are any hash collisions
         // on one node, they will not be the same on another node or across a restart and cannot degrade the network as a whole.
+        /// <inheritdoc cref="SpanExtensions.SeedHashes" />
+        /// <remarks>The host randomises its own seed per process; the argument is the guest's.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static partial void SeedHashes(uint instanceRandom) { }
+
         public static readonly uint InstanceRandom =
             (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 

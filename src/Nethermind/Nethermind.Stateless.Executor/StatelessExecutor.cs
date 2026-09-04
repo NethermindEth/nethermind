@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -20,6 +21,11 @@ public static class StatelessExecutor
 {
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
+        // Before anything hashes a key: the guest derives its mixers' lane multipliers from this seed,
+        // and installing it here rather than in a static initializer keeps a class-initialisation check
+        // off every mixer call. A no-op on the host, which seeds itself per process.
+        SpanExtensions.SeedHashes(SpanExtensions.DefaultHashSeed);
+
         byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
         FailureOutput = output;
         StatelessPayload payload;
