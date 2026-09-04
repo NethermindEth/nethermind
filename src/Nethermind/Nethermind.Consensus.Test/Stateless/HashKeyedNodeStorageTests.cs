@@ -58,9 +58,8 @@ public class HashKeyedNodeStorageTests
         Assert.That(storage.KeyExists(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Round_trips_a_written_node(bool throughBatch)
+    [Test]
+    public void Round_trips_a_written_node([Values] bool throughBatch)
     {
         HashKeyedNodeStorage storage = Storage();
         byte[] node = [0xc2, 0x01, 0x02];
@@ -72,9 +71,8 @@ public class HashKeyedNodeStorageTests
         Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Evicts_a_node_written_with_no_data(bool throughBatch)
+    [Test]
+    public void Evicts_a_node_written_with_no_data([Values] bool throughBatch)
     {
         byte[] node = Nodes[2];
         ValueHash256 hash = HashOf(node);
@@ -86,9 +84,8 @@ public class HashKeyedNodeStorageTests
         Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.False);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Keeps_the_seeded_empty_root_whatever_is_written_to_it(bool remove)
+    [Test]
+    public void Keeps_the_seeded_empty_root_whatever_is_written_to_it([Values] bool remove)
     {
         HashKeyedNodeStorage storage = Storage();
 
