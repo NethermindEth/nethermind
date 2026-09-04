@@ -77,19 +77,16 @@ public static partial class EvmInstructions
              typeof(TOpBitwise) == typeof(OpBitwiseXor)))
             return BitwiseScalar<TOpBitwise>(ref stack);
 
-        // Pop the first operand from the stack by reference to minimize copying.
-        ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        // Read the 256-bit vector from unaligned memory.
-        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
+        // One depth check, then one address computation: the popped slot sits one word above the
+        // slot the result overwrites.
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
-        // Peek at the top of the stack for the second operand without removing it.
-        bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
+        EvmWord aVec = ReadUnaligned<EvmWord>(ref Add(ref topRef, EvmStack.WordSize));
+        EvmWord bVec = ReadUnaligned<EvmWord>(ref topRef);
 
         // Write the result directly into the memory of the top stack element.
-        WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
+        WriteUnaligned(ref topRef, TOpBitwise.Operation(aVec, bVec));
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -101,16 +98,13 @@ public static partial class EvmInstructions
     private static EvmExceptionType BitwiseScalar<TOpBitwise>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
     {
-        ref byte aBytes = ref stack.PopBytesByRef();
-        if (IsNullRef(ref aBytes))
+        if (!stack.EnsureDepth(2))
             return EvmExceptionType.StackUnderflow;
 
-        ref byte bBytes = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bBytes))
-            return EvmExceptionType.StackUnderflow;
+        ref byte bBytes = ref stack.Pop1Peek32BytesUnchecked();
 
-        ref ulong a = ref As<byte, ulong>(ref aBytes);
         ref ulong b = ref As<byte, ulong>(ref bBytes);
+        ref ulong a = ref Add(ref b, EvmStack.WordSize / sizeof(ulong));
         if (typeof(TOpBitwise) == typeof(OpBitwiseAnd))
         {
             b &= a;
