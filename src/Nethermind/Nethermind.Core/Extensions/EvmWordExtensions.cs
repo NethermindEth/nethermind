@@ -18,6 +18,7 @@ public static class EvmWordExtensions
         /// AdvSimd (ARM64): 2x REV64 + 2x EXT #8 half-rotate.
         /// Scalar fallback: 4x ReverseEndianness with ulong reorder.
         /// </summary>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public EvmWord ByteSwap()
         {
@@ -39,12 +40,14 @@ public static class EvmWordExtensions
                 return Vector256.Create(lower, upper).AsByte();
             }
 
-            Vector256<ulong> u = word.AsUInt64();
-            ulong out0 = Bytes.Bswap64(u.GetElement(3));
-            ulong out1 = Bytes.Bswap64(u.GetElement(2));
-            ulong out2 = Bytes.Bswap64(u.GetElement(1));
-            ulong out3 = Bytes.Bswap64(u.GetElement(0));
-            return Vector256.Create(out0, out1, out2, out3).AsByte();
+            Unsafe.SkipInit(out EvmWord result);
+            ref ulong source = ref Unsafe.As<EvmWord, ulong>(ref word);
+            ref ulong destination = ref Unsafe.As<EvmWord, ulong>(ref result);
+            destination = Bytes.Bswap64(Unsafe.Add(ref source, 3));
+            Unsafe.Add(ref destination, 1) = Bytes.Bswap64(Unsafe.Add(ref source, 2));
+            Unsafe.Add(ref destination, 2) = Bytes.Bswap64(Unsafe.Add(ref source, 1));
+            Unsafe.Add(ref destination, 3) = Bytes.Bswap64(source);
+            return result;
         }
     }
 
