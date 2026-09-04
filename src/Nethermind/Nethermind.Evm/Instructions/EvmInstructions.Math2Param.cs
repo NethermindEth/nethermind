@@ -92,6 +92,40 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
+        if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpSub))
+        {
+            ref byte subtractTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
+            if (!isValid) goto StackUnderflow;
+
+            ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
+            ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
+            ulong minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 3));
+            ulong difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 3));
+            ulong borrow = difference > minuendPart ? 1UL : 0UL;
+            Add(ref subtrahend, 3) = BinaryPrimitives.ReverseEndianness(difference);
+
+            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 2));
+            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 2));
+            ulong withoutBorrow = difference;
+            difference -= borrow;
+            borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
+            Add(ref subtrahend, 2) = BinaryPrimitives.ReverseEndianness(difference);
+
+            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 1));
+            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 1));
+            withoutBorrow = difference;
+            difference -= borrow;
+            borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
+            Add(ref subtrahend, 1) = BinaryPrimitives.ReverseEndianness(difference);
+
+            difference = BinaryPrimitives.ReverseEndianness(minuend) -
+                BinaryPrimitives.ReverseEndianness(subtrahend) - borrow;
+            subtrahend = BinaryPrimitives.ReverseEndianness(difference);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
+            return EvmExceptionType.None;
+        }
+
         if (!Vector128.IsHardwareAccelerated &&
             (typeof(TOpMath) == typeof(OpLt) ||
              typeof(TOpMath) == typeof(OpGt) ||
