@@ -490,17 +490,8 @@ public ref struct RlpReader
 
     public bool DecodeBool()
     {
-        byte prefix = ReadByte();
-        switch (prefix)
-        {
-            case 1:
-                return true;
-            case 128:
-                return false;
-            default:
-                RlpHelpers.ThrowUnexpectedBoolValue(prefix);
-                return false;
-        }
+        Position = RlpHelpers.DecodeBool(Data, Position, out bool value);
+        return value;
     }
 
     public readonly byte PeekByte() => Data[Position];

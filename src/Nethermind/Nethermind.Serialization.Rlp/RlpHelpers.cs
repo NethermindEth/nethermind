@@ -812,6 +812,26 @@ internal static class RlpHelpers
         return position;
     }
 
+    /// <summary>Decodes a boolean.</summary>
+    /// <returns>The position past the value.</returns>
+    public static int DecodeBool(ReadOnlySpan<byte> data, int position, out bool value)
+    {
+        byte prefix = data[position++];
+        switch (prefix)
+        {
+            case 1:
+                value = true;
+                return position;
+            case 128:
+                value = false;
+                return position;
+            default:
+                ThrowUnexpectedBoolValue(prefix);
+                value = false;
+                return position;
+        }
+    }
+
     /// <summary>Decodes a 32-byte hash that must be present.</summary>
     /// <returns>The position past the hash.</returns>
     public static int DecodeKeccak(ReadOnlySpan<byte> data, int position, out Hash256 keccak)
