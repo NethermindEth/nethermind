@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -98,7 +99,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             _availability.VerifyFormat();
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
-            if (_captureFromBlock > 0) _availability.TryRaiseGlobalFloor(_captureFromBlock);
+            if (_captureFromBlock > 0) PublishSinceBlockFloor();
         }
     }
 
@@ -124,9 +125,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         try
         {
-            CaptureUpToCore(persistedHead, snapshotRepository, cancellationToken);
+            bool captured = CaptureUpToCore(persistedHead, snapshotRepository, cancellationToken);
             _consecutiveCaptureFailures = 0;
-            _captureProven = true;
+            if (captured) _captureProven = true;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -141,16 +142,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    private void CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
+    /// <summary>Returns whether rows were captured. Only that proves the hook is wired and, through
+    /// <see cref="CaptureHealthy"/>, that a receipt body skipped on disk can be derived from history later.</summary>
+    private bool CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
         ulong target = persistedHead.BlockNumber;
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
-        if (hasWatermark && target <= watermark) return;
+        if (hasWatermark && target <= watermark) return false;
 
         if (target < _captureFromBlock)
         {
             AdvanceWatermarkWithoutRows(persistedHead);
-            return;
+            return false;
         }
 
         // v3 only: oldest touch per key still waiting to learn its pre-value.
@@ -206,12 +209,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             ReportUnconnectedWalk(current, hasWatermark, watermark);
         }
+
+        return connected;
     }
 
-    /// <summary>Returns whether it connected.</summary>
     /// <summary>Below the first block to keep nothing is captured, but the watermark still follows every persisted
-    /// head with its marker: the first real walk connects at the previous persist like any other, and readers below
-    /// the floor already fail closed.</summary>
+    /// head with its marker, as durably as a capture: the first real walk connects at the previous persist like any
+    /// other, and readers below the floor already fail closed.</summary>
     private void AdvanceWatermarkWithoutRows(in StateId persistedHead)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
@@ -220,8 +224,39 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(persistedHead.BlockNumber, _formatVersion);
+        _history.SyncWal();
         _formatStamped = true;
         Metrics.FlatHistoryWatermark = (long)persistedHead.BlockNumber;
+    }
+
+    /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap
+    /// pivot, where this node's history genuinely starts; one below it, or a watermark with no floor at all, is
+    /// history captured under a different setting, and publishing over it would strand rows nothing reclaims.</summary>
+    private void PublishSinceBlockFloor()
+    {
+        if (_availability.TryGetGlobalFloor(out ulong floor))
+        {
+            if (_captureFromBlock > floor)
+            {
+                throw new InvalidConfigurationException(
+                    $"FlatDb.HistoryRetentionSinceBlock is {_captureFromBlock}, but this flatHistory database already publishes " +
+                    $"its floor at {floor}. A since-block floor never moves, and nothing prunes the rows a raise would leave " +
+                    $"below it. Set FlatDb.HistoryRetentionSinceBlock back to {floor}, or resync the flatHistory database.", -1);
+            }
+
+            Metrics.FlatHistoryFloor = (long)floor;
+            return;
+        }
+
+        if (_availability.TryGetWatermark(out ulong watermark))
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetention is SinceBlock, but this flatHistory database already holds history captured up to " +
+                $"block {watermark} with no floor, under another retention setting. Resync the flatHistory database to " +
+                "start it at FlatDb.HistoryRetentionSinceBlock.", -1);
+        }
+
+        _availability.PublishGlobalFloor(_captureFromBlock);
     }
 
     /// <summary>A walk connects at the watermark's marker. The floor is part of that check because a marker below
@@ -231,6 +266,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         ? _availability.IsCoveredAndRootMatches(block, stateRoot)
         : _availability.Matches(block, stateRoot);
 
+    /// <summary>Returns whether it connected.</summary>
     private bool WalkAndCapture(
         ref StateId current,
         bool hasWatermark,

@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -38,6 +39,16 @@ public class HistoryRetentionModeTests
     public void SinceBlockWithAWindowSize_IsRefused() =>
         Assert.That(() => Build(Config(HistoryRetentionMode.SinceBlock, 1024, sinceBlock: 15_000_000)), Throws.TypeOf<InvalidConfigurationException>(),
             "a fixed floor and a rolling window cannot both hold; the block count belongs to Rolling alone");
+
+    [Test]
+    public void SinceBlockWithSlices_IsRefused()
+    {
+        FlatDbConfig config = Config(HistoryRetentionMode.SinceBlock, 0, sinceBlock: 15_000_000);
+        config.HistorySliceAddresses = TestItem.AddressA.ToString();
+
+        Assert.That(() => Build(config), Throws.TypeOf<InvalidConfigurationException>(),
+            "a slice outlives what the rolling window prunes; a since-block node prunes nothing, so the slices would be an accepted setting that does nothing");
+    }
 
     [TestCase(HistoryRetentionMode.None, 0UL, 0UL, false, TestName = "Unbounded")]
     [TestCase(HistoryRetentionMode.Rolling, 1024UL, 0UL, true, TestName = "Windowed")]

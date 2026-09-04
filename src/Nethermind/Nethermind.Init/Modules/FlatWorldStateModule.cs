@@ -176,6 +176,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 "to start history there, or unset the block.", -1);
         }
 
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.SinceBlock && !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses))
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistorySliceAddresses is set but FlatDb.HistoryRetention is SinceBlock. A slice keeps one address " +
+                "below the floor a rolling window prunes; a since-block node prunes nothing and keeps every address from " +
+                "FlatDb.HistoryRetentionSinceBlock onward, so the slices would change nothing. Unset them, or use " +
+                "FlatDb.HistoryRetention=Rolling.", -1);
+        }
+
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());

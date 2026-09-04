@@ -63,11 +63,11 @@ public sealed class HistoryWindowPruner(
     private bool _started;
 
     /// <summary>Called by the startup step, never the constructor, so resolving the singleton has no side
-    /// effects. No-op when retention is unbounded.</summary>
+    /// effects. No-op unless <c>HistoryRetention</c> is <c>Rolling</c> - deliberately narrower than
+    /// <c>IsHistoryWindowed()</c>, because this loop advances the floor with the watermark, which only a rolling
+    /// window wants; a mode that fixes its floor must not inherit it.</summary>
     public void Start()
     {
-        // Deliberately narrower than IsHistoryWindowed(): this loop advances the floor with the watermark, which
-        // only a rolling window wants. A mode that fixes its floor must decide its own reclamation, not inherit this.
         if (config.HistoryRetention != HistoryRetentionMode.Rolling || _started) return;
         _started = true;
         _wakeSignal.Release();
