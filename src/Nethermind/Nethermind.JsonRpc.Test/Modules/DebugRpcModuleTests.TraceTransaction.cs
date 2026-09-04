@@ -73,6 +73,25 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
+    [TestCase("latest")]
+    [TestCase("pending")]
+    public async Task Debug_traceTransactionByBlockAndIndex_accepts_block_tag(string blockTag)
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0");
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockTag, "0x0");
+
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
     [TestCaseSource(nameof(TraceTransactionContractSource))]
     public async Task Debug_traceTransactionByBlockhashAndIndex(Func<TestRpcBlockchain, Transaction> factory, GethTraceOptions options, string expected)
