@@ -88,8 +88,7 @@ public ref struct RlpReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
     {
-        (int prefixLength, int contentLength) = RlpHelpers.PeekPrefixAndContentLength(Data, Position);
-        Position += Math.Max(prefixLength, 1);
+        Position = RlpHelpers.ReadPrefixAndContentLength(Data, Position, out int prefixLength, out int contentLength);
         return (prefixLength, contentLength);
     }
 
@@ -99,37 +98,14 @@ public ref struct RlpReader
 
     public int ReadSequenceLength()
     {
-        int prefix = ReadByte();
-        if (prefix < 192)
-        {
-            RlpHelpers.ThrowUnexpectedPrefix(prefix);
-        }
-
-        if (prefix <= 247)
-        {
-            return prefix - 192;
-        }
-
-        int lengthOfContentLength = prefix - 247;
-        int contentLength = DeserializeLength(lengthOfContentLength);
-        if (contentLength < RlpHelpers.SmallPrefixBarrier)
-        {
-            RlpHelpers.ThrowUnexpectedLength(contentLength);
-        }
-
+        Position = RlpHelpers.ReadSequenceLength(Data, Position, out int contentLength);
         return contentLength;
     }
 
     private int DeserializeLength(int lengthOfLength)
     {
-        if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
-        {
-            RlpHelpers.ThrowInvalidLength(lengthOfLength);
-        }
-
-        int result = RlpHelpers.DeserializeLengthRef(ref MemoryMarshal.GetReference(Data.Slice(Position, lengthOfLength)), lengthOfLength);
-        Position += lengthOfLength;
-        return result;
+        Position = RlpHelpers.DeserializeLength(Data, Position, lengthOfLength, out int length);
+        return length;
     }
 
     public byte ReadByte() => Data[Position++];
@@ -355,55 +331,14 @@ public ref struct RlpReader
 
     public UInt256 DecodeUInt256(int length = -1)
     {
-        int position = Position;
-        if (PeekByte() == 0)
-        {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
-        }
-
-        ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
-        if (byteSpan.Length > 32)
-        {
-            RlpHelpers.ThrowUnexpectedIntegerLength(position, byteSpan.Length);
-        }
-
-        if (length == -1)
-        {
-            if (byteSpan.Length > 1 && byteSpan[0] == 0)
-            {
-                RlpHelpers.ThrowNonCanonicalInteger(position);
-            }
-        }
-        else if (byteSpan.Length != length)
-        {
-            RlpHelpers.ThrowInvalidLength(byteSpan.Length, length);
-        }
-
-        return new UInt256(byteSpan, true);
+        Position = RlpHelpers.DecodeUInt256(Data, Position, length, out UInt256 value);
+        return value;
     }
 
     public EvmWord DecodeEvmWord()
     {
-        int position = Position;
-        if (PeekByte() == 0)
-        {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
-        }
-
-        ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
-        if (byteSpan.Length > 32)
-        {
-            RlpHelpers.ThrowUnexpectedIntegerLength(position, byteSpan.Length);
-        }
-        if (byteSpan.Length > 1 && byteSpan[0] == 0)
-        {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
-        }
-
-        EvmWord result = default;
-        Span<byte> dest = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref result), 32);
-        byteSpan.CopyTo(dest.Slice(32 - byteSpan.Length));
-        return result;
+        Position = RlpHelpers.DecodeEvmWord(Data, Position, out EvmWord value);
+        return value;
     }
 
     public BigInteger DecodeUBigInt()
@@ -501,47 +436,8 @@ public ref struct RlpReader
 
     public uint DecodeUInt()
     {
-        int position = Position;
-        int prefix = ReadByte();
-
-        switch (prefix)
-        {
-            case 0:
-                return RlpHelpers.ThrowNonCanonicalInteger(position);
-            case < 128:
-                return (uint)prefix;
-            case 128:
-                return 0u;
-        }
-
-        int length = prefix - 128;
-        if (length > 4)
-        {
-            RlpHelpers.ThrowUnexpectedIntegerLength(position, length);
-        }
-
-        uint result = 0;
-        for (int i = 4; i > 0; i--)
-        {
-            result <<= 8;
-            if (i <= length)
-            {
-                result |= Data[Position + length - i];
-                if (result == 0)
-                {
-                    RlpHelpers.ThrowNonCanonicalInteger(position);
-                }
-            }
-        }
-
-        if (result < 128)
-        {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
-        }
-
-        Position += length;
-
-        return result;
+        Position = RlpHelpers.DecodeUInt(Data, Position, out uint value);
+        return value;
     }
 
     public byte[] DecodeByteArray(RlpLimit? limit = null, int size = -1)
@@ -633,64 +529,8 @@ public ref struct RlpReader
 
     public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null, int size = -1)
     {
-        int position = Position;
-        int prefix = ReadByte();
-        ReadOnlySpan<byte> span = RlpHelpers.SingleBytes;
-        if ((uint)prefix < (uint)span.Length)
-        {
-            GuardSize(actual: 1, expected: size);
-            return span.Slice(prefix, 1);
-        }
-
-        if (prefix is Rlp.EmptyByteArrayByte)
-        {
-            GuardSize(actual: 0, expected: size);
-            return default;
-        }
-
-        if (prefix <= 183)
-        {
-            int length = prefix - 128;
-            GuardLimit(length, limit);
-            GuardSize(actual: length, expected: size);
-
-            ReadOnlySpan<byte> buffer = Read(length);
-
-            if (length == 1 && buffer[0] < 128)
-            {
-                RlpHelpers.ThrowNonCanonicalInteger(position);
-            }
-
-            return buffer;
-        }
-
-        return DecodeLargerByteArraySpan(prefix, limit, size);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix, RlpLimit? limit = null, int size = -1)
-    {
-        if (prefix < 192)
-        {
-            int lengthOfLength = prefix - 183;
-            if (lengthOfLength > 4)
-            {
-                RlpHelpers.ThrowSequenceLengthTooLong();
-            }
-
-            int length = DeserializeLength(lengthOfLength);
-            if (length < RlpHelpers.SmallPrefixBarrier)
-            {
-                RlpHelpers.ThrowUnexpectedLength(length);
-            }
-
-            GuardSize(actual: length, expected: size);
-            GuardLimit(length, limit);
-            return Read(length);
-        }
-
-        RlpHelpers.ThrowUnexpectedPrefix(prefix);
-        return default;
+        Position = RlpHelpers.DecodeByteArraySpan(Data, Position, limit, size, out ReadOnlySpan<byte> value);
+        return value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -746,65 +586,20 @@ public ref struct RlpReader
 
     public int DecodePositiveInt()
     {
-        int position = Position;
-        int value = DecodeInt();
-        if (value < 0)
-            RlpHelpers.ThrowNegativeInteger(position, value);
+        Position = RlpHelpers.DecodePositiveInt(Data, Position, out int value);
         return value;
     }
 
     public long DecodePositiveLong()
     {
-        int position = Position;
-        long value = DecodeLong();
-        if (value < 0)
-            RlpHelpers.ThrowNegativeInteger(position, value);
+        Position = RlpHelpers.DecodePositiveLong(Data, Position, out long value);
         return value;
     }
 
     public ulong DecodeULong()
     {
-        int position = Position;
-        int prefix = ReadByte();
-
-        switch (prefix)
-        {
-            case 0:
-                return RlpHelpers.ThrowNonCanonicalInteger(position);
-            case < 128:
-                return (ulong)prefix;
-            case 128:
-                return 0;
-        }
-
-        int length = prefix - 128;
-        if (length > 8)
-        {
-            RlpHelpers.ThrowUnexpectedIntegerLength(position, length);
-        }
-
-        ulong result = 0ul;
-        for (int i = 8; i > 0; i--)
-        {
-            result <<= 8;
-            if (i <= length)
-            {
-                result |= PeekByte(length - i);
-                if (result == 0)
-                {
-                    RlpHelpers.ThrowNonCanonicalInteger(position);
-                }
-            }
-        }
-
-        if (result < 128)
-        {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
-        }
-
-        SkipBytes(length);
-
-        return result;
+        Position = RlpHelpers.DecodeULong(Data, Position, out ulong value);
+        return value;
     }
 
     public byte[][] DecodeByteArrays(RlpLimit? limit = null, int innerSize = -1)
@@ -833,75 +628,14 @@ public ref struct RlpReader
 
     public ushort DecodeUShort()
     {
-        int position = Position;
-        int prefix = ReadByte();
-
-        switch (prefix)
-        {
-            case 0:
-                RlpHelpers.ThrowNonCanonicalInteger(position);
-                return 0;
-            case < 128:
-                return (ushort)prefix;
-            case 128:
-                return 0;
-        }
-
-        int length = prefix - 128;
-        if (length > 2)
-        {
-            RlpHelpers.ThrowUnexpectedIntegerLength(position, length);
-        }
-
-        ushort result = 0;
-        for (int i = 2; i > 0; i--)
-        {
-            result <<= 8;
-            if (i <= length)
-            {
-                result |= PeekByte(length - i);
-                if (result == 0)
-                {
-                    RlpHelpers.ThrowNonCanonicalInteger(position);
-                }
-            }
-        }
-
-        if (result < 128)
-        {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
-        }
-
-        SkipBytes(length);
-
-        return result;
+        Position = RlpHelpers.DecodeUShort(Data, Position, out ushort value);
+        return value;
     }
 
     public byte DecodeByte()
     {
-        int position = Position;
-        byte byteValue = PeekByte();
-        switch (byteValue)
-        {
-            case 0:
-                RlpHelpers.ThrowNonCanonicalInteger(position);
-                return 0;
-            case < 128:
-                SkipBytes(1);
-                return byteValue;
-            case 128:
-                SkipBytes(1);
-                return 0;
-            case 129 when PeekByte(1) < 128:
-                RlpHelpers.ThrowNonCanonicalInteger(position);
-                return 0;
-            case 129:
-                SkipBytes(1);
-                return ReadByte();
-            default:
-                RlpHelpers.ThrowUnexpectedByteValue(position, byteValue);
-                return 0;
-        }
+        Position = RlpHelpers.DecodeByte(Data, Position, out byte value);
+        return value;
     }
 
     /// <summary>
