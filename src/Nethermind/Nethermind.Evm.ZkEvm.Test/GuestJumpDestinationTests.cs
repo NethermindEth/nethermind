@@ -25,6 +25,8 @@ public class GuestJumpDestinationTests
     private const byte PUSH1 = (byte)Instruction.PUSH1;
     private const byte PUSH32 = (byte)Instruction.PUSH32;
     private const int BitsPerSegment = 64;
+    /// <summary>Furthest the scan can step past the end of the code: PUSH32 as its final byte.</summary>
+    private const int MaxOvershoot = 32;
 
     private static IEnumerable<TestCaseData> Shapes()
     {
@@ -115,10 +117,20 @@ public class GuestJumpDestinationTests
         return code;
     }
 
+    /// <remarks>
+    /// The scan is handed a slice of an oversized buffer, not <paramref name="code"/> itself: a
+    /// truncated PUSH at the tail moves its byref up to <see cref="MaxOvershoot"/> bytes past the end,
+    /// which is sound on the guest but not here, where a compacting GC can observe it. The slack keeps
+    /// the overshoot inside the same object; the scan never reads past the slice, so the bitmap is
+    /// unaffected.
+    /// </remarks>
     private static void AssertMatchesReference(byte[] code)
     {
         long[] expected = Reference(code);
-        long[] actual = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+        byte[] padded = new byte[code.Length + MaxOvershoot];
+        code.CopyTo(padded, 0);
+        long[] actual = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(
+            JumpDestinationAnalyzer.CreateBitmap(code.Length), padded.AsSpan(0, code.Length));
 
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
     }
