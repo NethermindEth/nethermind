@@ -88,6 +88,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpAdd : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Add(in a, in b, out result);
     }
@@ -97,6 +98,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSub : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Subtract(in a, in b, out result);
     }
@@ -108,6 +110,7 @@ public static partial class EvmInstructions
     public struct OpMul : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
@@ -119,6 +122,7 @@ public static partial class EvmInstructions
     public struct OpDiv : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -143,6 +147,7 @@ public static partial class EvmInstructions
     public struct OpSDiv : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -174,6 +179,7 @@ public static partial class EvmInstructions
     public struct OpMod : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -196,6 +202,7 @@ public static partial class EvmInstructions
     public struct OpSMod : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -222,6 +229,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpLt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a < b ? UInt256.One : default;
     }
 
@@ -231,6 +239,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpGt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a > b ? UInt256.One : default;
     }
 
@@ -240,6 +249,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSLt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = As<UInt256, Int256>(ref AsRef(in a))
                 .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) < 0 ?
                 UInt256.One :
@@ -252,6 +262,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSGt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = As<UInt256, Int256>(ref AsRef(in a))
                 .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) > 0 ?
                 UInt256.One :

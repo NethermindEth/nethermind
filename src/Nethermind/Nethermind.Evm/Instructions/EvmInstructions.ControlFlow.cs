@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -98,7 +99,7 @@ public static partial class EvmInstructions
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
-        if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+        if (!Jump(result, ref programCounter, ref stack)) goto InvalidJumpDestination;
         SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, ref programCounter);
         // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
         PrefetchCodeAtDestination(ref stack, programCounter);
@@ -156,7 +157,7 @@ public static partial class EvmInstructions
         if (isOverflow) goto StackUnderflow;
         if (shouldJump)
         {
-            if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, ref stack)) goto InvalidJumpDestination;
             SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, ref programCounter);
             // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
@@ -365,7 +366,7 @@ public static partial class EvmInstructions
     /// <c>true</c> if the destination is valid and the program counter is updated; otherwise, <c>false</c>.
     /// </returns>
     [SkipLocalsInit]
-    private static bool Jump(in UInt256 jumpDestination, ref nint programCounter, ExecutionEnvironment env)
+    private static bool Jump(in UInt256 jumpDestination, ref nint programCounter, ref EvmStack stack)
     {
         // Check if the jump destination exceeds the maximum allowed integer value.
         if (jumpDestination > int.MaxValue)
@@ -374,22 +375,21 @@ public static partial class EvmInstructions
         }
 
         // Extract the jump destination from the lowest limb of the UInt256.
-        return Jump((int)jumpDestination.u0, ref programCounter, env);
+        return Jump((int)jumpDestination.u0, ref programCounter, ref stack);
     }
 
-    private static bool Jump(int jumpDestination, ref nint programCounter, ExecutionEnvironment env)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool Jump(int jumpDestination, ref nint programCounter, ref EvmStack stack)
     {
-        // Validate that the jump destination corresponds to a valid jump marker in the code.
-        if (!env.CodeInfo.ValidateJump(jumpDestination))
+        // The frame hoisted the code length and jump-destination bitmap at entry; the unsigned compare also
+        // rejects negative destinations.
+        if ((uint)jumpDestination >= (uint)stack.CodeLength
+            || !JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination))
         {
             return false;
         }
-        else
-        {
-            // Update the program counter to the valid jump destination.
-            programCounter = jumpDestination;
-        }
 
+        programCounter = jumpDestination;
         return true;
     }
 

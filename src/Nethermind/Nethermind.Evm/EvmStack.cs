@@ -27,22 +27,24 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
+    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, long[] jumpDestinations)
     {
         Head = head;
         _tracer = txTracer;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
+        JumpDestinations = jumpDestinations;
     }
 
-    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
+    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, long[] jumpDestinations)
     {
         Head = head;
         _tracer = null;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
+        JumpDestinations = jumpDestinations;
     }
 
     private readonly ITxTracer _tracer;
@@ -50,6 +52,7 @@ public ref partial struct EvmStack
     internal readonly ref byte Code;
     public int Head;
     internal readonly int CodeLength;
+    internal readonly long[] JumpDestinations;
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
