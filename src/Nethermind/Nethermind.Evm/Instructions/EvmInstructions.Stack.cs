@@ -148,9 +148,8 @@ public static partial class EvmInstructions
             {
                 TGasPolicy.Consume<JumpIGasCost>(ref gas);
                 vm.OpCodeCount++;
-                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-                if (isOverflow) goto StackUnderflow;
-                if (!shouldJump)
+                if (!stack.EnsureDepth(1)) goto StackUnderflow;
+                if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
                 {
                     // Move forward by 2 bytes + JUMPI
                     programCounter += Size + 1;

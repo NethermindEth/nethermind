@@ -1943,6 +1943,61 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
+    /// Pops one word for callers that have already established <c>Head &gt;= 1</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
+    /// <returns>Reference to the popped slot, which stays readable until the next push.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte PopBytesByRefUnchecked()
+    {
+        Debug.Assert(Head >= 1, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head - 1;
+        Head = (nint)head;
+        return ref Unsafe.Add(ref _stack, (nint)(head * WordSize));
+    }
+
+    /// <summary>
+    /// Pops two words for callers that have already established <c>Head &gt;= 2</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
+    /// <returns>Reference to the second popped slot; the first sits one word above it.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop2BytesByRefUnchecked()
+    {
+        Debug.Assert(Head >= 2, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head - 2;
+        Head = (nint)head;
+        return ref Unsafe.Add(ref _stack, (nint)(head * WordSize));
+    }
+
+    /// <summary>Whether a stack slot holds zero.</summary>
+    /// <remarks>
+    /// Folding a whole word down to one bit is the case where a <see cref="EvmWord"/> value has to be
+    /// address-taken on targets that cannot hold one in a register, which spills the slot to the frame
+    /// and reads it back. Each width tests the slot where it lies instead.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsSlotZero(ref byte slot)
+    {
+        if (Vector256.IsHardwareAccelerated)
+            return Unsafe.ReadUnaligned<EvmWord>(ref slot) == default;
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            HalfWord folded = Unsafe.ReadUnaligned<HalfWord>(ref slot) |
+                Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref slot, Vector128<byte>.Count));
+            return folded == default;
+        }
+
+        ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
+        return (parts | Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3)) == 0UL;
+    }
+
+    /// <summary>
     /// Pop-1 + peek-top for callers that have already established <c>Head &gt;= 2</c> with
     /// <see cref="EnsureDepth"/>.
     /// </summary>
