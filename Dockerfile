@@ -30,6 +30,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-resolute@sha256:e12b240891f34144edd
 
 WORKDIR /nethermind
 
+# MemoryHintMan's mallopt(M_MMAP_THRESHOLD, 64 KiB) predates RocksDB bundling its own allocator;
+# it now only shapes glibc's residual traffic. Disabled here to measure what it still costs.
+ENV NETHERMIND_INITCONFIG_DISABLEMALLOCOPTS=true
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
