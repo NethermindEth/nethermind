@@ -150,8 +150,8 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
-        UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
-        return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
+        UInt256 maxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+        return ResultWrapper<UInt256?>.Success(maxPriorityFeePerGas);
     }
 
     public ResultWrapper<FeeHistoryResults> eth_feeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
