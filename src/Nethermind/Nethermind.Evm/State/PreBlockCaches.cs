@@ -37,8 +37,6 @@ public class PreBlockCaches
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
 
-    internal PreBlockCaches() : this(new PreBlockCachesConfig(), PrecompileCaches.Empty) { }
-
     internal PreBlockCaches(PreBlockCachesConfig config) : this(config, PrecompileCaches.Empty) { }
 
     public PreBlockCaches(PreBlockCachesConfig config, PrecompileCaches precompileCaches)
