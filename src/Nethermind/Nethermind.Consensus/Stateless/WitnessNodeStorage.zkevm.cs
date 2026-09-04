@@ -28,6 +28,8 @@ internal static partial class WitnessNodeStorage
     /// </remarks>
     private sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
     {
+        private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
+
         private readonly Dictionary<NodeKey, byte[]> _nodes;
 
         public HashKeyedNodeStorage(IOwnedReadOnlyList<byte[]> state)
@@ -43,11 +45,13 @@ internal static partial class WitnessNodeStorage
             // Some of the code does not save the empty tree at all, so the empty root has to resolve
             // whether the witness carries it or not. Seeding it here keeps NodeStorage's special case
             // out of every read.
-            nodes[new NodeKey(Keccak.EmptyTreeHash.ValueHash256)] = [128];
+            nodes[EmptyRootKey] = [128];
 
             _nodes = nodes;
         }
 
+        /// <inheritdoc/>
+        /// <remarks>The scheme is fixed: only <c>FullPruner</c> reassigns it, and it does not run in the guest.</remarks>
         public INodeStorage.KeyScheme Scheme
         {
             get => INodeStorage.KeyScheme.Hash;
@@ -59,14 +63,21 @@ internal static partial class WitnessNodeStorage
         public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
             => _nodes.TryGetValue(new NodeKey(keccak), out byte[]? node) ? node : null;
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Null <paramref name="data"/> evicts the node. <see cref="NodeStorage"/>'s direct <c>Set</c> keeps
+        /// the hash-keyed entry and removes only the half-path one, but every stateless write arrives
+        /// through <see cref="INodeStorage.IWriteBatch"/>, whose <see cref="NodeStorage"/> form removes the
+        /// hash key as well.
+        /// </remarks>
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
         {
-            if (keccak == Keccak.EmptyTreeHash.ValueHash256)
+            NodeKey key = new(keccak);
+            if (key.Equals(EmptyRootKey))
             {
                 return;
             }
 
-            NodeKey key = new(keccak);
             if (data.IsNull())
             {
                 _nodes.Remove(key);
@@ -77,8 +88,9 @@ internal static partial class WitnessNodeStorage
             }
         }
 
+        // The empty root is seeded, so it needs no special case here.
         public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
-            => keccak == Keccak.EmptyTreeHash.ValueHash256 || _nodes.ContainsKey(new NodeKey(keccak));
+            => _nodes.ContainsKey(new NodeKey(keccak));
 
         public INodeStorage.IWriteBatch StartWriteBatch() => this;
 
