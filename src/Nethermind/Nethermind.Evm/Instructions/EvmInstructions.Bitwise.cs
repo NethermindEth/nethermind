@@ -161,14 +161,22 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseEq : IOpBitwise
     {
-        // Precomputed vector used as a marker for equality (only the last byte is set to 1).
-        public static readonly EvmWord One = Vector256.Create(
-            (byte)
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 1
-        );
+        /// <summary>The word a true comparison pushes: one, in the stack's big-endian layout.</summary>
+        /// <remarks>
+        /// Property form so the JIT folds it to a PC-relative rodata load. As a static field it was a
+        /// class-initialized test, a materialized absolute address and an indirect load on the taken path.
+        /// </remarks>
+        public static EvmWord One
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => Vector256.Create(
+                (byte)
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 1
+            );
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b)
