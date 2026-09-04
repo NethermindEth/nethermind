@@ -426,6 +426,24 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(Instruction.SHL, "0x01", 0)]
+    [TestCase(Instruction.SHR, "0x8000000000000000000000000000000000000000000000000000000000000000", 0)]
+    [TestCase(Instruction.SAR, "0x01", 0)]
+    [TestCase(Instruction.SAR, "0x8000000000000000000000000000000000000000000000000000000000000000", 255)]
+    public void Shift_above_255_traces_a_full_word(Instruction instruction, string value, byte expectedByte)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(value)
+            .PushData("0x0100")
+            .Op(instruction)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+        byte[] pushed = trace.VmTrace.Operations[2].Push.Single();
+
+        Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
+    }
+
     [Test]
     public void Can_trace_dup_push_in_vm_trace()
     {
