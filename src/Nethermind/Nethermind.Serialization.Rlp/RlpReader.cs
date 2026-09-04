@@ -19,7 +19,6 @@ namespace Nethermind.Serialization.Rlp;
 
 public ref struct RlpReader
 {
-    private const int KeccakRlpPrefix = Rlp.EmptyByteArrayByte + Hash256.Size;
     private const int AddressRlpPrefix = Rlp.EmptyByteArrayByte + Address.Size;
 
     private readonly Memory<byte> _memory;
@@ -74,7 +73,7 @@ public ref struct RlpReader
     public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
-    public void SkipLength() => Position += PeekPrefixLength();
+    public void SkipLength() => Position = RlpHelpers.SkipLength(Data, Position);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(Data[Position]);
@@ -180,38 +179,10 @@ public ref struct RlpReader
     private static void ThrowCheckEndFailed(int position) =>
         throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {position}");
 
-    // Used to avoid allocating detailed error strings on receipt fallback decode paths.
-    private class DecodeKeccakRlpException : RlpException
-    {
-        private readonly int _prefix;
-        private readonly int _position;
-        private readonly int _dataLength;
-        private string? _message;
-
-        public DecodeKeccakRlpException(string message, Exception inner) : base(message, inner)
-        {
-        }
-
-        public DecodeKeccakRlpException(string message) : base(message)
-        {
-        }
-
-        public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : this(string.Empty)
-        {
-            _prefix = prefix;
-            _position = position;
-            _dataLength = dataLength;
-        }
-
-        public override string Message => _message ??= ConstructMessage();
-
-        private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
-    }
-
     public Hash256 DecodeKeccak()
     {
-        ReadKeccakPrefix(allowNull: false);
-        return DecodeKeccakPayload();
+        Position = RlpHelpers.DecodeKeccak(Data, Position, out Hash256 keccak);
+        return keccak;
     }
 
     public Hash256? DecodeKeccakOrNull()
@@ -224,21 +195,7 @@ public ref struct RlpReader
         return DecodeKeccakPayload();
     }
 
-    private Hash256 DecodeKeccakPayload()
-    {
-        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-        {
-            return Keccak.OfAnEmptyString;
-        }
-
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-        {
-            return Keccak.EmptyTreeHash;
-        }
-
-        return new Hash256(keccakSpan);
-    }
+    private Hash256 DecodeKeccakPayload() => RlpHelpers.InternKeccak(Read(Hash256.Size));
 
     public ValueHash256? DecodeValueKeccak()
     {
@@ -247,21 +204,14 @@ public ref struct RlpReader
             return null;
         }
 
-        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-        {
-            return Keccak.OfAnEmptyString.ValueHash256;
-        }
-
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-        {
-            return Keccak.EmptyTreeHash.ValueHash256;
-        }
-
-        return new ValueHash256(keccakSpan);
+        return RlpHelpers.InternValueKeccak(Read(Hash256.Size));
     }
 
-    public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
+    public ValueHash256 DecodeValueKeccakNonNull()
+    {
+        Position = RlpHelpers.DecodeValueKeccakNonNull(Data, Position, out ValueHash256 keccak);
+        return keccak;
+    }
 
     public bool TryDecodeValueKeccak(out ValueHash256 keccak)
     {
@@ -758,14 +708,7 @@ public ref struct RlpReader
             return;
         }
 
-        ReadOnlySpan<byte> data = Data;
-        int position = Position;
-        for (int i = 0; i < count; i++)
-        {
-            position += RlpHelpers.PeekNextRlpLength(data, position);
-        }
-
-        Position = position;
+        Position = RlpHelpers.SkipItems(Data, Position, count);
     }
 
     public void Reset() => Position = 0;
@@ -1301,7 +1244,7 @@ public ref struct RlpReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool ReadKeccakPrefix(bool allowNull)
     {
-        if (!TryReadFixedSizePrefix(KeccakRlpPrefix, allowNull, out bool hasValue, out int prefix))
+        if (!TryReadFixedSizePrefix(RlpHelpers.KeccakRlpPrefix, allowNull, out bool hasValue, out int prefix))
         {
             ThrowKeccakDecodeException(prefix);
         }
@@ -1321,11 +1264,11 @@ public ref struct RlpReader
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static T ThrowNullDecodedValue<T>() => throw new RlpException($"{typeof(T).Name} decoded as null");
+    private static T ThrowNullDecodedValue<T>() => RlpHelpers.ThrowNullDecodedValue<T>();
 
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowKeccakDecodeException(int prefix)
-        => throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+        => RlpHelpers.ThrowKeccakDecode(prefix, Position, Data.Length);
 
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowAddressDecodeException(int prefix)

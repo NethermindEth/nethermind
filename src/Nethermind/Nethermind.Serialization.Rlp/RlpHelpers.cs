@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -16,6 +17,9 @@ namespace Nethermind.Serialization.Rlp;
 internal static class RlpHelpers
 {
     public const int SmallPrefixBarrier = 56;
+
+    /// <summary>RLP prefix byte introducing a 32-byte string, i.e. a hash.</summary>
+    public const int KeccakRlpPrefix = Rlp.EmptyByteArrayByte + Hash256.Size;
 
     internal static ReadOnlySpan<byte> SingleBytes => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127];
 
@@ -260,6 +264,98 @@ internal static class RlpHelpers
 
         [DoesNotReturn]
         static void ThrowInvalidData() => throw new RlpException("Length starts with 0");
+    }
+
+    // The overloads below take the cursor by value and return the advanced one, so a chain of them keeps
+    // it in a register. Reaching it through RlpReader instead costs a 4-byte field round-trip per call,
+    // which ZisK charges 122 to read and 193 to write.
+
+    /// <summary>Advances past the prefix of the item at <paramref name="position"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int SkipLength(ReadOnlySpan<byte> data, int position)
+        => position + GetPrefixLength(data[position]);
+
+    /// <summary>Advances past <paramref name="count"/> whole items.</summary>
+    public static int SkipItems(ReadOnlySpan<byte> data, int position, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            position += PeekNextRlpLength(data, position);
+        }
+
+        return position;
+    }
+
+    /// <summary>Decodes a 32-byte hash that must be present.</summary>
+    /// <returns>The position past the hash.</returns>
+    public static int DecodeKeccak(ReadOnlySpan<byte> data, int position, out Hash256 keccak)
+    {
+        int prefix = data[position++];
+        if (prefix != KeccakRlpPrefix)
+        {
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        keccak = InternKeccak(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    /// <inheritdoc cref="DecodeKeccak"/>
+    /// <remarks>An RLP null throws, matching <see cref="RlpReader.DecodeValueKeccakNonNull"/>.</remarks>
+    public static int DecodeValueKeccakNonNull(ReadOnlySpan<byte> data, int position, out ValueHash256 keccak)
+    {
+        int prefix = data[position++];
+        if (prefix != KeccakRlpPrefix)
+        {
+            if (prefix == Rlp.EmptyByteArrayByte)
+            {
+                ThrowNullDecodedValue<ValueHash256>();
+            }
+
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        keccak = InternValueKeccak(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    /// <summary>Returns the shared instance for the two hashes that dominate account payloads.</summary>
+    public static Hash256 InternKeccak(ReadOnlySpan<byte> span)
+        => span.SequenceEqual(Keccak.OfAnEmptyString.Bytes) ? Keccak.OfAnEmptyString
+            : span.SequenceEqual(Keccak.EmptyTreeHash.Bytes) ? Keccak.EmptyTreeHash
+            : new Hash256(span);
+
+    /// <inheritdoc cref="InternKeccak"/>
+    public static ValueHash256 InternValueKeccak(ReadOnlySpan<byte> span)
+        => span.SequenceEqual(Keccak.OfAnEmptyString.Bytes) ? Keccak.OfAnEmptyString.ValueHash256
+            : span.SequenceEqual(Keccak.EmptyTreeHash.Bytes) ? Keccak.EmptyTreeHash.ValueHash256
+            : new ValueHash256(span);
+
+    [DoesNotReturn, StackTraceHidden]
+    public static T ThrowNullDecodedValue<T>() => throw new RlpException($"{typeof(T).Name} decoded as null");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowKeccakDecode(int prefix, int position, int dataLength)
+        => throw new DecodeKeccakRlpException(prefix, position, dataLength);
+
+    // Used to avoid allocating detailed error strings on receipt fallback decode paths.
+    private class DecodeKeccakRlpException : RlpException
+    {
+        private readonly int _prefix;
+        private readonly int _position;
+        private readonly int _dataLength;
+        private string? _message;
+
+        public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : base(string.Empty)
+        {
+            _prefix = prefix;
+            _position = position;
+            _dataLength = dataLength;
+        }
+
+        public override string Message => _message ??= ConstructMessage();
+
+        private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
     }
 
     [DoesNotReturn, StackTraceHidden]
