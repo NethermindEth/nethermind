@@ -95,10 +95,19 @@ public static unsafe partial class Bytes
         }
         else
         {
-            // scalar fallback
-            for (int i = 0; i < thisSpan.Length; i++)
+            // Whole words, then a byte tail: the widest access the target has without SIMD.
+            int i = 0;
+            for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
             {
-                Unsafe.Add(ref thisRef, i) |= Unsafe.Add(ref valueRef, i);
+                ref byte destination = ref Unsafe.Add(ref thisRef, i);
+                Unsafe.WriteUnaligned(ref destination,
+                    Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
+            }
+
+            for (; i < thisSpan.Length; i++)
+            {
+                ref byte destination = ref Unsafe.Add(ref thisRef, i);
+                destination = (byte)(destination | Unsafe.Add(ref valueRef, i));
             }
         }
     }
