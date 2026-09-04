@@ -13,6 +13,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -190,6 +191,7 @@ public partial class BlockAccessListManager(
         if (task is null) return;
         _balWarmupTask = null;
 
+        using MetricsTimer<BalWarmupWaitTimeSink> _ = new();
         try
         {
             task.GetAwaiter().GetResult();
@@ -268,6 +270,7 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
+        DisposableExtensions.DisposeAndNull(ref _shadowRootEnv);
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }

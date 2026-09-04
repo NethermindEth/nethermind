@@ -298,24 +298,24 @@ public partial class BlockAccessListManager
                 ? provider.Create(new ReadOnlyTxProcessingEnvPooledObjectPolicy(readOnlyTxProcessingEnvFactory))
                 : null;
         }
+    }
 
-        private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
+    private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
+    {
+        Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
+        return new BlockHeader(
+            parentHash,
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            block.Number == 0 ? 0 : block.Number - 1,
+            0,
+            0,
+            [])
         {
-            Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
-            return new BlockHeader(
-                parentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                block.Number == 0 ? 0 : block.Number - 1,
-                0,
-                0,
-                [])
-            {
-                StateRoot = stateRoot,
-                Hash = parentHash,
-            };
-        }
+            StateRoot = stateRoot,
+            Hash = parentHash,
+        };
     }
 
     private class SequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
