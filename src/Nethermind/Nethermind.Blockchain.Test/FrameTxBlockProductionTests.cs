@@ -38,6 +38,7 @@ public class FrameTxBlockProductionTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Observer = TestItem.AddressB;
     private static readonly Address SecondObserver = TestItem.AddressC;
+    private static readonly Address NeverApproves = TestItem.AddressD;
 
     private static readonly Hash256 FirstTopic = TestItem.KeccakA;
     private static readonly Hash256 SecondTopic = TestItem.KeccakB;
@@ -48,19 +49,26 @@ public class FrameTxBlockProductionTests
     private static readonly byte[] WriteFreshSlot =
         Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
     private static readonly byte[] Inert = Prepare.EvmCode.Op(Instruction.STOP).Done;
+    // Burns the whole verify budget without ever reaching APPROVE, so the transaction can never pay.
+    private static readonly byte[] SpinForever =
+        Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done;
 
-    /// <summary>A frame transaction offered to the producer must reach the produced block, and the
-    /// produced block must re-derive to the same receipts when a validating node replays it.</summary>
+    /// <summary>A frame transaction whose validation prefix never approves is dropped by the producer
+    /// rather than sealed, and the block produced alongside a payable one replays under validation.</summary>
+    /// <remarks>Production skips a failing transaction where validation throws on it, so a producer that
+    /// sealed the unpayable one would emit a block no node could accept.</remarks>
     [Test]
-    public void Produced_block_carrying_a_frame_transaction_revalidates_to_the_same_receipts()
+    public void A_frame_transaction_that_never_approves_is_dropped_and_the_produced_block_still_replays()
     {
-        Transaction frameTx = FrameTx(
+        Transaction frameTx = FrameTx(Sender,
             SelfApprove(),
             new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        Transaction unpayable = FrameTx(NeverApproves, SelfApprove());
 
-        Produced produced = Produce(frameTx, (Observer, EmitFirstTopic));
+        Produced produced = Produce([unpayable, frameTx], (Observer, EmitFirstTopic));
 
-        Assert.That(produced.Block.Transactions, Has.Length.EqualTo(1), "the producer skipped the frame transaction");
+        Assert.That(produced.Block.Transactions.Length, Is.EqualTo(1), "the producer sealed the unpayable frame transaction");
+        Assert.That(produced.Block.Transactions[0].Hash, Is.EqualTo(frameTx.Hash));
         Assert.That(produced.Receipts, Has.Length.EqualTo(1));
         TxReceipt producedReceipt = produced.Receipts[0];
 
@@ -81,7 +89,8 @@ public class FrameTxBlockProductionTests
             Assert.That(validatedReceipt.Payer, Is.EqualTo(producedReceipt.Payer));
             Assert.That(validatedReceipt.Logs!.Length, Is.EqualTo(producedReceipt.Logs!.Length));
             Assert.That(ReceiptsRoot(validated), Is.EqualTo(ReceiptsRoot(produced.Receipts)));
-            Assert.That(TxTrie.CalculateRoot(produced.Block.Transactions), Is.EqualTo(produced.Block.Header.TxRoot));
+            // The header must commit to what survived selection, not to what was offered.
+            Assert.That(produced.Block.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(produced.Block.Transactions)));
         }
     }
 
@@ -95,7 +104,7 @@ public class FrameTxBlockProductionTests
             SelfApprove(),
             new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
 
-        Produced produced = Produce(frameTx, (Observer, writesState ? WriteFreshSlot : Inert));
+        Produced produced = Produce([frameTx], (Observer, writesState ? WriteFreshSlot : Inert));
 
         Assert.That(produced.Block.Transactions, Has.Length.EqualTo(1), "the producer skipped the frame transaction");
         using (Assert.EnterMultipleScope())
@@ -117,7 +126,7 @@ public class FrameTxBlockProductionTests
             new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
             new TxFrame(TxFrame.ModeSender, 0, SecondObserver, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
 
-        Produced produced = Produce(frameTx, (Observer, EmitFirstTopic), (SecondObserver, EmitSecondTopic));
+        Produced produced = Produce([frameTx], (Observer, EmitFirstTopic), (SecondObserver, EmitSecondTopic));
 
         Assert.That(produced.Block.Transactions, Has.Length.EqualTo(1), "the producer skipped the frame transaction");
         TxReceipt receipt = produced.Receipts[0];
@@ -137,15 +146,15 @@ public class FrameTxBlockProductionTests
 
     private readonly record struct Produced(Block Block, TxReceipt[] Receipts, ulong ExecutionGas, ulong StateGas);
 
-    /// <summary>Offers <paramref name="candidate"/> to the real production executor over a pre-state
+    /// <summary>Offers <paramref name="candidates"/> to the real production executor over a pre-state
     /// carrying <paramref name="contracts"/>, and returns what the producer settled on.</summary>
-    private static Produced Produce(Transaction candidate, params (Address Address, byte[] Code)[] contracts)
+    private static Produced Produce(Transaction[] candidates, params (Address Address, byte[] Code)[] contracts)
     {
         using Chain chain = new(contracts);
 
         BlockToProduce blockToProduce = new(
             Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject.Header,
-            [candidate],
+            candidates,
             []);
 
         BlockProcessor.BlockProductionTransactionsExecutor executor = new(
@@ -209,6 +218,7 @@ public class FrameTxBlockProductionTests
 
             Deploy(Sender, Prepare.EvmCode
                 .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 100.Ether);
+            Deploy(NeverApproves, SpinForever, 100.Ether);
             foreach ((Address address, byte[] code) in contracts) Deploy(address, code);
             State.Commit(Spec);
             State.CommitTree(0);
@@ -231,14 +241,16 @@ public class FrameTxBlockProductionTests
     private static TxFrame SelfApprove() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
-    private static Transaction FrameTx(params TxFrame[] frames)
+    private static Transaction FrameTx(params TxFrame[] frames) => FrameTx(Sender, frames);
+
+    private static Transaction FrameTx(Address sender, params TxFrame[] frames)
     {
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
-            SenderAddress = Sender,
+            SenderAddress = sender,
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
