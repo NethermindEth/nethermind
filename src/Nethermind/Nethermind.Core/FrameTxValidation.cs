@@ -320,22 +320,34 @@ public static class FrameTxValidation
     }
 
     /// <summary>
-    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its recognized
-    /// validation prefix, which EIP-8141 bars from the public mempool.
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its validation prefix,
+    /// which EIP-8141 bars from the public mempool.
     /// </summary>
     /// <remarks>
     /// A public-mempool rule, not a validity rule: a VERIFY frame past the prefix can revert on state the pool never
-    /// validated, invalidating the whole transaction. Layouts matching no recognized prefix are not covered.
+    /// validated, invalidating the whole transaction. The bound is taken at the first frame permitted to approve
+    /// payment, at or before the frame that actually installs the payer, so it errs towards refusing a layout whose
+    /// approving frame would not have installed one rather than admitting a frame behind the real prefix.
     /// </remarks>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
-        if (RecognizedPrefixLength(frames, transaction.SenderAddress) is not int prefixLength)
+        int prefixEnd = -1;
+        for (int i = 0; i < frames.Length; i++)
+        {
+            if ((frames[i].Flags & TxFrame.ApprovePayment) != 0)
+            {
+                prefixEnd = i;
+                break;
+            }
+        }
+
+        if (prefixEnd < 0)
         {
             return false;
         }
 
-        for (int i = prefixLength; i < frames.Length; i++)
+        for (int i = prefixEnd + 1; i < frames.Length; i++)
         {
             if (frames[i].Mode == TxFrame.ModeVerify)
             {
