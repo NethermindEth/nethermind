@@ -153,7 +153,26 @@ public static partial class EvmInstructions
         if (!ok) goto StackUnderflow;
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpMath.Operation(in a, in b, out UInt256 result);
+        UInt256 result;
+        if (Vector128.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpLt) ||
+             typeof(TOpMath) == typeof(OpGt) ||
+             typeof(TOpMath) == typeof(OpSLt) ||
+             typeof(TOpMath) == typeof(OpSGt)))
+        {
+            bool comparison = typeof(TOpMath) == typeof(OpLt)
+                ? a < b
+                : typeof(TOpMath) == typeof(OpGt)
+                    ? a > b
+                    : typeof(TOpMath) == typeof(OpSLt)
+                        ? As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) < 0
+                        : As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) > 0;
+            result = comparison ? UInt256.One : default;
+        }
+        else
+        {
+            TOpMath.Operation(in a, in b, out result);
+        }
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
