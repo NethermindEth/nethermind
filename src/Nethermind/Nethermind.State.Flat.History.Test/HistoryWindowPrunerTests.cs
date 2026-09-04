@@ -418,7 +418,7 @@ public class HistoryWindowPrunerTests
         {
             HistoryEnabled = true,
             HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
-                HistoryRetentionBlocks = retentionBlocks,
+            HistoryRetentionBlocks = retentionBlocks,
             HistoryPruneIntervalBlocks = 1,
             HistoryPrunePassBudgetSeconds = passBudgetSeconds
         };

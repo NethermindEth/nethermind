@@ -1387,8 +1387,12 @@ public class HistoryWriterTests
 
     private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
-                HistoryRetentionBlocks = retentionBlocks };
+        FlatDbConfig config = new()
+        {
+            HistoryEnabled = true,
+            HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+            HistoryRetentionBlocks = retentionBlocks
+        };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
