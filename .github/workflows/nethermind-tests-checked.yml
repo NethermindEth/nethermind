@@ -138,8 +138,9 @@ jobs:
         run: |
           dotnet restore ${{ matrix.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
-          # timeout, which kills the job without one. The timeout counts inactivity, not runtime.
-          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m)
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
 
@@ -204,8 +205,9 @@ jobs:
         run: |
           dotnet restore ${{ matrix.test.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
-          # timeout, which kills the job without one. The timeout counts inactivity, not runtime.
-          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m)
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
 
