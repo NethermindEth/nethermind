@@ -145,7 +145,7 @@ jobs:
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
 
       - name: Upload hang dump
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}-${{ matrix.variant.label }}-hang-dump
@@ -212,7 +212,7 @@ jobs:
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
 
       - name: Upload hang dump
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-hang-dump
