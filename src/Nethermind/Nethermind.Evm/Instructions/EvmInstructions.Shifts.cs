@@ -79,6 +79,9 @@ public static partial class EvmInstructions
 
             if (!shift.IsUint64 || shift.u0 >= 256)
             {
+                if (TTracingInst.IsActive)
+                    return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
+
                 return stack.PushZero<TTracingInst>();
             }
 
@@ -203,9 +206,13 @@ public static partial class EvmInstructions
 
             if (!shift.IsUint64 || shift.u0 >= 256)
             {
-                return As<UInt256, Int256>(ref value).Sign >= 0
-                    ? stack.PushZero<TTracingInst>()
-                    : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+                if (As<UInt256, Int256>(ref value).Sign < 0)
+                    return stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+
+                if (TTracingInst.IsActive)
+                    return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
+
+                return stack.PushZero<TTracingInst>();
             }
 
             As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
