@@ -59,8 +59,8 @@ public ref partial struct EvmStack
     public ref byte PushBytesRef()
     {
         // Workhorse method
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return ref Unsafe.NullRef<byte>();
@@ -208,8 +208,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushRightPaddedBytes<TTracingInst>(ref byte src, uint length)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -366,8 +366,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push10Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -395,8 +395,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push11Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -424,8 +424,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push12Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -452,8 +452,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push13Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -480,8 +480,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push14Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -508,8 +508,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push15Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -536,8 +536,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push16Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -570,8 +570,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push17Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -599,8 +599,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push18Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -628,8 +628,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push19Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -657,8 +657,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push20Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -686,8 +686,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push21Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -715,8 +715,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push22Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -744,8 +744,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push23Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -773,8 +773,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push24Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -802,8 +802,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push25Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -831,8 +831,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push26Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -860,8 +860,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push27Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -889,8 +889,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push28Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -918,8 +918,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push29Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -947,8 +947,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push2Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -973,8 +973,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push30Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1002,8 +1002,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push31Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1031,8 +1031,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push32Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1054,8 +1054,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push3Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1080,8 +1080,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push4Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1104,8 +1104,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push5Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1130,8 +1130,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push6Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1156,8 +1156,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push7Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1183,8 +1183,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push8Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1207,8 +1207,8 @@ public ref partial struct EvmStack
     public EvmExceptionType Push9Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1235,8 +1235,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushByte<TTracingInst>(byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1280,8 +1280,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int pushSize)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1377,8 +1377,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushOne<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1410,8 +1410,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushZero<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -1441,8 +1441,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
@@ -1473,8 +1473,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushUInt64<TTracingInst>(ulong value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
@@ -1511,8 +1511,8 @@ public ref partial struct EvmStack
     public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nuint headOffset = (nuint)Head;
+        nuint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
@@ -1582,7 +1582,7 @@ public ref partial struct EvmStack
             return false;
         }
         Head = head;
-        ref byte bytes = ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref baseRef, (nint)((nuint)head * WordSize));
 
         if (Avx2.IsSupported)
         {
@@ -1822,7 +1822,7 @@ public ref partial struct EvmStack
             return false;
         }
 
-        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize))) == default;
+        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref baseRef, (nint)((nuint)head * WordSize))) == default;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1834,7 +1834,7 @@ public ref partial struct EvmStack
         {
             return ref Unsafe.NullRef<byte>();
         }
-        return ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
+        return ref Unsafe.Add(ref baseRef, (nint)((nuint)head * WordSize));
     }
 
     public readonly Span<byte> PeekWord256()
@@ -1845,7 +1845,7 @@ public ref partial struct EvmStack
             ThrowEvmStackUnderflowException();
         }
 
-        return MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), WordSize);
+        return MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((nuint)head * WordSize)), WordSize);
     }
 
     public Address? PopAddress()
@@ -1853,7 +1853,7 @@ public ref partial struct EvmStack
         int head = Head - 1;
         if (head < 0) return null;
         Head = head;
-        return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
+        return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((nuint)head * WordSize) + WordSize - AddressSize), AddressSize));
     }
 
     /// <summary>
@@ -1864,7 +1864,7 @@ public ref partial struct EvmStack
         int head = Head - 1;
         if (head < 0) return null;
         Head = head;
-        return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
+        return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, (nint)((nuint)head * WordSize) + WordSize - AddressSize), AddressSize));
     }
 
     public bool PopAddress(out Address address)
@@ -1876,7 +1876,7 @@ public ref partial struct EvmStack
             return false;
         }
         Head = head;
-        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
+        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((nuint)head * WordSize) + WordSize - AddressSize), AddressSize));
         return true;
     }
 
@@ -1884,7 +1884,7 @@ public ref partial struct EvmStack
     public ref byte PopBytesByRef()
     {
         ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
+        nuint head = (nuint)Head;
         if (head == 0)
         {
             return ref Unsafe.NullRef<byte>();
@@ -1910,7 +1910,7 @@ public ref partial struct EvmStack
     {
         Unsafe.SkipInit(out a);
         ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
+        nuint head = (nuint)Head;
         if (head < 2)
         {
             isValid = false;
@@ -1941,7 +1941,7 @@ public ref partial struct EvmStack
         Unsafe.SkipInit(out a);
         Unsafe.SkipInit(out b);
         ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
+        nuint head = (nuint)Head;
         if (head < 3)
         {
             isValid = false;
@@ -2003,7 +2003,7 @@ public ref partial struct EvmStack
             return false;
         }
         Head = head;
-        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), WordSize);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((nuint)head * WordSize)), WordSize);
         return true;
     }
 
@@ -2085,8 +2085,8 @@ public ref partial struct EvmStack
 
         ref byte bytes = ref _stack;
         // Use nuint to eliminate sign extension; parallel shifts
-        nuint headOffset = (nuint)(uint)head << 5;
-        nuint depthBytes = (nuint)(uint)depth << 5;
+        nuint headOffset = (nuint)head << 5;
+        nuint depthBytes = (nuint)depth << 5;
 
         ref byte to = ref Unsafe.Add(ref bytes, headOffset);
         ref byte from = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
@@ -2119,8 +2119,8 @@ public ref partial struct EvmStack
 
         ref byte bytes = ref _stack;
 
-        nuint headOffset = (nuint)(uint)head << 5;
-        nuint depthBytes = (nuint)(uint)depth << 5;
+        nuint headOffset = (nuint)head << 5;
+        nuint depthBytes = (nuint)depth << 5;
 
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
         ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
@@ -2144,7 +2144,7 @@ public ref partial struct EvmStack
 
         ref byte bytes = ref _stack;
 
-        nuint headOffset = (nuint)(uint)Head * WordSize;
+        nuint headOffset = (nuint)(nuint)Head * WordSize;
         ref byte first = ref Unsafe.Add(ref bytes, headOffset - (nuint)(uint)n * WordSize);
         ref byte second = ref Unsafe.Add(ref bytes, headOffset - (nuint)(uint)m * WordSize);
 
