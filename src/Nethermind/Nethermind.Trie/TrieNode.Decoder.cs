@@ -142,19 +142,62 @@ namespace Nethermind.Trie
             [DoesNotReturn, StackTraceHidden]
             private static void ThrowNullKey(TrieNode node) => throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
 
+            /// <summary>Scratch for one branch's children, before the sequence header is known.</summary>
+            /// <remarks>Sixteen children at most, each either a 33-byte hash item or a node small enough
+            /// to be embedded, which the trie only does below 32 bytes. A struct local rather than a
+            /// stackalloc, for the reason given on <c>KeccakHash</c>'s state buffer: localloc would pin
+            /// the method at Tier0-FullOpts and add stack-probe overhead per call. Writes go through a
+            /// span, so an over-long branch throws rather than running off the buffer.</remarks>
+            [InlineArray(BranchesCount * Rlp.LengthOfKeccakRlp)]
+            private struct BranchScratch
+            {
+                private byte _element0;
+            }
+
             public static CappedArray<byte> RlpEncodeBranch(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? pool, bool canBeParallel)
             {
                 Metrics.IncrementTreeNodeRlpEncodings();
 
                 const int valueRlpLength = 1;
-                int contentLength = valueRlpLength + (UseParallel(canBeParallel, item) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));
-                int sequenceLength = Rlp.LengthOfSequence(contentLength);
-                CappedArray<byte> result = pool.SafeRent(sequenceLength);
-                Span<byte> resultSpan = result.AsSpan();
-                int position = Rlp.StartSequence(resultSpan, 0, contentLength);
-                WriteChildrenRlpBranch(tree, ref path, item, resultSpan.Slice(position, contentLength - valueRlpLength), pool, canBeParallel);
-                position = sequenceLength - valueRlpLength;
-                resultSpan[position] = 128;
+                int contentLength;
+                int sequenceLength;
+                CappedArray<byte> result;
+                Span<byte> resultSpan;
+                int position;
+
+                // The children have to be measured before they can be written, because the sequence
+                // header carries their length and CappedArray has no offset to write it backwards into.
+                // Measuring means walking all sixteen children twice - resolving each one, decoding the
+                // old RLP to find the next - which is the whole of GetChildrenRlpLengthForBranch. Where
+                // there is nothing else to gain from the walk, write the children into a scratch buffer
+                // instead and copy them in behind the header: one bounded copy for a whole pass. On a
+                // host with AVX-512 the measuring pass also collects full branches for batched hashing,
+                // which is worth more than the walk costs, so that target keeps it.
+                if (Avx512F.VL.IsSupported || UseParallel(canBeParallel, item))
+                {
+                    contentLength = valueRlpLength + (UseParallel(canBeParallel, item)
+                        ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel)
+                        : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));
+                    sequenceLength = Rlp.LengthOfSequence(contentLength);
+                    result = pool.SafeRent(sequenceLength);
+                    resultSpan = result.AsSpan();
+                    position = Rlp.StartSequence(resultSpan, 0, contentLength);
+                    WriteChildrenRlpBranch(tree, ref path, item, resultSpan.Slice(position, contentLength - valueRlpLength), pool, canBeParallel);
+                    resultSpan[sequenceLength - valueRlpLength] = 128;
+
+                    return result;
+                }
+
+                Unsafe.SkipInit(out BranchScratch scratch);
+                Span<byte> children = scratch;
+                int childrenLength = WriteChildrenRlpBranch(tree, ref path, item, children, pool, canBeParallel);
+                contentLength = valueRlpLength + childrenLength;
+                sequenceLength = Rlp.LengthOfSequence(contentLength);
+                result = pool.SafeRent(sequenceLength);
+                resultSpan = result.AsSpan();
+                position = Rlp.StartSequence(resultSpan, 0, contentLength);
+                children[..childrenLength].CopyTo(resultSpan[position..]);
+                resultSpan[sequenceLength - valueRlpLength] = 128;
 
                 return result;
 
@@ -444,20 +487,15 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
-            private static void WriteChildrenRlpBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
-            {
+            /// <returns>The number of bytes written.</returns>
+            private static int WriteChildrenRlpBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel) =>
                 // Tail call optimized.
-                if (item.HasRlp)
-                {
-                    WriteChildrenRlpBranchRlp(tree, ref path, item, destination, bufferPool, canBeParallel);
-                }
-                else
-                {
-                    WriteChildrenRlpBranchNonRlp(tree, ref path, item, destination, bufferPool, canBeParallel);
-                }
-            }
+                item.HasRlp
+                    ? WriteChildrenRlpBranchRlp(tree, ref path, item, destination, bufferPool, canBeParallel)
+                    : WriteChildrenRlpBranchNonRlp(tree, ref path, item, destination, bufferPool, canBeParallel);
 
-            private static void WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
+            /// <inheritdoc cref="WriteChildrenRlpBranch" />
+            private static int WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
@@ -492,9 +530,12 @@ namespace Nethermind.Trie
                         }
                     }
                 }
+
+                return position;
             }
 
-            private static void WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
+            /// <inheritdoc cref="WriteChildrenRlpBranch" />
+            private static int WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 RlpReader rlpReader = item.RlpReader;
                 item.SeekChild(ref rlpReader, 0);
@@ -562,7 +603,10 @@ namespace Nethermind.Trie
                 if (runStart >= 0)
                 {
                     rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                    position += runLength;
                 }
+
+                return position;
             }
         }
     }
