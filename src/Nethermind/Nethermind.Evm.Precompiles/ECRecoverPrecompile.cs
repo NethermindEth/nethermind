@@ -45,9 +45,6 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-#if !ZK_EVM
-        Metrics.ECRecoverPrecompile++;
-#endif
         if (inputData.Length < InputLength)
             return RunInternal(inputData);
 
