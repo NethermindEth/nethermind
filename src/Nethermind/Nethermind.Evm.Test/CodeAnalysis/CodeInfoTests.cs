@@ -240,6 +240,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 yield return test;
 
                 code = new byte[1024];
+                for (int i = 8; i < code.Length - 3; i += 4)
+                {
+                    code[i] = (byte)Instruction.JUMPDEST;
+                    code[i + 1] = (byte)Instruction.PUSH1;
+                    code[i + 2] = (byte)Instruction.JUMPDEST;
+                    code[i + 3] = (byte)Instruction.JUMPDEST;
+                }
+                test = new TestCaseData(code);
+                test.TestName = "Code_Unaligned_PUSH1_JUMPDEST";
+                yield return test;
+
+                code = new byte[1024];
 
                 for (int start = 0; start <= 1; start++)
                 {
