@@ -1990,6 +1990,26 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
+    /// <see cref="Pop1Peek32Bytes(out bool)"/> without the depth check, for callers that have already
+    /// established <c>Head &gt;= 2</c> with <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>
+    /// The checked overload has to merge a success and a failure path before it returns, so the caller
+    /// branches once on the depth and again on the flag. Splitting the check out lets the caller return
+    /// straight from the failing compare, which is the only branch left on the path.
+    /// </remarks>
+    /// <returns>Reference to the new top slot; the popped word sits one word above it.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop1Peek32BytesUnchecked()
+    {
+        Debug.Assert(Head >= 2, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head;
+        Head = (nint)(head - 1);
+        return ref Unsafe.Add(ref _stack, (nint)((head - 2) * WordSize));
+    }
+
+    /// <summary>
     /// Atomic pop-2 + peek-top for ternary ops that push exactly one result.
     /// Single bounds check (needs <c>Head &gt;= 3</c>). On success <c>Head</c> decrements by 2
     /// and the returned ref addresses the new top slot for in-place write.
