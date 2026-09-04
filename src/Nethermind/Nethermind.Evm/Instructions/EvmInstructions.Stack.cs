@@ -869,6 +869,7 @@ public static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionPush0<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -890,6 +891,7 @@ public static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter, which will be advanced.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionPush<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
@@ -916,6 +918,7 @@ public static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionDup<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
@@ -938,6 +941,7 @@ public static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
