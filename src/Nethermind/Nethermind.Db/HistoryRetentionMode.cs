@@ -11,4 +11,8 @@ public enum HistoryRetentionMode
 
     /// <summary>A window of the most recent <c>HistoryRetentionBlocks</c> blocks; the pruner reclaims below it as the watermark advances.</summary>
     Rolling,
+
+    /// <summary>Everything from <c>HistoryRetentionSinceBlock</c> onward, forever: capture starts there, the floor is
+    /// published there once and never moves, and nothing is ever pruned.</summary>
+    SinceBlock,
 }

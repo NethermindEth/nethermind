@@ -24,11 +24,27 @@ public class HistoryRetentionModeTests
         Assert.That(() => Build(Config(HistoryRetentionMode.None, 1024)), Throws.TypeOf<InvalidConfigurationException>(),
             "a configuration written when the block count alone selected the window must not silently become an unbounded archive");
 
-    [TestCase(HistoryRetentionMode.None, 0UL, false, TestName = "Unbounded")]
-    [TestCase(HistoryRetentionMode.Rolling, 1024UL, true, TestName = "Windowed")]
-    public void TheModeDecidesWhetherHistoryIsWindowed(HistoryRetentionMode mode, ulong blocks, bool windowed)
+    [Test]
+    public void SinceBlockWithoutAStartingBlock_IsRefused() =>
+        Assert.That(() => Build(Config(HistoryRetentionMode.SinceBlock, 0)), Throws.TypeOf<InvalidConfigurationException>(),
+            "since block 0 is genesis, which is None spelled differently, so it must be refused rather than accepted as a no-op");
+
+    [Test]
+    public void AStartingBlockWithoutTheMode_IsRefused() =>
+        Assert.That(() => Build(Config(HistoryRetentionMode.None, 0, sinceBlock: 15_000_000)), Throws.TypeOf<InvalidConfigurationException>(),
+            "a starting block only means something under SinceBlock; silently ignoring it would keep history the operator asked to drop");
+
+    [Test]
+    public void SinceBlockWithAWindowSize_IsRefused() =>
+        Assert.That(() => Build(Config(HistoryRetentionMode.SinceBlock, 1024, sinceBlock: 15_000_000)), Throws.TypeOf<InvalidConfigurationException>(),
+            "a fixed floor and a rolling window cannot both hold; the block count belongs to Rolling alone");
+
+    [TestCase(HistoryRetentionMode.None, 0UL, 0UL, false, TestName = "Unbounded")]
+    [TestCase(HistoryRetentionMode.Rolling, 1024UL, 0UL, true, TestName = "Windowed")]
+    [TestCase(HistoryRetentionMode.SinceBlock, 0UL, 15_000_000UL, true, TestName = "SinceBlock")]
+    public void TheModeDecidesWhetherHistoryIsWindowed(HistoryRetentionMode mode, ulong blocks, ulong sinceBlock, bool windowed)
     {
-        FlatDbConfig config = Config(mode, blocks);
+        FlatDbConfig config = Config(mode, blocks, sinceBlock);
 
         Assert.That(config.IsHistoryWindowed(), Is.EqualTo(windowed),
             "the row format, the rocksdb deletion tuning and the capture-off refusal all key off this one answer");
@@ -36,12 +52,13 @@ public class HistoryRetentionModeTests
             "a mode paired with the block count it requires is a complete, accepted configuration");
     }
 
-    private static FlatDbConfig Config(HistoryRetentionMode mode, ulong blocks) => new()
+    private static FlatDbConfig Config(HistoryRetentionMode mode, ulong blocks, ulong sinceBlock = 0) => new()
     {
         Enabled = true,
         HistoryEnabled = true,
         HistoryRetention = mode,
-        HistoryRetentionBlocks = blocks
+        HistoryRetentionBlocks = blocks,
+        HistoryRetentionSinceBlock = sinceBlock
     };
 
     private static IContainer Build(FlatDbConfig config) =>

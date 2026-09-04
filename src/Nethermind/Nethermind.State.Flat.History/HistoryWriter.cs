@@ -55,6 +55,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private volatile bool _captureProven;
 
     private readonly byte _formatVersion;
+    private readonly ulong _captureFromBlock;
     private readonly PendingV3Writes? _pendingV3;
     private bool _formatStamped;
 
@@ -77,6 +78,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _formatStamped = availability.StampedFormatVersion == _formatVersion;
         _isV3 = rowFormat.IsV3;
         _pendingV3 = _isV3 ? new PendingV3Writes() : null;
+        _captureFromBlock = config.HistoryRetention == HistoryRetentionMode.SinceBlock ? config.HistoryRetentionSinceBlock : 0;
         if (_isV3)
         {
             _accountHistoryV3 = new HistoryStoreV3(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
@@ -96,6 +98,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             _availability.VerifyFormat();
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
+            if (_captureFromBlock > 0) _availability.TryRaiseGlobalFloor(_captureFromBlock);
         }
     }
 
@@ -143,6 +146,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         ulong target = persistedHead.BlockNumber;
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
         if (hasWatermark && target <= watermark) return;
+
+        if (target < _captureFromBlock)
+        {
+            AdvanceWatermarkWithoutRows(persistedHead);
+            return;
+        }
 
         // v3 only: oldest touch per key still waiting to learn its pre-value.
         PendingV3Writes? pending = _pendingV3;
@@ -200,6 +209,28 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <summary>Returns whether it connected.</summary>
+    /// <summary>Below the first block to keep nothing is captured, but the watermark still follows every persisted
+    /// head with its marker: the first real walk connects at the previous persist like any other, and readers below
+    /// the floor already fail closed.</summary>
+    private void AdvanceWatermarkWithoutRows(in StateId persistedHead)
+    {
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(new HistoryColumnBatches(batch).AvailableBlocks, persistedHead.BlockNumber, persistedHead.StateRoot, _formatVersion);
+        }
+
+        _availability.PublishWatermark(persistedHead.BlockNumber, _formatVersion);
+        _formatStamped = true;
+        Metrics.FlatHistoryWatermark = (long)persistedHead.BlockNumber;
+    }
+
+    /// <summary>A walk connects at the watermark's marker. The floor is part of that check because a marker below
+    /// a rolling floor is pruned data; a since-block writer never prunes, and its watermark legitimately sits below
+    /// the floor until capture reaches the first kept block, so only the marker and root decide there.</summary>
+    private bool ConnectsAt(ulong block, in ValueHash256 stateRoot) => _captureFromBlock > 0
+        ? _availability.IsCoveredAndRootMatches(block, stateRoot)
+        : _availability.Matches(block, stateRoot);
+
     private bool WalkAndCapture(
         ref StateId current,
         bool hasWatermark,
@@ -218,7 +249,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (hasWatermark && current.BlockNumber <= watermark)
             {
                 // A number-only connect would strand a reorged pre-finalization capture under a healthy watermark.
-                if (!_availability.Matches(current.BlockNumber, current.StateRoot))
+                if (!ConnectsAt(current.BlockNumber, current.StateRoot))
                 {
                     DisableCapture(
                         $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +

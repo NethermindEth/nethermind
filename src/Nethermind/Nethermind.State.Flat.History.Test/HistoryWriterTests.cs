@@ -718,6 +718,36 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Since_block_writer_captures_nothing_below_the_floor_and_serves_everything_from_it()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 3);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+        // Capture runs before the caller persists, so the live column holds the previous head at each capture.
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(2, 20)));
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 30))]);
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(3, 30)));
+        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 40))]);
+        writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(4, 40)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "heights below the first kept block fail closed");
+            Assert.That(reader.IsPrunedBelowFloor(3), Is.False, "the first kept block itself is served");
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(4UL), "the watermark follows every persisted head, rows or not");
+            Assert.That(reader.TryGetAccount(3, AddrA, out AccountStruct atThree), Is.True);
+            Assert.That(atThree.Balance, Is.EqualTo((UInt256)30), "the as-of read at the floor resolves through the rows captured above it");
+            Assert.That(reader.TryGetAccount(4, AddrA, out AccountStruct atFour), Is.True);
+            Assert.That(atFour.Balance, Is.EqualTo((UInt256)40));
+        }
+    }
+
+    [Test]
     public void Unwindowed_writer_stamps_the_plain_format_version()
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
@@ -1392,6 +1422,20 @@ public class HistoryWriterTests
             HistoryEnabled = true,
             HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
             HistoryRetentionBlocks = retentionBlocks
+        };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+        return (writer, reader);
+    }
+
+    private (HistoryWriter Writer, HistoryReader Reader) CreateSinceBlockPair(ulong sinceBlock)
+    {
+        FlatDbConfig config = new()
+        {
+            HistoryEnabled = true,
+            HistoryRetention = HistoryRetentionMode.SinceBlock,
+            HistoryRetentionSinceBlock = sinceBlock
         };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);

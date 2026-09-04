@@ -25,11 +25,14 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 
-    [ConfigItem(Description = "How flat history is retained. 'None' keeps it unbounded from genesis or the pivot and never prunes it. 'Rolling' keeps a bounded window of the most recent HistoryRetentionBlocks blocks and reclaims below it, which selects the windowed row format and so requires a database that has never captured history unwindowed.", DefaultValue = "None")]
+    [ConfigItem(Description = "How flat history is retained. 'None' keeps it unbounded from genesis or the pivot and never prunes it. 'Rolling' keeps a bounded window of the most recent HistoryRetentionBlocks blocks and reclaims below it. 'SinceBlock' keeps everything from HistoryRetentionSinceBlock onward forever and captures nothing below it. Both bounded modes select the windowed row format and so require a database that has never captured history unwindowed.", DefaultValue = "None")]
     HistoryRetentionMode HistoryRetention { get; set; }
 
     [ConfigItem(Description = "Size of the rolling flat-history window, in blocks below the watermark. Required when HistoryRetention is 'Rolling' and rejected otherwise.", DefaultValue = "0")]
     ulong HistoryRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "First block of flat history to keep when HistoryRetention is 'SinceBlock'. History below it is never captured and reads there fail closed; from it onward nothing is ever pruned. Required in that mode and rejected otherwise.", DefaultValue = "0")]
+    ulong HistoryRetentionSinceBlock { get; set; }
 
     [ConfigItem(Description = "How many blocks the watermark must advance before an idle history window pruner wakes and re-evaluates the floor. A pruner still owing sweep work paces itself on its pass budget instead. Only consulted when HistoryRetention is 'Rolling'.", DefaultValue = "1024")]
     ulong HistoryPruneIntervalBlocks { get; set; }
