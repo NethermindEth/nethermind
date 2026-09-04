@@ -352,7 +352,7 @@ public class SnapProviderTests
 
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
-            new ByteArrayListAdapter(proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray().ToPooledList())), Is.EqualTo(AddRangeResult.OK));
+            new ByteArrayListAdapter(proof.StorageProofs[0].Proof.Concat(proof.StorageProofs[1].Proof).ToArray().ToPooledList())), Is.EqualTo(AddRangeResult.OK));
     }
 
     [Test]

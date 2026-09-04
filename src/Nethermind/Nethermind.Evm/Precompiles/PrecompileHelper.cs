@@ -17,11 +17,11 @@ public static class PrecompileHelper
     )]
     public static string GetStaticName(this IPrecompile precompile)
     {
-        Type? type = precompile.GetType();
+        Type type = precompile.GetType();
         string name = _names.GetOrAdd(type, t =>
         {
             PropertyInfo? prop = t.GetProperty(nameof(IPrecompile.Name), BindingFlags.Static | BindingFlags.Public);
-            return prop is null ? string.Empty : prop.GetValue(null) as string;
+            return prop?.GetValue(null) as string ?? string.Empty;
         });
 
         return name;

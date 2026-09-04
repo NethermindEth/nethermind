@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -24,7 +25,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const int PUSH32 = (int)Instruction.PUSH32;
     private const int BitShiftPerInt64 = 6;
 
-    private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
+    private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
@@ -60,15 +61,17 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         return (long[])previous;
     }
 
-    private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
+    [MemberNotNull(nameof(_jumpDestinationBitmap))]
+    private void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
         // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
+        Debug.Assert(_jumpDestinationBitmap is not null);
     }
 
-    private void AnalyzeJumpDestinations(out object previous)
+    private void AnalyzeJumpDestinations([NotNull] out object? previous)
     {
         ManualResetEventSlim analysisComplete = new(initialState: false);
         previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);

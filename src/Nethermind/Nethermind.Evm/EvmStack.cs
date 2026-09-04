@@ -39,12 +39,13 @@ public ref partial struct EvmStack
     public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
     {
         Head = head;
-        _tracer = null;
+        _tracer = null!;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
     }
 
+    // Null only for stacks whose compile-time tracing flag eliminates every tracer read.
     private readonly ITxTracer _tracer;
     private readonly ref byte _stack;
     internal readonly ref byte Code;
@@ -1867,7 +1868,7 @@ public ref partial struct EvmStack
         return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
     }
 
-    public bool PopAddress(out Address address)
+    public bool PopAddress([NotNullWhen(true)] out Address? address)
     {
         int head = Head - 1;
         if (head < 0)

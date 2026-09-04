@@ -12,7 +12,8 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] _opcodeMethods;
+    // Initialized by PrepareOpcodes before either interpreter can dispatch an opcode.
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] _opcodeMethods = null!;
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
@@ -27,7 +28,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
-    public object ReturnData;
+    public object? ReturnData;
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run

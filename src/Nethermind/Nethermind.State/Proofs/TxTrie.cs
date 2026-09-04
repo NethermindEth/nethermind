@@ -26,7 +26,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     {
         int key = 0;
 
-        foreach (Transaction? transaction in list)
+        foreach (Transaction transaction in list)
         {
             ref readonly Memory<byte> rlp = ref transaction.PreHash;
             CappedArray<byte> buffer = (rlp.Length > 0) ?

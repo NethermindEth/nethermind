@@ -124,7 +124,7 @@ public class ParityLikeTxTracer : TxTracer
 
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
-    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after) => new(before, after);
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
@@ -352,7 +352,7 @@ public class ParityLikeTxTracer : TxTracer
         value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (_trace.StateChanges is null)
         {

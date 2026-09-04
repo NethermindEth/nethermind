@@ -21,7 +21,7 @@ namespace Nethermind.Evm
             }
             return @this;
         }
-        internal static Prepare PushSingle(this Prepare @this, byte[] value)
+        internal static Prepare PushSingle(this Prepare @this, byte[]? value)
         {
             if (value is not null)
             {
@@ -172,7 +172,7 @@ namespace Nethermind.Evm
         public static Prepare SMOD(this Prepare @this, UInt256? lhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, lhs)
                     .Op(Instruction.SMOD);
-        public static Prepare SIGNEXTEND(this Prepare @this, UInt256? arg = null, byte[] bytes = null)
+        public static Prepare SIGNEXTEND(this Prepare @this, UInt256? arg = null, byte[]? bytes = null)
             => @this.PushSingle(bytes)
                     .PushSingle(arg)
                     .Op(Instruction.SIGNEXTEND);
@@ -203,7 +203,7 @@ namespace Nethermind.Evm
         public static Prepare XOR(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.XOR);
-        public static Prepare BYTE(this Prepare @this, UInt256? pos, byte[] bytes = null)
+        public static Prepare BYTE(this Prepare @this, UInt256? pos, byte[]? bytes = null)
             => @this.PushSingle(bytes)
                     .PushSingle(pos)
                     .Op(Instruction.BYTE);
@@ -219,23 +219,23 @@ namespace Nethermind.Evm
         public static Prepare SAR(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence((UInt256?)rhs, lhs)
                     .Op(Instruction.SAR);
-        public static Prepare MSTORE(this Prepare @this, UInt256? pos = null, byte[] data = null)
+        public static Prepare MSTORE(this Prepare @this, UInt256? pos = null, byte[]? data = null)
             => @this.PushSingle(data)
                     .PushSingle(pos)
                     .Op(Instruction.MSTORE);
-        public static Prepare MSTORE8(this Prepare @this, UInt256? pos = null, byte[] data = null)
+        public static Prepare MSTORE8(this Prepare @this, UInt256? pos = null, byte[]? data = null)
             => @this.PushSingle(data)
                     .PushSingle(pos)
                     .Op(Instruction.MSTORE8);
-        public static Prepare TSTORE(this Prepare @this, UInt256? pos = null, byte[] data = null)
+        public static Prepare TSTORE(this Prepare @this, UInt256? pos = null, byte[]? data = null)
             => @this.PushSingle(data)
                     .PushSingle(pos)
                     .Op(Instruction.TSTORE);
-        public static Prepare SSTORE(this Prepare @this, UInt256? pos = null, byte[] data = null)
+        public static Prepare SSTORE(this Prepare @this, UInt256? pos = null, byte[]? data = null)
             => @this.PushSingle(data)
                     .PushSingle(pos)
                     .Op(Instruction.SSTORE);
-        public static Prepare JUMPI(this Prepare @this, UInt256? to = null, byte[] cond = null)
+        public static Prepare JUMPI(this Prepare @this, UInt256? to = null, byte[]? cond = null)
             => @this.PushSingle(cond)
                     .PushSingle(to)
                     .Op(Instruction.JUMPI);

@@ -276,6 +276,21 @@ public class StateProviderTests(bool useFlat)
         Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
+    [Test]
+    public void InsertCode_after_scope_disposal_throws()
+    {
+        using Context ctx = new(useFlat);
+        WorldState worldState = (WorldState)ctx.WorldState;
+        IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        scope.Dispose();
+        byte[] code = [0x00];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        Assert.That(
+            () => worldState._stateProvider.InsertCode(_address1, codeHash, code, Frontier.Instance),
+            Throws.TypeOf<InvalidOperationException>());
+    }
+
     [TestCase(false, Description = "code of a reverted deployment is dropped")]
     [TestCase(true, Description = "code redeployed after the revert is still persisted")]
     public void Code_of_restored_deployment_is_persisted_only_when_redeployed(bool redeployAfterRestore)

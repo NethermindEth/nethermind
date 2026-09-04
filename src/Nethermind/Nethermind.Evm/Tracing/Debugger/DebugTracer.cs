@@ -19,7 +19,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
 
     private readonly AutoResetEvent _autoResetEvent = new(false);
-    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = [];
+    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>?> _breakPoints = [];
     private Func<VmState<TGasPolicy>, bool>? _globalBreakCondition;
     private readonly object _lock = new();
 
@@ -62,7 +62,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
 
     public bool IsBreakpointSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
-    public void SetBreakPoint((int depth, int pc) point, Func<VmState<TGasPolicy>, bool> condition = null)
+    public void SetBreakPoint((int depth, int pc) point, Func<VmState<TGasPolicy>, bool>? condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
         {
@@ -189,7 +189,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => InnerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)

@@ -100,7 +100,7 @@ public static partial class EvmInstructions
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
         // Pop the code source address from the stack.
-        Address codeSource = stack.PopAddress(vm.AddressCache);
+        Address? codeSource = stack.PopAddress(vm.AddressCache);
         if (codeSource is null) goto StackUnderflow;
 
         ExecutionEnvironment env = vm.VmState.Env;
@@ -267,10 +267,10 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && codeInfo.IsPrecompile &&
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && codeInfo.Precompile is { } precompile &&
             TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
                 vm, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, outputLength,
-                codeInfo.Precompile!, target, codeSource, gasLimitUl, out EvmExceptionType inlineResult))
+                precompile, target, codeSource, gasLimitUl, out EvmExceptionType inlineResult))
         {
             return inlineResult;
         }

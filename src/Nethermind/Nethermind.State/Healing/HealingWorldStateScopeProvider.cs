@@ -11,10 +11,10 @@ namespace Nethermind.State.Healing;
 
 public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager logManager) : TrieStoreScopeProvider(trieStore, codeDb, logManager, codeDbIsPersistent: true)
 {
-    private readonly ILogManager? _logManager = logManager;
+    private readonly ILogManager _logManager = logManager;
     private readonly ITrieStore _trieStore = trieStore;
 
     protected override StateTree CreateStateTree() => new HealingStateTree(_trieStore, nodeStorage, recovery, _logManager);
 
-    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new HealingStorageTree(_trieStore.GetTrieStore(address), nodeStorage, storageRoot, _logManager, address, _backingStateTree.RootHash, recovery);
+    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new HealingStorageTree(_trieStore.GetTrieStore(address), nodeStorage, storageRoot, _logManager, address, BackingStateTree.RootHash, recovery);
 }
