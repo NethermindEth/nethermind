@@ -37,7 +37,6 @@ public class IndexedLogFinder(
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
     private readonly IBlockFinder _blockFinder = blockFinder;
-    private readonly IHistoryPruner? _historyPruner = historyPruner;
 
     public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
         GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
@@ -46,7 +45,7 @@ public class IndexedLogFinder(
 
     protected override void EnsureBlockRangeWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
-        if (!filter.UseIndex || !_logIndexStorage.Enabled) // index makes scan cost range-independent, so skip the limit only when it can serve the query
+        if (!filter.UseIndex) // index makes scan cost range-independent, so skip the limit only when it can serve the query
             base.EnsureBlockRangeWithinLimit(filter, fromBlock, toBlock);
     }
 
@@ -80,7 +79,7 @@ public class IndexedLogFinder(
 
     private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
-        if (!filter.UseIndex || !_logIndexStorage.Enabled || filter.AcceptsAnyBlock)
+        if (!filter.UseIndex || filter.AcceptsAnyBlock)
             return null;
 
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)
@@ -94,7 +93,7 @@ public class IndexedLogFinder(
         // query confined to it (or reaching below on a never-pruned node) has nothing to lose. A topic-only
         // filter is held to this too - retention can never vouch for it, and a sliced index holds fabricated
         // empties below the reclaimed line, so answering it from the index would be silently short.
-        ulong lowestStored = _historyPruner?.OldestUnreclaimedBlockNumber ?? _blockFinder.GetLowestBlock();
+        ulong lowestStored = historyPruner?.OldestUnreclaimedBlockNumber ?? _blockFinder.GetLowestBlock();
         bool uncoveredBelowBoundary = fromBlock.Number < lowestStored
             && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number);
         if (uncoveredBelowBoundary && fromBlock.Number <= toBlock.Number && toBlock.Number != 0 && (fromBlock.Number != 0 || lowestStored != 1))
