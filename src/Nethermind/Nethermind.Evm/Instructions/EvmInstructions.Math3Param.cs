@@ -28,8 +28,8 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<TOpMath>(ref gas);
 
         // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
-        ref byte topRef = ref stack.Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool ok);
-        if (!ok) goto StackUnderflow;
+        if (!stack.EnsureDepth(3)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b);
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
         if (c.IsZero)

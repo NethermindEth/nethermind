@@ -1943,60 +1943,14 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Atomic pop-1 + peek-top for binary ops that push exactly one result.
-    /// Single bounds check (needs <c>Head &gt;= 2</c>). On success <c>Head</c> decrements by 1
-    /// and the returned ref addresses the new top slot so the caller can write the result
-    /// in-place without a separate push (which would retest stack overflow).
-    /// Caller checks <paramref name="isValid"/> before using the returned ref.
-    /// </summary>
-    /// <param name="a">The popped value (was at the top of the stack).</param>
-    /// <param name="isValid">True on success.</param>
-    /// <returns>Reference to the new top slot (32 bytes). Undefined when <paramref name="isValid"/> is false.</returns>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [UnscopedRef]
-    public ref byte Pop1Peek32Bytes(out UInt256 a, out bool isValid)
-    {
-        Unsafe.SkipInit(out a);
-        ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
-        if (head < 2)
-        {
-            isValid = false;
-            return ref baseRef;
-        }
-        Head = (nint)(head - 1);
-        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
-        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out a);
-        isValid = true;
-        return ref topRef;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [UnscopedRef]
-    internal ref byte Pop1Peek32Bytes(out bool isValid)
-    {
-        ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
-        if (head < 2)
-        {
-            isValid = false;
-            return ref baseRef;
-        }
-
-        Head = (nint)(head - 1);
-        isValid = true;
-        return ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
-    }
-
-    /// <summary>
-    /// <see cref="Pop1Peek32Bytes(out bool)"/> without the depth check, for callers that have already
-    /// established <c>Head &gt;= 2</c> with <see cref="EnsureDepth"/>.
+    /// Pop-1 + peek-top for callers that have already established <c>Head &gt;= 2</c> with
+    /// <see cref="EnsureDepth"/>.
     /// </summary>
     /// <remarks>
-    /// The checked overload has to merge a success and a failure path before it returns, so the caller
-    /// branches once on the depth and again on the flag. Splitting the check out lets the caller return
-    /// straight from the failing compare, which is the only branch left on the path.
+    /// A helper that reports the depth through a flag has to merge a success and a failure path before
+    /// it returns, so the caller branches once on the depth and again on the flag. Checking the depth in
+    /// the caller lets it return straight from the failing compare, which is then the only branch on the
+    /// path, and lets the head reach the address arithmetic as a single native-width read.
     /// </remarks>
     /// <returns>Reference to the new top slot; the popped word sits one word above it.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2009,36 +1963,37 @@ public ref partial struct EvmStack
         return ref Unsafe.Add(ref _stack, (nint)((head - 2) * WordSize));
     }
 
-    /// <summary>
-    /// Atomic pop-2 + peek-top for ternary ops that push exactly one result.
-    /// Single bounds check (needs <c>Head &gt;= 3</c>). On success <c>Head</c> decrements by 2
-    /// and the returned ref addresses the new top slot for in-place write.
-    /// Caller checks <paramref name="isValid"/> before using the returned ref.
-    /// </summary>
-    /// <param name="a">The first popped value (was at the top of the stack).</param>
-    /// <param name="b">The second popped value (was below <paramref name="a"/>).</param>
-    /// <param name="isValid">True on success.</param>
-    /// <returns>Reference to the new top slot (32 bytes). Undefined when <paramref name="isValid"/> is false.</returns>
+    /// <inheritdoc cref="Pop1Peek32BytesUnchecked()"/>
+    /// <param name="a">The popped value, decoded from the slot above the returned one.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [UnscopedRef]
-    public ref byte Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool isValid)
+    internal ref byte Pop1Peek32BytesUnchecked(out UInt256 a)
     {
-        Unsafe.SkipInit(out a);
-        Unsafe.SkipInit(out b);
-        ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
-        if (head < 3)
-        {
-            isValid = false;
-            return ref baseRef;
-        }
+        ref byte topRef = ref Pop1Peek32BytesUnchecked();
+        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out a);
+        return ref topRef;
+    }
+
+    /// <summary>
+    /// Pop-2 + peek-top for callers that have already established <c>Head &gt;= 3</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
+    /// <param name="a">The first popped value, from the slot two words above the returned one.</param>
+    /// <param name="b">The second popped value, from the slot one word above the returned one.</param>
+    /// <returns>Reference to the new top slot.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b)
+    {
+        Debug.Assert(Head >= 3, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head;
         Head = (nint)(head - 2);
-        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 3) * WordSize));
-        // Both popped slots sit above the peek slot at +WordSize and +2*WordSize.
+        ref byte topRef = ref Unsafe.Add(ref _stack, (nint)((head - 3) * WordSize));
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out b);
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * WordSize), out a);
-        isValid = true;
         return ref topRef;
     }
 

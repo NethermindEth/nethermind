@@ -71,8 +71,8 @@ public static partial class EvmInstructions
     {
         if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
         {
-            ref byte addTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
-            if (!isValid) goto StackUnderflow;
+            if (!stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte addTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
@@ -95,8 +95,8 @@ public static partial class EvmInstructions
 
         if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpSub))
         {
-            ref byte subtractTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
-            if (!isValid) goto StackUnderflow;
+            if (!stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte subtractTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
             ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
@@ -133,8 +133,8 @@ public static partial class EvmInstructions
              typeof(TOpMath) == typeof(OpSLt) ||
              typeof(TOpMath) == typeof(OpSGt)))
         {
-            ref byte rawTopRef = ref stack.Pop1Peek32Bytes(out bool isValid);
-            if (!isValid) goto StackUnderflow;
+            if (!stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte rawTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong resultParts = ref As<byte, ulong>(ref rawTopRef);
             bool comparison = CompareScalar<TOpMath>(
@@ -150,8 +150,8 @@ public static partial class EvmInstructions
 
         // Pop a and peek the new top slot for in-place write; skips the push's overflow check
         // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
-        ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
-        if (!ok) goto StackUnderflow;
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         UInt256 result;

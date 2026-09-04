@@ -96,8 +96,8 @@ public static partial class EvmInstructions
             return ShiftScalar<TOpShift, TTracingInst>(ref stack);
         }
 
-        ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool isValid);
-        if (!isValid) goto StackUnderflow;
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
@@ -123,8 +123,8 @@ public static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
-        if (!isValid) return EvmExceptionType.StackUnderflow;
+        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
@@ -228,8 +228,8 @@ public static partial class EvmInstructions
     private static EvmExceptionType SarScalar<TTracingInst>(ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
-        ref byte topRef = ref stack.Pop1Peek32Bytes(out bool isValid);
-        if (!isValid) return EvmExceptionType.StackUnderflow;
+        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
