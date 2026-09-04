@@ -229,12 +229,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         long batchStartRefund = 0;
         long batchStartStateGas = 0;
         int batchStartJournal = 0;
+        int batchStartDestroys = 0;
 
         Snapshot prefixEndSnapshot = txSnapshot;
         int prefixEndIndex = -1;
         long prefixEndRefund = 0;
         long prefixEndStateGas = 0;
         int prefixEndJournal = 0;
+        int prefixEndDestroys = 0;
         bool postTxReverted = false;
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
@@ -256,6 +258,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartRefund = refundCounter;
                 batchStartStateGas = totalFrameStateGasUsed;
                 batchStartJournal = frameContext.StateGasJournalCheckpoint;
+                batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
             }
 
             // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions).
@@ -347,6 +350,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEndSnapshot);
+                accessTracker.DestroyList.Restore(prefixEndDestroys);
                 VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                 refundCounter = prefixEndRefund;
 
@@ -385,6 +389,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     prefixEndRefund = refundCounter;
                     prefixEndStateGas = totalFrameStateGasUsed;
                     prefixEndJournal = frameContext.StateGasJournalCheckpoint;
+                    prefixEndDestroys = accessTracker.DestroyList.TakeSnapshot();
                 }
             }
             else if (!inBatch)
@@ -428,6 +433,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                         prefixEndSnapshot = batchStartSnapshot;
                         prefixEndIndex = batchStartIndex - 1;
                         prefixEndRefund = batchStartRefund;
+                        prefixEndDestroys = batchStartDestroys;
                         prefixEndStateGas = batchStartStateGas;
                         prefixEndJournal = batchStartJournal;
                     }
@@ -510,7 +516,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
-        // EIP-6780: finalize committed frames' self-destructs (reverted/unrolled entries already dropped from the tracker).
+        // EIP-6780: finalize committed frames' self-destructs.
         if (accessTracker.DestroyList.Count > 0)
         {
             bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);

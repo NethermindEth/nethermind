@@ -167,6 +167,60 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_PrefixCreatedContractSelfDestructedInBody_PostTxReverts_RestoresTheContract()
+    {
+        Address factory = TestItem.AddressF;
+        Address reverter = TestItem.AddressD;
+
+        byte[] senderRuntime = ApproveCode(TxFrame.ApproveExecutionAndPayment);
+        byte[] senderInit = Prepare.EvmCode.ForInitOf(senderRuntime).Done;
+        byte[] senderSalt = new byte[32];
+        Address smartSender = ContractAddress.From(factory, senderSalt, senderInit);
+
+        byte[] childRuntime = Prepare.EvmCode.PushData(Beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        byte[] childInit = Prepare.EvmCode.ForInitOf(childRuntime).Done;
+        byte[] childSalt = new byte[32];
+        childSalt[31] = 1;
+        Address child = ContractAddress.From(factory, childSalt, childInit);
+
+        DeployContract(factory, Prepare.EvmCode
+            .Create2(senderInit, senderSalt, UInt256.Zero).Op(Instruction.POP)
+            .Create2(childInit, childSalt, UInt256.Zero).Op(Instruction.POP)
+            .Op(Instruction.STOP).Done);
+        _stateProvider.CreateAccount(smartSender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = smartSender,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeDefault, 0, factory, executionGasLimit: 1_000_000,
+                    stateGasLimit: (ulong)(2 * GasCostOf.NewAccountState + GasCostOf.CodeDepositState * (senderRuntime.Length + childRuntime.Length)),
+                    UInt256.Zero, default),
+                SelfVerifyFrame(),
+                Frame(TxFrame.ModeSender, target: child),
+                new TxFrame(TxFrame.ModePostTx, 0, reverter, executionGasLimit: 200_000, stateGasLimit: 0, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert leaves the frame transaction included");
+        Assert.That(_stateProvider.AccountExists(child), Is.True,
+            "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
+        Assert.That(_stateProvider.GetCode(child), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+    }
+
+    [Test]
     public void Execute_BlobCarryingFrameTx_ChargesAndBurnsBlobFee()
     {
         // With base fee 0 the whole gas premium goes to the beneficiary, so the only value that leaves
