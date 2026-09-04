@@ -100,10 +100,10 @@ public class BalRecorderE2ETests
         ChainSpec spec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
             .LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
-        spec.Genesis.Header.BaseFeePerGas = 10.Wei;
+        spec.Genesis!.Header.BaseFeePerGas = 10.Wei;
         spec.Genesis.Header.GasLimit = 1_000_000_000;
         spec.Genesis.Header.Difficulty = 10000;
-        spec.Allocations[TestItem.PrivateKeyA.Address] = new ChainSpecAllocation(300.Ether);
+        spec.Allocations![TestItem.PrivateKeyA.Address] = new ChainSpecAllocation(300.Ether);
         spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
             Code = Eip7002TestConstants.Code,

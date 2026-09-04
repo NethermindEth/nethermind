@@ -26,6 +26,7 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null) { }
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber = null) { }
         public void InsertForMigration(Block block, TxReceipt[] receipts) { }
+        public TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash) => [];
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => [];
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => [];
@@ -51,6 +52,10 @@ namespace Nethermind.Blockchain.Receipts
 
         // Bound as the node's receipt storage when Receipt.StoreReceipts is off, and the pruner runs regardless -
         // inheriting the throwing default would abort every pass after the blocks of its first chunk were gone.
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+        {
+        }
+
         public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
         {
         }

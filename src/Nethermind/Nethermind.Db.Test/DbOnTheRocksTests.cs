@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,14 +12,15 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.RocksDbBindings;
 using NSubstitute;
 using NUnit.Framework;
-using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Test
@@ -51,17 +52,17 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
-            WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
-            Assert.That(Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle), Is.EqualTo(1));
-            Assert.That(Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle), Is.EqualTo(0));
+            WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority)!;
+            Assert.That(options.GetLowPriority(), Is.True);
+            Assert.That(options.GetDisableWal(), Is.False);
 
-            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
-            Assert.That(Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle), Is.EqualTo(1));
-            Assert.That(Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle), Is.EqualTo(1));
+            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL)!;
+            Assert.That(options.GetLowPriority(), Is.True);
+            Assert.That(options.GetDisableWal(), Is.True);
 
-            options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
-            Assert.That(Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle), Is.EqualTo(0));
-            Assert.That(Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle), Is.EqualTo(1));
+            options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
+            Assert.That(options.GetLowPriority(), Is.False);
+            Assert.That(options.GetDisableWal(), Is.True);
         }
 
         [Test]
@@ -154,9 +155,27 @@ namespace Nethermind.Db.Test
             }
             else
             {
-                Assert.That(act, Throws.TypeOf<RocksDbException>());
+                Assert.That(act, Throws.InstanceOf<RocksDbException>());
             }
         }
+
+        [Test]
+        public void SharedCacheCanBeCreatedAndDisposed()
+        {
+            HyperClockCacheWrapper cache = new((ulong)10.KiB);
+
+            Assert.That(cache.Handle, Is.Not.Zero);
+            Assert.That(() => cache.GetUsage(), Throws.Nothing);
+
+            cache.Dispose();
+            // Disposal must stay exactly-once so the GC memory pressure accounting cannot go negative.
+            cache.Dispose();
+        }
+
+        [Test]
+        // rocksdb aborts the process on a zero capacity, so this must fail as a configuration error.
+        public void SharedCacheRejectsZeroCapacity() =>
+            Assert.That(() => new HyperClockCacheWrapper(0), Throws.TypeOf<InvalidConfigurationException>());
 
         [TestCase(true)]
         [TestCase(false)]
@@ -208,7 +227,7 @@ namespace Nethermind.Db.Test
                 .Returns<IRocksDbConfig>((c) =>
                 {
                     string? arg1 = (string?)c[0];
-                    string? arg2 = (string?)c[0];
+                    string? arg2 = (string?)c[1];
 
                     IRocksDbConfig baseConfig = _rocksdbConfigFactory.GetForDatabase(arg1, arg2);
 
@@ -233,8 +252,12 @@ namespace Nethermind.Db.Test
             }
             db.Flush();
 
-            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(cache.GetUsage()));
-            Assert.That(cache.GetUsage(), Is.LessThan(cacheSize));
+            long metricCacheUsage = db.GatherMetric().CacheSize;
+            long directCacheUsage = cache.GetUsage();
+
+            Assert.That(metricCacheUsage, Is.GreaterThan(0));
+            Assert.That(directCacheUsage, Is.GreaterThan(0));
+            Assert.That(metricCacheUsage, Is.EqualTo(directCacheUsage).Within(4.KiB));
         }
 
         [Test]
@@ -256,7 +279,7 @@ namespace Nethermind.Db.Test
                     fileSystem: fileSystem,
                     onFatalShutdown: () => didShutDown = true);
             }
-            catch (RocksDbSharpException)
+            catch (RocksDbException)
             {
                 exceptionThrown = true;
             }
@@ -264,6 +287,51 @@ namespace Nethermind.Db.Test
             Assert.That(exceptionThrown, Is.True);
             // Genuine "Corruption:" writes the marker (schedules repair on restart) and shuts down.
             file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
+        }
+
+        [TestCase(false, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
+        [TestCase(true, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
+        public void Corrupted_exception_on_get_writes_marker_and_shuts_down(bool callerBuffer)
+        {
+            IDbConfig config = new DbConfig();
+            byte[] key = [1, 2, 3];
+            byte[] value = new byte[4096];
+            value.AsSpan().Fill(0xA5);
+
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
+            {
+                db.PutSpan(key, value, WriteFlags.None);
+                db.Flush();
+            }
+
+            string[] sstFiles = Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories);
+            Assert.That(sstFiles, Has.Length.EqualTo(1));
+            byte[] sst = File.ReadAllBytes(sstFiles[0]);
+            Assert.That(sst, Is.Not.Empty);
+            sst[0] ^= byte.MaxValue;
+            File.WriteAllBytes(sstFiles[0], sst);
+
+            bool didShutDown = false;
+
+            using FatalShutdownTrackingDbOnTheRocks corruptedDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                _rocksdbConfigFactory, LimboLogs.Instance, () => didShutDown = true);
+
+            IReadOnlyKeyValueStore keyValueStore = corruptedDb;
+            Action read = () =>
+            {
+                if (callerBuffer)
+                {
+                    keyValueStore.Get(key, new byte[value.Length]);
+                }
+                else
+                {
+                    keyValueStore.Get(key);
+                }
+            };
+
+            Assert.That(read, Throws.InstanceOf<RocksDbException>());
+            Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
             Assert.That(didShutDown, Is.True);
         }
 
@@ -292,7 +360,7 @@ namespace Nethermind.Db.Test
                     openExceptionMessage: exceptionMessage,
                     onFatalShutdown: () => didShutDown = true);
             }
-            catch (RocksDbSharpException)
+            catch (RocksDbException)
             {
                 exceptionThrown = true;
             }
@@ -314,20 +382,20 @@ namespace Nethermind.Db.Test
             string markerFile = Path.Join(Path.GetTempPath(), "test", "test", "corrupt.marker");
             file.Exists(markerFile).Returns(true);
 
-            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
+            bool didRepair = false;
 
             try
             {
-                _ = new DbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
+                _ = new RepairTrackingDbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem,
-                    rocksDbNative: native);
+                    onRepair: () => didRepair = true);
             }
             catch (Exception)
             {
             }
 
-            native.Received().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+            Assert.That(didRepair, Is.True);
             file.Received().Delete(markerFile);
         }
 
@@ -612,6 +680,95 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        [Test]
+        public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < 16; i++)
+            {
+                byte[] key = new byte[32];
+                key[0] = (byte)i;
+                key[1] = (byte)i;
+                db.PutSpan(key, new byte[] { (byte)i }, WriteFlags.None);
+            }
+
+            db.Flush();
+
+            // A one-byte lower bound and a 128-byte upper bound, so the two bounds fall in different capped:8
+            // prefix buckets.
+            byte[] upperBound = new byte[128];
+            upperBound[0] = 0x0F;
+            upperBound.AsSpan(1).Fill(0xFF);
+
+            int seen = 0;
+            using (ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween([0x00], upperBound))
+            {
+                while (view.MoveNext()) seen++;
+            }
+
+            Assert.That(seen, Is.EqualTo(16),
+                "every key from 0x00 to 0x0F is inside the requested range, so a prefix-configured database must still walk all of them rather than stopping inside the lower bound's prefix bucket");
+        }
+
+        [Test]
+        public void GetViewBetween_on_a_prefix_extractor_database_returns_a_range_that_stays_inside_one_prefix()
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < 16; i++)
+            {
+                byte[] key = new byte[32];
+                key[8] = (byte)i;
+                db.PutSpan(key, new byte[] { (byte)i }, WriteFlags.None);
+            }
+
+            db.Flush();
+
+            byte[] lowerBound = new byte[32];
+            byte[] upperBound = new byte[32];
+            upperBound[8] = 0x10;
+
+            int seen = 0;
+            using (ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(lowerBound, upperBound))
+            {
+                while (view.MoveNext()) seen++;
+            }
+
+            Assert.That(seen, Is.EqualTo(16),
+                "the bounds share their capped:8 prefix, so this range keeps the prefix index and must still yield every key in it");
+        }
+
+        [TestCase(0, 0, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnADatabaseWithoutAnExtractor_IsFalse")]
+        [TestCase(8, 3, ExpectedResult = true, TestName = "CrossesPrefixBucket_OnBoundsShorterThanThePrefix_IsTrue")]
+        [TestCase(8, 8, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnBoundsSharingThePrefix_IsFalse")]
+        public bool CrossesPrefixBucket_classifies_bounds(int prefixLength, int sharedBytes)
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            string dbName = prefixLength == 0 ? "Blocks" : "Code";
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, dbName), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] first = new byte[sharedBytes == 3 ? 3 : 32];
+            byte[] last = new byte[first.Length];
+            if (first.Length > sharedBytes) last[sharedBytes] = 0xFF;
+
+            return db.CrossesPrefixBucket(first, last);
+        }
     }
 
     [TestFixture(true)]
@@ -683,6 +840,64 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
+        [TestCase(1)]
+        [TestCase(1024)]
+        [TestCase(8192)]
+        public void Smoke_test_value_sizes(int valueSize)
+        {
+            byte[] value = new byte[valueSize];
+            new Random(valueSize).NextBytes(value);
+
+            _db[[1, 2, 3]] = value;
+            AssertCanGetViaAllMethod(_db, [1, 2, 3], value);
+        }
+
+        [Test]
+        public void Missing_value_uses_existing_get_semantics()
+        {
+            byte[] output = [0xA5, 0xA5, 0xA5];
+            byte[]? value = _db.Get([1, 2, 3]);
+            int length = _db.Get([1, 2, 3], output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Null);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5, 0xA5, 0xA5 }));
+            }
+        }
+
+        [TestCase(0)]
+        [TestCase(3)]
+        public void C_style_get_rejects_undersized_output_without_modifying_it(int outputSize)
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [4, 5, 6, 7];
+            byte[] output = new byte[outputSize];
+            Array.Fill(output, (byte)0xA5);
+            byte[] expectedOutput = (byte[])output.Clone();
+
+            Assert.That(() => _db.Get(key, output), Throws.ArgumentException);
+            Assert.That(output, Is.EqualTo(expectedOutput));
+        }
+
+        [Test]
+        public void Empty_value_round_trips_without_modifying_output()
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [];
+            byte[] output = [0xA5];
+            byte[]? value = _db.Get(key);
+            int length = _db.Get(key, output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Empty);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5 }));
+            }
+        }
+
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
         public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
         {
@@ -749,6 +964,40 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Can_read_back_empty_value()
+        {
+            byte[] key = [1, 2, 3];
+            _db.Set(key, []);
+
+            Assert.That(_db.KeyExists(key), Is.True);
+            Assert.That(_db.Get(key), Is.Empty);
+            Assert.That(_db.Get(key, []), Is.Zero);
+
+            Span<byte> span = _db.GetSpan(key);
+            Assert.That(span.IsEmpty, Is.True);
+            _db.DangerousReleaseMemory(span);
+
+            if (_db is IReadOnlyNativeKeyValueStore nativeStore)
+            {
+                ReadOnlySpan<byte> slice = nativeStore.GetNativeSlice(key, out nint handle);
+                Assert.That(slice.IsEmpty, Is.True);
+                nativeStore.DangerousReleaseHandle(handle);
+            }
+
+            Assert.That(AllocatedSpan, Is.Zero);
+        }
+
+        [Test]
+        public void Get_into_output_buffer_reports_missing_key_and_rejects_undersized_buffer()
+        {
+            byte[] key = [1, 2, 3];
+            _db.Set(key, [4, 5, 6]);
+
+            Assert.That(_db.Get([9, 9, 9], new byte[3]), Is.Zero);
+            Assert.That(() => _db.Get(key, new byte[2]), Throws.ArgumentException);
+        }
+
+        [Test]
         public void Snapshot_test()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
@@ -770,7 +1019,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Snapshot_dispose_cleans_up_read_options()
+        public void SnapshotDisposeCleansUp()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
 
@@ -875,7 +1124,7 @@ namespace Nethermind.Db.Test
         public void Full_enumerations_can_be_repeated_across_batches()
         {
             (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
-            IEnumerable<KeyValuePair<byte[], byte[]?>> all = _db.GetAll(ordered: true);
+            IEnumerable<KeyValuePair<byte[], byte[]>> all = _db.GetAll(ordered: true);
             IEnumerable<byte[]> keys = _db.GetAllKeys(ordered: true);
             IEnumerable<byte[]> values = _db.GetAllValues(ordered: true);
 
@@ -883,8 +1132,8 @@ namespace Nethermind.Db.Test
             _ = keys.Take(1).Single();
             _ = values.Take(1).Single();
 
-            KeyValuePair<byte[], byte[]?>[] firstAll = all.ToArray();
-            KeyValuePair<byte[], byte[]?>[] secondAll = all.ToArray();
+            KeyValuePair<byte[], byte[]>[] firstAll = all.ToArray();
+            KeyValuePair<byte[], byte[]>[] secondAll = all.ToArray();
             byte[][] firstKeys = keys.ToArray();
             byte[][] secondKeys = keys.ToArray();
             byte[][] firstValues = values.ToArray();
@@ -1080,6 +1329,41 @@ namespace Nethermind.Db.Test
                 return overflowKey;
             }
         }
+
+        [Test]
+        public void DeadWeight_AgainstARealDatabase_TheAggregatedPropertiesParseAndTheOpenRangeCompactionDigestsTombstones()
+        {
+            RocksDbConfigFactory configFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using DbOnTheRocks db = new("testDeadWeight", GetRocksDbSettings("testDeadWeight", "DeadWeightTest"), new DbConfig(), configFactory, LimboLogs.Instance);
+            IDb store = db;
+            byte[] value = new byte[64];
+            for (int i = 0; i < 2000; i++) store[Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray()] = value;
+            db.Flush();
+            for (int i = 0; i < 2000; i++) store.Remove(Keccak.Compute(i.ToBigEndianByteArray()).Bytes);
+            db.Flush();
+
+            string? aggregated = db.GatherProperty("rocksdb.aggregated-table-properties");
+
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, long.MaxValue.ToString(), 0.5), Is.True,
+                "the real property string of the shipped RocksDB version must parse and report the tombstones");
+
+            db.Compact();
+
+            string? afterwards = db.GatherProperty("rocksdb.aggregated-table-properties");
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(afterwards, long.MaxValue.ToString(), 0.5), Is.False,
+                "the open-range compaction must digest the tombstones, after which the trigger stands down");
+        }
+
+        [TestCase("# entries=6250000000; # deletions=3050000000;", "1000000000000", 0.5, true, TestName = "DeadWeight_TombstonesShadowMostPuts_Compacts")]
+        [TestCase("# entries=3300000000; # deletions=100000000;", "1000000000000", 0.5, false, TestName = "DeadWeight_MostlyLivePuts_Declines")]
+        [TestCase("# entries=100; # deletions=100;", "1000000000000", 0.5, true, TestName = "DeadWeight_OnlyTombstonesLeft_Compacts")]
+        [TestCase("# entries=0; # deletions=0;", "1000000000000", 0.5, false, TestName = "DeadWeight_EmptyStore_Declines")]
+        [TestCase("# entries=6250000000; # deletions=3050000000;", "999999999", 0.5, false, TestName = "DeadWeight_SmallStore_Declines")]
+        [TestCase(null, "1000000000000", 0.5, false, TestName = "DeadWeight_NoTableProperties_Declines")]
+        [TestCase("# entries=garbage; # deletions=1;", "1000000000000", 0.5, false, TestName = "DeadWeight_UnparsableEntries_Declines")]
+        [TestCase("# entries=6250000000; # deletions=3050000000;", null, 0.5, false, TestName = "DeadWeight_NoTotalSize_Declines")]
+        public void ExceedsDeadWeight_DecidesFromTheAggregatedTombstoneCounts(string? aggregated, string? total, double ratio, bool expected) =>
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, total, ratio), Is.EqualTo(expected));
     }
 
     class CorruptedDbOnTheRocks(
@@ -1089,16 +1373,40 @@ namespace Nethermind.Db.Test
         IRocksDbConfigFactory rocksDbConfigFactory,
         ILogManager logManager,
         IList<string>? columnFamilies = null,
-        RocksDbSharp.Native? rocksDbNative = null,
         IFileSystem? fileSystem = null,
         string openExceptionMessage = "Corruption: test corruption",
         Action? onFatalShutdown = null
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, fileSystem)
     {
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException(openExceptionMessage);
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbException(openExceptionMessage);
 
         // The open path throws from the base constructor, so the caller never gets a reference to
         // observe FatalShutdown on; report it through the injected callback instead of exiting.
         protected override void FatalShutdown() => onFatalShutdown?.Invoke();
+    }
+
+    class RepairTrackingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        IFileSystem fileSystem,
+        Action onRepair
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, fileSystem: fileSystem)
+    {
+        protected override void RepairDb(DbOptions dbOptions, string path) => onRepair();
+    }
+
+    class FatalShutdownTrackingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        Action onFatalShutdown
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        protected override void FatalShutdown() => onFatalShutdown();
     }
 }

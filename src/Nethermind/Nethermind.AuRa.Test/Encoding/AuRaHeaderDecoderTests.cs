@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -18,8 +19,9 @@ public class AuRaHeaderDecoderTests
 
     private static byte[] DeterministicSignature(int seed)
     {
-        byte[] signature = new byte[64];
+        byte[] signature = new byte[Signature.Size];
         new Random(seed).NextBytes(signature);
+        signature[^1] = Signature.VOffset;
         return signature;
     }
 
@@ -30,10 +32,55 @@ public class AuRaHeaderDecoderTests
 
         Rlp rlp = _decoder.Encode(header);
         RlpReader decoderContext = new(rlp.Bytes);
-        BlockHeader? decoded = _decoder.Decode(ref decoderContext);
-        decoded!.Hash = decoded.CalculateHash();
+        BlockHeader decoded = _decoder.Decode(ref decoderContext)
+            ?? throw new InvalidOperationException("AuRa header decoding returned null.");
+        decoded.Hash = decoded.CalculateHash();
 
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash));
+    }
+
+    [Test]
+    public void Decode_rejects_missing_aura_signature()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithAura(42, null).TestObject;
+        Rlp rlp = _decoder.Encode(header);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(rlp.Bytes);
+            _decoder.Decode(ref reader);
+        }
+    }
+
+    [Test]
+    public void Decode_accepts_non_empty_non_standard_genesis_signature()
+    {
+        byte[] signature = [0x01];
+        BlockHeader header = Build.A.BlockHeader.WithNumber(0).WithAura(42, signature).TestObject;
+        Rlp rlp = _decoder.Encode(header);
+        RlpReader reader = new(rlp.Bytes);
+
+        AuRaBlockHeader decoded = (AuRaBlockHeader)(_decoder.Decode(ref reader)
+            ?? throw new InvalidOperationException("AuRa header decoding returned null."));
+
+        Assert.That(decoded.AuRaSignature, Is.EqualTo(signature));
+    }
+
+    [Test]
+    public void Decode_rejects_non_standard_aura_signature_after_genesis()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAura(42, [0x01]).TestObject;
+        Rlp rlp = _decoder.Encode(header);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(rlp.Bytes);
+            _decoder.Decode(ref reader);
+        }
     }
 
     /// <summary>Round-trip stability: encoding a decoded header reproduces the exact bytes.</summary>
@@ -44,7 +91,8 @@ public class AuRaHeaderDecoderTests
 
         byte[] firstPass = _decoder.Encode(original).Bytes;
         RlpReader ctx = new(firstPass);
-        BlockHeader? decoded = _decoder.Decode(ref ctx);
+        BlockHeader decoded = _decoder.Decode(ref ctx)
+            ?? throw new InvalidOperationException("AuRa header decoding returned null.");
         byte[] secondPass = _decoder.Encode(decoded).Bytes;
 
         Assert.That(secondPass, Is.EqualTo(firstPass));
@@ -83,10 +131,11 @@ public class AuRaHeaderDecoderTests
 
         byte[] encoded = _decoder.Encode(header).Bytes;
         RlpReader ctx = new(encoded);
-        BlockHeader? decoded = _decoder.Decode(ref ctx);
+        BlockHeader decoded = _decoder.Decode(ref ctx)
+            ?? throw new InvalidOperationException("PoS header decoding returned null.");
 
         Assert.That(decoded, Is.Not.InstanceOf<AuRaBlockHeader>());
-        Assert.That(decoded!.MixHash, Is.EqualTo(header.MixHash));
+        Assert.That(decoded.MixHash, Is.EqualTo(header.MixHash));
         Assert.That(decoded.Nonce, Is.EqualTo(header.Nonce));
     }
 
@@ -133,7 +182,8 @@ public class AuRaHeaderDecoderTests
         Assert.That(viaBase, Is.Not.EqualTo(viaAuRa));
 
         RlpReader ctx = new(viaAuRa);
-        BlockHeader decoded = _decoder.Decode(ref ctx)!;
+        BlockHeader decoded = _decoder.Decode(ref ctx)
+            ?? throw new InvalidOperationException("AuRa header decoding returned null.");
         decoded.Hash = decoded.CalculateHash();
         Assert.That(decoded, Is.InstanceOf<AuRaBlockHeader>());
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash));

@@ -36,13 +36,10 @@ namespace Nethermind.Evm.State;
 public sealed class PrecompileCaches
 {
     /// <summary> Accounting weight charged per entry, on top of its key and output bytes, as a container cost estimate. </summary>
-    public const int EntryOverheadBytes = 160;
+    internal const int EntryOverheadBytes = 160;
 
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
-    private const int MaxSurvivingEntryBytes = 2048;
-
-    /// <summary> Per-partition budget below which caching holds too few results to be enabled. </summary>
-    private const int MinUsefulPartitionBytes = 64 * 1024;
+    internal const int MaxSurvivingEntryBytes = 2048;
 
     /// <summary> Entry count above which a partition grows on demand instead of being sized upfront. </summary>
     private const int MaxPartitionCapacity = 32 * 1024;
@@ -71,7 +68,7 @@ public sealed class PrecompileCaches
     // ReSharper disable once UnusedMember.Global - used by DI
     /// <summary> Caches the results of every precompile from <paramref name="precompileProvider"/> that supports caching. </summary>
     public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, IBlocksConfig blocksConfig, ILogManager? logManager = null)
-        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes * 1024L, logManager) { }
+        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes.KiB, logManager) { }
 
     /// <summary> Byte-exact budget, bypassing <see cref="IBlocksConfig.PrecompileCacheMaxKilobytes"/>. </summary>
     internal PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
@@ -101,14 +98,6 @@ public sealed class PrecompileCaches
         if (partitionCount == 0)
         {
             if (logger.IsTrace) logger.Trace("Precompile result caching is disabled.");
-        }
-        else if (partitionSize < MinUsefulPartitionBytes)
-        {
-            if (logger.IsWarn)
-            {
-                logger.Warn($"Precompile result caching is effectively off: the budget leaves {partitionSize / 1024} KB per precompile. "
-                    + $"Raise {nameof(IBlocksConfig.PrecompileCacheMaxKilobytes)}, or set it to -1 to disable caching explicitly.");
-            }
         }
         else if (maxBytes >= ImplausibleTotalBytes)
         {
@@ -176,8 +165,8 @@ public sealed class PrecompileCaches
 
     /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>
     /// <remarks>
-    /// Admission stops at the limit instead of evicting: the worst case is that caching stops helping for the
-    /// rest of the block, which is the behaviour of not caching at all.
+    /// Admission stops at the limit instead of evicting: once a partition is full, the per-block tier stops
+    /// helping for the rest of the block and lookups fall back to the surviving tier.
     /// </remarks>
     public sealed class Partition
     {
@@ -190,6 +179,7 @@ public sealed class PrecompileCaches
 
         // Metrics, counted in fields and published on block clear
         // to prevent additional dictionary lookup on read path
+        // Each tier admits on its own, so one add records one tier-1 and one tier-2 outcome
         private long _blockHits;
         private long _survivingHits;
         private long _misses;
@@ -239,43 +229,46 @@ public sealed class PrecompileCaches
             return false;
         }
 
-        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
+        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/> </summary>
+        /// <returns> Whether data was saved to the per-block cache. </returns>
         /// <remarks> Reserves before checking, so a concurrent reservation near the limit can refuse an entry the partition had room for. </remarks>
         public bool TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
 
-            if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
+            bool tier1 = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
+            if (!tier1)
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 Record(ref _rejectedFull);
-                return false;
             }
+
+            bool tier2 = entryBytes <= MaxSurvivingEntryBytes;
+            if (!tier2) Record(ref _tooLarge);
+            if (!tier1 && !tier2) return false;
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
-            if (!_entries.TryAdd(copiedKey, result))
+
+            if (tier1 && !_entries.TryAdd(copiedKey, result))
             {
                 // another thread computed the same result concurrently - this copy is redundant
                 Interlocked.Add(ref _bytes, -reservation);
                 Record(ref _rejectedDuplicate);
-                return false;
+                tier1 = false;
             }
 
-            Record(ref _admitted);
-            if (entryBytes <= MaxSurvivingEntryBytes)
+            if (tier1) Record(ref _admitted);
+
+            if (tier2)
             {
                 _survivingCache.Set(copiedKey, result);
                 Record(ref _survivingAdmitted);
             }
-            else
-            {
-                Record(ref _tooLarge);
-            }
 
-            return true;
+            return tier1;
         }
 
         internal void Clear()

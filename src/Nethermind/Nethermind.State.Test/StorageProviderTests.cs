@@ -62,48 +62,6 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
-    /// <summary>
-    /// <see cref="IWorldState.IsStorageEmpty"/> backs the EIP-7610 CREATE collision check. State overrides
-    /// are applied with <c>commitRoots: false</c>, so the write never reaches the storage trie and the
-    /// committed root cannot see it — the block-level change set has to be consulted.
-    /// </summary>
-    /// <remarks>
-    /// The <paramref name="clearFirst"/> arms pin the check order: a full <c>state</c> override clears the
-    /// storage before writing and the clear marker survives until the trie flush, so testing the marker
-    /// before the change set would report the account empty and bypass EIP-7610.
-    /// </remarks>
-    [TestCase(false, false, false, TestName = "Uncommitted_write_is_visible")]
-    [TestCase(true, false, false, TestName = "Uncommitted_write_after_clear_is_visible")]
-    [TestCase(false, true, true, TestName = "Uncommitted_write_reverted_to_zero_stays_empty")]
-    [TestCase(true, true, true, TestName = "Clear_then_write_reverted_to_zero_stays_empty")]
-    public void IsStorageEmpty_sees_uncommitted_storage_change(bool clearFirst, bool zeroAfterwards, bool expectedEmpty)
-    {
-        using Context ctx = new(useFlat, setInitialState: false);
-        IWorldState provider = BuildStorageProvider(ctx);
-
-        BlockHeader baseBlock = null;
-        using (provider.BeginScope(baseBlock))
-        {
-            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            if (clearFirst)
-            {
-                provider.ClearStorage(TestItem.AddressA);
-            }
-
-            StorageCell cell = new(TestItem.AddressA, 1);
-            provider.Set(cell, [0x2a]);
-            if (zeroAfterwards)
-            {
-                provider.Set(cell, StorageTree.ZeroBytes);
-            }
-
-            // The state-override path: commit the journal without flushing anything to the trie.
-            provider.Commit(Frontier.Instance, commitRoots: false);
-
-            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.EqualTo(expectedEmpty));
-        }
-    }
-
     [Test]
     [NonParallelizable]
     public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
@@ -183,21 +141,26 @@ public class StorageProviderTests(bool useFlat)
 
     private static int GetCapacity(object collection)
     {
+        object dictionary = GetDictionary(collection);
+        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(dictionary)!;
+    }
+
+    private static object GetDictionary(object collection)
+    {
         FieldInfo dictionaryField = collection.GetType().GetField(
             "_dictionary",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object dictionary = dictionaryField.GetValue(collection)!;
-        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(dictionary)!;
+        return dictionaryField.GetValue(collection)!;
     }
 
     private static object GetPrivateField(object owner, string fieldName) =>
         owner.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
 
     private static void EnsureCapacity(object collection, int capacity) =>
-        collection.GetType().GetMethod(nameof(System.Collections.Generic.Dictionary<int, int>.EnsureCapacity), [typeof(int)])!.Invoke(collection, [capacity]);
+        collection.GetType().GetMethod(nameof(System.Collections.Generic.Dictionary<,>.EnsureCapacity), [typeof(int)])!.Invoke(collection, [capacity]);
 
     private static int GetCollectionCapacity(object collection) =>
-        (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(collection)!;
+        (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(collection)!;
 
     [TestCase(-1)]
     [TestCase(0)]
@@ -644,7 +607,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_clears_cache()
     {
-        PreBlockCaches preBlockCaches = new();
+        PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
@@ -655,6 +618,186 @@ public class StorageProviderTests(bool useFlat)
         provider.ClearStorage(TestItem.AddressA);
         Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
+    // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be
+    // re-checked. Each case leaves two clears to make, and pins that the second is never reached.
+    [TestCase(StorageWriteStop.BeforeTheFirstClear, 0)]
+    [TestCase(StorageWriteStop.AtARemovedAccountClear, 1)]
+    [TestCase(StorageWriteStop.AtAContractClear, 1)]
+    public void Detached_storage_changes_stop_at_the_clear_that_makes_the_batch_reject_storage_writes(
+        StorageWriteStop stop, int expectedStorageBatches)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            foreach (Address address in (Address[])[TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+            {
+                provider.CreateAccount(address, 1);
+                provider.Set(new StorageCell(address, 1), _values[1]);
+            }
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            if (stop == StorageWriteStop.AtARemovedAccountClear)
+            {
+                foreach (Address address in (Address[])[TestItem.AddressB, TestItem.AddressC])
+                {
+                    // Execution reads an account before removing it, and only a removal that saw storage on the
+                    // account it read counts as taking that storage with it.
+                    provider.GetNonce(address);
+                    provider.DeleteAccount(address);
+                }
+            }
+            else
+            {
+                provider.ClearStorage(TestItem.AddressA);
+                provider.ClearStorage(TestItem.AddressB);
+                // Would follow the clears, so it also pins that the slot writes are not reached.
+                provider.Set(new StorageCell(TestItem.AddressA, 2), _values[2]);
+            }
+
+            provider.Commit(Frontier.Instance);
+            using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
+            bool accepts = stop != StorageWriteStop.BeforeTheFirstClear;
+            writeBatch.AcceptsStorageWrites.Returns(_ => accepts);
+            writeBatch.CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>()).Returns(storageBatch);
+            // What the real batch does: a clear drops the pre-block slots it held, and it has nothing left to complete.
+            storageBatch.When(b => b.Clear()).Do(_ => accepts = false);
+
+            snapshot.WriteTo(writeBatch);
+
+            writeBatch.Received(expectedStorageBatches).CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>());
+            storageBatch.Received(expectedStorageBatches).Clear();
+            storageBatch.DidNotReceiveWithAnyArgs().Set(Arg.Any<UInt256>(), Arg.Any<byte[]>());
+        }
+    }
+
+    public enum StorageWriteStop
+    {
+        BeforeTheFirstClear,
+        AtARemovedAccountClear,
+        AtAContractClear,
+    }
+
+    [TestCase(StorageClearRollback.Snapshot)]
+    [TestCase(StorageClearRollback.ResetKeepingBlockChanges)]
+    public void Rolling_back_storage_clear_preserves_committed_storage(StorageClearRollback rollback)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell previouslyRead = new(TestItem.AddressA, 1);
+        StorageCell readAfterClear = new(TestItem.AddressA, 2);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 100);
+            provider.Set(previouslyRead, _values[7]);
+            provider.Set(readAfterClear, _values[8]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+            Snapshot snapshot = provider.TakeSnapshot();
+
+            provider.ClearStorage(TestItem.AddressA);
+            Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+
+            if (rollback == StorageClearRollback.ResetKeepingBlockChanges)
+            {
+                provider.Set(previouslyRead, _values[1]);
+                provider.ClearStorage(TestItem.AddressA);
+            }
+
+            if (rollback == StorageClearRollback.Snapshot)
+            {
+                provider.Restore(snapshot);
+            }
+            else
+            {
+                provider.Reset(resetBlockChanges: false);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+                Assert.That(provider.GetOriginal(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+                Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(_values[8]));
+                Assert.That(provider.GetOriginal(readAfterClear).ToArray(), Is.EqualTo(_values[8]));
+            }
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(baseBlock.Number + 1);
+            Assert.That(provider.StateRoot, Is.EqualTo(baseBlock.StateRoot));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Clearing_unaccessed_empty_storage_is_a_noop(bool accountExists)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        if (accountExists)
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+        }
+
+        Snapshot before = provider.TakeSnapshot();
+        provider.ClearStorage(TestItem.AddressA);
+        Snapshot after = provider.TakeSnapshot();
+
+        Assert.That(after.StorageSnapshot.PersistentStorageSnapshot,
+            Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot));
+    }
+
+    [Test]
+    public void Restored_storage_clear_reuses_dictionary()
+    {
+        const int ReadCount = 64;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell existingCell = new(ctx.Address1, 1);
+
+        provider.Set(existingCell, _values[1]);
+        provider.Commit(Frontier.Instance);
+        object blockChange = GetBlockChange(provider, ctx.Address1);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.ClearStorage(ctx.Address1);
+        for (int i = 0; i < ReadCount; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)(i + 2)));
+        }
+
+        object clearedDictionary = GetDictionary(blockChange);
+        int clearedCapacity = GetCapacity(blockChange);
+
+        provider.Restore(snapshot);
+        provider.ClearStorage(ctx.Address1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetDictionary(blockChange), Is.SameAs(clearedDictionary));
+            Assert.That(GetCapacity(blockChange), Is.EqualTo(clearedCapacity));
+        }
     }
 
     [Test]
@@ -921,35 +1064,9 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Selfdestruct_before_commit_will_mark_contract_as_empty()
-    {
-        using Context ctx = new(useFlat, setInitialState: false);
-        IWorldState provider = BuildStorageProvider(ctx);
-
-        BlockHeader baseBlock = null;
-        using (provider.BeginScope(baseBlock))
-        {
-            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
-            provider.Commit(Frontier.Instance);
-            provider.CommitTree(0);
-
-            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
-        }
-
-        using (provider.BeginScope(baseBlock))
-        {
-            provider.ClearStorage(TestItem.AddressA);
-            provider.DeleteAccount(TestItem.AddressA);
-            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.True);
-        }
-    }
-
-    [Test]
     public void Selfdestruct_persist_between_commit()
     {
-        PreBlockCaches preBlockCaches = new();
+        PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
@@ -1020,21 +1137,73 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
+    public void Eip161_pruned_storage_is_unreadable_after_storage_cache_clear()
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
-        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
 
-        // Create an empty account (balance=0, nonce=0, no code) and set storage on it.
-        // EIP-161 (via SpuriousDragon+) deletes empty accounts during commit, but the
-        // storage flush has already produced a non-empty storage root. The commit must
-        // handle this gracefully by skipping the storage root update for deleted accounts.
-        worldState.CreateAccount(TestItem.AddressA, 0);
-        worldState.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
-        worldState.Commit(SpuriousDragon.Instance);
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 0);
+            worldState.Set(cell, [1, 2, 3]);
+            worldState.Commit(SpuriousDragon.Instance);
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
+        }
 
-        Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);
+        using (worldState.BeginScope(baseBlock))
+        {
+            Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);
+
+            Snapshot before = worldState.TakeSnapshot();
+            worldState.ClearStorage(TestItem.AddressA);
+            Snapshot after = worldState.TakeSnapshot();
+            byte[] value = worldState.Get(cell).ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(after.StorageSnapshot.PersistentStorageSnapshot,
+                    Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot));
+                Assert.That(value, Is.EqualTo(StorageTree.ZeroBytes));
+            }
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Clear_after_same_block_account_deletion_clears_backing_storage(bool recreateAsBalanceOnly)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
+
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 0);
+            worldState.Set(cell, [1, 2, 3]);
+            worldState.Commit(Frontier.Instance);
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
+        }
+
+        using (worldState.BeginScope(baseBlock))
+        {
+            worldState.DeleteAccount(TestItem.AddressA);
+            worldState.Commit(SpuriousDragon.Instance, commitRoots: false);
+
+            if (recreateAsBalanceOnly)
+            {
+                worldState.CreateAccount(TestItem.AddressA, 1);
+                worldState.Commit(SpuriousDragon.Instance, commitRoots: false);
+            }
+
+            worldState.ClearStorage(TestItem.AddressA);
+
+            Assert.That(worldState.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+        }
     }
 
     [Test]
@@ -1145,7 +1314,7 @@ public class StorageProviderTests(bool useFlat)
     [TestCase(false)]
     public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
 
@@ -1301,6 +1470,12 @@ public class StorageProviderTests(bool useFlat)
         ResetKeepingBlockChanges,
         ReadOnlyCommit,
         CommitAfterWrite,
+    }
+
+    public enum StorageClearRollback
+    {
+        Snapshot,
+        ResetKeepingBlockChanges,
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer

@@ -37,11 +37,11 @@ public static class WitnessExtensions
     {
         public INodeStorage CreateNodeStorage()
         {
-            IKeyValueStore db = new MemDb();
+            IKeyValueStore db = MemDb.WithCapacity(witness.State.Count);
             foreach (byte[] stateElement in witness.State)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                db.PutSpan(hash, stateElement);
+                db.Set(hash, stateElement);
             }
 
             return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
@@ -49,11 +49,11 @@ public static class WitnessExtensions
 
         public IKeyValueStoreWithBatching CreateCodeDb()
         {
-            IKeyValueStoreWithBatching db = new MemDb();
+            IKeyValueStoreWithBatching db = MemDb.WithCapacity(witness.Codes.Count);
             foreach (byte[] code in witness.Codes)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
-                db.PutSpan(hash, code);
+                db.Set(hash, code);
             }
 
             return db;

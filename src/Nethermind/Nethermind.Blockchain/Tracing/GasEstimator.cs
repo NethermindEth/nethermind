@@ -144,9 +144,12 @@ public class GasEstimator(
         Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,
         EstimationBounds bounds, ulong errorMargin, CancellationToken token)
     {
-        // Short-circuit: simple ETH transfers need exactly the intrinsic gas.
-        if (IsSimpleTransfer(tx) && TryExecute(tx, header, spec, bounds.IntrinsicGas, gasTracer, token, out _))
-            return EstimationResult.Success(bounds.IntrinsicGas);
+        if (IsSimpleTransfer(tx) && !stateProvider.IsContract(tx.To!))
+        {
+            ulong exact = Math.Max(bounds.IntrinsicGas, gasTracer.GasSpent);
+            if (exact <= bounds.RightBound && TryExecute(tx, header, spec, exact, gasTracer, token, out _))
+                return EstimationResult.Success(exact);
+        }
 
         // Execute at maximum gas first (Geth parity): gas-related failure → allowance error; other → surface directly.
         if (!TryExecute(tx, header, spec, bounds.RightBound, gasTracer, token, out bool isGasRelatedFailure))
@@ -201,7 +204,7 @@ public class GasEstimator(
                              EstimateGasTracer gasTracer, CancellationToken token, out bool isGasRelatedFailure)
     {
         Transaction txClone = new();
-        transaction.CopyTo(txClone);
+        transaction.CopyTo(txClone, copyHash: false);
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));

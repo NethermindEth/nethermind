@@ -8,8 +8,8 @@ namespace Nethermind.Stats.Model
     public class P2PNodeDetails
     {
         public byte P2PVersion { get; set; }
-        public string ClientId { get; set; }
-        public IReadOnlyList<Capability> Capabilities { get; set; }
+        public string ClientId { get; set; } = string.Empty;
+        public IReadOnlyList<Capability> Capabilities { get; set; } = [];
         public int ListenPort { get; set; }
     }
 }

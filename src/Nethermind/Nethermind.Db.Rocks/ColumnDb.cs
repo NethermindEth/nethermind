@@ -6,9 +6,8 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -17,7 +16,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
-    internal readonly ColumnFamilyHandle _columnFamily;
+    internal readonly IColumnFamilyHandle _columnFamily;
 
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
@@ -75,13 +74,24 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         get
         {
-            ColumnFamilyHandle[] columnFamilies = new ColumnFamilyHandle[keys.Length];
+            _mainDb.ThrowIfDisposing();
+            _mainDb.UpdateReadMetrics(keys.Length);
+
+            IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
             Array.Fill(columnFamilies, _columnFamily);
-            return _rocksDb.MultiGet(keys, columnFamilies);
+            try
+            {
+                return _rocksDb.MultiGet(keys, columnFamilies);
+            }
+            catch (RocksDbException e)
+            {
+                _mainDb.HandleFatalDbError(e);
+                throw;
+            }
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
         _mainDb.ThrowIfDisposing();
         return _mainDb.GetAllCore(ordered, _columnFamily);
@@ -137,24 +147,43 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
-    public void Compact() =>
-        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    public void Compact() => _mainDb.CompactOpenRange(_columnFamily, forceBottommost: false);
+
+    /// <inheritdoc/>
+    public bool CompactIfDeadWeightExceeds(double deadRatio)
+    {
+        if (!DbOnTheRocks.ExceedsDeadWeight(
+                _rocksDb.GetProperty("rocksdb.aggregated-table-properties", _columnFamily),
+                _rocksDb.GetProperty("rocksdb.total-sst-files-size", _columnFamily),
+                deadRatio))
+        {
+            return false;
+        }
+
+        _mainDb.LogColumnDeadWeightCompaction(Name);
+        _mainDb.CompactOpenRange(_columnFamily, forceBottommost: true);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public void InterruptCompactions() => _mainDb.InterruptCompactions();
 
     /// <summary>
-    /// Not sure how to handle delete of the columns DB
+    /// Clearing a single column family is not supported; it shares the underlying database with the other columns.
     /// </summary>
-    /// <exception cref="NotSupportedException"></exception>
+    /// <exception cref="NotSupportedException">Always thrown; clearing a single column family is not supported.</exception>
     public void Clear() => throw new NotSupportedException();
 
-    // Maybe it should be column-specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
     public void SetWriteBuffer(long sizeBytes)
     {
-        string[] keys = ["write_buffer_size", "max_bytes_for_level_base"];
-        string[] values = [sizeBytes.ToString(), (sizeBytes * 4).ToString()];
-        Native.Instance.rocksdb_set_options_cf(
-            _rocksDb.Handle, _columnFamily.Handle, keys.Length, keys, values);
+        KeyValuePair<string, string>[] options =
+        [
+            new("write_buffer_size", sizeBytes.ToString()),
+            new("max_bytes_for_level_base", (sizeBytes * 4).ToString()),
+        ];
+        _rocksDb.SetOptions(_columnFamily, options);
     }
 
     public byte[]? FirstKey
@@ -177,8 +206,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
-        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
+        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,

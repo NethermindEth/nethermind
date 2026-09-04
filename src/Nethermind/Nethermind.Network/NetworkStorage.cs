@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Nethermind.Config;
@@ -86,9 +88,13 @@ namespace Nethermind.Network
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                    if (_logger.IsTrace) TracePersistedNodeFailure(nodeRlp, e);
                 }
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TracePersistedNodeFailure(byte[] nodeRlp, Exception exception) =>
+                _logger.Trace($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {exception.Message}");
         }
 
         public void UpdateNode(NetworkNode node)
@@ -104,19 +110,15 @@ namespace Nethermind.Network
         {
             EnsureLoadedFromDbNoLock();
 
-            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb).PutSpan(node.NodeId.Bytes, rlp);
+            PublicKey nodeId = node.NodeId;
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb).PutSpan(nodeId.Bytes, rlp);
             _updateCounter++;
 
-            if (!_nodesDict.ContainsKey(node.NodeId))
-            {
-                _nodesDict[node.NodeId] = node;
-                // New node, clear the cache
-                _nodes = null;
-            }
-            else
-            {
-                _nodesDict[node.NodeId] = node;
-            }
+            ref NetworkNode? storedNode = ref CollectionsMarshal.GetValueRefOrAddDefault(_nodesDict, nodeId, out bool exists);
+            storedNode = node;
+
+            // New node, clear the cache
+            if (!exists) _nodes = null;
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)

@@ -18,6 +18,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Events;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -160,10 +161,31 @@ public abstract partial class BaseEngineModuleTests
         public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
-        public Task WaitForImprovedBlock(Hash256? parentHash = null) =>
+        /// <summary>
+        /// Waits for an improved block built on <paramref name="parentHash"/> that carries at least
+        /// <paramref name="minTransactions"/> transactions.
+        /// </summary>
+        /// <remarks>
+        /// The payload service publishes an empty block for a parent before improving it, so a parent-only wait is
+        /// satisfied by that empty improvement; callers that submitted transactions must pass a minimum.
+        /// </remarks>
+        /// <param name="parentHash">The required parent hash, or <see langword="null"/> to match any parent.</param>
+        /// <param name="minTransactions">The minimum transaction count, or zero to impose no transaction requirement.</param>
+        public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
-                b => parentHash is null || b.Header.ParentHash == parentHash);
+                b => (parentHash is null || b.Header.ParentHash == parentHash)
+                     && b.Transactions.Length >= minTransactions);
 
+        /// <summary>Waits for the tx pool to finish processing <paramref name="blockHash"/> as its head.</summary>
+        /// <remarks>
+        /// Callers must create the wait before the <c>forkchoiceUpdated</c> that canonicalizes the block, and should
+        /// assert that call succeeded — otherwise the event never fires and the wait times out without a cause.
+        /// </remarks>
+        public Task WaitForTxPoolHead(Hash256 blockHash) =>
+            Wait.ForEventCondition<Block>(CancellationToken,
+                h => TxPool.TxPoolHeadChanged += h,
+                h => TxPool.TxPoolHeadChanged -= h,
+                b => b.Hash == blockHash);
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 
@@ -192,6 +214,14 @@ public abstract partial class BaseEngineModuleTests
 
         public bool? ParallelExecutionOverride { get; set; }
 
+        private const double CiSafeSingleBlockImprovementOfSlot = 5;
+
+        /// <summary>
+        /// Overrides the payload improvement window as a fraction of a slot. Must be set before <c>Build()</c>;
+        /// assigning it afterwards is a no-op because the configs are materialized during build.
+        /// </summary>
+        public double? SingleBlockImprovementOfSlotOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
@@ -219,7 +249,14 @@ public abstract partial class BaseEngineModuleTests
                     ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
                     : c);
             }
-            return configs;
+
+            List<IConfig> materialized = configs.ToList();
+            foreach (IConfig config in materialized)
+            {
+                if (config is not IBlocksConfig blocksConfig) continue;
+                blocksConfig.SingleBlockImprovementOfSlot = SingleBlockImprovementOfSlotOverride ?? CiSafeSingleBlockImprovementOfSlot;
+            }
+            return materialized;
         }
 
         /// <summary>

@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp;
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
     private static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
-        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.Transaction + 1)),
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.TransactionEip2780 + 1)),
         nameof(BlockBody.Transactions)
     );
 
@@ -27,7 +27,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     private static BlockBodyDecoder? _instance;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetBodyLength(item));
+    public override int GetLength(BlockBody? item, RlpBehaviors rlpBehaviors)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetBodyLength(item));
 
     public int GetBodyLength(BlockBody b)
     {
@@ -95,15 +96,15 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
+    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
+        Transaction[] transactions = ctx.DecodeNonNullArray(_txDecoder, limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
+            withdrawals = ctx.DecodeNonNullArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
         ctx.Check(lastPosition);

@@ -60,8 +60,8 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
-        transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
+        TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
+        transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
 
         try
         {
@@ -69,7 +69,7 @@ public class GethStyleTracer(
         }
         finally
         {
-            transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+            transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
         }
     }
 
@@ -270,7 +270,8 @@ public class GethStyleTracer(
 
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
-        Block block = Rlp.Decode<Block>(blockRlp);
+        Block block = Rlp.Decode<Block>(blockRlp)
+            ?? throw new RlpException("Block decoded as null.");
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;

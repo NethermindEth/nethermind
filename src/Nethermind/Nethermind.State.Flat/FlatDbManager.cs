@@ -31,16 +31,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
 
-    // First it go to here
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
-    // And here in parallel.
     // The node cache is kinda important for performance, so we want it populated as quickly as possible.
     private readonly Task _populateTrieNodeCacheTask;
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
-    // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
@@ -448,7 +445,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
 
-        StateId persistedState = _persistenceManager.FlushToPersistence();
+        StateId persistedState = _persistenceManager.FlushToPersistence(cancellationToken);
 
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState == StateId.PreGenesis) return;
