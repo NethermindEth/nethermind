@@ -670,7 +670,7 @@ public class LogFinderTests
     }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
-        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, new ReceiptConfig());
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
 
     private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage) =>
         new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, logIndexStorage, minBlocksToUseIndex: 1);
