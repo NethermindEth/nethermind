@@ -84,24 +84,17 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmWord CreateWordFromUInt64(ulong value)
-    {
-        // Gate on Vector128: ARM64 accelerates only that but still lowers Vector256.Create to hardware ops.
-        if (Vector128.IsHardwareAccelerated)
-        {
-            return Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
-        }
+    private static EvmWord CreateAcceleratedWordFromUInt64(ulong value)
+        => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
 
-        // Without SIMD (the zkVM guest) Vector256.Create degrades to a software element loop.
-        // Safety: EvmWord is 32 reference-free bytes, and all four ulongs are written. Lane 3
-        // carries the value, matching Vector256.Create(0, 0, 0, value).
-        Unsafe.SkipInit(out EvmWord word);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteScalarWordFromUInt64(ref EvmWord word, ulong value)
+    {
         ref ulong parts = ref Unsafe.As<EvmWord, ulong>(ref word);
         parts = 0;
         Unsafe.Add(ref parts, 1) = 0;
         Unsafe.Add(ref parts, 2) = 0;
         Unsafe.Add(ref parts, 3) = value;
-        return word;
     }
 
     // PSHUFB/PermuteVar32x8 mask that byte-reverses a 256-bit word (big-endian <-> little-endian).
@@ -977,7 +970,11 @@ public ref partial struct EvmStack
 
         // Build the full 32-byte value in a register and emit a single vector store;
         // zero-then-overwrite would be two stores.
-        head = CreateWordFromUInt64((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48);
+        ulong word = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1082,9 +1079,13 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) |
-            ((ulong)Unsafe.Add(ref value, 2) << 56));
+            ((ulong)Unsafe.Add(ref value, 2) << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1108,7 +1109,11 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32);
+        ulong word = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1132,9 +1137,13 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) |
-            ((ulong)Unsafe.Add(ref value, 4) << 56));
+            ((ulong)Unsafe.Add(ref value, 4) << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1158,9 +1167,13 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) |
-            ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48));
+            ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1184,10 +1197,14 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) |
             ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) |
-            ((ulong)Unsafe.Add(ref value, 6) << 56));
+            ((ulong)Unsafe.Add(ref value, 6) << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1211,7 +1228,11 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64(Unsafe.ReadUnaligned<ulong>(ref value));
+        ulong word = Unsafe.ReadUnaligned<ulong>(ref value);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1403,7 +1424,10 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 
-        head = CreateWordFromUInt64(1UL << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(1UL << 56);
+        else
+            WriteScalarWordFromUInt64(ref head, 1UL << 56);
         return EvmExceptionType.None;
     }
 
@@ -1456,7 +1480,11 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
-        head = CreateWordFromUInt64((ulong)value << 32);
+        ulong word = (ulong)value << 32;
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
         return EvmExceptionType.None;
     }
 
@@ -1478,7 +1506,10 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
-        head = CreateWordFromUInt64(value);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(value);
+        else
+            WriteScalarWordFromUInt64(ref head, value);
         return EvmExceptionType.None;
     }
 
