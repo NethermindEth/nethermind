@@ -10,7 +10,7 @@ namespace Nethermind.Trie
 {
     public static partial class Nibbles
     {
-        private static readonly ulong[] ExpandMasks = [0x0000FFFF0000FFFFUL, 0x00FF00FF00FF00FFUL, 0x000F000F000F000FUL];
+        private static readonly ulong[] ExpandMasks = [0x0000FFFF0000FFFFUL, 0x00FF00FF00FF00FFUL, 0x000F000F000F000FUL, 0x00000000FFFFFFFFUL];
 
         /// <summary>Expands <paramref name="count"/> bytes into high/low nibble pairs.</summary>
         /// <remarks>
@@ -31,14 +31,23 @@ namespace Nethermind.Trie
             ulong m16 = masks;
             ulong m8 = Unsafe.Add(ref masks, 1);
             ulong mNibble = Unsafe.Add(ref masks, 2);
+            ulong mLow = Unsafe.Add(ref masks, 3);
             int i = 0;
+            // Eight source bytes per read, expanded as two halves: one load, one loop test and one
+            // address computation instead of two, and the four-byte load the zkVM charges roughly eight
+            // times an aligned word read becomes a word read. The low half must be masked first - the
+            // spread's own mask keeps bits 32..47, which in a whole word hold source bytes four and five.
+            for (; i + sizeof(ulong) <= count; i += sizeof(ulong))
+            {
+                ulong src = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, i));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2), Spread(src & mLow, m16, m8, mNibble));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, (i * 2) + sizeof(ulong)), Spread(src >> 32, m16, m8, mNibble));
+            }
+
             for (; i + sizeof(uint) <= count; i += sizeof(uint))
             {
-                ulong v = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes, i));
-                v = (v | (v << 16)) & m16;
-                v = (v | (v << 8)) & m8;
-                ulong expanded = ((v >> 4) & mNibble) | ((v & mNibble) << 8);
-                Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2), expanded);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2),
+                    Spread(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes, i)), m16, m8, mNibble));
             }
 
             for (; i < count; i++)
@@ -82,6 +91,17 @@ namespace Nethermind.Trie
                 Unsafe.Add(ref bytes, i) =
                     (byte)((Unsafe.Add(ref nibbles, i * 2) << 4) | Unsafe.Add(ref nibbles, i * 2 + 1));
             }
+        }
+
+        /// <summary>Spreads the low four bytes of <paramref name="value"/> into eight nibble bytes.</summary>
+        /// <remarks>Bits above those four bytes must already be clear: the first mask keeps bits 32..47,
+        /// so anything left there would be folded into the third and fourth nibble pair.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Spread(ulong value, ulong m16, ulong m8, ulong mNibble)
+        {
+            ulong v = (value | (value << 16)) & m16;
+            v = (v | (v << 8)) & m8;
+            return ((v >> 4) & mNibble) | ((v & mNibble) << 8);
         }
 
         /// <summary>Length of the common prefix of two nibble keys.</summary>
