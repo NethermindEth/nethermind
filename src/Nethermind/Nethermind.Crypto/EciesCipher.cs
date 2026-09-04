@@ -24,6 +24,11 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 
     public (bool Success, byte[]? PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
+        if (cipherText.Length < ephemBytesLength + KeySize / 8)
+        {
+            return (false, null);
+        }
+
         if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
         {
             return (false, null);

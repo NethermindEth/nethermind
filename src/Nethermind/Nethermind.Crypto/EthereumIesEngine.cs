@@ -61,10 +61,17 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
     /// <param name="macData">Additional data to include in the MAC computation (can be null or empty).</param>
     /// <returns>The resulting encrypted or decrypted data, with authentication applied.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="input"/> is null.</exception>
+    /// <exception cref="InvalidCipherTextException">Thrown when decrypting input not longer than the MAC, or when the MAC is invalid.</exception>
     public byte[] ProcessBlock(byte[] input, byte[]? macData)
     {
         ArgumentNullException.ThrowIfNull(input);
         (byte[] kdfKey, IesWithCipherParameters iesParameters, byte[] iv) = GetInitializedParameters();
+
+        // Ensure that the length of the input is greater than the MAC in bytes
+        if (!_forEncryption && input.Length <= _mac.GetMacSize())
+        {
+            ThrowInputTooShort();
+        }
 
         int outputSize = GetOutputSize(input.Length);
         byte[] output = new byte[outputSize];
@@ -78,6 +85,10 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         byte[] result = new byte[actualLength];
         output.AsSpan(0, actualLength).CopyTo(result);
         return result;
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowInputTooShort()
+            => throw new InvalidCipherTextException("Length of input must be greater than the MAC");
     }
 
     private (byte[] KdfKey, IesWithCipherParameters IesParameters, byte[] Iv) GetInitializedParameters()
@@ -175,12 +186,6 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
     {
         int macSize = _mac.GetMacSize();
 
-        // Ensure that the length of the input is greater than the MAC in bytes
-        if (input.Length <= iesParameters.MacKeySize / 8)
-        {
-            ThrowInputTooShort();
-        }
-
         int digestSize = _hash.GetDigestSize();
 
         // Block cipher mode.
@@ -230,10 +235,6 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         len += _cipher.DoFinal(output.Slice(len));
 
         return len;
-
-        [StackTraceHidden, DoesNotReturn]
-        static void ThrowInputTooShort()
-            => throw new InvalidCipherTextException("Length of input must be greater than the MAC");
 
         [StackTraceHidden, DoesNotReturn]
         static void ThrowInvalidMac()

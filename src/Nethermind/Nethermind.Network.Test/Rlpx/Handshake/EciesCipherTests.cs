@@ -10,6 +10,7 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -216,6 +217,36 @@ public class EciesCipherTests
 
         byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(privateKey, cipherText));
         Assert.That(deciphered, Is.EqualTo(plainText));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(64)]
+    [TestCase(80)]
+    public void Decrypt_returns_failure_for_ciphertext_shorter_than_ecies_overhead(int length)
+    {
+        byte[] cipherText = new byte[length];
+        if (length > 0)
+        {
+            cipherText[0] = 4;
+        }
+
+        (bool success, byte[]? plainText) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, cipherText);
+
+        Assert.That(success, Is.False);
+        Assert.That(plainText, Is.Null);
+    }
+
+    // 65-byte ephemeral key + 16-byte IV overhead leaves a body no longer than the 32-byte MAC
+    [TestCase(81)]
+    [TestCase(101)]
+    [TestCase(113)]
+    public void Decrypt_throws_controlled_exception_for_body_shorter_than_mac(int length)
+    {
+        byte[] cipherText = new byte[length];
+        NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes.CopyTo(cipherText, 0);
+
+        Assert.Throws<InvalidCipherTextException>(() => _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, cipherText));
     }
 
     private static byte[] GetPlainText((bool Success, byte[]? PlainText) result)

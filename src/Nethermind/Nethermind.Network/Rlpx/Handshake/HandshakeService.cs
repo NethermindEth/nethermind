@@ -140,6 +140,11 @@ namespace Nethermind.Network.Rlpx.Handshake
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
+                if (auth.Data.Length < 2)
+                {
+                    throw new NetworkingException("Failed to decrypt AUTH message.", NetworkExceptionType.Validation);
+                }
+
                 byte[] sizeData = auth.Data.Slice(0, 2);
                 (bool success, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
                 if (!success || plainText is null)
@@ -234,6 +239,11 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             else
             {
+                if (ack.Data.Length < 2)
+                {
+                    throw new NetworkingException("Failed to decrypt ACK message.", NetworkExceptionType.Validation);
+                }
+
                 byte[] sizeData = ack.Data.Slice(0, 2);
                 (bool success, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
                 if (!success || plainText is null)

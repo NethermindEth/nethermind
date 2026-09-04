@@ -10,6 +10,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NSubstitute;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -201,6 +202,54 @@ public class EncryptionHandshakeServiceTests
         }
 
         Assert.Throws<NetworkingException>(Act);
+    }
+
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    [TestCase(false, 0)]
+    [TestCase(false, 1)]
+    public void Rejects_packet_shorter_than_eip8_size_prefix(bool authMessage, int length)
+    {
+        Packet malformedPacket = new(new byte[length]);
+
+        void Act()
+        {
+            if (authMessage)
+            {
+                _recipientService.Ack(new EncryptionHandshake(), malformedPacket);
+            }
+            else
+            {
+                _initiatorService.Agree(new EncryptionHandshake(), malformedPacket);
+            }
+        }
+
+        Assert.Throws<NetworkingException>(Act);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Rejects_undersized_eip8_ecies_ciphertext(bool authMessage)
+    {
+        // 103-byte EIP-8 packet: after the 2-byte size prefix, the 65-byte ephemeral key and the 16-byte IV,
+        // only 20 bytes remain for the ECIES body, less than the 32-byte MAC
+        byte[] data = new byte[103];
+        NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes.CopyTo(data, 2);
+        Packet malformedPacket = new(data);
+
+        void Act()
+        {
+            if (authMessage)
+            {
+                _recipientService.Ack(new EncryptionHandshake(), malformedPacket);
+            }
+            else
+            {
+                _initiatorService.Agree(new EncryptionHandshake(), malformedPacket);
+            }
+        }
+
+        Assert.Throws<InvalidCipherTextException>(Act);
     }
 
     [TestCase(true)]
