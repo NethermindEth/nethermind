@@ -447,6 +447,7 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
+                IsEvmExecution = IsEvmExecutionMethod(methodInfo.Name);
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
                 if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
@@ -482,6 +483,16 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+
+            /// <summary>Whether the method executes the EVM against overridable state and is therefore admitted through <see cref="EvmAdmissionGate"/>.</summary>
+            /// <remarks>
+            /// Classified by name so that plugin modules exposing these methods are gated too. The list is explicit because the
+            /// <c>eth_</c> namespace mixes sub-millisecond reads with multi-second simulations. None of these methods may return an
+            /// <see cref="IStreamableResult"/>: the permit is released when the invocation completes, so a streamed re-execution would
+            /// run ungated — widening the set to <c>trace_*</c>/<c>debug_trace*</c> requires carrying the lease on the response.
+            /// </remarks>
+            internal bool IsEvmExecution { get; }
+
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }
@@ -494,6 +505,9 @@ namespace Nethermind.JsonRpc.Modules
             internal IRpcModulePool? ModulePool { get; private set; }
 
             public override string ToString() => MethodInfo.Name;
+
+            private static bool IsEvmExecutionMethod(string name) => name is
+                "eth_call" or "eth_estimateGas" or "eth_createAccessList" or "eth_simulateV1" or "eth_fillTransaction" or "debug_simulateV1";
 
             internal void SetPool(
                 Func<bool, ValueTask<IRpcModule>> rentModule,
