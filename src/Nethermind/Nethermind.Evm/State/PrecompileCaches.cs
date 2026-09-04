@@ -39,7 +39,7 @@ public sealed class PrecompileCaches
     internal const int EntryOverheadBytes = 160;
 
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
-    private const int MaxSurvivingEntryBytes = 2048;
+    internal const int MaxSurvivingEntryBytes = 2048;
 
     /// <summary> Per-partition budget below which caching holds too few results to be enabled. </summary>
     private const int MinUsefulPartitionBytes = 64 * 1024;
