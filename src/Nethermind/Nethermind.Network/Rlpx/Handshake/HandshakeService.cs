@@ -22,6 +22,13 @@ namespace Nethermind.Network.Rlpx.Handshake
         private static readonly int MacBitsSize = 256;
         private static readonly int MacBytesSize = MacBitsSize / 8;
 
+        private const int EciesOverhead = 65 + 16 + 32; // ephemeral public key + IV + MAC
+
+        // Pre-EIP-8 packets have one exact length (rlpx spec); any other length is EIP-8-framed, so the legacy
+        // decrypt attempt is skipped rather than paying an ECDH on unauthenticated input.
+        private const int LegacyAuthPacketLength = AuthMessageSerializer.Length + EciesOverhead;
+        private const int LegacyAckPacketLength = AckMessageSerializer.TotalLength + EciesOverhead;
+
         private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IEciesCipher _eciesCipher;
@@ -123,14 +130,17 @@ namespace Nethermind.Network.Rlpx.Handshake
             AuthMessageBase authMessage;
             bool preEip8Format = false;
             byte[]? plainText = null;
-            try
+            if (auth.Data.Length == LegacyAuthPacketLength)
             {
-                if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
-                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
+                try
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
+                    (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
+                }
             }
 
             if (preEip8Format && plainText is not null)
@@ -220,13 +230,16 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             bool preEip8Format = false;
             byte[]? plainText = null;
-            try
+            if (ack.Data.Length == LegacyAckPacketLength)
             {
-                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
+                try
+                {
+                    (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
+                }
             }
 
             if (preEip8Format && plainText is not null)

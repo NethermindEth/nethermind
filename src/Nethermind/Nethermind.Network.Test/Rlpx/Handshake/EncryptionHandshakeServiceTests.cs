@@ -203,6 +203,26 @@ public class EncryptionHandshakeServiceTests
         Assert.Throws<NetworkingException>(() => Decrypt(service, authMessage, malformedPacket));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Skips_legacy_decrypt_for_packet_of_non_legacy_length(bool authMessage)
+    {
+        IEciesCipher cipher = Substitute.For<IEciesCipher>();
+        cipher.Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>())
+            .Returns((Success: false, PlainText: (byte[]?)null));
+        HandshakeService service = new(
+            _messageSerializationService,
+            cipher,
+            _testRandom,
+            _ecdsa,
+            NetTestVectors.StaticKeyB,
+            LimboLogs.Instance);
+        Packet packet = new(new byte[100]);
+
+        Assert.Throws<NetworkingException>(() => Decrypt(service, authMessage, packet));
+        cipher.DidNotReceive().Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Is<byte[]?>(m => m == null));
+    }
+
     [TestCase(true, 0)]
     [TestCase(true, 1)]
     [TestCase(true, 2)]

@@ -10,6 +10,11 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Crypto.Macs;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -238,6 +243,18 @@ public class EciesCipherTests
 
         Assert.That(success, Is.False);
         Assert.That(plainText, Is.Null);
+    }
+
+    [TestCase(0)]
+    [TestCase(31)]
+    [TestCase(32)] // MAC-only body: an empty plaintext, which no RLPx or RANDAO ciphertext produces
+    public void Ies_engine_rejects_body_not_longer_than_the_mac(int bodyLength)
+    {
+        EthereumIesEngine engine = new(new HMac(new Sha256Digest()), new Sha256Digest(),
+            new BufferedBlockCipher(new SicBlockCipher(AesUtilities.CreateEngine())));
+        engine.Init(false, new byte[32], new IesWithCipherParameters([], [], 128, 128), new byte[16]);
+
+        Assert.Throws<InvalidCipherTextException>(() => engine.ProcessBlock(new byte[bodyLength], null));
     }
 
     private static byte[] GetPlainText((bool Success, byte[]? PlainText) result)
