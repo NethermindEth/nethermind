@@ -93,8 +93,9 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                // EIP-8141 exempts frame transactions from EIP-3607, so the pool admits one from a
-                // contract sender; without the same exemption here it could never be built into a block.
+                // EIP-8141 exempts frame transactions from EIP-3607 ("Do not apply the restriction put
+                // in place by EIP-3607 to frame transactions"), so the pool admits one from a contract
+                // sender; without the same exemption here it could never be built into a block.
                 if (!ignoreEip3607 && !currentTx.SupportsFrames && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
