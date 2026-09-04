@@ -83,6 +83,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             IncorporateChildStateGasRefunds(child);
             TGasPolicy.Refund(ref parent.Gas, in child.Gas);
+            TGasPolicy.RepayStateGasSpill(ref parent.Gas);
         }
         else
         {
