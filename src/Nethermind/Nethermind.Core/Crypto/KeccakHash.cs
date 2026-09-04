@@ -84,6 +84,15 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
+    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into the sponge.</summary>
+    /// <returns>What is left of <paramref name="input"/>: fewer than <paramref name="roundSize"/> bytes,
+    /// already XORed into the state.</returns>
+    /// <remarks>Split per target. The guest writes the first block rather than XORing it into a state it
+    /// knows is still all-zero, which drops seventeen loads and seventeen XORs per message; peeling it
+    /// costs a host more in register pressure than the block saves, so the host form is the plain loop.
+    /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial ReadOnlySpan<byte> AbsorbMessage(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
+
     [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
@@ -124,19 +133,7 @@ public sealed partial class KeccakHash
         }
         else if (input.Length >= roundSize)
         {
-            // Process full rounds
-            do
-            {
-                XorVectors(stateBytes, input[..roundSize]);
-                KeccakF(state);
-                input = input[roundSize..];
-            } while (input.Length >= roundSize);
-
-            if (input.Length > 0)
-            {
-                // XOR the remaining input bytes into the state
-                XorVectors(stateBytes, input);
-            }
+            input = AbsorbMessage(state, stateBytes, input, roundSize);
         }
         else
         {

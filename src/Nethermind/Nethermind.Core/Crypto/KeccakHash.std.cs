@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 
@@ -14,6 +15,26 @@ public sealed partial class KeccakHash
 {
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
+
+    /// <inheritdoc cref="KeccakHash.AbsorbMessage" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial ReadOnlySpan<byte> AbsorbMessage(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    {
+        do
+        {
+            XorVectors(stateBytes, input[..roundSize]);
+            KeccakF(state);
+            input = input[roundSize..];
+        } while (input.Length >= roundSize);
+
+        if (input.Length > 0)
+        {
+            // XOR the remaining input bytes into the state
+            XorVectors(stateBytes, input);
+        }
+
+        return input;
+    }
 
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
