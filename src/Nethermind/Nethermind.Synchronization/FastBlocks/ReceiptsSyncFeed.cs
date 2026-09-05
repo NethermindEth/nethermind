@@ -204,12 +204,17 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
+        /// <param name="headerMissing">
+        /// <c>true</c> when the local header store has no header for <paramref name="blockInfo"/>, so the
+        /// rejection says nothing about the peer that sent <paramref name="receipts"/>.
+        /// </param>
+        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts, out bool headerMissing)
         {
-            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
+            headerMissing = header is null;
             if (header is null)
             {
-                if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");
+                if (_logger.IsDebug) _logger.Debug($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
                 preparedReceipts = null;
             }
             else
@@ -254,6 +259,8 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
+            MissedBlocks missingHeaders = new();
+            MissedBlocks missingBlocks = new();
 
             BlockInfo?[] blockInfos = batch.Infos;
             for (int i = 0; i < blockInfos.Length; i++)
@@ -272,15 +279,17 @@ namespace Nethermind.Synchronization.FastBlocks
                         break;
                     }
 
-                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
+                    bool headerMissing = false;
+                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared, out headerMissing);
                     if (isValid)
                     {
-                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash);
+                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
                         if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
+                                missingBlocks.Add(blockInfo.BlockNumber);
+                                if (_logger.IsDebug) _logger.Debug($"Could not find block {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
                             }
 
                             _syncStatusList.MarkPending(blockInfo);
@@ -298,6 +307,11 @@ namespace Nethermind.Synchronization.FastBlocks
                                 _syncStatusList.MarkPending(blockInfo);
                             }
                         }
+                    }
+                    else if (headerMissing)
+                    {
+                        missingHeaders.Add(blockInfo.BlockNumber);
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                     else
                     {
@@ -321,9 +335,35 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
+            // The batch is re-pended and retried, so warn once per batch rather than once per block.
+            if (_logger.IsWarn)
+            {
+                if (missingHeaders.Count > 0) _logger.Warn($"Could not find headers for {missingHeaders}");
+                if (missingBlocks.Count > 0) _logger.Warn($"Could not find {missingBlocks}");
+            }
+
             UpdateSyncReport();
             LogPostProcessingBatchInfo(batch, validResponsesCount);
             return validResponsesCount;
+        }
+
+        /// <summary>Counts the blocks of a batch that were missing locally and names the range they span.</summary>
+        private struct MissedBlocks
+        {
+            private ulong _lowest;
+            private ulong _highest;
+
+            public int Count { get; private set; }
+
+            public void Add(ulong blockNumber)
+            {
+                _lowest = Count == 0 ? blockNumber : Math.Min(_lowest, blockNumber);
+                _highest = Math.Max(_highest, blockNumber);
+                Count++;
+            }
+
+            public override readonly string ToString() =>
+                Count == 1 ? $"block {_lowest}" : $"{Count} blocks in range {_lowest}-{_highest}";
         }
 
         private void LogPostProcessingBatchInfo(ReceiptsSyncBatch batch, int validResponsesCount)
