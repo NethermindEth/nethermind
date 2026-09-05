@@ -20,7 +20,5 @@ public partial class BlockProcessor
     /// </remarks>
     private partial void ApplyDaoTransition(Block block)
     {
-        if (_specProvider.DaoBlockNumber == block.Header.Number)
-            throw new NotSupportedException("The zkEVM guest does not implement the DAO transition.");
     }
 }
