@@ -745,8 +745,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct CodeSizeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static int StackGrowth => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionCodeSize<TGasPolicy, TTracingInst>(ref stack, ref gas);
+            HasCheckedBody ? stack.PushUInt32<TTracingInst, OffFlag>((uint)stack.CodeLength)
+                : EvmInstructions.InstructionCodeSize<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
     private readonly struct CodeCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
@@ -924,14 +934,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct ProgramCounterOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static int StackGrowth => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionProgramCounter<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, programCounter);
+            HasCheckedBody ? stack.PushUInt32<TTracingInst, OffFlag>((uint)(programCounter - 1))
+                : EvmInstructions.InstructionProgramCounter<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, programCounter);
     }
 
     private readonly struct GasOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static int StackGrowth => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(ref stack, ref gas);
+            HasCheckedBody ? stack.PushUInt64<TTracingInst, OffFlag>(TGasPolicy.GetRemainingGas(in gas))
+                : EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
     private readonly struct JumpDestOpcode : IOpcodeBody

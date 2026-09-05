@@ -1565,13 +1565,14 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushUInt32<TTracingInst>(uint value)
+    public EvmExceptionType PushUInt32<TTracingInst, TCheckDepth>(uint value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1591,13 +1592,14 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushUInt64<TTracingInst>(ulong value)
+    public EvmExceptionType PushUInt64<TTracingInst, TCheckDepth>(ulong value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
