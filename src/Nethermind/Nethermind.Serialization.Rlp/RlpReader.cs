@@ -22,16 +22,25 @@ public ref struct RlpReader
     private const int AddressRlpPrefix = Rlp.EmptyByteArrayByte + Address.Size;
 
     private readonly Memory<byte> _memory;
-    private readonly bool _isMemoryBacked;
-    private bool _isNotNull;
+
+    // Packed rather than two bools: constructing a reader is hot, and a 1-byte store is the most
+    // expensive access class on the zkVM, so this pays one where there were two.
+    private Flags _flags;
+
+    [Flags]
+    private enum Flags : byte
+    {
+        None = 0,
+        NotNull = 1,
+        MemoryBacked = 2,
+    }
 
     public RlpReader(scoped in ReadOnlySpan<byte> data)
     {
         Data = data;
         Position = 0;
         _memory = default;
-        _isMemoryBacked = false;
-        _isNotNull = true;
+        _flags = Flags.NotNull;
     }
 
     public RlpReader(byte[]? data) : this((data ?? []).AsSpan())
@@ -43,8 +52,7 @@ public ref struct RlpReader
         Data = data.Span;
         Position = 0;
         _memory = data;
-        _isMemoryBacked = true;
-        _isNotNull = true;
+        _flags = Flags.NotNull | Flags.MemoryBacked;
     }
 
     public RlpReader(CappedArray<byte> data)
@@ -52,17 +60,16 @@ public ref struct RlpReader
         Data = data.AsSpan();
         Position = 0;
         _memory = default;
-        _isMemoryBacked = false;
-        _isNotNull = data.IsNotNull;
+        _flags = data.IsNotNull ? Flags.NotNull : Flags.None;
     }
 
     public ReadOnlySpan<byte> Data { get; }
 
-    public readonly bool IsMemoryBacked => _isMemoryBacked;
+    public readonly bool IsMemoryBacked => (_flags & Flags.MemoryBacked) != 0;
 
-    public readonly bool IsNull => !_isNotNull;
+    public readonly bool IsNull => (_flags & Flags.NotNull) == 0;
 
-    public readonly bool IsNotNull => _isNotNull;
+    public readonly bool IsNotNull => (_flags & Flags.NotNull) != 0;
 
     public int Position { get; set; }
 
@@ -119,7 +126,7 @@ public ref struct RlpReader
 
     public Memory<byte> ReadMemory(int length)
     {
-        if (!_isMemoryBacked)
+        if ((_flags & Flags.MemoryBacked) == 0)
         {
             return Read(length).ToArray();
         }
@@ -398,7 +405,7 @@ public ref struct RlpReader
 
     public Memory<byte> DecodeByteArrayMemory(RlpLimit? limit = null, int size = -1)
     {
-        if (!_isMemoryBacked)
+        if ((_flags & Flags.MemoryBacked) == 0)
         {
             return DecodeByteArray(limit, size);
         }
