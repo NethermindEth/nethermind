@@ -154,6 +154,28 @@ public class EvmStackTests
         for (int i = used; i < 32; i++) Assert.That(word[i], Is.EqualTo(0), $"byte {i} zero-pad tail");
     }
 
+    [Test]
+    public void Truncated_PUSH_reports_the_completed_word([Range(2, 32)] int width, [Values] bool hasData)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        int used = hasData ? width - 1 : 0;
+        byte[] immediate = new byte[used];
+        byte[] expected = new byte[32];
+        for (int i = 0; i < used; i++) expected[32 - width + i] = immediate[i] = (byte)(0xa0 + i);
+        StackPushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+
+        EvmExceptionType result = stack.PushBothPaddedBytes<OnFlag, OnFlag>(ref MemoryMarshal.GetArrayDataReference(immediate), used, width);
+
+        Assert.That(stack.PopUInt256(out UInt256 value), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(value, Is.EqualTo(new UInt256(expected, isBigEndian: true)));
+            Assert.That(tracer.StackItem, Is.EqualTo(expected));
+        }
+    }
+
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]

@@ -1424,15 +1424,12 @@ public ref partial struct EvmStack
         }
         Head = newOffset;
 
-        if (TTracingInst.IsActive)
-            ReportStackPush(ref start, used);
-
         ref byte dst = ref Unsafe.Add(ref _stack, headOffset * WordSize);
 
         // Truncated PUSH32 is just a right-padded partial write, so reuse the tighter helper.
         if (pushSize == WordSize)
         {
-            return PushBytesPartialZeroPadded<OffFlag>(ref dst, ref start, (uint)used);
+            return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref start, (uint)used);
         }
 
         // Zeros on both sides.
@@ -1448,21 +1445,15 @@ public ref partial struct EvmStack
 
         // When no immediate bytes are available (truncated PUSH at end of code), the
         // zero-filled word is already correct.
-        if (used == 0)
+        if (used != 0)
         {
-            return EvmExceptionType.None;
+            // Positions [WordSize - pushSize + used, WordSize) stay zero as the spec requires.
+            CopyUpTo32(ref Unsafe.Add(ref dst, WordSize - pushSize), ref start, (uint)used);
         }
 
-        // Copy `used` bytes to the high end of the `pushSize`-byte tail. Positions
-        // [WordSize - pushSize + used, WordSize) stay zero as the spec requires.
-        dst = ref Unsafe.Add(ref dst, WordSize - pushSize);
-        CopyUpTo32(ref dst, ref start, (uint)used);
+        if (TTracingInst.IsActive) ReportPushWord(ref dst);
         return EvmExceptionType.None;
     }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly void ReportStackPush(ref byte start, int used)
-        => _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref start, used));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CopyUpTo32(ref byte dest, ref byte source, uint len)
