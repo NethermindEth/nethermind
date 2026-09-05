@@ -1673,7 +1673,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, newHead * WordSize);
         // Memory layout: [b @ +0] [a @ +32]
 
         if (Avx2.IsSupported)
@@ -1734,7 +1734,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, newHead * WordSize);
         // Memory layout: [c @ +0] [b @ +32] [a @ +64]
 
         if (Avx2.IsSupported)
@@ -1805,7 +1805,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, newHead * WordSize);
         // Memory layout: [d @ +0] [c @ +32] [b @ +64] [a @ +96]
 
         if (Avx2.IsSupported)
@@ -2093,7 +2093,7 @@ public ref partial struct EvmStack
         Head = newHead;
         ref byte baseRef = ref _stack;
         ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out position);
-        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, (nint)((uint)newHead * WordSize)), WordSize);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, newHead * WordSize), WordSize);
         return true;
     }
 
