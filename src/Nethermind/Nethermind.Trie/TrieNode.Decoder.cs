@@ -343,12 +343,12 @@ namespace Nethermind.Trie
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        RlpReader rlpReader = state.item.RlpReader;
-                        state.item.SeekChild(ref rlpReader, i);
+                        ReadOnlySpan<byte> nodeRlp = state.item.FullRlp.AsSpan();
                         object? data = state.item._nodeData[i];
                         if (data is null)
                         {
-                            state.local += rlpReader.PeekNextRlpLength();
+                            int cursor = state.item.SeekChildPosition(nodeRlp, i);
+                            state.local += RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
                         }
                         else if (ReferenceEquals(data, _nullNode))
                         {
@@ -382,8 +382,8 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 ushort candidateMask = 0;
-                RlpReader rlpReader = item.RlpReader;
-                item.SeekChild(ref rlpReader, 0);
+                ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
+                int cursor = item.SeekChildPosition(nodeRlp, 0);
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
                 BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
                 for (int i = 0; i < BranchesCount; i++)
@@ -391,9 +391,9 @@ namespace Nethermind.Trie
                     object data = branchData[i];
                     if (data is null)
                     {
-                        int length = rlpReader.PeekNextRlpLength();
+                        int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
                         totalLength += length;
-                        rlpReader.SkipBytes(length);
+                        cursor += length;
                     }
                     else
                     {
@@ -432,7 +432,7 @@ namespace Nethermind.Trie
                             path.TruncateOne();
                         }
 
-                        rlpReader.SkipItem();
+                        cursor += RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
                     }
                 }
 
@@ -496,8 +496,8 @@ namespace Nethermind.Trie
 
             private static void WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                RlpReader rlpReader = item.RlpReader;
-                item.SeekChild(ref rlpReader, 0);
+                ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
+                int cursor = item.SeekChildPosition(nodeRlp, 0);
                 int position = 0;
                 // Unchanged children are consecutive bytes of the old RLP, so a run of them is one
                 // copy rather than one per child. Most branches change a single child, so this turns
@@ -511,16 +511,16 @@ namespace Nethermind.Trie
                     object data = branchData[i];
                     if (data is null)
                     {
-                        int length = rlpReader.PeekNextRlpLength();
-                        if (runStart < 0) runStart = rlpReader.Position;
+                        int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
+                        if (runStart < 0) runStart = cursor;
                         runLength += length;
-                        rlpReader.SkipBytes(length);
+                        cursor += length;
                     }
                     else
                     {
                         if (runStart >= 0)
                         {
-                            rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                            nodeRlp.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                             position += runLength;
                             runStart = -1;
                             runLength = 0;
@@ -555,13 +555,13 @@ namespace Nethermind.Trie
                             }
                         }
 
-                        rlpReader.SkipItem();
+                        cursor += RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
                     }
                 }
 
                 if (runStart >= 0)
                 {
-                    rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                    nodeRlp.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                 }
             }
         }
