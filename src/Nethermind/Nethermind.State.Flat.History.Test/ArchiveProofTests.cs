@@ -850,10 +850,16 @@ public class ArchiveProofTests
             foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
         });
 
+        UInt256[] transient = Enumerable.Range(0, 8).Select(static slot => (UInt256)(424242 + slot)).ToArray();
         for (ulong number = Blocks + 2; number <= 300; number++)
         {
             ulong current = number;
-            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[0], (UInt256)(9000 + current));
+                if (current == 250) foreach (UInt256 slot in transient) block.SetStorage(quiet, slot, [0x55]);
+                if (current == 254) foreach (UInt256 slot in transient) block.SetStorage(quiet, slot, []);
+            });
         }
 
         _chain.PublishWatermark();
@@ -870,7 +876,7 @@ public class ArchiveProofTests
             Assert.That(accounts.Any(key => IsEpochTier(key, epoch: 2, CommitmentKeyLayout.CoarseTier) && SuffixOf(key) == carriedWindow), Is.False,
                 "the walk snapshots every account tier at the epoch start, so every account node already has its anchor and a carried copy would only sit dead below it");
             Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 1) && SuffixOf(key) == carriedWindow), Is.False,
-                "the storage snapshot reaches depth 1, so those nodes are anchored too");
+                "the storage snapshot reaches depth 1, so those nodes are anchored too, including the one whose epoch-start row remembers the child that appeared and vanished inside that window");
             Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.True,
                 "depth 2 is below the snapshot, so its rows are exactly what the carry exists for");
         }
