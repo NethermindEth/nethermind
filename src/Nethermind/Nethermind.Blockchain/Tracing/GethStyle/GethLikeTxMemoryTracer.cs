@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -59,12 +58,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             return;
 
         CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
-    }
-
-    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
-    {
-        base.StartOperation(pc, opcode, gas, env);
-        CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
     }
 
     public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)

@@ -267,7 +267,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sstore.OperationName, Is.EqualTo(nameof(Instruction.SSTORE)));
-            Assert.That(sstore.Refund, Is.EqualTo(0));
+            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
             Assert.That(stop.OperationName, Is.EqualTo(nameof(Instruction.STOP)));
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
         }
@@ -321,8 +321,8 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstSstore.Refund, Is.Zero);
-            Assert.That(secondSstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+            Assert.That(firstSstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+            Assert.That(secondSstore.Refund, Is.EqualTo(Eip8038Constants.StorageWrite));
             Assert.That(stop.Refund, Is.EqualTo(Eip8038Constants.StorageWrite));
         }
     }
@@ -395,6 +395,25 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         legacyTracer.StartOperation(0, Instruction.STOP, 25, in environment);
 
         Assert.That(legacyTracer.BuildResult().Entries[0].Refund, Is.EqualTo(destroyRefund));
+    }
+
+    [Test]
+    public void Completed_opcode_refund_is_not_changed_by_transaction_finalization()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        using StateTestTxTracer legacyTracer = new(standardIntrinsicGas: 0, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+        legacyTracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        legacyTracer.StartOperation(0, Instruction.SELFDESTRUCT, 100, in environment);
+        legacyTracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        legacyTracer.ReportOperationRemainingGas(0);
+        legacyTracer.ReportActionEnd(0, default);
+        legacyTracer.ReportRefund(destroyRefund);
+        legacyTracer.ReportOperationRemainingGas(0);
+
+        Assert.That(legacyTracer.BuildResult().Entries.Single().Refund, Is.EqualTo(destroyRefund));
     }
 
     [Test, NonParallelizable]

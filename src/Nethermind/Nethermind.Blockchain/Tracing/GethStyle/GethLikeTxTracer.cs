@@ -123,6 +123,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.Opcode = OpcodeJsonNames.GetName(opcode);
         CurrentTraceEntry.ProgramCounter = pc;
+        CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
         _gasCostAlreadySetForCurrentOp = false;
     }
 
@@ -137,6 +138,8 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
             CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+            // Geth samples after dynamic gas calculation, including this opcode's refund changes.
+            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
         }
     }

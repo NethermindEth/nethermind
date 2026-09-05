@@ -154,7 +154,7 @@ public class GethStyleTracer(
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, (long)spec.GasCosts.DestroyRefund, spec);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -172,7 +172,7 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, (long)spec.GasCosts.DestroyRefund, spec);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;

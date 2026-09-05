@@ -49,12 +49,6 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         SetReceiptGasFallback(in gasSpent);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
-    {
-        base.StartOperation(pc, opcode, gas, env);
-        CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
-    }
-
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);

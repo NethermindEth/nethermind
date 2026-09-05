@@ -104,6 +104,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         {
             _gasAlreadySetForCurrentOp = true;
             _traceEntry.GasCost = _traceEntry.Gas - gas;
+            _traceEntry.Refund = _refundTracker.Refund;
         }
     }
 

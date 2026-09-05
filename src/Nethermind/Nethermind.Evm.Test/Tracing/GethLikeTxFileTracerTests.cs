@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
-public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
+public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
 {
     [Test]
     public void Should_have_expected_file_tracing_flags()
@@ -134,6 +134,27 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
             Assert.That(trace.Failed, Is.True);
             Assert.That(trace.Gas, Is.EqualTo(gasLimit - standardIntrinsicGas));
         }
+    }
+
+    [Test]
+    public void Should_include_storage_refund_on_the_clearing_opcode()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+
+        ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), ClearSstoreCode(), GethTraceOptions.Default);
+
+        Assert.That(entries.Single(e => e.OpcodeRaw == Instruction.SSTORE).Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+    }
+
+    [Test]
+    public void Should_include_self_destruct_refund_once_on_the_final_opcode()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        byte[] code = Prepare.EvmCode.PushData(TestItem.AddressC).Op(Instruction.SELFDESTRUCT).Done;
+
+        ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), code, GethTraceOptions.Default);
+
+        Assert.That(entries.Single(e => e.OpcodeRaw == Instruction.SELFDESTRUCT).Refund, Is.EqualTo(Spec.GasCosts.DestroyRefund));
     }
 
     [Test]

@@ -1369,10 +1369,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartInstructionTrace(Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
-        => StartInstructionTrace(_txTracer, instruction, gasAvailable, programCounter, in stackValue);
-
-    private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
-        => StartInstructionTrace(tracer, instruction, gasAvailable, programCounter, stackValue.Head);
+        => StartInstructionTrace(_txTracer, instruction, gasAvailable, programCounter, stackValue.Head);
 
     private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, int stackHead)
     {

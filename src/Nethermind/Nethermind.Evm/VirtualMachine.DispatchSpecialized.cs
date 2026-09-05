@@ -3,8 +3,8 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Evm.Tracing;
 #if DEBUG
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Debugger;
 #endif
 

@@ -135,7 +135,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingGasCost = 0;
         _pendingDepth = env.GetGethTraceDepth();
         _pendingError = null;
-        // Snapshot the cumulative refund counter before the opcode executes (geth pre-op GetRefund()).
         _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = false;
         _pendingStorageTouched = false;
@@ -149,6 +148,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         if (_gasCostAlreadySet || !_hasPendingOpcode) return;
         _pendingGasCost = _pendingGas - gas;
+        _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = true;
     }
 

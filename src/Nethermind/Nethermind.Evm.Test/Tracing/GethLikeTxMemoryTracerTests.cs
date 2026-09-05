@@ -486,8 +486,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
-            Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
+            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
         }
     }

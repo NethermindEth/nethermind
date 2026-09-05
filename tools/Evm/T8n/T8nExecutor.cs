@@ -68,7 +68,6 @@ public static class T8nExecutor
                 block,
                 test.GethTraceOptions,
                 new RealFileSystem(),
-                (long)test.Spec.GasCosts.DestroyRefund,
                 test.Spec));
         }
 
