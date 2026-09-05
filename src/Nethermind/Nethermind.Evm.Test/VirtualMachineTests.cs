@@ -90,7 +90,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         object[] arguments = [SpecProvider.GenesisSpec];
         object before = getHandlers.Invoke(table, arguments)!;
 
-        refresh.MakeGenericMethod(typeof(OffFlag)).Invoke(table, arguments);
+        refresh.Invoke(table, arguments);
         object after = getHandlers.Invoke(table, arguments)!;
 
         using (Assert.EnterMultipleScope())

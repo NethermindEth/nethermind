@@ -77,7 +77,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // Traced tables are left alone: a tracing run is short, and rebuilding one would cost more than
         // the promoted code it could pick up.
         if (!TTracingInst.IsActive && ShouldRefreshOpcodes())
-            table.RefreshNonTraced<TTracingInst>(spec);
+            table.RefreshNonTraced(spec);
 
         _executionHandlers = table.GetExecutionHandlers(spec);
         _opcodeHandlers = table.GetHandlers<TTracingInst, TCancelable>(spec);
@@ -120,12 +120,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// A captured function pointer keeps pointing at the code it was taken from. Both non-traced tables
         /// share one cadence, so a rebuild has to cover both: which one a given transaction asks for follows
         /// the node's mix of block processing and RPC, and block processing is what the cadence exists for.
+        /// The tracing flag is fixed to off here rather than taken from the caller, so a caller inside a
+        /// traced run cannot fill the non-traced tables with tracing handlers.
         /// </remarks>
-        public void RefreshNonTraced<TTracingInst>(IReleaseSpec spec)
-            where TTracingInst : struct, IFlag
+        public void RefreshNonTraced(IReleaseSpec spec)
         {
-            NoTrace = GenerateOpcodeHandlers<TTracingInst, OffFlag>(spec);
-            NoTraceCancelable = GenerateOpcodeHandlers<TTracingInst, OnFlag>(spec);
+            NoTrace = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+            NoTraceCancelable = GenerateOpcodeHandlers<OffFlag, OnFlag>(spec);
             System.Threading.Volatile.Write(ref _executionHandlers, null);
         }
     }
