@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -698,7 +699,19 @@ public static class TrieUpdater
     {
         int available = key.BitLength - keyOffset;
         int count = Math.Min(prefix.BitCount, available);
+        ReadOnlySpan<byte> prefixBytes = prefix.Bytes;
+        ReadOnlySpan<byte> keyBytes = key.Bytes;
+        int keyBitOffset = keyOffset & 7;
         int index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            int keyByteIndex = (keyOffset + index) >> 3;
+            int keyByte = keyBitOffset == 0
+                ? keyBytes[keyByteIndex]
+                : ((keyBytes[keyByteIndex] << 8) | keyBytes[keyByteIndex + 1]) >> (8 - keyBitOffset);
+            int difference = prefixBytes[index >> 3] ^ (keyByte & 0xFF);
+            if (difference != 0) return index + BitOperations.LeadingZeroCount((uint)difference) - 24;
+        }
         while (index < count && prefix.GetBit(index) == key.GetBit(keyOffset + index)) index++;
         return index;
     }
