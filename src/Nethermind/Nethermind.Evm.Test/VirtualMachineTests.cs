@@ -292,6 +292,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
             (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
             (Instruction.POP, 1, 2),
+            (Instruction.BYTE, 2, 3), (Instruction.CLZ, 1, 5),
+            (Instruction.SHL, 2, 3), (Instruction.SHR, 2, 3), (Instruction.SAR, 2, 3),
             (Instruction.DUP1, 1, 3), (Instruction.DUP2, 2, 3), (Instruction.DUP3, 3, 3), (Instruction.DUP4, 4, 3),
             (Instruction.DUP5, 5, 3), (Instruction.DUP6, 6, 3), (Instruction.DUP7, 7, 3), (Instruction.DUP8, 8, 3),
             (Instruction.DUP9, 9, 3), (Instruction.DUP10, 10, 3), (Instruction.DUP11, 11, 3), (Instruction.DUP12, 12, 3),
@@ -335,6 +337,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         code[pushes * 2] = (byte)opcode;
         ulong gasLimit = GasCostOf.Transaction + (ulong)pushes * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        block.Header.Number = MainnetSpecProvider.OsakaActivation.BlockNumber;
+        block.Header.Timestamp = MainnetSpecProvider.OsakaBlockTimestamp;
         TestAllTracerWithOutput tracer = tracerMode switch
         {
             0 => new NoInstructionTracer(),

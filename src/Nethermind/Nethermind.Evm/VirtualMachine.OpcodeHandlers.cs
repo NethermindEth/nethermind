@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -592,28 +594,64 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct CountLeadingZerosOpcode : IOpcodeBody
     {
+        public static bool HasCheckedBody => true;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.LowGasCost>(ref gas);
+        public static int StackInputs => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionCountLeadingZeros<TGasPolicy>(ref stack, ref gas);
+            EvmInstructions.CountLeadingZerosCore<OffFlag>(ref stack);
     }
 
     private readonly struct ByteOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static int StackInputs => 2;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionByte<TGasPolicy, TTracingInst>(ref stack, ref gas);
+            HasCheckedBody ? EvmInstructions.ByteCore<TTracingInst, OffFlag>(ref stack)
+                : EvmInstructions.InstructionByte<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
     private readonly struct ShiftOpcode<TOpShift, TTracingInst> : IOpcodeBody
         where TOpShift : struct, EvmInstructions.IOpShift
         where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive &&
+                !(Vector128.IsHardwareAccelerated && !Vector256.IsHardwareAccelerated && X86Base.IsSupported);
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpShift>(ref gas);
+        public static int StackInputs => 2;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref stack, ref gas);
+            HasCheckedBody ? EvmInstructions.ShiftCore<TOpShift, TTracingInst, OffFlag>(ref stack)
+                : EvmInstructions.InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref stack, ref gas);
     }
 
     private readonly struct SarOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static int StackInputs => 2;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSar<TGasPolicy, TTracingInst>(ref stack, ref gas);
+            HasCheckedBody ? EvmInstructions.SarCore<TTracingInst, OffFlag>(ref stack)
+                : EvmInstructions.InstructionSar<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
     private readonly struct KeccakOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag

@@ -37,7 +37,7 @@ public class OpcodeChainBenchmarks
     private ITxTracer _tracer = null!;
     private CodeInfo _code = null!;
 
-    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -67,6 +67,8 @@ public class OpcodeChainBenchmarks
             "Arithmetic" => (UInt256)(BodyOpcodeCount / 2 + 1),
             "Predicate" => UInt256.MaxValue,
             "JumpTaken" => UInt256.Zero,
+            "Byte" or "Shift" or "Sar" => UInt256.Zero,
+            "Clz" => (UInt256)248,
             _ => UInt256.One
         };
         if (_vm.OpCodeCount != ExecutedOpcodeCount || !output.Span.SequenceEqual(expected.ToBigEndian()))
@@ -126,6 +128,12 @@ public class OpcodeChainBenchmarks
                 "Bitwise" => ([(byte)Instruction.DUP1, (byte)Instruction.AND], 2),
                 "Predicate" => ([(byte)Instruction.ISZERO, (byte)Instruction.NOT], 2),
                 "Stack" => ([(byte)Instruction.DUP1, (byte)Instruction.SWAP1, (byte)Instruction.POP], 3),
+                "Byte" => ([(byte)Instruction.PUSH1, 0, (byte)Instruction.BYTE], 2),
+                "Shift" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.SHL], 2),
+                "Sar" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.SAR], 2),
+                "Clz" => ([(byte)Instruction.CLZ], 1),
+                "Environment" => ([(byte)Instruction.PC, (byte)Instruction.POP,
+                    (byte)Instruction.GAS, (byte)Instruction.POP, (byte)Instruction.CODESIZE, (byte)Instruction.POP], 6),
                 _ => throw new ArgumentOutOfRangeException(nameof(Chain))
             };
             for (int i = 0; i < BodyOpcodeCount / body.Opcodes; i++) code.AddRange(body.Sequence);
