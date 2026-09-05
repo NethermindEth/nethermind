@@ -44,7 +44,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _block = block ?? throw new ArgumentNullException(nameof(block));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _spec = spec;
+        _spec = spec ?? throw new ArgumentNullException(nameof(spec));
 
         string hash = _block.Hash.Bytes[..4].ToHexString(true);
 

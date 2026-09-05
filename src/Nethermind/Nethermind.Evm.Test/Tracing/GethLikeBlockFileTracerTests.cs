@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Core.Extensions;
@@ -20,6 +21,15 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Requires_active_specification()
+    {
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            new GethLikeBlockFileTracer(Build.A.Block.TestObject, GethTraceOptions.Default, new MockFileSystem(), null!))!;
+
+        Assert.That(exception.ParamName, Is.EqualTo("spec"));
+    }
+
     [Test]
     public void Should_have_file_names_matching_block_and_transactions()
     {

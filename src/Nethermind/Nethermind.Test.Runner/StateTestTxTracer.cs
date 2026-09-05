@@ -268,5 +268,4 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new NotImplementedException();
 
     public void Dispose() { }
-
 }
