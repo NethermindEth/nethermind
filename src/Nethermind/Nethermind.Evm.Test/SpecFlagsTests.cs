@@ -30,7 +30,7 @@ public class SpecFlagsTests
     private const string Floor = nameof(Osaka);
 
     /// <summary>Newest fork the guest serves, or null to serve every fork descended from the floor.</summary>
-    private static readonly string? Max = nameof(BPO2);
+    private static readonly string? Max = nameof(Amsterdam);
 
     /// <summary>Each rule the opcode table branches on, and how it reads from a spec.</summary>
     private static readonly (string Rule, Func<IReleaseSpec, bool> Read)[] Rules =
