@@ -60,15 +60,16 @@ public static partial class EvmInstructions
         // Deduct gas cost specific to the shift operation.
         if (!TGasPolicy.UpdateGas<TOpShift>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return ShiftCore<TOpShift, TTracingInst>(ref stack);
+        return ShiftCore<TOpShift, TTracingInst, OnFlag>(ref stack);
     }
 
     /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst>(ref EvmStack stack)
+    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         // On x86 without a 256-bit register the JIT lowers the paired pop/push better than in-place
         // conversion. ARM64 is the other way round for every shift: it reverses a word in vector
@@ -94,10 +95,10 @@ public static partial class EvmInstructions
         if ((!Vector128.IsHardwareAccelerated || !X86Base.IsSupported) &&
             (typeof(TOpShift) == typeof(OpShl) || typeof(TOpShift) == typeof(OpShr)))
         {
-            return ShiftScalar<TOpShift, TTracingInst>(ref stack);
+            return ShiftScalar<TOpShift, TTracingInst, TCheckDepth>(ref stack);
         }
 
-        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
@@ -120,11 +121,12 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType ShiftScalar<TOpShift, TTracingInst>(ref EvmStack stack)
+    private static EvmExceptionType ShiftScalar<TOpShift, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
@@ -201,35 +203,55 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
+        return SarCore<TTracingInst, OnFlag>(ref stack);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType SarCore<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
+    {
         if (X86Base.IsSupported)
         {
-            if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
-
-            if (!shift.IsUint64 || shift.u0 >= 256)
+            UInt256 shift, value;
+            scoped ref byte slot = ref NullRef<byte>();
+            if (TCheckDepth.IsActive)
             {
-                if (As<UInt256, Int256>(ref value).Sign < 0)
-                    return stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
-
-                if (TTracingInst.IsActive)
-                    return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
-
-                return stack.PushZero<TTracingInst, OnFlag>();
+                if (!stack.PopUInt256(out shift, out value)) goto StackUnderflow;
+            }
+            else
+            {
+                slot = ref stack.Pop1Peek32BytesUnchecked(out shift);
+                EvmStack.ReadUInt256FromSlot(ref slot, out value);
             }
 
-            As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
-            return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref shifted));
+            UInt256 result;
+            if (!shift.IsUint64 || shift.u0 >= 256)
+                result = As<UInt256, Int256>(ref value).Sign < 0 ? UInt256.MaxValue : UInt256.Zero;
+            else
+            {
+                As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
+                result = As<Int256, UInt256>(ref shifted);
+            }
+
+            if (TCheckDepth.IsActive) return stack.PushUInt256<TTracingInst>(in result);
+            EvmStack.WriteUInt256ToSlot(ref slot, in result);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
+            return EvmExceptionType.None;
         }
 
-        return SarScalar<TTracingInst>(ref stack);
+        return SarScalar<TTracingInst, TCheckDepth>(ref stack);
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType SarScalar<TTracingInst>(ref EvmStack stack)
+    private static EvmExceptionType SarScalar<TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);

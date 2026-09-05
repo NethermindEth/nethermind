@@ -147,7 +147,15 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<LowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!stack.EnsureDepth(1))
+        return CountLeadingZerosCore<OnFlag>(ref stack);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType CountLeadingZerosCore<TCheckDepth>(ref EvmStack stack)
+        where TCheckDepth : struct, IFlag
+    {
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(1))
             return EvmExceptionType.StackUnderflow;
 
         ref byte slot = ref stack.PeekBytesByRefUnchecked();
@@ -169,7 +177,16 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        return ByteCore<TTracingInst, OnFlag>(ref stack);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType ByteCore<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
+    {
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong result = ref As<byte, ulong>(ref topRef);
