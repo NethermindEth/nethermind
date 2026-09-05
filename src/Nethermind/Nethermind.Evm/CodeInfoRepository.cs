@@ -64,6 +64,8 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             _worldState.AddAccountRead(codeSource);
             _worldState.RecordAccountAccess(codeSource);
+            // TESTING: call-frequency instrumentation, testing branch only - never merge to master.
+            Core.Precompiles.PrecompileLookupCounters.CodeInfoLookups.Increment();
 #if ZK_EVM
             return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
 #else

@@ -158,7 +158,7 @@ public sealed class PrecompileCaches : IDisposable
     /// <summary> Samples buffered before the rows go out in a single write. </summary>
     private const int FlushEverySamples = 128;
 
-    private const int SampleFields = 7;
+    private const int SampleFields = 11;
 
     // Sampling state is touched only from the block-processing thread, which runs ClearBlockCache inline
     // and serialized per block (BranchProcessor.QueueClearCaches), so it needs no synchronisation.
@@ -170,6 +170,10 @@ public sealed class PrecompileCaches : IDisposable
     private long _prevRefused;
     private long _prevSurvivingHits;
     private long _prevMisses;
+    private long _prevIsPrecompileCalls;
+    private long _prevIsPrecompileHits;
+    private long _prevCodeInfoLookups;
+    private long _prevCachedCodeInfoLookups;
 
     /// <summary> Indexed view of <see cref="_partitions"/>, so the per-block loop skips the frozen-dictionary enumerator. </summary>
     private KeyValuePair<AddressAsKey, Partition>[] PartitionList
@@ -236,9 +240,22 @@ public sealed class PrecompileCaches : IDisposable
         _samples[slot + 5] = survivingHits - _prevSurvivingHits;
         _samples[slot + 6] = misses - _prevMisses;
 
+        long isPrecompileCalls = Core.Precompiles.PrecompileLookupCounters.IsPrecompileCalls.Sum;
+        long isPrecompileHits = Core.Precompiles.PrecompileLookupCounters.IsPrecompileHits.Sum;
+        long codeInfoLookups = Core.Precompiles.PrecompileLookupCounters.CodeInfoLookups.Sum;
+        long cachedCodeInfoLookups = Core.Precompiles.PrecompileLookupCounters.CachedCodeInfoLookups.Sum;
+        _samples[slot + 7] = isPrecompileCalls - _prevIsPrecompileCalls;
+        _samples[slot + 8] = isPrecompileHits - _prevIsPrecompileHits;
+        _samples[slot + 9] = codeInfoLookups - _prevCodeInfoLookups;
+        _samples[slot + 10] = cachedCodeInfoLookups - _prevCachedCodeInfoLookups;
+
         _prevRefused = refused;
         _prevSurvivingHits = survivingHits;
         _prevMisses = misses;
+        _prevIsPrecompileCalls = isPrecompileCalls;
+        _prevIsPrecompileHits = isPrecompileHits;
+        _prevCodeInfoLookups = codeInfoLookups;
+        _prevCachedCodeInfoLookups = cachedCodeInfoLookups;
 
         if (++_sampled % FlushEverySamples == 0) FlushSamples(FlushEverySamples);
     }
@@ -264,10 +281,18 @@ public sealed class PrecompileCaches : IDisposable
                 .Append(" ref=").Append(_samples[slot + 4])
                 .Append(" hs=").Append(_samples[slot + 5])
                 .Append(" ms=").Append(_samples[slot + 6])
+                .Append(" isP=").Append(_samples[slot + 7])
+                .Append(" isPhit=").Append(_samples[slot + 8])
+                .Append(" ci=").Append(_samples[slot + 9])
+                .Append(" cci=").Append(_samples[slot + 10])
                 .Append('\n');
         }
 
-        sb.Append("PCACHE-TOTALS samples=").Append(_sampled).Append(" survEntries=").Append(_survivingCache.Count);
+        sb.Append("PCACHE-TOTALS samples=").Append(_sampled).Append(" survEntries=").Append(_survivingCache.Count)
+            .Append(" isP=").Append(Core.Precompiles.PrecompileLookupCounters.IsPrecompileCalls.Sum)
+            .Append(" isPhit=").Append(Core.Precompiles.PrecompileLookupCounters.IsPrecompileHits.Sum)
+            .Append(" ci=").Append(Core.Precompiles.PrecompileLookupCounters.CodeInfoLookups.Sum)
+            .Append(" cci=").Append(Core.Precompiles.PrecompileLookupCounters.CachedCodeInfoLookups.Sum);
         foreach (KeyValuePair<AddressAsKey, Partition> partition in partitions)
         {
             sb.Append("\nPCACHE-PART ").Append(partition.Key.Value)

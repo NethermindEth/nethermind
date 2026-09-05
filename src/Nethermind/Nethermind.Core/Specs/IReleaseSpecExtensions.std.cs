@@ -35,7 +35,13 @@ public static partial class IReleaseSpecExtensions
         /// address shape alone and only a low address pays the set probe. Assumes every precompile lives at a low
         /// address, as <see cref="Address.PrecompileIndexOrNegative"/> requires.
         /// </remarks>
-        public bool IsPrecompile(Address address) =>
-            address.PrecompileIndexOrNegative() >= 0 && spec.Precompiles.Contains(address);
+        public bool IsPrecompile(Address address)
+        {
+            // TESTING: call-frequency instrumentation, testing branch only - never merge to master.
+            Precompiles.PrecompileLookupCounters.IsPrecompileCalls.Increment();
+            bool isPrecompile = address.PrecompileIndexOrNegative() >= 0 && spec.Precompiles.Contains(address);
+            if (isPrecompile) Precompiles.PrecompileLookupCounters.IsPrecompileHits.Increment();
+            return isPrecompile;
+        }
     }
 }

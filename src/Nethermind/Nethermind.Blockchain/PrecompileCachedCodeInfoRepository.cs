@@ -34,6 +34,8 @@ public class PrecompileCachedCodeInfoRepository(
         {
             // EIP-7928: mirror base CodeInfoRepository.GetCachedCodeInfo precompile path so the read lands in the BAL.
             worldState.AddAccountRead(codeSource);
+            // TESTING: call-frequency instrumentation, testing branch only - never merge to master.
+            Core.Precompiles.PrecompileLookupCounters.CachedCodeInfoLookups.Increment();
             delegationAddress = null;
             return cachedCodeInfo;
         }
