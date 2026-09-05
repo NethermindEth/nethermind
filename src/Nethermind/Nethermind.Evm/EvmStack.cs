@@ -1875,7 +1875,7 @@ public ref partial struct EvmStack
     /// </summary>
     /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly ref byte PeekBytesByRefUnchecked()
+    internal readonly ref byte PeekBytesByRefUnchecked()
     {
         Debug.Assert(Head >= 1, "Caller must establish the depth before peeking unchecked");
         return ref Unsafe.Add(ref _stack, (nint)(((nuint)Head - 1) * WordSize));
