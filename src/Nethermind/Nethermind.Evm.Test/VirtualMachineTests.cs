@@ -292,6 +292,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
             (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
             (Instruction.POP, 1, 2),
+            (Instruction.DUP1, 1, 3), (Instruction.DUP2, 2, 3), (Instruction.DUP3, 3, 3), (Instruction.DUP4, 4, 3),
+            (Instruction.DUP5, 5, 3), (Instruction.DUP6, 6, 3), (Instruction.DUP7, 7, 3), (Instruction.DUP8, 8, 3),
+            (Instruction.DUP9, 9, 3), (Instruction.DUP10, 10, 3), (Instruction.DUP11, 11, 3), (Instruction.DUP12, 12, 3),
+            (Instruction.DUP13, 13, 3), (Instruction.DUP14, 14, 3), (Instruction.DUP15, 15, 3), (Instruction.DUP16, 16, 3),
             (Instruction.AND, 2, 3), (Instruction.OR, 2, 3), (Instruction.XOR, 2, 3),
             (Instruction.SWAP1, 2, 3), (Instruction.SWAP2, 3, 3), (Instruction.SWAP3, 4, 3), (Instruction.SWAP4, 5, 3),
             (Instruction.SWAP5, 6, 3), (Instruction.SWAP6, 7, 3), (Instruction.SWAP7, 8, 3), (Instruction.SWAP8, 9, 3),
@@ -348,6 +352,49 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(tracer.StatusCode, Is.EqualTo(expectedError is null ? StatusCode.Success : StatusCode.Failure));
             Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
             Assert.That(Machine.OpCodeCount, Is.EqualTo(pushes + 1 + (appendStop && expectedError is null ? 1 : 0)));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> StackGrowthCases()
+    {
+        for (Instruction opcode = Instruction.DUP1; opcode <= Instruction.DUP16; opcode++)
+        {
+            foreach (int depth in new[] { 1023, 1024 })
+            foreach (bool sufficientGas in new[] { false, true })
+            foreach (int tracerMode in new[] { 0, 1, 2 })
+                yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode);
+        }
+    }
+
+    [TestCaseSource(nameof(StackGrowthCases))]
+    public void Stack_growth_preserves_limit_and_gas_precedence(Instruction opcode, int depth, bool sufficientGas, int tracerMode)
+    {
+        byte[] code = new byte[depth * 2 + 1];
+        for (int i = 0; i < depth; i++)
+        {
+            code[i * 2] = (byte)Instruction.PUSH1;
+            code[i * 2 + 1] = 1;
+        }
+        code[depth * 2] = (byte)opcode;
+        ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + GasCostOf.VeryLow - (sufficientGas ? 0UL : 1UL);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        TestAllTracerWithOutput tracer = tracerMode switch
+        {
+            0 => new NoInstructionTracer(),
+            1 => new TestAllTracerWithOutput(),
+            _ => new CountingCancellationTracer()
+        };
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        string expectedError = !sufficientGas ? nameof(EvmExceptionType.OutOfGas)
+            : depth == 1024 ? nameof(EvmExceptionType.StackOverflow) : null;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(expectedError));
+            Assert.That(tracer.StatusCode, Is.EqualTo(expectedError is null ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(depth + 1));
         }
     }
 

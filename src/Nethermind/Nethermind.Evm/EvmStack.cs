@@ -2217,13 +2217,15 @@ public ref partial struct EvmStack
         return true;
     }
 
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must verify <paramref name="depth"/> items and room for one more.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Dup<TTracingInst>(int depth)
+    public EvmExceptionType Dup<TTracingInst, TCheckDepth>(int depth)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint head = Head;
-        if (head < depth)
+        if (TCheckDepth.IsActive && head < depth)
         {
             return EvmExceptionType.StackUnderflow;
         }
@@ -2236,7 +2238,8 @@ public ref partial struct EvmStack
         ref byte to = ref Unsafe.Add(ref bytes, headOffset);
         ref byte from = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
 
-        if (++head >= MaxStackSize)
+        head++;
+        if (TCheckDepth.IsActive && head >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }

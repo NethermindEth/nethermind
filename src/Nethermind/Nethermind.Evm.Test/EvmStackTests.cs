@@ -96,7 +96,7 @@ public class EvmStackTests
 
         EvmExceptionType result = op switch
         {
-            Dup => stack.Dup<OffFlag>(2),            // need >= 2 elements
+            Dup => stack.Dup<OffFlag, OnFlag>(2),            // need >= 2 elements
             Swap => stack.Swap<OffFlag, OnFlag>(2),          // swap top with 2nd, need >= 2
             Exchange => stack.Exchange<OffFlag>(1, 2), // need depth >= 2
             _ => throw new System.ArgumentOutOfRangeException(nameof(op), op, null),
@@ -326,7 +326,7 @@ public class EvmStackTests
         PushUInt64 => stack.PushUInt64<OffFlag>(0xdeadbeefcafebabeUL),
         PushUInt256 => PushUInt256Value(ref stack),
         PushBytes => stack.PushBytes<OffFlag>(new byte[32]),
-        Dup => stack.Dup<OffFlag>(1),
+        Dup => stack.Dup<OffFlag, OnFlag>(1),
         _ => throw new System.ArgumentOutOfRangeException(nameof(op), op, null),
     };
 

@@ -148,10 +148,10 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(1, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.Dup<OffFlag>(1);
-            stack.Dup<OffFlag>(1);
-            stack.Dup<OffFlag>(1);
-            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag, OnFlag>(1);
+            stack.Dup<OffFlag, OnFlag>(1);
+            stack.Dup<OffFlag, OnFlag>(1);
+            stack.Dup<OffFlag, OnFlag>(1);
         }
     }
 }
