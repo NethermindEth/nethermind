@@ -55,14 +55,21 @@ internal sealed class CommitmentStore
         batch.PutSpan(rowKey[..keyLength], value);
     }
 
-    public bool HasRow(ulong epoch, scoped ReadOnlySpan<byte> prefix, ulong suffix)
+    public bool HasRow(ulong epoch, scoped ReadOnlySpan<byte> prefix, ulong suffix) => HasRow(epoch, prefix, suffix, static _ => true);
+
+    public bool HasRow(ulong epoch, scoped ReadOnlySpan<byte> prefix, ulong suffix, Func<ReadOnlySpan<byte>, bool> accept)
     {
         Span<byte> rowKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int keyLength = CommitmentKeyLayout.WriteRowKey(rowKey, epoch, TierOf(prefix), prefix, suffix);
         Span<byte> value = _column.GetSpan(rowKey[..keyLength]);
-        bool present = value.Length > 0;
-        _column.DangerousReleaseMemory(value);
-        return present;
+        try
+        {
+            return value.Length > 0 && accept(value);
+        }
+        finally
+        {
+            _column.DangerousReleaseMemory(value);
+        }
     }
 
     public byte[]? TryGetExact(scoped ReadOnlySpan<byte> prefix, ulong suffix)

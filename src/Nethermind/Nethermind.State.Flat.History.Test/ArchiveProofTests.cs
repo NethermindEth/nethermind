@@ -833,7 +833,7 @@ public class ArchiveProofTests
                 AccountProof expected = _chain.ExpectedProof(quiet, block, slots[..4]);
                 AccountProof actual = ProveFromArchive(quiet, block, maxScannedRows: 192, slots[..4]);
                 Assert.That(actual.StorageProofs!.Select(static proof => proof.Proof), Is.EqualTo(expected.StorageProofs!.Select(static proof => proof.Proof)),
-                    $"at block {block}: a later row inside the retained epoch is a delta over the dropped one, so the carry must still write the anchor at the epoch's first block, or heights before and after the move both fall to a rebuild");
+                    $"at block {block}: a later row inside the retained epoch is a delta over the dropped one, so the anchor must still be carried into the retained epoch below every row it holds, or heights before and after the move both fall to a rebuild");
             }
         }
     }

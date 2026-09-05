@@ -139,7 +139,8 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, byte tier, CancellationToken token, bool yieldBetweenChunks)
     {
-        ulong target = (tier == CommitmentKeyLayout.FineTier ? policy.EpochStart(epoch + 1) : policy.WindowAtOrBelow(policy.EpochStart(epoch + 1))) - 1;
+        ulong first = tier == CommitmentKeyLayout.FineTier ? policy.EpochStart(epoch + 1) : policy.WindowAtOrBelow(policy.EpochStart(epoch + 1));
+        ulong target = first - 1;
         Span<byte> cursor = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];
         Span<byte> upper = stackalloc byte[CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength];
         int cursorLength = CommitmentKeyLayout.WriteEpochTier(cursor, epoch, tier);
@@ -189,7 +190,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 }
 
                 ReadOnlySpan<byte> node = prefix.AsSpan(0, prefixLength);
-                if (!store.HasRow(epoch + 1, node, target))
+                if (!store.HasRow(epoch + 1, node, target) && !store.HasRow(epoch + 1, node, first, IsAnchor))
                 {
                     int carriedLength = Compose(store, node, epoch, newest.AsSpan(0, newestLength), vector, carried);
                     if (carriedLength == 0)
@@ -237,6 +238,9 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         if (abandonedNodes > 0 && _logger.IsWarn) _logger.Warn(
             $"Archive proof commitment epoch {epoch}, {column}, tier {tier}: {abandonedNodes} nodes could not be carried into epoch {epoch + 1} because their newest row was not a valid row or its chain did not reach a full vector inside the epoch. Proofs crossing those nodes at heights in the retained epochs will rebuild from history rows, and may be refused by FlatDb.ArchiveProofMaxScannedRows. {carriedNodes} nodes were carried.");
     }
+
+    private static bool IsAnchor(ReadOnlySpan<byte> row) =>
+        ParentRowCodec.IsEmptyRow(row) || ParentRowCodec.IsWholeNodeRow(row) || (ParentRowCodec.IsBranchRow(row) && ParentRowCodec.Changed(row) == ParentRowCodec.Presence(row));
 
     private static int Compose(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong epoch, ReadOnlySpan<byte> newest, ChildVector vector, Span<byte> destination)
     {
