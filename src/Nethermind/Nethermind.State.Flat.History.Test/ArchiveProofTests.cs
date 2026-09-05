@@ -800,6 +800,45 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_node_that_moves_once_inside_the_retained_epoch_still_gets_its_anchor_carried()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
+        });
+
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[0], (UInt256)(9000 + current));
+                if (current == 270) block.SetStorage(quiet, slots[0], [0x33, 0x44]);
+            });
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (ulong block in (ulong[])[260, 300])
+            {
+                AccountProof expected = _chain.ExpectedProof(quiet, block, slots[..4]);
+                AccountProof actual = ProveFromArchive(quiet, block, maxScannedRows: 192, slots[..4]);
+                Assert.That(actual.StorageProofs!.Select(static proof => proof.Proof), Is.EqualTo(expected.StorageProofs!.Select(static proof => proof.Proof)),
+                    $"at block {block}: a later row inside the retained epoch is a delta over the dropped one, so the carry must still write the anchor at the epoch's first block, or heights before and after the move both fall to a rebuild");
+            }
+        }
+    }
+
+    [Test]
     public void Proofs_keep_resolving_while_a_moved_floor_waits_for_its_reclaim()
     {
         _policy = EpochPolicy;

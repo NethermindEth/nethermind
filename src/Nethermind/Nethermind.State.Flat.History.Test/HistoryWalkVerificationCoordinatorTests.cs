@@ -30,6 +30,8 @@ public class HistoryWalkVerificationCoordinatorTests
     [TearDown]
     public void TearDown()
     {
+        foreach (CommitmentReclaimer reclaimer in _reclaimers) reclaimer.Dispose();
+        _reclaimers.Clear();
         _db.Dispose();
         _historyColumns.Dispose();
     }
@@ -47,10 +49,14 @@ public class HistoryWalkVerificationCoordinatorTests
         return (availability, HistoryRowFormat.Resolve(availability, config));
     }
 
+    private readonly List<CommitmentReclaimer> _reclaimers = [];
+
     private ArchiveProofRetrofit CreateRetrofit(CommitmentMetadata metadata, FlatDbConfig config, HistoryRowFormat rowFormat)
     {
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        return new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, new CommitmentReclaimer(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, LimboLogs.Instance), LimboLogs.Instance);
+        CommitmentReclaimer reclaimer = new(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, LimboLogs.Instance);
+        _reclaimers.Add(reclaimer);
+        return new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, reclaimer, LimboLogs.Instance);
     }
 
     private HistoryWalkVerificationCoordinator CreateCoordinator(FlatDbConfig config, FakeHeaders headers)

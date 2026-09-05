@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -45,13 +46,24 @@ public class ForwardCommitmentCaptureTests
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         _metadata = new CommitmentMetadata(_historyColumns, Policy);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, settings, new CommitmentReclaimer(_historyColumns, Policy, _metadata, settings, LimboLogs.Instance), LimboLogs.Instance);
+        ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
+    }
+
+    private readonly List<CommitmentReclaimer> _reclaimers = [];
+
+    private CommitmentReclaimer CreateReclaimer(ArchiveProofSettings settings)
+    {
+        CommitmentReclaimer reclaimer = new(_historyColumns, Policy, _metadata, settings, LimboLogs.Instance);
+        _reclaimers.Add(reclaimer);
+        return reclaimer;
     }
 
     [TearDown]
     public void TearDown()
     {
+        foreach (CommitmentReclaimer reclaimer in _reclaimers) reclaimer.Dispose();
+        _reclaimers.Clear();
         _tier.Dispose();
         _db.Dispose();
         _historyColumns.Dispose();
@@ -198,7 +210,7 @@ public class ForwardCommitmentCaptureTests
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
         ForwardCommitmentCapture bounded = new(
-            _historyColumns, Policy, _metadata, settings, new CommitmentReclaimer(_historyColumns, Policy, _metadata, settings, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes);
+            _historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes);
         return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
     }
 

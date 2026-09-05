@@ -15,6 +15,7 @@ public sealed class CommitmentEmitter : IDisposable
 {
     public const int DefaultMaxOpenWindowNodes = 200_000;
     public const int WalkMaxOpenWindowNodes = 50_000;
+    public const int StorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
     private const int EmptyRecord = -1;
@@ -67,9 +68,6 @@ public sealed class CommitmentEmitter : IDisposable
     public int AccountRecordDepth => _policy.AccountCheckpointDepth + 1;
 
     public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
-
-    public const int StorageSnapshotDepth = 1;
-
 
     public void BeginBlock(ulong block)
     {
