@@ -20,8 +20,10 @@ namespace Nethermind.Core.Extensions
         private const ulong AesHashFinalSeed0 = 0x3C6EF372FE94F82BUL;
         private const ulong AesHashFinalSeed1 = 0xA54FF53A5F1D36F1UL;
 
-        // Guest execution requires stable hashes across runs.
-        public static readonly uint InstanceRandom = 2098026241U;
+        // Assigned by SeedHashes, never initialised inline: a static initializer anywhere in this type
+        // gives it a class constructor, and then every mixer call pays a class-initialisation check, a
+        // fence and a two-level static load. The consts below carry no storage and cost nothing.
+        public static uint InstanceRandom;
 
         // Distinct odd multipliers so a lane's contribution depends on its position: a plain XOR fold
         // would collide for inputs that differ only by swapping two lanes.
@@ -57,11 +59,20 @@ namespace Nethermind.Core.Extensions
         // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
         // constant with a five-instruction sequence at every use, and an array element - unlike a
         // static readonly primitive - cannot be folded back into one.
-        private static readonly ulong[] AddrLanes =
-            [SeededLane(Lane0, Address.Size), SeededLane(Lane1, Address.Size), SeededLane(Lane2, Address.Size)];
+        // Nullable rather than initialised: any initializer here, even `null!`, gives the type a class
+        // constructor. Null until SeedHashes runs, which StatelessExecutor does before it decodes.
+        private static ulong[]? AddrLanes;
 
-        private static readonly ulong[] WordLanes =
-            [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
+        private static ulong[]? WordLanes;
+
+        /// <inheritdoc cref="SpanExtensions.SeedHashes" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static partial void SeedHashes(uint instanceRandom)
+        {
+            InstanceRandom = instanceRandom;
+            AddrLanes = [SeededLane(Lane0, Address.Size), SeededLane(Lane1, Address.Size), SeededLane(Lane2, Address.Size)];
+            WordLanes = [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
@@ -88,7 +99,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixAddress(ref byte b)
         {
-            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes);
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes!);
             return Finish(
                 Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
@@ -104,7 +115,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Mix32(ref byte b)
         {
-            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes);
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes!);
             return Finish(
                 Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
