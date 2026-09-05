@@ -12,14 +12,14 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 [Parallelizable(ParallelScope.Self)]
-public class CallDataLoadTests : VirtualMachineTestsBase
+[TestFixture(false)]
+[TestFixture(true)]
+public class CallDataLoadTests(bool tracing) : VirtualMachineTestsBase
 {
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
-    // Forces the OffFlag specialization of InstructionCallDataLoad; the default tracer
-    // has IsTracingInstructions = true which picks the OnFlag path.
-    protected override TestAllTracerWithOutput CreateTracer() => new NoInstructionTracer();
+    protected override TestAllTracerWithOutput CreateTracer() => tracing ? new TestAllTracerWithOutput() : new NoInstructionTracer();
 
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
     {
@@ -70,6 +70,12 @@ public class CallDataLoadTests : VirtualMachineTestsBase
 
     public static IEnumerable<TestCaseData> CallDataLoadCases()
     {
+        for (int available = 1; available < 32; available++)
+            yield return new TestCaseData(ThirtyTwoSequential, (UInt256)(32 - available),
+                RightPadded(ThirtyTwoSequential.AsSpan(32 - available))).SetName($"partial_{available}_bytes");
+        yield return new TestCaseData(ThirtyTwoSequential, UInt256.MaxValue, new byte[32]);
+        yield return new TestCaseData(ThirtyTwoSequential, new UInt256(0UL, 0UL, 1UL, 0UL), new byte[32]);
+        yield return new TestCaseData(ThirtyTwoSequential, new UInt256(0UL, 0UL, 0UL, 1UL), new byte[32]);
         yield return new TestCaseData(ThirtyTwoSequential, (UInt256)0, ThirtyTwoSequential)
             .SetName("offset_zero_full_32_bytes");
 

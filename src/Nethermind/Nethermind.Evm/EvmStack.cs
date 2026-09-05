@@ -227,6 +227,14 @@ public ref partial struct EvmStack
 
         ref byte dst = ref Unsafe.Add(ref _stack, headOffset * WordSize);
 
+        return WriteRightPaddedBytes<TTracingInst>(ref dst, ref src, length);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType WriteRightPaddedBytes<TTracingInst>(ref byte dst, ref byte src, uint length)
+        where TTracingInst : struct, IFlag
+    {
         if (length != WordSize)
         {
             return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref src, length);
@@ -390,7 +398,7 @@ public ref partial struct EvmStack
     /// <param name="position">The decoded position.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
+    internal static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
     {
         ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
         ulong unreachable = limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2);

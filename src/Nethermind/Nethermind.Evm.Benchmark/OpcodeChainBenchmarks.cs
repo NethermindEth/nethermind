@@ -36,8 +36,9 @@ public class OpcodeChainBenchmarks
     private IVirtualMachine _vm = null!;
     private ITxTracer _tracer = null!;
     private CodeInfo _code = null!;
+    private byte[] _input = new byte[96];
 
-    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "CallData", "CallDataPartial", "CallDataMissing", "Context", "Memory", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -87,7 +88,7 @@ public class OpcodeChainBenchmarks
     {
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             executingAccount: Address.Zero, codeSource: Address.Zero, caller: Address.Zero,
-            codeInfo: _code, callDepth: 0, value: 0, inputData: default);
+            codeInfo: _code, callDepth: 0, value: 0, inputData: _input);
         using VmState<EthereumGasPolicy> state = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, environment,
             new StackAccessTracker(), _state.TakeSnapshot());
@@ -134,6 +135,13 @@ public class OpcodeChainBenchmarks
                 "Clz" => ([(byte)Instruction.CLZ], 1),
                 "Environment" => ([(byte)Instruction.PC, (byte)Instruction.POP,
                     (byte)Instruction.GAS, (byte)Instruction.POP, (byte)Instruction.CODESIZE, (byte)Instruction.POP], 6),
+                "CallData" or "CallDataPartial" or "CallDataMissing" => ([(byte)Instruction.PUSH1,
+                    Chain == "CallData" ? (byte)4 : Chain == "CallDataPartial" ? (byte)80 : (byte)96,
+                    (byte)Instruction.CALLDATALOAD, (byte)Instruction.POP], 3),
+                "Context" => ([(byte)Instruction.CALLER, (byte)Instruction.POP,
+                    (byte)Instruction.CALLDATASIZE, (byte)Instruction.POP, (byte)Instruction.TIMESTAMP, (byte)Instruction.POP], 6),
+                "Memory" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE,
+                    (byte)Instruction.PUSH0, (byte)Instruction.MLOAD, (byte)Instruction.POP], 6),
                 _ => throw new ArgumentOutOfRangeException(nameof(Chain))
             };
             for (int i = 0; i < BodyOpcodeCount / body.Opcodes; i++) code.AddRange(body.Sequence);

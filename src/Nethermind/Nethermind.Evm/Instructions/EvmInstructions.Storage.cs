@@ -692,26 +692,33 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop the offset from which to load call data.
-        if (!stack.PopUInt256(out UInt256 result))
-            goto StackUnderflow;
+        if (!stack.EnsureDepth(1)) return EvmExceptionType.StackUnderflow;
+        return CallDataLoadCore<TGasPolicy, TTracingInst>(ref stack, vm);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType CallDataLoadCore<TGasPolicy, TTracingInst>(ref EvmStack stack, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        ref byte slot = ref stack.PeekBytesByRefUnchecked();
+        EvmStack.ReadMemoryPositionFromSlot(ref slot, out UInt256 result);
 
         ReadOnlySpan<byte> inputData = vm.VmState.Env.InputData.Span;
 
         ulong offset = result.u0;
         if (!result.IsUint64 || offset >= (uint)inputData.Length)
         {
-            return stack.PushZero<TTracingInst, OnFlag>();
+            Unsafe.InitBlockUnaligned(ref slot, 0, EvmStack.WordSize);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
+            return EvmExceptionType.None;
         }
 
         uint available = (uint)inputData.Length - (uint)offset;
         uint copiedLength = available >= 32 ? 32u : available;
-        return stack.PushRightPaddedBytes<TTracingInst>(
+        return stack.WriteRightPaddedBytes<TTracingInst>(ref slot,
             ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset),
             copiedLength);
-
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 }

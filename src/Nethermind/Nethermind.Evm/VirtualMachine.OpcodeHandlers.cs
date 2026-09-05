@@ -21,8 +21,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </remarks>
     private interface IOpcodeBody
     {
-        /// <summary>Whether dispatch owns the gas/depth guards and Execute cannot fail or access the VM.</summary>
+        /// <summary>Whether dispatch owns the gas/depth guards and Execute cannot fail.</summary>
         static virtual bool HasCheckedBody => false;
+        static virtual bool UsesVm => false;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static virtual bool TryConsumeGas(ref TGasPolicy gas) => false;
         static virtual int StackInputs => 0;
@@ -733,8 +734,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct CallDataLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody => true;
+        public static bool UsesVm => true;
+        public static int StackInputs => 1;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionCallDataLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            EvmInstructions.CallDataLoadCore<TGasPolicy, TTracingInst>(ref stack, vm);
     }
 
     private readonly struct CallDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag

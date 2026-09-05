@@ -292,6 +292,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
             (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
             (Instruction.POP, 1, 2),
+            (Instruction.CALLDATALOAD, 1, 3),
             (Instruction.BYTE, 2, 3), (Instruction.CLZ, 1, 5),
             (Instruction.SHL, 2, 3), (Instruction.SHR, 2, 3), (Instruction.SAR, 2, 3),
             (Instruction.DUP1, 1, 3), (Instruction.DUP2, 2, 3), (Instruction.DUP3, 3, 3), (Instruction.DUP4, 4, 3),
