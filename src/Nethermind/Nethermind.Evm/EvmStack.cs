@@ -376,6 +376,46 @@ public ref partial struct EvmStack
         Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap();
     }
 
+    /// <summary>Reads a stack slot as a memory position.</summary>
+    /// <remarks>
+    /// A position above <see cref="ulong.MaxValue"/> is unreachable, so every consumer reads a
+    /// position as <c>IsUint64</c> plus <c>u0</c> and rejects the access when the first is false.
+    /// Folding the three high limbs into a single non-zero marker keeps both of those exact while
+    /// byte-swapping one limb instead of the whole word. The word then never has to be written to
+    /// the frame as a vector and read straight back as scalars, which does not forward.
+    /// </remarks>
+    /// <param name="slot">The stack slot, big-endian.</param>
+    /// <param name="position">The decoded position.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
+    {
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        ulong unreachable = limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2);
+        ulong addressable = Bytes.Bswap64(Unsafe.Add(ref limbs, 3));
+
+        position = new UInt256(addressable, 0, 0, unreachable);
+    }
+
+    /// <summary>Pops a memory position written in big endian.</summary>
+    /// <remarks>See <see cref="ReadMemoryPositionFromSlot"/> for what the popped value preserves.</remarks>
+    /// <param name="position">The popped position.</param>
+    /// <returns><see langword="false"/> on stack underflow.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopMemoryPosition(out UInt256 position)
+    {
+        Unsafe.SkipInit(out position);
+        nint head = Head - 1;
+        if (head < 0)
+        {
+            return false;
+        }
+        Head = head;
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), out position);
+        return true;
+    }
+
     /// <summary>
     /// Writes a UInt256 value to a stack slot with big-endian conversion (no bounds check).
     /// Used when the slot was already validated by a previous pop operation.
@@ -2019,17 +2059,17 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Atomic pop of a UInt256 offset + a raw 32-byte word with a single bounds check.
+    /// Atomic pop of a memory position + a raw 32-byte word with a single bounds check.
     /// Callers such as MSTORE pop both in sequence; amortising avoids a redundant
     /// underflow check and resolves the mismatched throw/try-pattern on the two reads.
     /// </summary>
-    /// <param name="a">The top-of-stack value decoded as a big-endian UInt256 (offset for MSTORE).</param>
+    /// <param name="position">The top-of-stack value decoded by <see cref="ReadMemoryPositionFromSlot"/>.</param>
     /// <param name="word">A span over the second slot, 32 bytes of raw stack-native (big-endian) data.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PopUInt256AndWord256(out UInt256 a, out Span<byte> word)
+    public bool PopMemoryPositionAndWord256(out UInt256 position, out Span<byte> word)
     {
-        Unsafe.SkipInit(out a);
+        Unsafe.SkipInit(out position);
         nint newHead = Head - 2;
         if (newHead < 0)
         {
@@ -2038,7 +2078,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
         ref byte baseRef = ref _stack;
-        ReadUInt256FromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out a);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out position);
         word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, (nint)((uint)newHead * WordSize)), WordSize);
         return true;
     }
