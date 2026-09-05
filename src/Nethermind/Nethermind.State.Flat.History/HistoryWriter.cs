@@ -142,8 +142,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Returns whether rows were captured. Only that proves the hook is wired and, through
-    /// <see cref="CaptureHealthy"/>, that a receipt body skipped on disk can be derived from history later.</summary>
+    /// <summary>Returns whether this call wrote rows (false also when the head is already covered). Only that proves
+    /// the hook is wired and, through <see cref="CaptureHealthy"/>, that a receipt body skipped on disk can be derived
+    /// from history later.</summary>
     private bool CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
         ulong target = persistedHead.BlockNumber;
@@ -215,7 +216,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>Below the first block to keep nothing is captured, but the watermark still follows every persisted
     /// head with its marker, as durably as a capture: the first real walk connects at the previous persist like any
-    /// other, and readers below the floor already fail closed.</summary>
+    /// other (capturing the few blocks between that marker and the floor too; they sit unreadable below it), and
+    /// readers below the floor already fail closed.</summary>
     private void AdvanceWatermarkWithoutRows(in StateId persistedHead)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
@@ -231,11 +233,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap
     /// pivot, where this node's history genuinely starts; one below it, or a watermark with no floor at all, is
-    /// history captured under a different setting, and publishing over it would strand rows nothing reclaims.</summary>
+    /// history captured under a different setting, and publishing over it would strand rows nothing reclaims.
+    /// Published before any watermark exists, the one moment the floor-above-watermark guard admits a floor the
+    /// watermark has yet to reach; it then sits above the watermark for the whole below-floor phase, and nothing
+    /// but <see cref="SeedPivot"/> writes the floor again in this mode.</summary>
     private void PublishSinceBlockFloor()
     {
         if (_availability.TryGetGlobalFloor(out ulong floor))
         {
+            if (_captureFromBlock < floor && _logger.IsInfo) _logger.Info(
+                $"Flat history starts at block {floor}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the floor " +
+                $"was published there (a sync pivot, or an earlier setting) and never moves.");
+
             if (_captureFromBlock > floor)
             {
                 throw new InvalidConfigurationException(
@@ -381,16 +390,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>
     /// Seeds a windowed node's floor at a snap-sync pivot: publishes watermark = floor = pivot with no rows needed
-    /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). No-op on v2,
-    /// which has no fallback to lean on. Call at the sync-completion seam before any block processes on top.
+    /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). A since-block
+    /// floor already standing above the pivot stays: the state starts at the pivot, the history at the configured
+    /// block. No-op on v2, which has no fallback to lean on. Call at the sync-completion seam before any block
+    /// processes on top.
     /// </summary>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
         if (!_enabled || !_isV3) return;
 
-        // Raise-only: seeding a pivot below an already-published floor would re-admit reads for heights whose
-        // rows the pruner has already deleted, and they would answer from live state instead of failing closed.
-        if (_availability.TryGetGlobalFloor(out ulong currentFloor) && pivotBlock < currentFloor)
+        // Raise-only for a rolling floor: seeding a pivot below it would re-admit reads for heights whose rows the
+        // pruner has already deleted, and they would answer from live state instead of failing closed. A since-block
+        // floor is config, not pruning, so a pivot below it is only where the state starts.
+        bool hasFloor = _availability.TryGetGlobalFloor(out ulong currentFloor);
+        if (hasFloor && pivotBlock < currentFloor && _captureFromBlock == 0)
         {
             throw new InvalidOperationException(
                 $"Cannot seed the flat history floor at pivot {pivotBlock}: it is below the published retention floor " +
@@ -413,7 +426,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(pivotBlock, _formatVersion);
-        _availability.PublishGlobalFloor(pivotBlock);
+        if (!hasFloor || pivotBlock >= currentFloor) _availability.PublishGlobalFloor(pivotBlock);
         _history.SyncWal();
     }
 

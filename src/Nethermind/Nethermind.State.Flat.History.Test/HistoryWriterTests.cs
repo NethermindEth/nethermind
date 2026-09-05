@@ -771,6 +771,21 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Since_block_seed_pivot_below_the_configured_block_keeps_the_configured_floor()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 5);
+
+        writer.SeedPivot(3, StateAt(3).StateRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(3UL), "the state starts at the pivot, so the watermark does");
+            Assert.That(reader.IsBelowGlobalFloor(4), Is.True, "the history starts at the configured block, not at the pivot");
+            Assert.That(reader.IsBelowGlobalFloor(5), Is.False);
+        }
+    }
+
+    [Test]
     public void Since_block_over_history_captured_without_a_floor_is_refused()
     {
         (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 1000);
