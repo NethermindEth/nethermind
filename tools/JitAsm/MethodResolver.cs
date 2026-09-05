@@ -77,7 +77,7 @@ internal sealed class MethodResolver(Assembly assembly)
                 // If the type is a generic type definition and we have class type params, try to construct it
                 if (type.IsGenericTypeDefinition && classTypeParams is not null)
                 {
-                    int typeParamCount = classTypeParams.Split(',').Length;
+                    int typeParamCount = SplitTypeList(classTypeParams).Length;
                     if (type.GetGenericArguments().Length == typeParamCount)
                     {
                         Type? constructed = MakeGenericType(type, classTypeParams);
@@ -111,7 +111,7 @@ internal sealed class MethodResolver(Assembly assembly)
         // If type params are specified, filter to only methods with matching generic param count
         if (typeParams is not null)
         {
-            int genericParamCount = typeParams.Split(',').Length;
+            int genericParamCount = SplitTypeList(typeParams).Length;
             if (verbose)
                 Console.Error.WriteLine($"[DEBUG] Looking for generic methods with {genericParamCount} type params");
 
@@ -158,7 +158,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
     private Type? MakeGenericType(Type genericTypeDefinition, string classTypeParams)
     {
-        string[] typeNames = classTypeParams.Split(',', StringSplitOptions.TrimEntries);
+        string[] typeNames = SplitTypeList(classTypeParams);
         Type[] types = new Type[typeNames.Length];
 
         bool verbose = Environment.GetEnvironmentVariable("JITASM_VERBOSE") == "1";
@@ -301,7 +301,7 @@ internal sealed class MethodResolver(Assembly assembly)
             return method;
         }
 
-        string[] typeNames = typeParams.Split(',', StringSplitOptions.TrimEntries);
+        string[] typeNames = SplitTypeList(typeParams);
         Type[] types = new Type[typeNames.Length];
 
         if (verbose)
@@ -336,12 +336,122 @@ internal sealed class MethodResolver(Assembly assembly)
         }
     }
 
+    /// <summary>Splits a comma-separated type list, ignoring commas inside generic arguments.</summary>
+    private static string[] SplitTypeList(string list)
+    {
+        List<string> parts = [];
+        int depth = 0;
+        int start = 0;
+        for (int i = 0; i < list.Length; i++)
+        {
+            char c = list[i];
+            if (c is '<' or '[')
+            {
+                depth++;
+            }
+            else if (c is '>' or ']')
+            {
+                depth--;
+            }
+            else if (c == ',' && depth == 0)
+            {
+                parts.Add(list[start..i].Trim());
+                start = i + 1;
+            }
+        }
+
+        parts.Add(list[start..].Trim());
+        return [.. parts];
+    }
+
+    private static string StripArity(string name)
+    {
+        int tick = name.IndexOf('`');
+        return tick < 0 ? name : name[..tick];
+    }
+
+    /// <summary>
+    /// Resolves an open generic definition by name, with or without its arity suffix.
+    /// </summary>
+    /// <remarks>
+    /// A type nested in a generic type inherits that type's parameters, so its reflection arity is
+    /// the declaring type's plus its own. Matching on the name without the suffix lets a caller
+    /// write <c>Math2Opcode&lt;OpAdd, OffFlag&gt;</c> rather than <c>Math2Opcode`3</c>.
+    /// </remarks>
+    private Type? ResolveOpenType(string typeName, Type? declaringType, int arity)
+    {
+        if (declaringType is not null)
+        {
+            Type declaringTypeDefinition = declaringType.IsGenericType
+                ? declaringType.GetGenericTypeDefinition()
+                : declaringType;
+            string nestedTypeName = typeName[(typeName.LastIndexOf('+') + 1)..];
+            Type[] nested = declaringTypeDefinition
+                .GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(type => type.Name == nestedTypeName || StripArity(type.Name) == nestedTypeName)
+                .ToArray();
+
+            Type? match = nested.FirstOrDefault(type => type.GetGenericArguments().Length == arity)
+                ?? nested.FirstOrDefault();
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return ResolveType(typeName) ?? ResolveType($"{typeName}`{arity}");
+    }
+
+    /// <summary>Closes <paramref name="definition"/> over <paramref name="arguments"/>.</summary>
+    /// <remarks>
+    /// When the definition is nested in a constructed generic type it also needs that type's
+    /// arguments, which the caller never writes because the source never repeats them either.
+    /// </remarks>
+    private static Type? Construct(Type definition, Type[] arguments, Type? declaringType)
+    {
+        if (!definition.IsGenericTypeDefinition)
+        {
+            return arguments.Length == 0 ? definition : null;
+        }
+
+        int required = definition.GetGenericArguments().Length;
+        Type[] outer = declaringType?.IsGenericType == true ? declaringType.GetGenericArguments() : [];
+        Type[] all = required == arguments.Length + outer.Length && outer.Length != 0
+            ? [.. outer, .. arguments]
+            : arguments;
+
+        try
+        {
+            return definition.MakeGenericType(all);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private Type? ResolveTypeParam(string typeName, Type? declaringType = null)
     {
         // Check aliases first
         if (TypeAliases.TryGetValue(typeName, out Type? aliasType))
         {
             return aliasType;
+        }
+
+        int argumentStart = typeName.IndexOfAny(['<', '[']);
+        if (argumentStart > 0 && typeName[^1] is '>' or ']')
+        {
+            string[] argumentNames = SplitTypeList(typeName[(argumentStart + 1)..^1]);
+            Type[] arguments = new Type[argumentNames.Length];
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                Type? argument = ResolveTypeParam(argumentNames[i], declaringType);
+                if (argument is null) return null;
+                arguments[i] = argument;
+            }
+
+            Type? definition = ResolveOpenType(typeName[..argumentStart], declaringType, arguments.Length);
+            return definition is null ? null : Construct(definition, arguments, declaringType);
         }
 
         if (declaringType is not null)
