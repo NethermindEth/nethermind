@@ -240,7 +240,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     }
 
     private static bool IsAnchor(ReadOnlySpan<byte> row) =>
-        ParentRowCodec.IsEmptyRow(row) || ParentRowCodec.IsWholeNodeRow(row) || (ParentRowCodec.IsBranchRow(row) && ParentRowCodec.Changed(row) == ParentRowCodec.Presence(row));
+        ParentRowCodec.IsEmptyRow(row) || ParentRowCodec.IsWholeNodeRow(row) || (ParentRowCodec.IsBranchRow(row) && (ParentRowCodec.Presence(row) & ~ParentRowCodec.Changed(row)) == 0);
 
     private static int Compose(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong epoch, ReadOnlySpan<byte> newest, ChildVector vector, Span<byte> destination)
     {

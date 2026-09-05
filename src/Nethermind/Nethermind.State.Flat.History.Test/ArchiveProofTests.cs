@@ -839,6 +839,46 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Nodes_the_walk_already_anchored_at_the_epoch_start_are_not_carried_again()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = Enumerable.Range(0, 64).Select(static slot => (UInt256)(5000 + slot)).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
+        });
+
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        ulong carriedWindow = _policy.WindowAtOrBelow(_policy.EpochStart(2)) - 1;
+        ValueHash256 identity = Keccak.Compute(quiet.Bytes).ValueHash256;
+        List<byte[]> accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().ToList();
+        List<byte[]> storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys().ToList();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.Any(key => IsEpochTier(key, epoch: 2, CommitmentKeyLayout.CoarseTier) && SuffixOf(key) == carriedWindow), Is.False,
+                "the walk snapshots every account tier at the epoch start, so every account node already has its anchor and a carried copy would only sit dead below it");
+            Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 1) && SuffixOf(key) == carriedWindow), Is.False,
+                "the storage snapshot reaches depth 1, so those nodes are anchored too");
+            Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.True,
+                "depth 2 is below the snapshot, so its rows are exactly what the carry exists for");
+        }
+    }
+
+    private static ulong SuffixOf(byte[] key) => CommitmentKeyLayout.ReadSuffix(key);
+
+    [Test]
     public void Proofs_keep_resolving_while_a_moved_floor_waits_for_its_reclaim()
     {
         _policy = EpochPolicy;
