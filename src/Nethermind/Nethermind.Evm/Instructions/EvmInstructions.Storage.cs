@@ -142,7 +142,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Single bounds check covering both the offset and the word.
-        if (!stack.PopUInt256AndWord256(out UInt256 result, out Span<byte> bytes)) goto StackUnderflow;
+        if (!stack.PopMemoryPositionAndWord256(out UInt256 result, out Span<byte> bytes)) goto StackUnderflow;
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
@@ -189,7 +189,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        if (!stack.PopMemoryPosition(out UInt256 result)) goto StackUnderflow;
 
         // Pop a single byte from the stack; PopByte returns -1 on underflow.
         int popped = stack.PopByte();
@@ -239,7 +239,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the memory offset; if missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        if (!stack.PopMemoryPosition(out UInt256 result)) goto StackUnderflow;
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
