@@ -139,7 +139,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, byte tier, CancellationToken token, bool yieldBetweenChunks)
     {
-        ulong target = tier == CommitmentKeyLayout.FineTier ? policy.EpochStart(epoch + 1) : policy.WindowAtOrBelow(policy.EpochStart(epoch + 1));
+        ulong target = (tier == CommitmentKeyLayout.FineTier ? policy.EpochStart(epoch + 1) : policy.WindowAtOrBelow(policy.EpochStart(epoch + 1))) - 1;
         Span<byte> cursor = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];
         Span<byte> upper = stackalloc byte[CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength];
         int cursorLength = CommitmentKeyLayout.WriteEpochTier(cursor, epoch, tier);
@@ -189,7 +189,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 }
 
                 ReadOnlySpan<byte> node = prefix.AsSpan(0, prefixLength);
-                if (!HasRowAt(store, node, target))
+                if (!store.HasRow(epoch + 1, node, target))
                 {
                     int carriedLength = Compose(store, node, epoch, newest.AsSpan(0, newestLength), vector, carried);
                     if (carriedLength == 0)
@@ -198,20 +198,14 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                     }
                     else
                     {
-                        lock (metadata.WindowWriteLock)
+                        batch ??= history.StartWriteBatch();
+                        store.Write(epoch + 1, node, target, carried.AsSpan(0, carriedLength), batch.GetColumnBatch(column));
+                        carriedNodes++;
+                        if (++writesInBatch >= WritesPerBatch)
                         {
-                            if (!HasRowAt(store, node, target))
-                            {
-                                batch ??= history.StartWriteBatch();
-                                store.Write(node, target, carried.AsSpan(0, carriedLength), batch.GetColumnBatch(column));
-                                carriedNodes++;
-                                if (++writesInBatch >= WritesPerBatch)
-                                {
-                                    batch.Dispose();
-                                    batch = null;
-                                    writesInBatch = 0;
-                                }
-                            }
+                            batch.Dispose();
+                            batch = null;
+                            writesInBatch = 0;
                         }
                     }
                 }
@@ -242,14 +236,6 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
         if (abandonedNodes > 0 && _logger.IsWarn) _logger.Warn(
             $"Archive proof commitment epoch {epoch}, {column}, tier {tier}: {abandonedNodes} nodes could not be carried into epoch {epoch + 1} because their newest row was not a valid row or its chain did not reach a full vector inside the epoch. Proofs crossing those nodes at heights in the retained epochs will rebuild from history rows, and may be refused by FlatDb.ArchiveProofMaxScannedRows. {carriedNodes} nodes were carried.");
-    }
-
-    private static bool HasRowAt(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong suffix)
-    {
-        Span<byte> existing = store.GetExactSpan(prefix, suffix);
-        bool present = existing.Length > 0;
-        store.Release(existing);
-        return present;
     }
 
     private static int Compose(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong epoch, ReadOnlySpan<byte> newest, ChildVector vector, Span<byte> destination)
