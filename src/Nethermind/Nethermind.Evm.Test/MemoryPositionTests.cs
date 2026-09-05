@@ -29,6 +29,18 @@ public class MemoryPositionTests : VirtualMachineTestsBase
     [TestCase(Instruction.MLOAD, HighLimb)]
     [TestCase(Instruction.MLOAD, MiddleLimb)]
     [TestCase(Instruction.MLOAD, LowerLimb)]
+    [TestCase(Instruction.KECCAK256, HighLimb)]
+    [TestCase(Instruction.KECCAK256, MiddleLimb)]
+    [TestCase(Instruction.KECCAK256, LowerLimb)]
+    [TestCase(Instruction.RETURN, HighLimb)]
+    [TestCase(Instruction.RETURN, MiddleLimb)]
+    [TestCase(Instruction.RETURN, LowerLimb)]
+    [TestCase(Instruction.REVERT, HighLimb)]
+    [TestCase(Instruction.REVERT, MiddleLimb)]
+    [TestCase(Instruction.REVERT, LowerLimb)]
+    [TestCase(Instruction.LOG1, HighLimb)]
+    [TestCase(Instruction.LOG1, MiddleLimb)]
+    [TestCase(Instruction.LOG1, LowerLimb)]
     public void Position_above_ulong_max_is_out_of_gas(Instruction instruction, string positionHex)
     {
         TestAllTracerWithOutput tracer = Execute(BuildCode(instruction, Bytes.FromHexString(positionHex)));
@@ -36,25 +48,41 @@ public class MemoryPositionTests : VirtualMachineTestsBase
         Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.OutOfGas.ToString()));
     }
 
-    [TestCase(Instruction.MSTORE)]
-    [TestCase(Instruction.MSTORE8)]
-    [TestCase(Instruction.MLOAD)]
-    public void Position_within_ulong_max_is_addressable(Instruction instruction)
+    [TestCase(Instruction.MSTORE, null)]
+    [TestCase(Instruction.MSTORE8, null)]
+    [TestCase(Instruction.MLOAD, null)]
+    [TestCase(Instruction.KECCAK256, null)]
+    [TestCase(Instruction.RETURN, null)]
+    [TestCase(Instruction.LOG1, null)]
+    [TestCase(Instruction.REVERT, TransactionSubstate.Revert)]
+    public void Position_within_ulong_max_is_addressable(Instruction instruction, string? expectedError)
     {
         byte[] position = new byte[32];
         position[^1] = 32;
 
         TestAllTracerWithOutput tracer = Execute(BuildCode(instruction, position));
 
-        Assert.That(tracer.Error, Is.Null);
+        Assert.That(tracer.Error, Is.EqualTo(expectedError));
     }
 
+    // The operands beneath the position, pushed deepest first. A length must be non-zero: a zero
+    // length is charged before the position is examined, so it would never reach the check.
     private static byte[] BuildCode(Instruction instruction, byte[] position)
     {
         Prepare code = Prepare.EvmCode;
-        if (instruction != Instruction.MLOAD)
+        switch (instruction)
         {
-            code = code.PushData(1);
+            case Instruction.MLOAD:
+                break;
+            case Instruction.MSTORE or Instruction.MSTORE8:
+                code = code.PushData(1);
+                break;
+            case Instruction.LOG1:
+                code = code.PushData(0).PushData(EvmStack.WordSize);
+                break;
+            default:
+                code = code.PushData(EvmStack.WordSize);
+                break;
         }
 
         return code.PushData(position).Op(instruction).Done;

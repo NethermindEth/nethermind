@@ -2097,6 +2097,32 @@ public ref partial struct EvmStack
         return true;
     }
 
+    /// <summary>Pops a memory position and the value beneath it, both written in big endian.</summary>
+    /// <remarks>
+    /// Only the position is folded; the value beneath it keeps every limb because callers measure and
+    /// compare it. See <see cref="ReadMemoryPositionFromSlot"/> for what the fold preserves.
+    /// </remarks>
+    /// <param name="position">The popped position (was at top of stack).</param>
+    /// <param name="value">The popped value (was deeper).</param>
+    /// <returns><see langword="false"/> on stack underflow.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 value)
+    {
+        Unsafe.SkipInit(out position);
+        Unsafe.SkipInit(out value);
+        nint newHead = Head - 2;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+        ref byte baseRef = ref Unsafe.Add(ref _stack, newHead * WordSize);
+        ReadUInt256FromSlot(ref baseRef, out value);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, WordSize), out position);
+        return true;
+    }
+
     public bool PopWord256(out Span<byte> word)
     {
         nint head = Head - 1;

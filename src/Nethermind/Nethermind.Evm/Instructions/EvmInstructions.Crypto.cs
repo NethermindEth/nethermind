@@ -25,7 +25,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Ensure two 256-bit words are available (memory offset and length).
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b))
             goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
