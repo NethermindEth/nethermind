@@ -55,7 +55,9 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
-      NETHERMIND_EVM_BENCHMARK_OPCODES: ${{ inputs.opcodes || 'SHL,SHR,SAR,MLOAD,MSTORE,ADD,LT,MUL,ADDMOD,SIGNEXTEND' }}
+      # Not `inputs.opcodes || default`: an empty value is falsy, so that form would swallow the
+      # documented empty-means-every-opcode mode. Only `push`, which carries no inputs, needs a default.
+      NETHERMIND_EVM_BENCHMARK_OPCODES: ${{ github.event_name == 'push' && 'SHL,SHR,SAR,MLOAD,MSTORE,ADD,LT,MUL,ADDMOD,SIGNEXTEND' || inputs.opcodes }}
       NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT: ${{ inputs.invocation_count || '1500' }}
     steps:
       - name: Check out ${{ inputs.ref || github.sha }}
