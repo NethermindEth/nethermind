@@ -371,7 +371,7 @@ public static class TrieUpdater
             GroupFrameReader existingGroup = lease is null
                 ? new(store, location.GroupKey, metrics)
                 : new(store, location.GroupKey, metrics, lease.GetSpan());
-            existingGroup.Store(location.Position, leaf);
+            existingGroup.Store(location.Position, existingPath, leaf);
             return CompleteLeafSplit(store, metrics, ref parentGroup, ref existingGroup, path, common, leaf, sets, existingDirection, partition, leftPath, rightPath);
         }
         finally
@@ -500,7 +500,7 @@ public static class TrieUpdater
             GroupFrameReader existingGroup = lease is null
                 ? new(store, location.GroupKey, metrics)
                 : new(store, location.GroupKey, metrics, lease.GetSpan());
-            existingGroup.Store(location.Position, relocated);
+            existingGroup.Store(location.Position, existingPath, relocated);
             return CompleteBranchSplit(store, metrics, ref parentGroup, ref existingGroup, path, common, relocated, sets, existingDirection, partition, leftPath, rightPath);
         }
         finally
@@ -717,14 +717,14 @@ public static class TrieUpdater
     {
         if (!group.TryGetPosition(path, out int position))
             throw new InvalidOperationException("The PBT node does not belong to the active group.");
-        group.Store(position, node);
+        group.Store(position, path, node);
     }
 
     private static void Remove(scoped ref GroupFrameReader group, PbtNodePath path)
     {
         if (!group.TryGetPosition(path, out int position))
             throw new InvalidOperationException("The PBT node does not belong to the active group.");
-        group.Remove(position);
+        group.Remove(position, path);
     }
 
     private ref struct GroupFrameReader
@@ -809,7 +809,7 @@ public static class TrieUpdater
             };
         }
 
-        internal void Store(int position, PbtNode node)
+        internal void Store(int position, PbtNodePath path, PbtNode node)
         {
             byte[] encoding = PbtNodeCodec.Encode(node);
             if (_storage.States[position] == SlotState.Persisted && PersistedEncodingEquals(position, encoding))
@@ -820,16 +820,16 @@ public static class TrieUpdater
 
             _storage.States[position] = SlotState.Staged;
             _storage.Nodes[position] = node;
-            _store.SetNode(PbtFourLevelGroupGeometry.PathOf(_groupKey, position), encoding);
+            _store.SetNode(path, encoding);
             _metrics?.AddEmittedNodeWrites(1);
         }
 
-        internal void Remove(int position)
+        internal void Remove(int position, PbtNodePath path)
         {
             if (_storage.Lengths[position] != 0)
             {
                 _storage.States[position] = SlotState.Tombstone;
-                _store.SetNode(PbtFourLevelGroupGeometry.PathOf(_groupKey, position), null);
+                _store.SetNode(path, null);
                 _metrics?.AddEmittedNodeWrites(1);
             }
             else
