@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -194,6 +195,24 @@ public class JsonRpcProcessorTests
         yield return new TestCaseData(CreateTransactionCountRequest("67") + CreateTransactionCountBatchRequest(2), true, false).SetName("Single request and batch");
         yield return new TestCaseData(CreateTransactionCountRequest("67") + CreateTransactionCountRequest("68")[..^1], false, true).SetName("Second request not closed");
         yield return new TestCaseData(CreateTransactionCountRequest("67") + "{aaa}", false, true).SetName("Second request invalid");
+    }
+
+    [TestCase(ErrorCodes.InvalidParams, RpcEndpoint.Http, 0)]
+    [TestCase(ErrorCodes.InvalidParams, RpcEndpoint.IPC, 1)]
+    [TestCase(ErrorCodes.InternalError, RpcEndpoint.Http, 1)]
+    public async Task Error_response_warns_unless_bad_params_came_from_an_unauthenticated_caller(int errorCode, RpcEndpoint endpoint, int expectedWarnings)
+    {
+        TestLogger logger = new() { IsInfo = false, IsWarn = true, IsDebug = false, IsTrace = false, IsError = false };
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = errorCode, Message = "some failure" }
+        });
+        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(processor, CreateRequest("1", "eth_getBalance"), new JsonRpcContext(endpoint));
+
+        Assert.That(logger.LogList, Has.Count.EqualTo(expectedWarnings), $"only Warn is enabled, so every captured line is one the operator would see for {errorCode}");
     }
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null, bool returnErrors = false) =>

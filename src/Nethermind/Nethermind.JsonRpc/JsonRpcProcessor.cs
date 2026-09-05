@@ -906,20 +906,21 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
         return responseTask.IsCompletedSuccessfully
-            ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime))
-            : AwaitAndCreateEntryAsync(responseTask, request, startTime);
+            ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime, context))
+            : AwaitAndCreateEntryAsync(responseTask, request, startTime, context);
 
         async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
             ValueTask<JsonRpcResponse> responseTask,
             JsonRpcRequest request,
-            long startTime)
+            long startTime,
+            JsonRpcContext context)
         {
             JsonRpcResponse response = await responseTask;
-            return CreateSingleRequestEntry(request, response, startTime);
+            return CreateSingleRequestEntry(request, response, startTime, context);
         }
     }
 
-    private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, long startTime)
+    private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, long startTime, JsonRpcContext context)
     {
         bool isError = response.TryGetError(out Error? responseError);
         bool isSuccess = !isError;
@@ -927,7 +928,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (responseError?.SuppressWarning == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}");
+                if (responseError.Code == ErrorCodes.InvalidParams && !context.IsAuthenticated)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}");
+                }
+                else if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}");
+                }
+
                 if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {SerializeResponseForDiagnostics(response)}");
             }
             Metrics.JsonRpcErrors++;
