@@ -1,0 +1,109 @@
+name: Run Frame Transaction Measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: Which measurement harness to run
+        required: true
+        type: choice
+        options:
+          - both
+          - verify
+          - mempool
+        default: both
+
+# Deliberately deviates from the repo default: the group carries no `github.ref`
+# and in-progress runs are not cancelled, so dispatches queue instead of
+# contending for the single shared measurement runner. Do not "fix" this back to
+# the PR-workflow default -- two concurrent runs would distort each other's numbers.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Measure the frame-transaction validation prefix
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 120
+    steps:
+      # One source of truth for the output path: the `runner` context is not
+      # available in a job-level `env`, so it is exported here instead. It runs
+      # before the checkout, and the `if: always()` steps below still guard on it
+      # being set, because an unset value would make them address the runner's root.
+      - name: Resolve the output directory
+        run: echo "OUTPUT_DIR=${RUNNER_TEMP}/frame-tx-measurements" >> "${GITHUB_ENV}"
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Run measurement harnesses
+        working-directory: src/Nethermind
+        env:
+          HARNESS: ${{ inputs.harness }}
+        run: |
+          set -uo pipefail
+          rm -rf "${OUTPUT_DIR}"
+          mkdir -p "${OUTPUT_DIR}"
+
+          run_harness() {
+            local project=$1 fixture=$2 rc=0
+            if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
+              echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
+              return 1
+            fi
+            echo "::group::${fixture}"
+            if ! dotnet build "${project}/${project}.csproj" -c release; then
+              echo "::endgroup::"
+              return 1
+            fi
+            dotnet build-server shutdown || true
+            dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore -- \
+              --no-ansi --output Detailed --filter "FullyQualifiedName~${fixture}" \
+              2>&1 | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
+            echo "::endgroup::"
+            return "${rc}"
+          }
+
+          # Each harness is attempted even when an earlier one fails, so a run never
+          # reports a partial set of figures as if it were the whole set.
+          status=0
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "verify" ]]; then
+            run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
+          fi
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement || status=1
+          fi
+
+          exit "${status}"
+
+      - name: Publish the reported figures to the run summary
+        if: always() && env.OUTPUT_DIR != ''
+        run: |
+          set -uo pipefail
+          for report in "${OUTPUT_DIR}"/*.txt; do
+            [[ -f "${report}" ]] || continue
+            {
+              echo "## $(basename "${report}" .txt)"
+              echo '```'
+              # Only the reported figures, so the summary stays well inside its 1 MiB
+              # cap and no stray backtick from test output breaks the fence.
+              grep 'RESULT' "${report}" || echo 'no RESULT lines; see the uploaded artifact'
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          done
+
+      - name: Upload the measurement output
+        if: always() && env.OUTPUT_DIR != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: frame-tx-measurements
+          path: ${{ env.OUTPUT_DIR }}/
+          if-no-files-found: warn
+          retention-days: 30
