@@ -546,8 +546,18 @@ public class HistoryWriterTests
 
         _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
 
-        Assert.That(_writer.CaptureHealthy, Is.True,
-            "a head the watermark already covers is backed by what is on disk; a restart after a crash between the history sync and the flat commit proves health this way");
+        Assert.That(_writer.CaptureHealthy, Is.True, "a persist at a head the watermark already covers is backed by what is on disk");
+    }
+
+    [Test]
+    public void Capture_of_a_covered_head_at_a_pivot_floor_proves_health()
+    {
+        (HistoryWriter writer, _) = CreateWindowedPair(retentionBlocks: 1000);
+        writer.SeedPivot(100, StateAt(100).StateRoot);
+
+        writer.CaptureUpTo(StateAt(100), _repository, CancellationToken.None);
+
+        Assert.That(writer.CaptureHealthy, Is.True, "at the published floor the persisted flat column backs every read, so the covered head is proof");
     }
 
     [Test]
