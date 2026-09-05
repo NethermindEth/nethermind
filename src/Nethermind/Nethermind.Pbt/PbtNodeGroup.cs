@@ -224,22 +224,21 @@ public readonly ref struct PbtNodeGroupReader
             foundPresent = true;
         }
 
-        for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+        int nextOffset = entriesLength;
+        for (int position = PbtNodeGroupCodec.PositionCount - 1; position >= 0; position--)
         {
             if ((availability & (1u << position)) == 0) continue;
             int start = offsets[position];
-            int end = entriesLength;
-            for (int nextPosition = position + 1; nextPosition < PbtNodeGroupCodec.PositionCount; nextPosition++)
-                if ((availability & (1u << nextPosition)) != 0) { end = offsets[nextPosition]; break; }
-            if (end <= start) throw new InvalidDataException("PBT node offsets do not delimit a positive-length node.");
-            ReadOnlySpan<byte> encoding = payload[start..end];
+            if (nextOffset <= start) throw new InvalidDataException("PBT node offsets do not delimit a positive-length node.");
+            ReadOnlySpan<byte> encoding = payload[start..nextOffset];
             try
             {
                 PbtNodeCodec.ValidateExact(encoding);
                 ValidateLeafPath(groupKey, position, encoding);
             }
             catch (InvalidDataException exception) { throw new InvalidDataException("Invalid PBT node in group.", exception); }
-            lengths[position] = end - start;
+            lengths[position] = nextOffset - start;
+            nextOffset = start;
         }
 
         _groupKey = groupKey;
