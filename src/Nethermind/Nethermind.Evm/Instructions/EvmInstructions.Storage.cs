@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Tracing;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
@@ -651,21 +652,108 @@ public static partial class EvmInstructions
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in result);
 
+        ITxTracer tracer = vm.TxTracer;
+        bool isTracingAccess = tracer.IsTracingAccess;
+
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, isTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
-        // Retrieve the persistent storage value and push it onto the stack. Zero slots come back
-        // as a single zero byte; PushZero writes the word directly instead of packing the byte.
+        // Retrieve the persistent storage value.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
+
+        // Fused execution of consecutive SLOAD opcodes: each SLOAD in a run pops the value the
+        // previous one pushed, so the whole run can execute here without per-opcode dispatch or
+        // stack traffic; only the final value is pushed. Disabled under instruction, access, or
+        // storage tracing, which require per-opcode observability.
+        if (!TTracingInst.IsActive
+            && (uint)programCounter < (uint)stack.CodeLength
+            && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD
+            && !isTracingAccess && !tracer.IsTracingOpLevelStorage)
+        {
+            int extraOps = 0;
+            int codeLength = stack.CodeLength;
+            bool fusedOutOfGas = false;
+            // Per-op cost of re-reading the cell accessed by the previous iteration. Mirrors
+            // Consume(SLoadCost) + ConsumeStorageAccessGas for an already-warm cell; keep in sync
+            // (SLoadFusionTests assert fused/unfused gas equality with hot-cold pricing on and off).
+            ulong sameCellCost = spec.GasCosts.SLoadCost + (spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : 0);
+
+            while ((uint)programCounter < (uint)codeLength
+                   && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD)
+            {
+                UInt256 nextKey = new(value, isBigEndian: true);
+                if (nextKey == result)
+                {
+                    // The loaded value equals the key it was loaded from, so every following SLOAD
+                    // in the run re-reads the same warm cell and pushes the same word: consume the
+                    // run in constant time, bounded by the gas still affordable.
+                    int runLength = 1;
+                    while ((uint)(programCounter + runLength) < (uint)codeLength
+                           && Unsafe.Add(ref stack.Code, programCounter + runLength) == (byte)Instruction.SLOAD)
+                    {
+                        runLength++;
+                    }
+
+                    ulong affordable = sameCellCost > 0 ? TGasPolicy.GetRemainingGas(in gas) / sameCellCost : (ulong)runLength;
+                    int fused = (int)Math.Min((ulong)runLength, affordable);
+                    if (fused > 0)
+                    {
+                        TGasPolicy.Consume(ref gas, (ulong)fused * sameCellCost);
+                        programCounter += fused;
+                        extraOps += fused;
+                    }
+
+                    // Not enough gas for the whole run: the next dispatched SLOAD out-of-gases
+                    // exactly where sequential execution would have.
+                    if (fused < runLength) break;
+                }
+                else
+                {
+                    // Chained step onto a different cell (the loaded value is the next key):
+                    // replicate one full SLOAD including cold/warm pricing and access journaling.
+                    // Count the op before charging gas so an OOG mid-chain still records it, matching
+                    // the unfused loop (which increments the SLOAD metric before consuming gas).
+                    extraOps++;
+                    if (!TGasPolicy.TryConsume(ref gas, spec.GasCosts.SLoadCost))
+                    {
+                        fusedOutOfGas = true;
+                        break;
+                    }
+
+                    storageCell = new(executingAccount, in nextKey);
+                    if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, isTracingAccess: false, in storageCell, StorageAccessType.SLOAD, spec))
+                    {
+                        fusedOutOfGas = true;
+                        break;
+                    }
+
+                    value = vm.WorldState.Get(in storageCell);
+                    result = nextKey;
+                    programCounter++;
+                }
+            }
+
+            if (extraOps != 0)
+            {
+                vm.OpCodeCount += extraOps;
+                vm.MetricsCounters.AddSLoad(extraOps);
+            }
+
+            if (fusedOutOfGas) goto OutOfGas;
+        }
+
+        // Push the loaded value onto the stack. Zero slots come back as a single zero byte;
+        // PushZero writes the word directly instead of packing the byte.
         EvmExceptionType pushResult = value.Length == 1 && value[0] == 0
             ? stack.PushZero<TTracingInst>()
             : stack.PushBytes<TTracingInst>(value);
 
-        // Log the storage load operation if tracing is enabled.
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        // Log the storage load operation if tracing is enabled (fusing is disabled in that case,
+        // so the reported key/value pair is always the single executed SLOAD).
+        if (tracer.IsTracingOpLevelStorage)
         {
-            vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
+            tracer.LoadOperationStorage(executingAccount, result, value);
         }
 
         return pushResult;
