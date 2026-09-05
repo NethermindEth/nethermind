@@ -1864,7 +1864,19 @@ public ref partial struct EvmStack
             return false;
         }
 
-        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize))) == default;
+        ref byte slot = ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
+
+        // A whole-word compare pays off only where it reaches the flags in one instruction, which is
+        // x86 with a 256-bit register. ARM64 reduces the vector and then moves the result across to a
+        // general register, and a target with no vector unit at all compares the 32 bytes one at a
+        // time through the frame. Both beat that by testing the limbs where they lie.
+        if (Vector256.IsHardwareAccelerated)
+        {
+            return Unsafe.ReadUnaligned<EvmWord>(ref slot) == default;
+        }
+
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        return (limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3)) == 0;
     }
 
     /// <summary>
