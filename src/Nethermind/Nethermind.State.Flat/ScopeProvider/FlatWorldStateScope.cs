@@ -41,6 +41,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
+    private readonly Lock _stateIdLock = new();
     internal volatile bool _pausePrewarmer = false;
 
     private CancellationTokenSource? _hintBalCts;
@@ -157,6 +158,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
+
+    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession()
+    {
+        lock (_stateIdLock)
+        {
+            return new FlatTrieWarmupSession(_currentStateId, _snapshotBundle, _warmer, _logManager);
+        }
+    }
 
     public void UpdateRootHash()
     {
@@ -353,20 +362,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
+            using ReadOnlySnapshotBundle? readOnlySnapshotBundle = _snapshotBundle.TryLeaseReadOnlySnapshotBundle();
+            if (readOnlySnapshotBundle is null) return false;
 
-            try
-            {
-                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-                // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+            // this is just for warming up
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-                return true;
-            }
-            finally
-            {
-                _snapshotBundle.ReleaseReadOnlyBundleLease();
-            }
+            return true;
         }
         finally
         {
@@ -483,7 +486,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
         }
 
-        _currentStateId = newStateId;
+        lock (_stateIdLock)
+        {
+            _currentStateId = newStateId;
+        }
         _pausePrewarmer = false;
     }
 
