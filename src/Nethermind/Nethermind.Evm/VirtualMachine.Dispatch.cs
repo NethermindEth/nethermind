@@ -76,6 +76,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (!TTracingInst.IsActive && ShouldRefreshOpcodes())
             table.RefreshNonTraced<TTracingInst>(spec);
 
+        _executionHandlers = table.GetExecutionHandlers(spec);
         _opcodeHandlers = table.GetHandlers<TTracingInst, TCancelable>(spec);
     }
 
@@ -85,6 +86,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? NoTraceCancelable;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? Traced;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? TracedCancelable;
+
+        private ExecutionHandlers? _executionHandlers;
+
+        public ExecutionHandlers GetExecutionHandlers(IReleaseSpec spec)
+        {
+            ExecutionHandlers? handlers = System.Threading.Volatile.Read(ref _executionHandlers);
+            if (handlers is not null) return handlers;
+            handlers = new ExecutionHandlers(spec);
+            return System.Threading.Interlocked.CompareExchange(ref _executionHandlers, handlers, null) ?? handlers;
+        }
 
         /// <summary>The table for this combination of flags, built on first use.</summary>
         /// <param name="spec">The fork whose opcode set the table describes.</param>
@@ -112,6 +123,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             NoTrace = GenerateOpcodeHandlers<TTracingInst, OffFlag>(spec);
             NoTraceCancelable = GenerateOpcodeHandlers<TTracingInst, OnFlag>(spec);
+            System.Threading.Volatile.Write(ref _executionHandlers, null);
         }
     }
 

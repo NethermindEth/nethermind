@@ -142,7 +142,12 @@ public partial class VirtualMachine<TGasPolicy>(
     private bool _isCancelableCached;
 
     private BlockExecutionContext _blockExecutionContext;
-    public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+    {
+        if (!ReferenceEquals(_blockExecutionContext.Spec, blockExecutionContext.Spec))
+            _executionHandlers = null;
+        _blockExecutionContext = blockExecutionContext;
+    }
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
     private TxExecutionContext _txExecutionContext;
@@ -733,9 +738,14 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
+    internal unsafe void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true) =>
+        GetExecutionHandlers().CreditStateGasRefund(this, ref gas, amount, trackSpillRefund);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CreditStateGasRefund<Eip8037>(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
+        where Eip8037 : struct, IFlag
     {
-        if (!Spec.IsEip8037Enabled || amount == 0)
+        if (!Eip8037.IsActive || amount == 0)
         {
             return;
         }
@@ -1100,7 +1110,11 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private CallResult RunPrecompile(VmState<TGasPolicy> state)
+    private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
+        GetExecutionHandlers().RunPrecompile(this, state);
+
+    private CallResult RunPrecompile<Eip158>(VmState<TGasPolicy> state)
+        where Eip158 : struct, IFlag
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
@@ -1122,7 +1136,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // in about one week once the state clearing process finishes.
         if (!wasCreated &&
             transferValue.IsZero &&
-            spec.ClearEmptyAccountWhenTouched &&
+            Eip158.IsActive &&
             state.Env.ExecutingAccount.Equals(Ripemd160Address) &&
             _worldState.IsDeadAccount(Ripemd160Address))
         {
@@ -1221,7 +1235,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    protected CallResult ExecuteCall<TTracingInst>(
+    protected unsafe CallResult ExecuteCall<TTracingInst>(
         ReadOnlyMemory<byte>? previousCallResult,
         ReadOnlySpan<byte> previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
@@ -1234,15 +1248,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
-            IReleaseSpec spec = BlockExecutionContext.Spec;
-            // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, vmState.ExecutionType, in env.Value, spec);
-
-            // For contract creation calls, increment the nonce if the specification requires it.
-            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
-            {
-                _worldState.IncrementNonce(env.ExecutingAccount);
-            }
+            GetExecutionHandlers().InitializeFrame(this, vmState);
         }
 
         ReadOnlySpan<byte> codeSpan = env.CodeInfo.CodeSpan;
@@ -1442,17 +1448,8 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private void AddTransferLog(VmState<TGasPolicy> currentState)
-    {
-        // DELEGATECALL: no value transfer (inherits from parent)
-        // CALLCODE: value is transferred from ExecutingAccount to ExecutingAccount (self-transfer), so no log
-        if (currentState.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
-        {
-            // Runtime check acceptable here — called once per frame entry, not per instruction.
-            if (Spec.IsEip7708Enabled && currentState.Env.Value != 0UL && currentState.From != currentState.To)
-                AddLog(TransferLog.CreateTransfer(currentState.From, currentState.To, currentState.Env.Value));
-        }
-    }
+    private unsafe void AddTransferLog(VmState<TGasPolicy> currentState) =>
+        GetExecutionHandlers().TransferLog(this, currentState);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)

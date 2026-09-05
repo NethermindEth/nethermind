@@ -77,6 +77,47 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Opcode_refresh_recaptures_frame_handlers()
+    {
+        Type tableType = (typeof(VirtualMachine<>).GetNestedType("OpcodeTable", BindingFlags.NonPublic)
+            ?? throw new AssertionException("OpcodeTable was renamed or removed."))
+            .MakeGenericType(typeof(EthereumGasPolicy));
+        object table = Activator.CreateInstance(tableType, nonPublic: true)!;
+        MethodInfo getHandlers = tableType.GetMethod("GetExecutionHandlers")
+            ?? throw new AssertionException("GetExecutionHandlers was renamed or removed.");
+        MethodInfo refresh = tableType.GetMethod("RefreshNonTraced")
+            ?? throw new AssertionException("RefreshNonTraced was renamed or removed.");
+        object[] arguments = [SpecProvider.GenesisSpec];
+        object before = getHandlers.Invoke(table, arguments)!;
+
+        refresh.MakeGenericMethod(typeof(OffFlag)).Invoke(table, arguments);
+        object after = getHandlers.Invoke(table, arguments)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after, Is.Not.SameAs(before), "refresh must recapture the frame function pointers");
+            Assert.That(getHandlers.Invoke(table, arguments), Is.SameAs(after), "subsequent transactions reuse the refreshed handlers");
+        }
+    }
+
+    [Test]
+    public void Frame_handlers_are_reused_across_blocks_and_reselected_across_forks()
+    {
+        Execute((0UL, 0UL), (byte)Instruction.STOP);
+        Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
+        object frontier = ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine);
+        Execute((1UL, 0UL), (byte)Instruction.STOP);
+        Assert.That(ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine), Is.SameAs(frontier));
+
+        Execute((MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL), (byte)Instruction.STOP);
+        object spuriousDragon = ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine);
+        Assert.That(spuriousDragon, Is.Not.SameAs(frontier));
+
+        Execute((0UL, 0UL), (byte)Instruction.STOP);
+        Assert.That(ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine), Is.SameAs(frontier));
+    }
+
+    [Test]
     public void Warm_up_opcode_handlers_does_not_throw() =>
         Assert.That(
             () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
@@ -113,6 +154,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(cache.GetType().GetMethod(nameof(ConditionalWeakTable<object, object>.TryGetValue))!.Invoke(cache, arguments), Is.True,
             "warmup must populate the entry keyed by the chain provider's spec instance");
         object table = arguments[1];
+        object warmedExecutionHandlers = ReadWarmedOpcodeField(table.GetType(), "_executionHandlers", table);
         string[] tableNames = ["NoTrace", "NoTraceCancelable", "Traced", "TracedCancelable"];
         object[] warmedTables = new object[tableNames.Length];
         for (int i = 0; i < tableNames.Length; i++)
@@ -145,6 +187,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         _processor.CallAndRestore(tx, tracer);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(ReadWarmedOpcodeField(typeof(VirtualMachine<EthereumGasPolicy>), "_executionHandlers", Machine), Is.SameAs(warmedExecutionHandlers));
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "the warmup contract must be valid for the selected fork");
             Assert.That(tracer.ReportedActionErrors, Is.Empty, "the selected fork's precompile gas cost must be covered");
             if (spec.IsEip196Enabled)

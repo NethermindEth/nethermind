@@ -147,6 +147,21 @@ public static partial class EvmInstructions
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
+        {
+            (true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag>(ref stack, ref gas, vm),
+            (true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm),
+            (false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag>(ref stack, ref gas, vm),
+            (false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag>(ref stack, ref gas, vm),
+        };
+
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where Eip8038 : struct, IFlag
+        where Eip2929 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
@@ -164,11 +179,11 @@ public static partial class EvmInstructions
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.ConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
-        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
+        if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         if (!result.IsZero)
@@ -230,6 +245,22 @@ public static partial class EvmInstructions
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
+        {
+            (true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+        };
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where Eip8038 : struct, IFlag
+        where Eip2929 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
@@ -240,11 +271,11 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.ConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
-        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
+        if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);

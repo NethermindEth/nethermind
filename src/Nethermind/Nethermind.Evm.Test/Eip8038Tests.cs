@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -21,7 +23,13 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 [TestFixture(true)]
 [TestFixture(false)]
-public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
+[TestFixture(true, false, false)]
+[TestFixture(false, false, false)]
+[TestFixture(true, true, true)]
+[TestFixture(false, true, true)]
+[TestFixture(true, false, true)]
+[TestFixture(false, false, true)]
+public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancelable = false) : VirtualMachineTestsBase
 {
     private readonly ISpecProvider _specProvider =
         new TestSpecProvider(new OverridableReleaseSpec(Cancun.Instance) { IsEip8038Enabled = eip8038Enabled });
@@ -34,6 +42,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
     private static readonly Address Target = TestItem.AddressC;
 
     private ulong ExtraWarmAccess => eip8038Enabled ? Eip8038Constants.WarmAccess : 0;
+    private ulong ColdStorageAccess => eip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad;
     private ulong ColdAccountAccess => eip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
 
     [SetUp]
@@ -48,9 +57,107 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
 
     protected override TestAllTracerWithOutput CreateTracer()
     {
-        TestAllTracerWithOutput tracer = base.CreateTracer();
+        TestAllTracerWithOutput tracer = new SpecializationTracer(tracing, cancelable);
         tracer.IsTracingAccess = false;
         return tracer;
+    }
+
+    private sealed class SpecializationTracer(bool tracing, bool cancelable) : TestAllTracerWithOutput, ITxTracer
+    {
+        public override bool IsTracingInstructions => tracing;
+        bool ITxTracer.IsCancelable => cancelable;
+    }
+
+    [TestCase(Instruction.EXTCODESIZE, 0)]
+    [TestCase(Instruction.EXTCODESIZE, -1)]
+    [TestCase(Instruction.EXTCODECOPY, 0)]
+    [TestCase(Instruction.EXTCODECOPY, -1)]
+    public void ExtCode_access_obeys_exact_gas_boundary(Instruction instruction, int gasDelta)
+    {
+        byte[] code = instruction == Instruction.EXTCODESIZE
+            ? Prepare.EvmCode.PushData(Target).Op(instruction).STOP().Done
+            : Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(Target).Op(instruction).STOP().Done;
+        ulong pushGas = (instruction == Instruction.EXTCODESIZE ? 1UL : 4UL) * GasCostOf.VeryLow;
+        ulong gasLimit = (ulong)((long)(GasCostOf.Transaction + pushGas + ColdAccountAccess + ExtraWarmAccess) + gasDelta);
+
+        TestAllTracerWithOutput result = Execute(Activation, gasLimit, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(gasDelta == 0 ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(result.GasSpent, Is.EqualTo(gasLimit));
+        }
+    }
+
+    [TestCase(Instruction.SLOAD, false)]
+    [TestCase(Instruction.SLOAD, true)]
+    [TestCase(Instruction.SSTORE, false)]
+    [TestCase(Instruction.SSTORE, true)]
+    public void Storage_access_charges_cold_then_warm(Instruction instruction, bool repeat)
+    {
+        byte[] operation = instruction == Instruction.SLOAD
+            ? Prepare.EvmCode.PushData(0).Op(instruction).Op(Instruction.POP).Done
+            : Prepare.EvmCode.PushData(0).PushData(0).Op(instruction).Done;
+        byte[] code = repeat ? [.. operation, .. operation] : operation;
+        ulong stackCost = instruction == Instruction.SLOAD ? GasCostOf.VeryLow + GasCostOf.Base : 2 * GasCostOf.VeryLow;
+        ulong coldCost = ColdStorageAccess + (instruction == Instruction.SSTORE && !eip8038Enabled ? GasCostOf.WarmStateRead : 0);
+        ulong expected = GasCostOf.Transaction + stackCost + coldCost
+            + (repeat ? stackCost + GasCostOf.WarmStateRead : 0);
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.GasSpent, Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase((byte)0)]
+    [TestCase((byte)1)]
+    public void Storage_reversal_refunds_first_write(byte originalValue)
+    {
+        StorageCell cell = new(Recipient, 0);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(in cell, [originalValue]);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        byte[] code = Prepare.EvmCode.PushData(2).PushData(0).Op(Instruction.SSTORE)
+            .PushData(originalValue).PushData(0).Op(Instruction.SSTORE).Done;
+        ulong writeCost = originalValue == 0 ? GasCostOf.SSet
+            : eip8038Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SReset - GasCostOf.ColdSLoad;
+        ulong refund = eip8038Enabled ? Eip8038Constants.StorageWrite
+            : originalValue == 0 ? RefundOf.SSetReversedHotCold : RefundOf.SResetReversedHotCold;
+        ulong spent = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + ColdStorageAccess + writeCost + GasCostOf.WarmStateRead;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.Refund, Is.EqualTo(refund));
+            Assert.That(result.GasSpent, Is.EqualTo(spent - Math.Min(spent / 5, refund)));
+            Assert.That(TestState.Get(in cell).ToArray(), Is.EqualTo(new byte[] { originalValue }));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Selfdestruct_charges_beneficiary_access_and_creation(bool newBeneficiary)
+    {
+        Address beneficiary = newBeneficiary ? TestItem.AddressE : Target;
+        byte[] code = Prepare.EvmCode.SELFDESTRUCT(beneficiary).Done;
+        ulong expected = GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SelfDestructEip150 + ColdAccountAccess;
+        if (newBeneficiary)
+            expected += GasCostOf.NewAccount + (eip8038Enabled ? Eip8038Constants.AccountWrite : 0);
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.GasSpent, Is.EqualTo(expected));
+            Assert.That(TestState.GetBalance(beneficiary), Is.GreaterThan(UInt256.Zero));
+        }
     }
 
     [Test]

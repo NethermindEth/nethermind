@@ -71,7 +71,17 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag =>
+        InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037, DynamicCreateSpec>(ref stack, ref gas, vm);
+
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037, TSpec>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+        where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
+        where TSpec : struct, ICreateSpec
     {
         vm.MetricsCounters.IncrementCreates();
 
@@ -101,7 +111,7 @@ public static partial class EvmInstructions
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.
-        bool isEip3860 = spec.IsEip3860Enabled;
+        bool isEip3860 = TSpec.IsEip3860Enabled(spec);
         if (isEip3860)
         {
             if (initCodeLength > spec.MaxInitCodeSize)
@@ -115,7 +125,7 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
-        if (!TGasPolicy.ConsumeCreateGas<TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
+        if (!TSpec.ConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
@@ -158,7 +168,7 @@ public static partial class EvmInstructions
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
-        if (spec.UseHotAndColdStorage)
+        if (TSpec.UseHotAndColdStorage(spec))
         {
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
@@ -178,7 +188,7 @@ public static partial class EvmInstructions
             vm.EndInstructionTrace(gasAvailable);
 
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
-        if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
+        if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
             goto OutOfGas;
 
         // Increment the nonce of the executing account to reflect the contract creation.
@@ -196,7 +206,7 @@ public static partial class EvmInstructions
         {
             if (chargeCreateStateGas)
             {
-                vm.CreditStateGasRefund(ref gas, TGasPolicy.GetCreateStateCost());
+                vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetCreateStateCost());
             }
 
             vm.ReturnDataBuffer = Array.Empty<byte>();
