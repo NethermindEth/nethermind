@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
@@ -191,20 +192,159 @@ namespace Nethermind.AuRa.Test
             }
         }
 
+        // Regression for BAL preprocessing overwriting pre-existing protocol accounts.
+        // On chains such as Gnosis the withdrawal-contract address hosts a deployed contract
+        // (code, balance, nonce); ApplyAuRaPreprocessingChanges must materialise it without
+        // erasing that state. See AuRaBlockProcessor.ApplyAuRaPreprocessingChanges.
+        [Test]
+        public void ApplyAuRaPreprocessingChanges_preserves_existing_withdrawal_contract_account()
+        {
+            Address withdrawalAddress = TestItem.AddressF;
+            byte[] code = Bytes.FromHexString("0x60006000");
+            UInt256 balance = new(1_000_000_000_000_000_000);
+            const ulong nonce = 7;
+            // Address.SystemUser goes through the identical two-line change; it is a persisted
+            // protocol account whose balance and nonce must survive preprocessing too.
+            UInt256 systemUserBalance = new(3_000_000_000);
+            const ulong systemUserNonce = 2;
+
+            SeedThenPreprocess(withdrawalAddress,
+                seed: s =>
+                {
+                    s.CreateAccount(withdrawalAddress, balance, nonce);
+                    s.InsertCode(withdrawalAddress, code, Amsterdam.Instance, isGenesis: true);
+                    s.CreateAccount(Address.SystemUser, systemUserBalance, systemUserNonce);
+                },
+                assert: s =>
+                {
+                    Assert.That(s.GetCode(withdrawalAddress), Is.EqualTo(code));
+                    Assert.That(s.GetBalance(withdrawalAddress), Is.EqualTo(balance));
+                    Assert.That(s.GetNonce(withdrawalAddress), Is.EqualTo(nonce));
+                    Assert.That(s.GetBalance(Address.SystemUser), Is.EqualTo(systemUserBalance));
+                    Assert.That(s.GetNonce(Address.SystemUser), Is.EqualTo(systemUserNonce));
+                });
+        }
+
+        // Guards the other half of the contract: when the accounts are genuinely absent
+        // (the case the BAL integration tests already cover) they must still be materialised
+        // so the BAL parent-snapshot in parallel mode can see them.
+        [Test]
+        public void ApplyAuRaPreprocessingChanges_materialises_absent_accounts()
+        {
+            Address withdrawalAddress = TestItem.AddressF;
+
+            SeedThenPreprocess(withdrawalAddress,
+                seed: static _ => { },
+                assert: s =>
+                {
+                    Assert.That(s.AccountExists(Address.SystemUser), Is.True);
+                    Assert.That(s.AccountExists(withdrawalAddress), Is.True);
+                });
+        }
+
+        // Shared scaffolding: seed a pre-genesis state, then process BAL preprocessing on top of a
+        // block scope with BAL enabled, and run the caller's assertions against the resulting state.
+        private static void SeedThenPreprocess(Address withdrawalAddress, Action<IWorldState> seed, Action<IWorldState> assert)
+        {
+            (AuRaBlockProcessor processor, BlockAccessListManager balManager, IWorldState stateProvider) =
+                CreateBalAwareProcessor(withdrawalAddress);
+
+            Hash256 stateRoot;
+            using (stateProvider.BeginScope(IWorldState.PreGenesis))
+            {
+                seed(stateProvider);
+                stateProvider.Commit(Amsterdam.Instance);
+                stateProvider.CommitTree(0);
+                stateProvider.RecalculateStateRoot();
+                stateRoot = stateProvider.StateRoot;
+            }
+
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
+
+            using (stateProvider.BeginScope(parent))
+            {
+                EnableBal(balManager);
+                InvokeApplyAuRaPreprocessingChanges(processor);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    assert(stateProvider);
+                }
+            }
+        }
+
+        // Flip BlockAccessListManager.Enabled to true via the production entry point: a non-genesis
+        // block under a spec with EIP-7928 active. A null BlockAccessList keeps the sequential path
+        // (no read-warming), which is all the preprocessing step needs.
+        private static void EnableBal(BlockAccessListManager balManager)
+        {
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+            Assert.That(balManager.Enabled, Is.True);
+        }
+
+        private static void InvokeApplyAuRaPreprocessingChanges(AuRaBlockProcessor processor)
+        {
+            const string methodName = "ApplyAuRaPreprocessingChanges";
+            MethodInfo method = typeof(AuRaBlockProcessor).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingMethodException(nameof(AuRaBlockProcessor), methodName);
+            method.Invoke(processor, [Amsterdam.Instance]);
+        }
+
+        private static (AuRaBlockProcessor Processor, BlockAccessListManager BalManager, IWorldState StateProvider) CreateBalAwareProcessor(Address withdrawalContractAddress)
+        {
+            (IWorldState stateProvider, IBlockTree blockTree, ITransactionProcessor transactionProcessor, _, BlockAccessListManager balManager) = CreateSharedDeps();
+            ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider);
+            AuRaBlockProcessor processor = BuildAuRaProcessor(stateProvider, blockTree, transactionProcessor, transactionsExecutor, balManager, withdrawalContractAddress);
+
+            return (processor, balManager, stateProvider);
+        }
+
         private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        {
+            (IWorldState stateProvider, IBlockTree blockTree, ITransactionProcessor transactionProcessor, IBlockhashProvider blockhashProvider, BlockAccessListManager balManager) = CreateSharedDeps();
+            ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
+                new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
+                stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
+            AuRaBlockProcessor processor = BuildAuRaProcessor(stateProvider, blockTree, transactionProcessor, transactionsExecutor, balManager, txFilter: txFilter, contractRewriter: contractRewriter);
+
+            BranchProcessor branchProcessor = new(
+                processor,
+                GnosisSpecProvider.Instance,
+                stateProvider,
+                blockhashProvider,
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
+                LimboLogs.Instance);
+
+            return (branchProcessor, stateProvider, blockTree);
+        }
+
+        private static (IWorldState StateProvider, IBlockTree BlockTree, ITransactionProcessor TransactionProcessor, IBlockhashProvider BlockhashProvider, BlockAccessListManager BalManager) CreateSharedDeps()
         {
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
             BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, GnosisSpecProvider.Instance, LimboLogs.Instance));
-            ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
-                new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
-                stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
-            AuRaBlockProcessor processor = new(
+            return (stateProvider, blockTree, transactionProcessor, blockhashProvider, balManager);
+        }
+
+        private static AuRaBlockProcessor BuildAuRaProcessor(
+            IWorldState stateProvider,
+            IBlockTree blockTree,
+            ITransactionProcessor transactionProcessor,
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor,
+            BlockAccessListManager balManager,
+            Address? withdrawalContractAddress = null,
+            ITxFilter? txFilter = null,
+            ContractRewriter? contractRewriter = null) =>
+            new(
                 GnosisSpecProvider.Instance,
-                new AuRaChainSpecEngineParameters(),
+                withdrawalContractAddress is null
+                    ? new AuRaChainSpecEngineParameters()
+                    : new AuRaChainSpecEngineParameters { WithdrawalContractAddress = withdrawalContractAddress },
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 transactionsExecutor,
@@ -219,16 +359,5 @@ namespace Nethermind.AuRa.Test
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
-
-            BranchProcessor branchProcessor = new(
-                processor,
-                GnosisSpecProvider.Instance,
-                stateProvider,
-                blockhashProvider,
-                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
-                LimboLogs.Instance);
-
-            return (branchProcessor, stateProvider, blockTree);
-        }
     }
 }
