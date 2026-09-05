@@ -9,8 +9,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
+    /// <inheritdoc cref="RlpDecodeReceiptBenchmark"/>
     public class RlpDecodeTxBenchmark
     {
+        private const int Batch = 256;
+
         private byte[] _tx;
 
         private readonly byte[][] _scenarios;
@@ -21,14 +24,17 @@ namespace Nethermind.Benchmarks.Rlp
             _scenarios =
             [
                 Serialization.Rlp.Rlp.Encode(
-                    Build.A.Transaction.Signed(ecdsa, TestItem.PrivateKeyA).TestObject, RlpBehaviors.SkipTypedWrapping).Bytes,
+                    Build.A.Transaction.Signed(ecdsa, TestItem.PrivateKeyA).TestObject,
+                    RlpBehaviors.SkipTypedWrapping).Bytes,
                 Serialization.Rlp.Rlp.Encode(
                     Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(30)
-                        .Signed(ecdsa, TestItem.PrivateKeyA).TestObject, RlpBehaviors.SkipTypedWrapping).Bytes,
+                        .Signed(ecdsa, TestItem.PrivateKeyA).TestObject,
+                    RlpBehaviors.SkipTypedWrapping).Bytes,
                 Serialization.Rlp.Rlp.Encode(
                     Build.A.Transaction.WithType(TxType.AccessList)
                         .WithAccessList(Build.An.AccessList.TestObject)
-                        .Signed(ecdsa, TestItem.PrivateKeyA).TestObject, RlpBehaviors.SkipTypedWrapping).Bytes,
+                        .Signed(ecdsa, TestItem.PrivateKeyA).TestObject,
+                    RlpBehaviors.SkipTypedWrapping).Bytes,
             ];
         }
 
@@ -38,7 +44,16 @@ namespace Nethermind.Benchmarks.Rlp
         [GlobalSetup]
         public void Setup() => _tx = _scenarios[ScenarioIndex];
 
-        [Benchmark]
-        public Transaction Current() => Serialization.Rlp.Rlp.Decode<Transaction>(_tx, RlpBehaviors.SkipTypedWrapping);
+        [Benchmark(OperationsPerInvoke = Batch)]
+        public Transaction Current()
+        {
+            Transaction transaction = null;
+            for (int i = 0; i < Batch; i++)
+            {
+                transaction = Serialization.Rlp.Rlp.Decode<Transaction>(_tx, RlpBehaviors.SkipTypedWrapping);
+            }
+
+            return transaction;
+        }
     }
 }
