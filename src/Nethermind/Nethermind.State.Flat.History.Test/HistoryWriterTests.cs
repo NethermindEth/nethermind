@@ -540,6 +540,17 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Capture_of_an_already_covered_head_proves_health()
+    {
+        SeedGenesisFloor();
+
+        _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
+
+        Assert.That(_writer.CaptureHealthy, Is.True,
+            "a head the watermark already covers is backed by what is on disk; a restart after a crash between the history sync and the flat commit proves health this way");
+    }
+
+    [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
         SeedGenesisFloor();
