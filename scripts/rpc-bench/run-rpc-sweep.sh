@@ -2,8 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Cross-client sweep, one node per client pinned to the same SNAPSHOT_BLOCK: ISOLATED
-# (each scenario alone) and MIXED (all together). A node that fails to start is skipped.
+# Sweep one Nethermind image per CLIENTS entry over the same flat snapshot, one node at a time:
+# json-bench cells per rps (isolated + mixed, or private eth_call corpus cells with parity/timings).
+
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
@@ -14,575 +15,394 @@ source "$here/lib.sh"
 : "${SCRATCH_ROOT:?writable scratch root on the snapshot disk}"
 : "${NM_IMAGE:?built nethermind image ref}"
 : "${SNAPSHOT_BLOCK:?shared head all clients are pinned to}"
-: "${JB_REF:?json-bench ref}"
 : "${JB_BENCHMARK_CONFIG:?mixed (all-scenario) benchmark config, repo-relative}"
 
-CLIENTS="${CLIENTS:-nethermind}"
-# `-` not `:-`: an explicitly empty RPS_LIST means "no k6 cells" (parity/timings only), and
-# `:-` would substitute the default over it, which is exactly the case the caller wants.
-RPS_LIST="${RPS_LIST-100 250 500}"
-ISO_CONFIGS="${ISO_CONFIGS:-}"          # space-separated repo-relative single-scenario configs; empty = mixed only
+CLIENTS="${CLIENTS:-nethermind}"            # entries: ctype or ctype@image
+ROUNDS="${ROUNDS:-1}"                       # >1 repeats CLIENTS, reversing order on even rounds (2 = ABBA)
+RPS_LIST="${RPS_LIST-100 250 500}"          # explicitly empty = no k6 cells (parity/timings only)
+ISO_CONFIGS="${ISO_CONFIGS:-}"
 STATE_LAYOUT="${STATE_LAYOUT:-flat}"
-JB_DURATION="${JB_DURATION:-60s}"       # mixed-run load duration
-ISO_DURATION="${ISO_DURATION:-20s}"     # per-scenario isolated load duration (shorter; single call)
+JB_DURATION="${JB_DURATION:-60s}"
+ISO_DURATION="${ISO_DURATION:-20s}"
+JB_REF="${JB_REF:-}"
+JB_SEED="${JB_SEED:-1}"
 NETWORK="${NETWORK:-mainnet}"
 JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
-# Private eth_call corpus mode: every *.jsonl.gz corpus on the runner becomes its own scenario
-# (latency cells per rps + a full-corpus parity replay per client, first client = baseline).
-# Corpus contents stay on this machine: cells suppress raw tool output and publish aggregate-only
-# summaries; parity reports carry counts, never request/response bytes; node logs are scanned as
-# counts only and deleted.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
-CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"   # the workflow passes the selected runner's dir
-# Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
+CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
-# Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
-# CORPUS_PASSES is a multiple of the corpus's own record count (2 = every record drawn twice on
-# average). Either one derives the cell duration from the rate, so the rate stays what was asked
-# for and only the run length changes. Empty = size cells by JB_DURATION as before.
-CORPUS_REQUESTS="${CORPUS_REQUESTS:-}"
-CORPUS_PASSES="${CORPUS_PASSES:-}"
-# Per-record latency matrix (corpus_parity.py timings): replays the corpus in order so each row is
-# attributable to one record, which the k6 cells cannot do. Bypasses k6 entirely, so it is the only
-# way to drive a large corpus at a high rate without materializing a request-sized CSV.
-CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"
+CORPUS_REQUESTS="${CORPUS_REQUESTS:-}"      # size a cell by request count (absolute) ...
+CORPUS_PASSES="${CORPUS_PASSES:-}"          # ... or as a multiple of the corpus record count
+CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"   # per-record replay; 0 rps = closed loop at CORPUS_TIMINGS_CONCURRENCY
 CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
 CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
-# Characterise each parity divergence word by word. Derived from response bytes, so opt-in.
+CORPUS_WARMUP_RPS_MAX="${CORPUS_WARMUP_RPS_MAX:-0}"   # 0 = no cap on the warm-up rate
 CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
-# Sample the node container's cgroup during each corpus cell. Counters only, and a missing cgroup
-# is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
-# to doing more work, waiting on IO, or leaving the machine idle.
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
-# Discarded load applied to each node before its measured cells; 0 measures a cold node
-# deliberately. The 2026-08-13 measurements put the cold-failure knee at ~24k requests (two 120s
-# cells at 100 rps); this window delivers that same count in a quarter of the wall time by warming
-# at CORPUS_WARMUP_RPS rather than at the rate the cells are measured at.
-CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"
-# Warm-up rate floor, decoupled from the measured rates so the window can shrink while the
-# delivered request count holds: 400 x 60s matches what 240s x 100 rps delivered. A run that
-# measures a higher rate warms at that rate instead. A saturated node absorbs fewer requests than
-# the target, so treat the count as an upper bound.
-CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"
+CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"   # discarded load per node per corpus; 0 = measure cold
+CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"             # floor; a higher measured rate warms at that rate
+CORPUS_BASELINE="${CORPUS_BASELINE:-none}"                # save: persist this run's parity baseline on the runner; use: compare against the saved one
+CORPUS_BASELINE_DIR="${CORPUS_BASELINE_DIR:-$CORPUS_DIR/baselines}"
+CORPUS_RPC_GAS_CAP="1000000000000"
+DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
+DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
+SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
+case "$STATE_LAYOUT" in
+  flat) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="--FlatDb.Enabled=true" ;;
+  halfpath) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="" ;;
+  *) echo "::error::sweep mode resolves a flat or halfpath Nethermind snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1 ;;
+esac
 PARITY_STATE="$SCRATCH_ROOT/parity"
+RPC="http://localhost:8545"
 
-# Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
-# "250k" silently yields an empty duration and the cell quietly falls back to the workload default.
-# Reject anything non-numeric up front, before a node is started.
 require_positive_int() {
-  local name="$1" value="$2"
-  [[ -z "$value" ]] && return 0
-  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
-    echo "::error::${name} must be a positive integer, got '${value}'"; exit 1
-  fi
+  [[ -z "$2" || "$2" =~ ^[1-9][0-9]*$ ]] || { echo "::error::$1 must be a positive integer, got '$2'"; exit 1; }
 }
+require_positive_int ROUNDS "$ROUNDS"
 require_positive_int CORPUS_REQUESTS "$CORPUS_REQUESTS"
 require_positive_int CORPUS_PASSES "$CORPUS_PASSES"
 require_positive_int CORPUS_TIMINGS_PASSES "$CORPUS_TIMINGS_PASSES"
 require_positive_int CORPUS_TIMINGS_CONCURRENCY "$CORPUS_TIMINGS_CONCURRENCY"
 require_positive_int CORPUS_WARMUP_RPS "$CORPUS_WARMUP_RPS"
-if [[ -n "$CORPUS_REQUESTS" && -n "$CORPUS_PASSES" ]]; then
-  echo "::error::corpus_requests and corpus_passes are mutually exclusive"; exit 1
-fi
-# rps entries feed the same arithmetic; an empty list is legal (no k6 cells).
 for _rps in $RPS_LIST; do require_positive_int "rps_list entry" "$_rps"; done
-# timings_rps may be 0 (unpaced), so it is checked as a non-negative integer instead.
-if [[ -n "$CORPUS_TIMINGS_RPS" && ! "$CORPUS_TIMINGS_RPS" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  echo "::error::timings_rps must be a non-negative integer, got '${CORPUS_TIMINGS_RPS}'"; exit 1
-fi
-# The warm-up duration is recorded in timings.meta.json as numeric seconds, so a duration that
-# cannot be stated as integer seconds (e.g. "4m") is rejected up front instead of silently
-# recording 0 ("measured cold") for a warm run. "0" or "0s" disables the warm-up.
-if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
-  echo "::error::corpus_warmup_duration must be integer seconds (optional 's' suffix), got '${CORPUS_WARMUP_DURATION}'"; exit 1
-fi
+[[ -z "$CORPUS_REQUESTS" || -z "$CORPUS_PASSES" ]] || { echo "::error::corpus_requests and corpus_passes are mutually exclusive"; exit 1; }
+[[ "$CORPUS_TIMINGS_RPS" =~ ^[0-9]+$ ]] || { echo "::error::timings_rps must be a non-negative integer, got '$CORPUS_TIMINGS_RPS'"; exit 1; }
+[[ "$CORPUS_WARMUP_RPS_MAX" =~ ^[0-9]+$ ]] || { echo "::error::corpus_warmup_rps_max must be a non-negative integer, got '$CORPUS_WARMUP_RPS_MAX'"; exit 1; }
+[[ "$JB_SEED" =~ ^[0-9]+$ ]] || { echo "::error::seed must be a non-negative integer, got '$JB_SEED'"; exit 1; }
+[[ "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]] || { echo "::error::corpus_warmup_duration must be integer seconds, got '$CORPUS_WARMUP_DURATION'"; exit 1; }
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
-
-# Sweep mode resolves ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — and varies only
-# the image, so a geth/reth entry would reach start-node.sh with a DB_SOURCE that does not exist. That
-# is only a per-client `::warning::`, so the sweep would report a two-thirds-empty matrix as success —
-# and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Refuse it up front.
-# (Cross-client comparison lives in single-node mode, which resolves a path per client.) The single-node
-# workflow rejects the same two axes, but it reads the top-level inputs that sweep mode supersedes, so
-# the sweep has to check its own. Widening this means teaching it a per-client snapshot path.
+WARMUP_SEED=$(( JB_SEED + 1000 ))   # a measured cell must never replay exactly the sequence the warm-up just ran
+case "$JB_ETH_CALL_CORPUS" in
+  true|false) ;;
+  *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
+esac
+case "$CORPUS_BASELINE" in
+  none|save|use) ;;
+  *) echo "::error::CORPUS_BASELINE must be none, save or use, got '$CORPUS_BASELINE'"; exit 1 ;;
+esac
 for entry in $CLIENTS; do
-  if [[ "${entry%%@*}" != "nethermind" ]]; then
-    echo "::error::sweep mode resolves one Nethermind snapshot set, so client '${entry%%@*}' cannot run here"
-    echo "::error::use benchmark_tool=jsonbench (single-node) with client/reference_client for cross-client work"
-    exit 1
-  fi
+  entry="${entry%%#*}"
+  [[ "${entry%%@*}" == "nethermind" ]] || { echo "::error::sweep mode resolves one Nethermind snapshot set; client '${entry%%@*}' cannot run here (use benchmark_tool=jsonbench with reference_client)"; exit 1; }
 done
-if [[ "$STATE_LAYOUT" != "flat" ]]; then
-  echo "::error::sweep mode resolves a flat snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
-fi
-
-# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
-# passes the resolved one. `ctype@image` variants share that set, so the image is the only variable.
-SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
-SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
-NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
-# One isolation mode for every node, so storage counters stay comparable: overlayfs adds a layer and
-# changes readahead and page-cache behaviour, so disk-read-per-request would otherwise measure a
-# harness difference as much as a code one. DB_ISOLATION_ALL forces a specific mode; `copy` is the
-# overlay-free choice that still leaves the snapshot intact.
-#
-# `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
-# startup alone rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column
-# family. The Nethermind snapshots on these boxes are shared with expb, so one direct run
-# silently replaces the fixture every later benchmark compares against — which happened on
-# 2026-08-13 and cost a day of measurements (eth_call p99 tripled while an untouched client moved 2%).
-DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
-DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
+# direct bind-mounts the expb-shared snapshot read-write; one such run replaces the fixture every later benchmark uses.
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
-  echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot. Use 'copy' for an overlay-free"
-  echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
-  exit 1
+  echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot; use 'copy', or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot"; exit 1
 fi
 DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
 
-# One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
-# $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
+# $1 config $2 rps $3 duration $4 cell dir $5 ctype $6 label [$7 corpus file] [$8 node container to sample]
 run_cell() {
-  local cfg="$1" rps="$2" dur="$3" cell="$4" ctype="$5" label="$6" corpus="${7:-}" node="${8:-}"
-  local is_corpus="false" deep="true"
-  [[ -n "$corpus" ]] && { is_corpus="true"; deep="false"; }
-  mkdir -p "$cell"
-  # run-jsonbench.sh owns the sampling window so it covers container execution only, and it
-  # normalizes against the request count k6 reports rather than one derived from the duration.
-  local sampler_container="" sampler_out=""
-  if [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]]; then
-    sampler_container="$node"; sampler_out="$cell/resources.json"
-  fi
-  OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$ctype" LABEL="$label" \
-    SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
-    JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
-    JB_DEEP_CHECK="$deep" JB_HTML_REPORT="false" \
-    JB_ETH_CALL_CORPUS="$is_corpus" JB_ETH_CALL_CORPUS_FILE="$corpus" \
+  local corpus="${7:-}" node="${8:-}" sampler_container="" sampler_out=""
+  mkdir -p "$4"
+  [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]] && { sampler_container="$node"; sampler_out="$4/resources.json"; }
+  OUT_DIR="$4" RPC_URL="$RPC" CLIENT_TYPE="$5" LABEL="$6" SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
+    JB_BENCHMARK_CONFIG="$1" JB_RPS="$2" JB_DURATION="$3" JB_SEED="$JB_SEED" JB_HTML_REPORT="false" \
+    JB_DEEP_CHECK="$([[ -n "$corpus" ]] && echo false || echo true)" \
+    JB_ETH_CALL_CORPUS="$([[ -n "$corpus" ]] && echo true || echo false)" JB_ETH_CALL_CORPUS_FILE="$corpus" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
     "$here/run-jsonbench.sh"
 }
 
-# Print a cell's failure rate next to its name. Latency percentiles above the failure rate are
-# measuring failures, not latency: at a 2% failure rate p99 sits inside the failing population and
-# reads as a huge regression when nothing got slower. Surfacing it per cell keeps that visible.
+# Percentiles above the failure rate describe failures, not latency — say so per cell.
 report_fail_rate() {
-  local cell="$1" name="$2" rate
-  [[ -s "$cell/summary.json" ]] || return 0
-  rate="$(python3 - "$cell/summary.json" <<'PY' 2>/dev/null || echo ""
-import json, sys
-try:
-    m = (json.load(open(sys.argv[1])) or {}).get("metrics", {}) or {}
-    r = ((m.get("http_req_failed") or {}).get("values") or {}).get("rate")
-    print("%.3f" % (r * 100) if isinstance(r, (int, float)) else "")
-except Exception:
-    print("")
-PY
-)"
+  local rate
+  rate="$(json_number "$1/summary.json" '.metrics.http_req_failed.values.rate * 100' "")"
   [[ -n "$rate" ]] || return 0
-  if awk "BEGIN{exit !($rate > ${JB_MAX_FAIL_RATE_PCT:-1})}" 2>/dev/null; then
-    echo "::warning::${name}: ${rate}% of requests failed — percentiles at or above p$(awk "BEGIN{printf \"%d\", 100-$rate}") describe failures, not latency"
+  if awk -v r="$rate" -v m="${JB_MAX_FAIL_RATE_PCT:-1}" 'BEGIN{exit !(r > m)}'; then
+    echo "::warning::$2: ${rate}% of requests failed — percentiles at or above p$(awk -v r="$rate" 'BEGIN{printf "%d", 100-r}') describe failures, not latency"
   else
-    echo "   ${name}: fail rate ${rate}%"
+    echo "   $2: fail rate ${rate}%"
   fi
 }
 
-# Requests a finished k6 cell actually delivered. The warm-up is sized by a request count, and
-# k6's arrival-rate executor drops iterations once in-flight demand outruns the VU pool — which
-# run_cell does not raise with the rate — so rate x duration would overstate what a node absorbed.
-warm_delivered() {
-  [[ -s "$1" ]] || { echo 0; return 0; }
-  python3 - "$1" <<'PY' 2>/dev/null || echo 0
-import json, sys
-try:
-    m = (json.load(open(sys.argv[1])) or {}).get("metrics", {}) or {}
-    c = ((m.get("http_reqs") or {}).get("values") or {}).get("count")
-except Exception:
-    c = None
-print(int(c) if isinstance(c, (int, float)) and not isinstance(c, bool) and c > 0 else 0)
-PY
+corpus_cell_duration() {   # $1 corpus $2 rps
+  local target=""
+  if [[ -n "$CORPUS_REQUESTS" ]]; then target="$CORPUS_REQUESTS"
+  elif [[ -n "$CORPUS_PASSES" ]]; then target=$(( CORPUS_RECORDS[$1] * CORPUS_PASSES ))
+  else printf '%s' "$JB_DURATION"; return; fi
+  printf '%ss' "$(( (target + $2 - 1) / $2 ))"
 }
 
-# achieved_rps from a replay's own meta sidecar — measured, unlike the pace it was asked for.
-warm_replay_rps() {
-  [[ -s "$1" ]] || { echo ""; return 0; }
-  python3 - "$1" <<'PY' 2>/dev/null || echo ""
-import json, sys
-try:
-    v = (json.load(open(sys.argv[1])) or {}).get("achieved_rps")
-except Exception:
-    v = None
-print(v if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else "")
-PY
-}
-
-# Corpus mode raises start-node's uniform RPC_GAS_CAP (default 1e9) to 1e12: captured calls
-# carry explicit gas up to billions, and clamping them would make calls fail artificially.
-CORPUS_RPC_GAS_CAP="1000000000000"
-
-# Cell length for a corpus at a given rate. With CORPUS_REQUESTS/CORPUS_PASSES the cell is sized by
-# request count instead of wall time: k6's constant-arrival-rate executor holds the rate, so running
-# for count/rate seconds delivers exactly that many requests at exactly the rate asked for.
-corpus_cell_duration() {
-  local corpus="$1" rps="$2" target=""
-  if [[ -n "$CORPUS_REQUESTS" ]]; then
-    target="$CORPUS_REQUESTS"
-  elif [[ -n "$CORPUS_PASSES" ]]; then
-    local records="${CORPUS_RECORDS[$corpus]:-}"
-    if [[ -z "$records" ]]; then
-      echo "::warning::no record count for $(corpus_label "$corpus") — falling back to JB_DURATION" >&2
-      printf '%s' "$JB_DURATION"; return
-    fi
-    target=$((records * CORPUS_PASSES))
-  else
-    printf '%s' "$JB_DURATION"; return
-  fi
-  # Round up so the cell never delivers fewer than the requested count.
-  printf '%ss' "$(( (target + rps - 1) / rps ))"
-}
-
-# Short scenario label from a corpus filename: eth-call-corpus[-<label>].jsonl.gz -> <label> | default
-corpus_label() {
+corpus_label() {   # eth-call-corpus[-<label>].jsonl.gz -> <label> | default
   local b; b="$(basename "$1")"
   b="${b#eth-call-corpus}"; b="${b#-}"; b="${b%.jsonl.gz}"
   printf '%s' "${b:-default}" | tr -c 'a-zA-Z0-9._\n' '-'
 }
 
-mkdir -p "$OUT_DIR" "$STATE_ROOT"
-declare -a SUMMARIES=()
-declare -a LABELS=()
-declare -a CORPORA=()
-declare -a PARITY_ROWS=()
-node_issue=0
-cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
-stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
-parity_fail=0 # corpus parity defects or a failed parity replay
-BASELINE_LABEL=""  # first successfully started client; all later clients diff against it
-
-case "$JB_ETH_CALL_CORPUS" in
-  true|false) ;;
-  *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
-esac
-if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
-  for f in "$CORPUS_DIR"/$CORPUS_GLOB; do
-    [[ -f "$f" ]] && CORPORA+=("$f")
-  done
-  if [[ "${#CORPORA[@]}" -eq 0 ]]; then
-    echo "::error::no corpus files matching '$CORPUS_GLOB' under $CORPUS_DIR"; exit 1
-  fi
-  CORPUS_LABELS=()
-  for f in "${CORPORA[@]}"; do CORPUS_LABELS+=("$(corpus_label "$f")"); done
-  echo "Corpus scenarios: ${CORPUS_LABELS[*]}"
-  # corpus_label sanitizes the filename, so two distinct corpora can collapse onto one label and
-  # would then share a parity baseline and cell directory — the second baseline overwrites the
-  # first and later clients diff against the wrong one. It fails safe (a count mismatch), but far
-  # into the sweep and pointing at nothing real, so reject it before any node starts.
-  collisions="$(printf '%s\n' "${CORPUS_LABELS[@]}" | sort | uniq -d | tr '\n' ' ')"
-  if [[ -n "${collisions// /}" ]]; then
-    echo "::error::corpus scenario labels collide (${collisions%% }) — rename the files so each yields a distinct label"; exit 1
-  fi
-  # Fail on an unreadable/oversized corpus in seconds, before any node starts or cell runs.
-  declare -A CORPUS_RECORDS=()
-  for corpus in "${CORPORA[@]}"; do
-    # validate prints "corpus OK: <n> records" — reuse that count for CORPUS_PASSES sizing.
-    if validate_out="$(python3 "$here/corpus_parity.py" validate --corpus "$corpus")"; then
-      echo "$validate_out"
-      CORPUS_RECORDS["$corpus"]="$(printf '%s' "$validate_out" | awk '/^corpus OK:/ {print $3}')"
-    else
-      echo "::error::corpus $(corpus_label "$corpus") failed validation — fix the file before sweeping"; exit 1
+# Discarded load before a node's measured cells (a cold node fails ~2% and reads ~60% high on p99).
+# Sets WARMED_SECONDS/WARMED_RPS to what was delivered. $1 clabel $2 label $3 corpus $4 ctype
+warm_node() {
+  WARMED_SECONDS=0; WARMED_RPS=0
+  (( WARMUP_SECONDS > 0 )) || return 0
+  local warm_rps="$CORPUS_WARMUP_RPS" r got
+  for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
+  [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
+  # json-bench pre-generates rps x duration request rows and k6 parses the whole file, so a long warm-up at a high
+  # rate can exceed what the generator can hold; the cap trades warm-up pace for warm-up length.
+  (( CORPUS_WARMUP_RPS_MAX > 0 && warm_rps > CORPUS_WARMUP_RPS_MAX )) && warm_rps="$CORPUS_WARMUP_RPS_MAX"
+  local warm_cell="$SCRATCH_ROOT/warmup-cell/$1/$2"   # outside OUT_DIR so it is never staged
+  echo "-- WARMUP $1 $2 @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
+  if [[ -n "$RPS_LIST" ]]; then
+    if ! JB_MAX_FAIL_RATE_PCT=100 JB_SEED="$WARMUP_SEED" run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" "$warm_cell" "$4" "$2" "$3" ""; then
+      echo "::warning::warmup for $2 failed — measured cells may be cold"; return 0
     fi
+    WARMED_SECONDS="$WARMUP_SECONDS"
+    got="$(json_number "$warm_cell/summary.json" '.metrics.http_reqs.values.count' 0)"
+    if (( got > 0 )); then
+      WARMED_RPS=$(( got / WARMUP_SECONDS ))
+      (( got * 10 >= warm_rps * WARMUP_SECONDS * 8 )) || echo "::warning::warmup for $2 delivered ${got} of $(( warm_rps * WARMUP_SECONDS )) requests — cells may be under-warmed"
+    else
+      WARMED_RPS="$warm_rps"
+      echo "::warning::warmup for $2: no usable http_reqs count — recorded warmup_rps is the requested pace"
+    fi
+    report_fail_rate "$warm_cell" "warmup $1/$2"
+  else
+    local records="${CORPUS_RECORDS[$3]}" started=$SECONDS bound=$(( WARMUP_SECONDS + 60 ))
+    (( bound < 300 )) && bound=300
+    mkdir -p "$warm_cell"
+    timeout "$bound" python3 "$here/corpus_parity.py" timings --corpus "$3" --rpc-url "$RPC" \
+      --out "$warm_cell/warmup-timings.csv" --passes "$(( (warm_rps * WARMUP_SECONDS + records - 1) / records ))" \
+      --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"
+    local status=$?
+    if [[ "$status" -eq 0 || "$status" -eq 124 ]]; then   # 124: the window elapsed under load, which is a completed warm-up
+      WARMED_SECONDS=$(( SECONDS - started ))
+      WARMED_RPS="$(json_number "$warm_cell/timings.meta.json" '.achieved_rps' "$warm_rps")"
+    else
+      echo "::warning::warmup replay for $2 failed — measured cells may be cold"
+    fi
+  fi
+}
+
+# $1 clabel $2 label $3 corpus $4 baseline state $5 baseline label $6 "saved" when the state came from CORPUS_BASELINE_DIR
+parity_compare() {
+  local report_dir="$OUT_DIR/corpus/$1/$2" report status
+  mkdir -p "$report_dir"; report="$report_dir/parity.json"
+  echo "-- PARITY $1: $2 vs ${6:+saved }baseline $5 --"
+  python3 "$here/corpus_parity.py" compare --corpus "$3" --rpc-url "$RPC" --state "$4" \
+    --report "$report" --baseline-client "$5" --candidate-client "$2" \
+    $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json")
+  status=$?
+  if (( status == 0 )); then
+    PARITY_ROWS+=("$1|$2|$report")
+  elif (( status == 2 )) && [[ -n "$6" ]]; then
+    # Exit 2 is "the comparison could not run": unreadable saved state, a moved snapshot head/hash, an unreadable
+    # corpus, or a node that did not answer. Only the snapshot case calls for re-recording, so do not advise it here.
+    echo "::error::parity not checked for $2 on corpus $1 — compare could not run against the saved baseline $5 (see its error above); re-record the master baseline only if the snapshot moved"
+    parity_skipped=$((parity_skipped + 1))
+  else
+    echo "::warning::parity defects for $2 vs $5 on corpus $1"; parity_fail=$((parity_fail + 1))
+    [[ -f "$report" ]] && PARITY_ROWS+=("$1|$2|$report")
+  fi
+}
+
+# $1 clabel $2 label $3 corpus $4 ctype $5 container
+run_corpus() {
+  local clabel="$1" label="$2" corpus="$3" ctype="$4" cname="$5" rps slot cell dur report_dir
+  warm_node "$clabel" "$label" "$corpus" "$ctype"
+  declare -A rps_seen=()
+  for rps in $RPS_LIST; do
+    rps_seen[$rps]=$(( ${rps_seen[$rps]:-0} + 1 ))
+    slot="$rps"; (( rps_seen[$rps] > 1 )) && slot="${rps}_r${rps_seen[$rps]}"
+    cell="$OUT_DIR/corpus/$clabel/$label/$slot"
+    dur="$(corpus_cell_duration "$corpus" "$rps")"
+    echo "-- CORPUS $clabel $label @ rps=$rps for $dur --"
+    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$dur" "$cell" "$ctype" "$label" "$corpus" "$cname" \
+      || { echo "::warning::corpus $clabel/$label/$slot failed"; cell_fail=$((cell_fail + 1)); }
+    report_fail_rate "$cell" "$clabel/$label/$slot"
+    [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|$clabel|$label|$slot=$cell/jsonbench-summary.md")
+  done
+  local saved="$CORPUS_BASELINE_DIR/$clabel.json.gz"
+  if [[ -n "${PARITY_BASE_STATE[$clabel]:-}" ]]; then
+    parity_compare "$clabel" "$label" "$corpus" "${PARITY_BASE_STATE[$clabel]}" "${PARITY_BASE_LABEL[$clabel]}" "${PARITY_BASE_SAVED[$clabel]}"
+  elif [[ "$CORPUS_BASELINE" == "use" && -s "$saved" ]]; then
+    PARITY_BASE_STATE[$clabel]="$saved"; PARITY_BASE_SAVED[$clabel]="saved"
+    PARITY_BASE_LABEL[$clabel]="$(cat "$CORPUS_BASELINE_DIR/$clabel.label" 2>/dev/null || echo master)"
+    parity_compare "$clabel" "$label" "$corpus" "$saved" "${PARITY_BASE_LABEL[$clabel]}" "saved"
+  else
+    if [[ "$CORPUS_BASELINE" == "use" ]]; then
+      # The saved responses are the only correctness gate in cache mode, so a missing one is a failure, not a
+      # note: capturing this arm as its own baseline compares it against itself and always passes.
+      echo "::error::no saved parity baseline for corpus $clabel — nothing checked $label against master; re-run the corpus-baseline preset on this box"
+      parity_skipped=$((parity_skipped + 1))
+    fi
+    echo "-- PARITY $clabel: capturing baseline ($label) --"
+    if python3 "$here/corpus_parity.py" baseline --corpus "$corpus" --rpc-url "$RPC" --state "$PARITY_STATE/$clabel.json"; then
+      PARITY_BASE_STATE[$clabel]="$PARITY_STATE/$clabel.json"; PARITY_BASE_LABEL[$clabel]="$label"; PARITY_BASE_SAVED[$clabel]=""
+      if [[ "$CORPUS_BASELINE" == "save" ]]; then
+        # Rename into place: a run killed mid-copy must not leave a truncated state behind, since the read side
+        # accepts any non-empty file and would then report "parity not checked" on every later run. State before
+        # label, so an interruption between the two renames leaves a fresh state under a stale name rather than
+        # the new master's name over the previous master's responses.
+        if mkdir -p "$CORPUS_BASELINE_DIR" \
+          && cp "$PARITY_STATE/$clabel.json" "$saved.tmp" && printf '%s\n' "$label" > "$CORPUS_BASELINE_DIR/$clabel.label.tmp" \
+          && mv -f "$saved.tmp" "$saved" && mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp" "$CORPUS_BASELINE_DIR/$clabel.label"; then
+          echo "   saved parity baseline for $clabel -> $saved"
+        else
+          echo "::warning::could not save the parity baseline for $clabel under $CORPUS_BASELINE_DIR"
+          rm -f "$saved.tmp" "$CORPUS_BASELINE_DIR/$clabel.label.tmp"
+        fi
+      fi
+    else
+      echo "::error::parity baseline capture failed for corpus $clabel on $label"; parity_fail=$((parity_fail + 1))
+    fi
+  fi
+  if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
+    report_dir="$OUT_DIR/corpus/$clabel/$label"; mkdir -p "$report_dir"
+    echo "-- TIMINGS $clabel: $label ($CORPUS_TIMINGS_PASSES passes @ $CORPUS_TIMINGS_RPS rps, concurrency $CORPUS_TIMINGS_CONCURRENCY) --"
+    python3 "$here/corpus_parity.py" timings --corpus "$corpus" --rpc-url "$RPC" --out "$report_dir/timings.csv" \
+        --passes "$CORPUS_TIMINGS_PASSES" --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY" \
+        --warmup-seconds "$WARMED_SECONDS" --warmup-rps "$WARMED_RPS" \
+      || { echo "::warning::timings replay failed for $label on corpus $clabel"; cell_fail=$((cell_fail + 1)); }
+  fi
+}
+
+# $1 label $2 ctype $3 log file. Corpus mode prints counts only and deletes the log (lines could quote call data).
+scan_node_log() {
+  [[ -f "$3" ]] || return 0
+  local clean="$3.clean" show="true" exc pattern
+  [[ "$JB_ETH_CALL_CORPUS" == "true" ]] && show="false"
+  strip_ansi "$3" > "$clean"
+  exc="$(grep -i "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' | wc -l | tr -d ' ')"
+  if (( exc > 0 )); then
+    if [[ "$2" == "nethermind" ]]; then echo "::warning::$1: $exc Exception line(s) in node log"; node_issue=1
+    else echo "::warning::$1: $exc Exception-like line(s) in node log (warn only, non-Nethermind)"; fi
+    [[ "$show" == "true" ]] && { grep -i "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' | head -20; }
+  fi
+  if [[ "$2" == "nethermind" ]]; then
+    grep -qEi 'invalid[[:space:]_-]*block' "$clean" && { echo "::warning::$1: invalid block in node log"; node_issue=1; }
+    grep -q "Nethermind is shut down" "$clean" || { echo "::warning::$1: 'Nethermind is shut down' marker missing — node did not shut down cleanly"; node_issue=1; }
+  fi
+  for pattern in Unhandled Fatal ERROR; do
+    grep -qi "$pattern" "$clean" || continue
+    echo "::warning::$1: severe log pattern '$pattern' ($(grep -ci "$pattern" "$clean") line(s))"
+    [[ "$show" == "true" ]] && { grep -in "$pattern" "$clean" | head -10 || true; }
+  done
+  [[ "$show" == "true" ]] || rm -f "$3" "$clean"
+}
+
+mkdir -p "$OUT_DIR" "$STATE_ROOT"
+declare -a SUMMARIES=() LABELS=() CORPORA=() PARITY_ROWS=()
+declare -A CORPUS_RECORDS=() LABEL_SEEN=() PARITY_BASE_STATE=() PARITY_BASE_LABEL=() PARITY_BASE_SAVED=()
+node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; parity_skipped=0; baseline_fail=0; arm_fail=0
+BASELINE_LABEL=""
+USING_SAVED_BASELINE=false   # true once every corpus has a saved baseline to compare against, so no arm here is one
+
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  for f in "$CORPUS_DIR"/$CORPUS_GLOB; do [[ -f "$f" ]] && CORPORA+=("$f"); done
+  [[ "${#CORPORA[@]}" -gt 0 ]] || { echo "::error::no corpus files matching '$CORPUS_GLOB' under $CORPUS_DIR"; exit 1; }
+  labels=(); for f in "${CORPORA[@]}"; do labels+=("$(corpus_label "$f")"); done
+  echo "Corpus scenarios: ${labels[*]}"
+  collisions="$(printf '%s\n' "${labels[@]}" | sort | uniq -d | tr '\n' ' ')"
+  [[ -z "${collisions// /}" ]] || { echo "::error::corpus scenario labels collide (${collisions% }) — rename the files"; exit 1; }
+  for corpus in "${CORPORA[@]}"; do
+    out="$(python3 "$here/corpus_parity.py" validate --corpus "$corpus")" || { echo "::error::corpus $(corpus_label "$corpus") failed validation"; exit 1; }
+    echo "$out"
+    CORPUS_RECORDS["$corpus"]="$(awk '/^corpus OK:/ {print $3}' <<< "$out")"
   done
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
+  if [[ "$CORPUS_BASELINE" == "use" ]]; then
+    USING_SAVED_BASELINE=true
+    for corpus in "${CORPORA[@]}"; do
+      [[ -s "$CORPUS_BASELINE_DIR/$(corpus_label "$corpus").json.gz" ]] || USING_SAVED_BASELINE=false
+    done
+    [[ "$USING_SAVED_BASELINE" == "true" ]] && echo "Parity baseline: saved responses under $CORPUS_BASELINE_DIR"
+  fi
 fi
 
-# Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
-# same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
-# Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
-# distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
-# and the sweep would silently report fewer results than it ran.
+read -ra entries <<< "$CLIENTS"
+schedule=()
+for (( round = 1; round <= ROUNDS; round++ )); do
+  if (( round % 2 )); then schedule+=("${entries[@]}")
+  else for (( i = ${#entries[@]} - 1; i >= 0; i-- )); do schedule+=("${entries[i]}"); done; fi
+done
+echo "Schedule (${ROUNDS} round(s)): ${schedule[*]}"
 log_system_provenance
 
-declare -A LABEL_SEEN=()
-for entry in $CLIENTS; do
-  ctype="${entry%%@*}"
-  if [[ "$entry" == *@* ]]; then
-    img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
-  else
-    img="$NM_IMAGE"; label="$ctype"
+for entry in "${schedule[@]}"; do
+  # ctype[@image][#K=V[,K=V]] — the optional env suffix reaches only this arm's node (on top of NODE_ENV_VARS), so
+  # one sweep can compare config values of the same image; it is folded into the label so arms stay distinct.
+  arm_env=""; spec="$entry"
+  if [[ "$spec" == *#* ]]; then arm_env="${spec#*#}"; spec="${spec%%#*}"; fi
+  ctype="${spec%%@*}"
+  img="$(arm_image "$entry")"
+  if [[ -n "$img" ]]; then label="$(arm_label "$ctype" "$img")"
+  else img="$NM_IMAGE"; label="$ctype"; fi
+  if [[ -n "$arm_env" ]]; then
+    label="${label}_$(printf '%s' "$arm_env" | sed -E 's/NETHERMIND_[A-Z]+CONFIG_//g' | tr -c 'a-zA-Z0-9' '_' | tr -s '_' | sed 's/_$//')"
+    arm_env="${arm_env//,/ }"
   fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
-  (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
+  (( LABEL_SEEN["$label"] > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
   echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${SNAPSHOT_PATH}, head=${SNAPSHOT_BLOCK})"
-  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
-       DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
-       SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
-       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
-       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
+       SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
+       LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
-       DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
-       "$here/start-node.sh"; then
-    echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
+       NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
+       DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
+    if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$USING_SAVED_BASELINE" != "true" && -z "$BASELINE_LABEL" ]]; then
+      echo "::error::${label} failed to start — it was to capture the parity baseline, so later arms are compared against a substitute"; baseline_fail=1
+    else
+      # A sweep exists to compare arms, so losing one leaves half a matrix. Reporting success on that is how a
+      # two-arm dispatch quietly becomes a single-arm run with no comparison.
+      echo "::error::${label} failed to start — its cells are missing from the matrix"; arm_fail=$((arm_fail + 1))
+    fi
+    echo "::endgroup::"; continue
   fi
   LABELS+=("$label")
 
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
-    # One latency cell per corpus per rps, then one full-corpus parity replay per corpus
-    # while the node is still up. The first started client is the parity baseline.
-    for corpus in "${CORPORA[@]}"; do
-      clabel="$(corpus_label "$corpus")"
-
-      # A node that has just started answers eth_blockNumber (what wait_for_rpc gates on) long
-      # before it serves eth_call from state. Measured cold, the first cell fails ~2% of requests
-      # and reports roughly 60% higher p99 than the same node warm — an effect larger than any
-      # code change this harness is used to detect. Burn that off into a discarded cell first.
-      # 2026-08-13 evidence: with 120s/cell, cell 1 failed 1.97%, cell 2 <1%, cell 3 0.000%.
-      # Parity/timings-only runs (empty rps_list) warm too — they measure the same node, and a
-      # cold matrix looks exactly as authoritative as a warm one. Runs once per corpus on
-      # purpose: different corpora can touch disjoint state.
-      WARMED_SECONDS=0
-      WARMED_RPS=0
-      if (( WARMUP_SECONDS > 0 )); then
-        # Warm at CORPUS_WARMUP_RPS, which sizes the warm-up by the requests it delivers rather
-        # than by the rate the cells are measured at — a short window at a high rate reaches the
-        # same count. It acts as a floor, never a cap: warming slower than a cell is measured at
-        # would leave that cell under-warmed, and the k6 cells AND the timings matrix both count,
-        # so the floor spans both knobs. Unpaced timings (0) falls back flat.
-        warm_rps="${CORPUS_WARMUP_RPS:-0}"
-        for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
-        [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
-        (( warm_rps == 0 )) && warm_rps=100
-        # Discarded output must stay OUT of OUT_DIR: stage() publishes by filename and comment()
-        # keys cells by directory position, so a staged warmup summary.json would displace the
-        # measured cell in the published PR comment.
-        warm_cell="$SCRATCH_ROOT/warmup-cell/${clabel}/${label}"
-        echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
-        # warmup_seconds must state the OUTCOME. On the k6 branch the request IS the outcome:
-        # the constant-arrival executor runs for exactly the given duration, and an elapsed
-        # clock here would bill the whole json-bench wrapper (clone, docker build, fixture
-        # write — which scales with corpus size) as warm-up the idle node never received. The
-        # replay branch is request-count-bounded (pacing can only delay: its ceiling is
-        # concurrency/latency), so THERE an elapsed clock plus a hard `timeout` state the
-        # truth; hitting the bound still IS a completed warm-up — the node absorbed load for
-        # the whole window.
-        if [[ -n "$RPS_LIST" ]]; then
-          # The k6 cells build the JSON-array fixture anyway, so warming through run_cell adds no
-          # extra materialization. The fail-rate gate is LIFTED for this cell: the warm-up exists
-          # to absorb exactly the cold failures the gate rejects, so gating it inverts its exit
-          # status (a warm-up that did its job would report failure).
-          if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
-              "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS="$WARMUP_SECONDS"
-            # The (seconds, rps) pair is read as the count the node absorbed, so the rate has to
-            # be the delivered one. A short delivery is the failure mode this change can have —
-            # 400 rps is above the 300 rps that already drove a 1.22% fail rate on arm64 — and
-            # the warm-up's own fail gate is lifted, so nothing else would report it.
-            warm_got="$(warm_delivered "$warm_cell/summary.json")"
-            warm_want=$(( warm_rps * WARMUP_SECONDS ))
-            if (( warm_got > 0 )); then
-              WARMED_RPS=$(( warm_got / WARMUP_SECONDS ))
-              if (( warm_got * 10 < warm_want * 8 )); then
-                echo "::warning::warmup for ${label} delivered ${warm_got} of ${warm_want} requests (${WARMED_RPS} of ${warm_rps} rps) — measured cells may be under-warmed"
-              else
-                echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
-              fi
-            else
-              WARMED_RPS="$warm_rps"
-              echo "::warning::warmup for ${label}: no usable http_reqs count — recorded warmup_rps is the requested pace, not the delivered one"
-            fi
-          else
-            echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
-          fi
-          report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
-        elif [[ -z "${CORPUS_RECORDS[$corpus]:-}" ]]; then
-          # Cannot size the replay without the record count (validate fills it for every corpus,
-          # so this is defensive). A wrong guess would multiply by the real count inside
-          # timings() and run for hours; skipping states the truth: not warmed.
-          echo "::warning::no record count for $(corpus_label "$corpus") — skipping warmup (recorded warmup_seconds=0)"
-        else
-          # Fixture-free mode: an empty rps_list exists so a large corpus never materializes the
-          # k6 JSON-array fixture, so the warm-up must not build it either. corpus_parity's
-          # paced replay drives the same eth_calls without k6; it exits nonzero only on a real
-          # crash (cold per-call failures are reported in its output, not the exit code).
-          records="${CORPUS_RECORDS[$corpus]}"
-          warm_passes=$(( (warm_rps * WARMUP_SECONDS + records - 1) / records ))
-          mkdir -p "$warm_cell"
-          warm_started=$SECONDS
-          # This branch is request-bounded, so the wall-clock bound must leave room for the whole
-          # request target at a slow node's pace: pacing can only delay. Scaling it with the (now
-          # short) window instead would truncate delivery below what the 240s default managed.
-          warm_timeout=$(( WARMUP_SECONDS + 60 ))
-          (( warm_timeout < 300 )) && warm_timeout=300
-          timeout "$warm_timeout" python3 "$here/corpus_parity.py" timings \
-              --corpus "$corpus" --rpc-url "http://localhost:8545" \
-              --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
-              --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"
-          warm_status=$?
-          # 124 = the timeout fired: the node still absorbed warm load for the whole window.
-          if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
-            WARMED_SECONDS=$(( SECONDS - warm_started ))
-            # The replay writes its own meta beside the CSV, and achieved_rps there is measured.
-            # A fired timeout kills it before that write, so fall back to the pace it was asked
-            # for and say so rather than pairing measured seconds with a silent target.
-            WARMED_RPS="$(warm_replay_rps "$warm_cell/timings.meta.json")"
-            if [[ -z "$WARMED_RPS" ]]; then
-              WARMED_RPS="$warm_rps"
-              echo "::warning::warmup replay for ${label}: no achieved rate recorded — warmup_rps is the requested pace, not the delivered one"
-            fi
-          else
-            echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
-          fi
-        fi
-      fi
-
-      # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
-      # exceed the box, and parity/timings do not need it.
-      # A repeated rate is a deliberate drift control, so each repeat needs its own cell directory —
-      # sharing one silently leaves only the last result behind.
-      declare -A RPS_SEEN=()
-      for rps in $RPS_LIST; do
-        RPS_SEEN["$rps"]=$(( ${RPS_SEEN["$rps"]:-0} + 1 ))
-        slot="$rps"
-        (( ${RPS_SEEN["$rps"]} > 1 )) && slot="${rps}_r${RPS_SEEN["$rps"]}"
-        cell="$OUT_DIR/corpus/${clabel}/${label}/${slot}"
-        cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
-        echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
-        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname" \
-          || { echo "::warning::corpus ${clabel}/${label}/${slot} failed"; cell_fail=$((cell_fail + 1)); }
-        report_fail_rate "$cell" "${clabel}/${label}/${slot}"
-        [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${slot}=$cell/jsonbench-summary.md")
-      done
-      unset RPS_SEEN
-      if [[ -z "$BASELINE_LABEL" ]]; then
-        echo "-- PARITY ${clabel}: capturing baseline (${label}) --"
-        if ! python3 "$here/corpus_parity.py" baseline \
-            --corpus "$corpus" --rpc-url "http://localhost:8545" \
-            --state "$PARITY_STATE/${clabel}.json"; then
-          echo "::error::parity baseline capture failed for corpus ${clabel} on ${label}"
-          parity_fail=$((parity_fail + 1))
-        fi
-      else
-        report_dir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$report_dir"
-        report="$report_dir/parity.json"
-        echo "-- PARITY ${clabel}: ${label} vs baseline ${BASELINE_LABEL} --"
-        if python3 "$here/corpus_parity.py" compare \
-            --corpus "$corpus" --rpc-url "http://localhost:8545" \
-            --state "$PARITY_STATE/${clabel}.json" --report "$report" \
-            --baseline-client "$BASELINE_LABEL" --candidate-client "$label" \
-            $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json"); then
-          PARITY_ROWS+=("${clabel}|${label}|$report")
-        else
-          echo "::warning::parity defects for ${label} vs ${BASELINE_LABEL} on corpus ${clabel} (see report counts)"
-          parity_fail=$((parity_fail + 1))
-          [[ -f "$report" ]] && PARITY_ROWS+=("${clabel}|${label}|$report")
-        fi
-      fi
-
-      if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
-        tdir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$tdir"
-        echo "-- TIMINGS ${clabel}: ${label} (${CORPUS_TIMINGS_PASSES} passes @ ${CORPUS_TIMINGS_RPS} rps) --"
-        if ! python3 "$here/corpus_parity.py" timings \
-            --corpus "$corpus" --rpc-url "http://localhost:8545" \
-            --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
-            --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY" \
-            --warmup-seconds "$WARMED_SECONDS" --warmup-rps "$WARMED_RPS"; then
-          echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
-          cell_fail=$((cell_fail + 1))
-        fi
-      fi
-    done
-    [[ -z "$BASELINE_LABEL" ]] && BASELINE_LABEL="$label"
+    for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
+    [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
-  for rps in $RPS_LIST; do
-    # ISOLATED: each scenario alone
-    for icfg in $ISO_CONFIGS; do
-      scen="$(basename "$icfg" .yaml)"
-      cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
-      echo "-- ISO ${label} ${scen} @ rps=${rps} --"
-      run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
-      [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
+    for rps in $RPS_LIST; do
+      for icfg in $ISO_CONFIGS; do
+        scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
+        echo "-- ISO ${label} ${scen} @ rps=${rps} --"
+        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+        [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
+      done
+      mcell="$OUT_DIR/mix/${label}/${rps}"
+      echo "-- MIX ${label} @ rps=${rps} --"
+      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+      [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
     done
-    # MIXED: all scenarios together
-    mcell="$OUT_DIR/mix/${label}/${rps}"
-    echo "-- MIX ${label} @ rps=${rps} --"
-    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
-    [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
-  done
   fi
 
-  # stop-node.sh verifies the snapshot is pristine and exits non-zero on a DB-integrity/teardown failure. That must fail
-  # the sweep — not degrade to a warning. reth 'direct' legitimately mutates and stop-node warns-not-fails, so this only
-  # trips overlay clients.
-  if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
-       "$here/stop-node.sh"; then
-    echo "::error::${label}: stop-node failed (DB integrity check or teardown) — failing the sweep"; stop_fail=1
-  fi
-  # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here with the same four checks.
-  # Corpus mode prints COUNTS only (log lines could quote private call data) and deletes the log afterwards.
-  if [[ -f "$cst/node.log" ]]; then
-    clean="$cst/node.clean.log"
-    sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$cst/node.log" > "$clean"
-    grep -in "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' > "$cst/node.exc" || true
-    exc_count="$(wc -l < "$cst/node.exc" | tr -d ' ')"
-    if [[ "$ctype" == "nethermind" ]]; then
-      # Exception / invalid-block / shutdown-marker wording is Nethermind-specific — gate only on NM cells.
-      if [[ -s "$cst/node.exc" ]]; then
-        echo "::warning::${label}: ${exc_count} Exception line(s) in node log"
-        [[ "$JB_ETH_CALL_CORPUS" != "true" ]] && head -20 "$cst/node.exc"
-        node_issue=1
-      fi
-      if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${label}: invalid block in node log"; node_issue=1; fi
-      # A missing marker means docker SIGKILLed a hung node or shutdown crashed — run untrustworthy.
-      if ! grep -q "Nethermind is shut down" "$clean"; then
-        echo "::warning::${label}: 'Nethermind is shut down' marker not found — node did not shut down cleanly"; node_issue=1
-      fi
-    elif [[ -s "$cst/node.exc" ]]; then
-      # geth/reth: NM wording false-positives, so warn only — don't gate on the reference clients.
-      echo "::warning::${label}: ${exc_count} Exception-like line(s) in node log (warn only, non-Nethermind)"
-      [[ "$JB_ETH_CALL_CORPUS" != "true" ]] && head -20 "$cst/node.exc"
-    fi
-    # Severe patterns: warn-only for every client (mirrors the workflow's non-gating scan).
-    for pattern in "Unhandled" "Fatal" "ERROR"; do
-      if grep -qi "$pattern" "$clean"; then
-        echo "::warning::${label}: severe log pattern '$pattern' ($(grep -ci "$pattern" "$clean") line(s))"
-        [[ "$JB_ETH_CALL_CORPUS" != "true" ]] && { grep -in "$pattern" "$clean" | head -10 || true; }
-      fi
-    done
-    if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
-      rm -f "$cst/node.log" "$clean" "$cst/node.exc"
-    fi
-  fi
+  STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" \
+    || { echo "::error::${label}: stop-node failed (DB integrity check or teardown)"; stop_fail=1; }
+  scan_node_log "$label" "$ctype" "$cst/node.log"
   echo "::endgroup::"
 done
 
 sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 {
   echo "# Cross-client sweep — same head ${SNAPSHOT_BLOCK}"
-  echo "_${#SUMMARIES[@]} cells · isolated dur ${ISO_DURATION}, mixed dur ${JB_DURATION} · json-bench ${JB_REF}_"
+  echo "_${#SUMMARIES[@]} cells · ${ROUNDS} round(s) · seed ${JB_SEED} · isolated dur ${ISO_DURATION}, mixed dur ${JB_DURATION} · json-bench ${JB_REF:-default pin}_"
   [[ "$cell_fail" -gt 0 ]] && { echo; echo "> **⚠️ ${cell_fail} load-test cell(s) failed** — the matrix below is incomplete; the job will fail."; }
   echo
 } >> "$sink"
 if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
-  printf '%s\n' "${SUMMARIES[@]}" > "$OUT_DIR/summaries.manifest"  # via file — 100+ cells exceed ARG_MAX
+  printf '%s\n' "${SUMMARIES[@]}" > "$OUT_DIR/summaries.manifest"
   python3 "$here/percat-matrix.py" "@$OUT_DIR/summaries.manifest" >> "$sink" || echo "aggregation failed" >> "$sink"
 elif [[ -z "${RPS_LIST// /}" ]]; then
-  # Documented mode: an empty rps_list requests no k6 cells at all (parity/timings only), so
-  # having no summaries is the expected outcome, not a failed sweep. Keep going so the parity
-  # table still renders and the real failure counters below decide the exit status.
   echo "No k6 cells requested (empty rps_list) — parity/timings only." >> "$sink"
 else
   echo "No cell summaries produced — every client failed to start." >> "$sink"; exit 1
 fi
 
-# Corpus parity table (counts only — no request/response content).
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   rm -rf "$PARITY_STATE"
   {
     echo
-    echo "## Corpus parity (baseline = ${BASELINE_LABEL:-<none started>})"
+    baseline_desc="${BASELINE_LABEL:-<none started>}"
+    [[ "$USING_SAVED_BASELINE" == "true" ]] && baseline_desc="saved ${PARITY_BASE_LABEL[${CORPORA[0]:+$(corpus_label "${CORPORA[0]}")}]:-master}"
+    echo "## Corpus parity (baseline = ${baseline_desc})"
     echo
     echo "| corpus | client | matched (+both-error)/total | nonzero defect counters |"
     echo "|---|---|---|---|"
@@ -594,36 +414,29 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
         "$rfile" 2>/dev/null || echo "| $clabel | $plabel | report unreadable | - |"
     done
     [[ "$parity_fail" -gt 0 ]] && { echo; echo "> **⚠️ ${parity_fail} parity failure(s)** — see counters above; the job will fail."; }
+    [[ "$parity_skipped" -gt 0 ]] && { echo; echo "> **⚠️ parity not checked for ${parity_skipped} arm/corpus pair(s)** — the comparison against the saved master baseline could not run; the job will fail."; }
   } >> "$sink"
 fi
 
-# Cross-client response parity per rps (deep_check diff over the mixed workload — the "compare" half of a
-# json-bench comparison, so the sweep gives latency AND correctness in one job).
 if [[ "${#LABELS[@]}" -ge 2 ]]; then
   { echo; echo "## Cross-client parity (mixed workload responses)"; } >> "$sink"
   for rps in $RPS_LIST; do
     dc=()
-    for lbl in "${LABELS[@]}"; do
-      f="$OUT_DIR/mix/${lbl}/${rps}/deep-check-${lbl}.jsonl"
-      [[ -f "$f" ]] && dc+=("${lbl}=$f")
-    done
+    for lbl in "${LABELS[@]}"; do f="$OUT_DIR/mix/${lbl}/${rps}/deep-check-${lbl}.jsonl"; [[ -f "$f" ]] && dc+=("${lbl}=$f"); done
     if [[ "${#dc[@]}" -ge 2 ]]; then
       v="$(python3 "$here/deep-check-compare.py" "${dc[@]}" 2>&1 | grep -iE "requests compared|DIVERGENT|MALFORMED" | tr '\n' ' ' | tr -s ' ')"
       echo "- rps ${rps}: ${v:-<no parity output>}" >> "$sink"
     fi
   done
 fi
+
 fail=0
-if [[ "$node_issue" -eq 1 ]]; then
-  echo "::error::node health issue (Exception / invalid block / missing shutdown marker) in a sweep node log — failing"; fail=1
-fi
-if [[ "$cell_fail" -gt 0 ]]; then
-  echo "::error::${cell_fail} load-test cell(s) failed — the matrix is incomplete, failing"; fail=1
-fi
-if [[ "$stop_fail" -eq 1 ]]; then
-  echo "::error::stop-node reported a DB-integrity/teardown failure — failing"; fail=1
-fi
-if [[ "$parity_fail" -gt 0 ]]; then
-  echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline client or a replay failed"; fail=1
-fi
+[[ "$node_issue" -eq 0 ]] || { echo "::error::node health issue (Exception / invalid block / missing shutdown marker) in a sweep node log"; fail=1; }
+[[ "$cell_fail" -eq 0 ]] || { echo "::error::${cell_fail} load-test cell(s) failed — the matrix is incomplete"; fail=1; }
+[[ "$stop_fail" -eq 0 ]] || { echo "::error::stop-node reported a DB-integrity/teardown failure"; fail=1; }
+[[ "$parity_fail" -eq 0 ]] || { echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline or a replay failed"; fail=1; }
+# Only reachable with a saved baseline (CORPUS_BASELINE=use), where parity is the run's only correctness gate.
+[[ "$parity_skipped" -eq 0 ]] || { echo "::error::${parity_skipped} arm/corpus pair(s) went unchecked against the saved master baseline — the correctness gate did not run"; fail=1; }
+[[ "$baseline_fail" -eq 0 ]] || { echo "::error::the configured parity baseline failed to start — parity was measured against a substitute arm"; fail=1; }
+[[ "$arm_fail" -eq 0 ]] || { echo "::error::${arm_fail} sweep arm(s) never started — the comparison is missing an arm"; fail=1; }
 exit "$fail"
