@@ -62,6 +62,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
+          # An abbreviated SHA is not fetchable on its own, and pasting one from a log is the
+          # obvious thing to do; full history costs a few seconds and accepts any commit-ish.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up .NET
