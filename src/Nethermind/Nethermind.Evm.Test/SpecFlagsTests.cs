@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Nethermind.Core.Specs;
@@ -27,6 +26,8 @@ namespace Nethermind.Evm.Test;
 public class SpecFlagsTests
 {
     /// <summary>Oldest fork the guest serves. Raise it to drop older forks and fold more rules.</summary>
+    private const string ResourceName = "SpecFlags.zkevm.cs";
+
     private const string Floor = nameof(Osaka);
 
     /// <summary>Newest fork the guest serves, or null to serve every fork descended from the floor.</summary>
@@ -65,7 +66,7 @@ public class SpecFlagsTests
     public void Generated_flags_match_the_fork_range()
     {
         List<NamedReleaseSpec> range = ForkRange();
-        string source = File.ReadAllText(GeneratedFilePath());
+        string source = GeneratedSource();
 
         Dictionary<string, bool> constants = Regex
             .Matches(source, @"public const bool Const(?<rule>Eip\w+) = (?<value>true|false);")
@@ -154,6 +155,16 @@ public class SpecFlagsTests
     private static string Describe(List<NamedReleaseSpec> range) =>
         string.Join(", ", range.Select(static f => f.GetType().Name).Order());
 
-    private static string GeneratedFilePath([CallerFilePath] string thisFile = "") =>
-        Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "Nethermind.Evm", "SpecFlags.zkevm.cs");
+    /// <summary>Reads the generated file from this assembly rather than from disk.</summary>
+    /// <remarks>
+    /// A deterministic build rewrites source paths to a normalized root, so a caller-file path does
+    /// not name a file that exists at run time. The csproj embeds the file instead.
+    /// </remarks>
+    private static string GeneratedSource()
+    {
+        using Stream stream = typeof(SpecFlagsTests).Assembly.GetManifestResourceStream(ResourceName)
+            ?? throw new InvalidOperationException($"{ResourceName} is not embedded in the test assembly.");
+        using StreamReader reader = new(stream);
+        return reader.ReadToEnd();
+    }
 }
