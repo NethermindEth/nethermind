@@ -256,7 +256,7 @@ public class VmState<TGasPolicy> : IDisposable
             DataStack = dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan);
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
     }
 
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
@@ -268,7 +268,7 @@ public class VmState<TGasPolicy> : IDisposable
             DataStack = dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

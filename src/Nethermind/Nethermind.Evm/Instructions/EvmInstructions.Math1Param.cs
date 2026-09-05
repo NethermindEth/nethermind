@@ -90,6 +90,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value) => Vector256.OnesComplement(value);
     }
 
@@ -104,12 +105,14 @@ public static partial class EvmInstructions
         // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
         // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
         // (endianness-agnostic for a zero test).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value)
         {
             ref ulong p = ref As<EvmWord, ulong>(ref value);
             return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? OpBitwiseEq.One : default;
         }
 #else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
 #endif
     }
@@ -122,6 +125,7 @@ public static partial class EvmInstructions
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
             : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();

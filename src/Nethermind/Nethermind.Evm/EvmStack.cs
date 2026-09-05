@@ -12,6 +12,7 @@ using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -34,6 +35,19 @@ public ref partial struct EvmStack
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
+        _codeInfo = null;
+        _jumpDestinations = null;
+    }
+
+    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo codeInfo)
+    {
+        Head = head;
+        _tracer = txTracer;
+        _stack = ref stack;
+        Code = ref MemoryMarshal.GetReference(codeSpan);
+        CodeLength = codeSpan.Length;
+        _codeInfo = codeInfo;
+        _jumpDestinations = null;
     }
 
     public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
@@ -43,6 +57,19 @@ public ref partial struct EvmStack
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
+        _codeInfo = null;
+        _jumpDestinations = null;
+    }
+
+    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo codeInfo)
+    {
+        Head = head;
+        _tracer = null;
+        _stack = ref stack;
+        Code = ref MemoryMarshal.GetReference(codeSpan);
+        CodeLength = codeSpan.Length;
+        _codeInfo = codeInfo;
+        _jumpDestinations = null;
     }
 
     private readonly ITxTracer _tracer;
@@ -50,6 +77,14 @@ public ref partial struct EvmStack
     internal readonly ref byte Code;
     public int Head;
     internal readonly int CodeLength;
+    private readonly CodeInfo? _codeInfo;
+    private long[]? _jumpDestinations;
+
+    internal long[] JumpDestinations
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _jumpDestinations ??= _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+    }
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;

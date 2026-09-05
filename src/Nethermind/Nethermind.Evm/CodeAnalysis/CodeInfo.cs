@@ -122,6 +122,9 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public bool ValidateJump(int destination)
         => _analyzer?.ValidateJump(destination) ?? false;
 
+    /// <summary>The jump-destination bitmap of this code, hoisted into the frame so JUMP/JUMPI validate without re-resolving it per jump.</summary>
+    internal long[] JumpDestinationBitmap => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+
     void IThreadPoolWorkItem.Execute()
         => _analyzer?.Execute();
 

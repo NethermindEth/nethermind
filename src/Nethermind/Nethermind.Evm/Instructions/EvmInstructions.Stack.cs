@@ -160,7 +160,7 @@ public static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, vm.VmState.Env))
+            if (!Jump((int)destination, ref programCounter, ref stack))
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter++;

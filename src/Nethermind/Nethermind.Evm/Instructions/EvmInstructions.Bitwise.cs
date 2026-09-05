@@ -83,6 +83,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseAnd(a, b);
     }
 
@@ -91,6 +92,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseOr(a, b);
     }
 
@@ -99,6 +101,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.Xor(a, b);
     }
 
@@ -122,6 +125,7 @@ public static partial class EvmInstructions
 #if ZK_EVM
         // The zkVM has no hardware SIMD, so Vector256<byte> == falls back to an 8-iteration element loop.
         // EQ is hot, so compare as flat 4x ulong (endianness-agnostic for an equality test).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b)
         {
             ref ulong pa = ref As<EvmWord, ulong>(ref AsRef(in a));
@@ -134,6 +138,7 @@ public static partial class EvmInstructions
             return diff == 0UL ? One : default;
         }
 #else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
 #endif
     }

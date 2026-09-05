@@ -60,10 +60,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
-    // Invalidates the guest front cache when a restore/commit/reset recycles the change stacks; elided on
-    // mainline, which has no front cache (no implementing declaration).
-    partial void InvalidateFrontCache();
-#if ZK_EVM
+    // Invalidates the front cache when a restore/commit/reset recycles the change stacks.
+    private void InvalidateFrontCache() => _epoch++;
     // Single-entry cache in front of _intraTxCache: the EVM accesses the same
     // account many times in a row. Pushes write the new value through when the
     // cached address matches, so a hit needs no staleness probe. Invalidated
@@ -73,12 +71,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private int _cachedEpoch = -1;
     private int _epoch;
 
-    partial void InvalidateFrontCache() => _epoch++;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
         _cachedEpoch == _epoch && _cachedAddress is not null && _cachedAddress.Equals(address);
-#endif
 
     public void RecalculateStateRoot()
     {
@@ -909,7 +904,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     internal Account? GetThroughCache(Address address)
     {
-#if ZK_EVM
         if (IsFrontCacheHit(address))
         {
             return _cachedAccount;
@@ -921,11 +915,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return _cachedAccount = _changes[head].Account;
         }
         return GetAndAddToCache(address);
-#else
-        return _intraTxCache.TryGetValue(address, out int head)
-            ? _changes[head].Account
-            : GetAndAddToCache(address);
-#endif
     }
 
     private void PushJustCache(Address address, Account account)
@@ -966,11 +955,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         int prevIdx = exists ? head : -1;
         head = _changes.Count;
         _changes.Add(new Change(address, touchedAccount, changeType, prevIdx));
-#if ZK_EVM
         // Keep the front cache coherent: a push almost always follows a read of the same account.
         if (IsFrontCacheHit(address))
             _cachedAccount = touchedAccount;
-#endif
     }
 
     public ArrayPoolList<AddressAsKey>? ChangedAddresses()
