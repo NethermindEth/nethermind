@@ -1553,10 +1553,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
 
-            ulong preRefundGas = TGasPolicy.GetPreRefundGas(in gas, tx.GasLimit);
+            ulong preRefundGas = TGasPolicy.GetPreRefundGas(in gas, tx.GasLimit, opts);
             ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
-            Debug.Assert(blockStateGas >= 0, $"EIP-8037 fail-path invariant violated: negative block state gas ({blockStateGas}).");
+            if (blockStateGas < 0)
+                FailStateGasInvariant(opts, $"EIP-8037 fail-path invariant violated: negative block state gas ({blockStateGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
@@ -1584,10 +1585,11 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.SetOutOfGas(ref gasAfterCollision);
-            ulong preRefundGas = TGasPolicy.GetPreRefundGas(in gasAfterCollision, tx.GasLimit);
+            ulong preRefundGas = TGasPolicy.GetPreRefundGas(in gasAfterCollision, tx.GasLimit, opts);
             ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
-            Debug.Assert(blockStateGas >= 0, $"EIP-8037 collision-path invariant violated: negative block state gas ({blockStateGas}).");
+            if (blockStateGas < 0)
+                FailStateGasInvariant(opts, $"EIP-8037 collision-path invariant violated: negative block state gas ({blockStateGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
@@ -1607,8 +1609,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 return tx.GasLimit;
 
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            Debug.Assert(stateReservoir >= 0 && (ulong)stateReservoir <= tx.GasLimit,
-                $"EIP-8037 halt-path invariant violated: reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
+            if (stateReservoir < 0 || (ulong)stateReservoir > tx.GasLimit)
+                FailStateGasInvariant(opts, $"EIP-8037 halt-path invariant violated: reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
             // tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left. The halt burns anything
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
@@ -1619,8 +1621,8 @@ namespace Nethermind.Evm.TransactionProcessing
             // Spilled state gas burns in gas_left as execution gas; the state dimension keeps
             // only the post-reset intrinsic remainder.
             long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
-            Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
-                $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
+            if (!tx.IsSystem() && (ulong)effectiveStateGas > preRefundGas)
+                FailStateGasInvariant(opts, $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas, executionRefund);
@@ -1774,8 +1776,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertExecutionRefund);
             }
 
-            (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
-            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
+            (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, opts, in substate, in gasAfterExecution, codeInsertExecutionRefund);
+            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, opts, in gasAfterExecution, spentGas, floorGasLong);
 
             ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
@@ -1813,13 +1815,14 @@ namespace Nethermind.Evm.TransactionProcessing
         private (ulong spentGas, long refund) CalculateSpentGasAndRefund(
             Transaction tx,
             IReleaseSpec spec,
+            ExecutionOptions opts,
             in TransactionSubstate substate,
             in TGasPolicy gasAfterExecution,
             ulong codeInsertExecutionRefund)
         {
             ulong spentGas = substate.IsError
                 ? tx.GasLimit
-                : TGasPolicy.GetPreRefundGas(in gasAfterExecution, tx.GasLimit);
+                : TGasPolicy.GetPreRefundGas(in gasAfterExecution, tx.GasLimit, opts);
 
             long totalToRefund = (long)codeInsertExecutionRefund;
             if (!substate.IsError && !substate.ShouldRevert)
@@ -1834,6 +1837,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static (ulong blockGas, long blockStateGas) CalculateBlockGas(
             IReleaseSpec spec,
+            ExecutionOptions opts,
             in TGasPolicy gasAfterExecution,
             ulong preRefundGas,
             ulong floorGas)
@@ -1842,7 +1846,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
-            Debug.Assert(blockStateGas >= 0, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
+            if (blockStateGas < 0)
+                FailStateGasInvariant(opts, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return (blockGas, blockStateGas);
@@ -1859,6 +1864,24 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        /// <summary>
+        /// Reports a violated EIP-8037 state-gas accounting invariant. A violation is only reachable through an
+        /// internal accounting bug, never through transaction input.
+        /// </summary>
+        /// <remarks>
+        /// On validated paths (block production and import) the violation is raised as <see cref="InvalidDataException"/>
+        /// so the node fails loud at the source rather than silently emitting or accepting divergent gas. Read-only
+        /// paths (<c>eth_call</c>, <c>eth_estimateGas</c>, trace) return and keep the conservative fallback. Callers
+        /// invoke this only from the failure branch so the message is built lazily; <see cref="Debug.Assert(bool, string)"/>
+        /// still traps every path in Debug builds.
+        /// </remarks>
+        private static void FailStateGasInvariant(ExecutionOptions opts, string message)
+        {
+            Debug.Assert(false, message);
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                ThrowInvalidDataException(message);
+        }
 
         // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
         // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
