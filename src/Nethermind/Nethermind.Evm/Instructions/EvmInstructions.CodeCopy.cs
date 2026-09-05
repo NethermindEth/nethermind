@@ -72,7 +72,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength));
+            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, (int)stack.CodeLength));
 
     /// <summary>
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.

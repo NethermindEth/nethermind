@@ -998,7 +998,7 @@ public static partial class EvmInstructions
 
     // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte ReadEip8024ImmediateOrZero(ref byte code, int codeLength, nint programCounter)
+    private static byte ReadEip8024ImmediateOrZero(ref byte code, nint codeLength, nint programCounter)
         => programCounter < codeLength ? Unsafe.Add(ref code, programCounter) : (byte)0;
 
     /// <summary>
