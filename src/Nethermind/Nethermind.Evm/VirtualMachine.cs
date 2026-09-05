@@ -18,6 +18,8 @@ using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
 namespace Nethermind.Evm;
 
 using Int256;
@@ -63,6 +65,20 @@ public static class VirtualMachineStatics
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
     internal static readonly Address Ripemd160Address = Address.FromNumber(3);
+
+    /// <summary>
+    /// Whether the dispatch loop must leave the frame after an instruction: the handler returned a status
+    /// other than <see cref="EvmExceptionType.None"/>, or the gas policy ran out of gas.
+    /// </summary>
+    /// <remarks>
+    /// This folds both conditions into one branch on the per-opcode hot path. The exit path checks the gas
+    /// policy first so out-of-gas retains priority over a handler status. The subtraction keeps the fold
+    /// correct for any value of <see cref="EvmExceptionType.None"/>, which is hand-numbered; the OR only
+    /// ever sets bit 0, so it cannot cancel a nonzero difference. While <c>None</c> is zero it folds away.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool ShouldExitFrame(EvmExceptionType status, bool outOfGas) =>
+        (((int)status - (int)EvmExceptionType.None) | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
 
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
@@ -118,9 +134,12 @@ public partial class VirtualMachine<TGasPolicy>(
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
-    // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
-    // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
+    // Both are fixed per execution, so they are cached once in ExecuteTransaction rather than dispatched
+    // through the tracer each time: IsTracingActions is read at several hot CALL/precompile sites, and
+    // IsCancelable picks both the dispatch table and the generic instantiation that runs on it, which have
+    // to agree.
     private bool _isTracingActionsCached;
+    private bool _isCancelableCached;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -166,13 +185,13 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
+        _isCancelableCached = txTracer.IsCancelable;
         _worldState = worldState;
 
         _shouldRestoreRipemdTouch = false;
 
-        // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        PrepareOpcodes<TTracingInst>(spec);
+        PrepareOpcodes<TTracingInst>();
         OpCodeCount = 0;
         MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
@@ -991,19 +1010,6 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>
-    /// Prepares the opcode methods to be used during EVM execution,
-    /// based on the provided release specification.
-    /// </summary>
-    /// <typeparam name="TTracingInst">
-    /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
-    /// should be used.
-    /// </typeparam>
-    /// <param name="spec">
-    /// The release specification, which is used to prepare the appropriate opcodes.
-    /// </param>
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag;
-
-    /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
     /// various conditions such as exceptions, reverts, and contract creation flows. For contract creation,
     /// the method adjusts the available gas by the code deposit cost and validates the deployed code.
@@ -1298,7 +1304,8 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OffFlag is used when cancellation is not needed.
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
-        return _txTracer.IsCancelable switch
+        // Read from the value pinned at transaction start, which is also what chose the dispatch table.
+        return _isCancelableCached switch
         {
             false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
             true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
@@ -1313,36 +1320,56 @@ public partial class VirtualMachine<TGasPolicy>(
         return new(EvmExceptionType.OutOfGas);
     }
 
-    /// <summary>
-    /// Runs the frame's bytecode through the dispatch loop (see VirtualMachine.DispatchSpecialized),
-    /// lifting the two opcode-availability flags it gates on into compile-time <see cref="IFlag"/>
-    /// type args so the JIT folds them. One loop body serves all forks.
-    /// </summary>
+    /// <summary>Runs the frame's bytecode through the opcode dispatch loop.</summary>
     [SkipLocalsInit]
-    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
+    private CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        IReleaseSpec spec = Spec;
-        // Engage the stream only in cancelable call contexts (eth_call/estimateGas/simulate). Block
-        // processing runs a non-cancelable tracer, where the stream is pure overhead with no compute
-        // payoff; gating it out there removes both the throughput regression and the retained StreamOp[].
-        if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
-            && (TCancelable.IsActive || StreamInterpreter.ForceAllContexts)
-            && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
+        ReturnData = null;
+
+        // May not be zero when resuming after a call.
+        nint programCounter = VmState.ProgramCounter;
+        EvmExceptionType exceptionType =
+            RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
-            return RunStream<TCancelable>(stream, ref stack, ref gas);
+            if (TTracingInst.IsActive)
+                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            UpdateCurrentState((int)programCounter, in gas, (int)stack.Head);
+        }
+        else
+        {
+            goto ReturnFailure;
         }
 
-        return (spec.ShiftOpcodesEnabled, spec.IncludePush0Instruction) switch
+        if (exceptionType == EvmExceptionType.Revert)
+            goto Revert;
+        if (ReturnData is not null)
+            goto DataReturn;
+
+        return CallResult.Empty();
+
+    DataReturn:
+        // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
+        // the general helper, while a class one has a specialized fast path. Order them accordingly.
+        return ReturnData switch
         {
-            (true, true) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OnFlag>(ref stack, ref gas),
-            (true, false) => RunByteCodeCore<TTracingInst, TCancelable, OnFlag, OffFlag>(ref stack, ref gas),
-            (false, true) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OnFlag>(ref stack, ref gas),
-            (false, false) => RunByteCodeCore<TTracingInst, TCancelable, OffFlag, OffFlag>(ref stack, ref gas),
+            VmState<TGasPolicy> state => new CallResult(state),
+            byte[] data => new CallResult(data, null),
+            _ => new CallResult(ReturnDataBuffer, null),
         };
+
+    Revert:
+        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
+
+    ReturnFailure:
+        // EIP-8037: write gas back so RestoreChildStateGasOnHalt can read the child frame's state gas.
+        _currentState.Gas = gas;
+        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }
 
 
@@ -1385,7 +1412,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackValue.Head)));
+            _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks((int)stackValue.Head)));
         }
 
         if (_txTracer.IsTracingReturnData)

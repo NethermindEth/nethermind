@@ -21,9 +21,9 @@ public static partial class EvmInstructions
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
             return EvmExceptionType.StackOverflow;
+        if (!stack.EnsureDepth(1)) return EvmExceptionType.StackUnderflow;
 
-        ref byte topRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
+        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpMath.Operation(in a, in b, out UInt256 result);
@@ -39,9 +39,9 @@ public static partial class EvmInstructions
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
             return EvmExceptionType.StackOverflow;
+        if (!stack.EnsureDepth(1)) return EvmExceptionType.StackUnderflow;
 
-        ref byte topRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
+        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
 
         // Mirrors ShiftCore: amounts of 256 or more shift everything out.
         if (!a.IsUint64 || a.u0 >= 256)
@@ -67,9 +67,9 @@ public static partial class EvmInstructions
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
             return EvmExceptionType.StackOverflow;
+        if (!stack.EnsureDepth(1)) return EvmExceptionType.StackUnderflow;
 
-        ref byte topRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
+        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
 
         EvmWord a = ReadUnaligned<EvmWord>(ref constantSlot);
         EvmWord b = ReadUnaligned<EvmWord>(ref topRef);

@@ -77,15 +77,12 @@ public static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance containing execution state.</param>
     /// <param name="stack">The EVM stack for retrieving call parameters and pushing results.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the current program counter (not modified by this method).</param>
     /// <returns>
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
@@ -361,7 +358,7 @@ public static partial class EvmInstructions
                 snapshot: in snapshot,
                 newAccountCharged: newAccountCharged);
 
-            return EvmExceptionType.None;
+            return EvmExceptionType.Suspend;
         }
 
         // Jump forward to be unpredicted by the branch predictor.
@@ -403,20 +400,19 @@ public static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the offset and length are popped.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/> on success; otherwise, an error such as <see cref="EvmExceptionType.StackUnderflow"/>,
-    /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
+    /// <see cref="EvmExceptionType.Stop"/> on success, with the frame's output staged in
+    /// <see cref="VirtualMachine{TGasPolicy}.ReturnData"/>; otherwise, an error such as
+    /// <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionReturn<TGasPolicy>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
@@ -428,7 +424,7 @@ public static partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

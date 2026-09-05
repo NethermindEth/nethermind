@@ -30,7 +30,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
@@ -65,23 +65,18 @@ public static partial class EvmInstructions
     /// rather than re-walking <c>vm.VmState.Env.CodeInfo.CodeSpan</c>.
     /// </summary>
     public static EvmExceptionType InstructionCodeCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength));
+            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, (int)stack.CodeLength));
 
     /// <summary>
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
@@ -91,15 +86,13 @@ public static partial class EvmInstructions
     /// Copies data from the previous call's return buffer into memory.
     /// </summary>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!stack.PopUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             goto StackUnderflow;
 
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
@@ -146,22 +139,21 @@ public static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack for operand retrieval and memory copy operations.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
         Address address = stack.PopAddress(vm.AddressCache);
-        // Pop destination offset, source offset, and length from the stack.
+        // Pop destination offset, source offset, and length from the stack. The destination keeps its
+        // vector decode here: this handler already saves seven callee-saved registers, and holding the
+        // destination in general registers instead costs an eighth and measures slower.
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
@@ -228,15 +220,14 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the account address is popped and where the code size is pushed.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter, which may be adjusted during optimization.</param>
+    /// <param name="programCounter">The program counter; a fused compare returns it advanced past the folded opcode.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref nint programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -298,9 +289,9 @@ public static partial class EvmInstructions
                 }
 
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
-                return !isCodeLengthNotZero
+                return new OpcodeResult(programCounter, !isCodeLengthNotZero
                     ? stack.PushOne<TTracingInst>()
-                    : stack.PushZero<TTracingInst>();
+                    : stack.PushZero<TTracingInst>());
             }
         }
 
@@ -308,11 +299,11 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }
