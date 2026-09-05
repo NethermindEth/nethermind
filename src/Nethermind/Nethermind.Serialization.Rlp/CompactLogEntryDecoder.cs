@@ -18,31 +18,39 @@ namespace Nethermind.Serialization.Rlp
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            ReadOnlySpan<byte> rlp = decoderContext.Data;
+            int position = decoderContext.Position;
+
+            if (rlp[position] == Rlp.EmptyListByte)
             {
-                decoderContext.ReadByte();
+                decoderContext.Position = position + 1;
                 return null;
             }
 
-            int logEntryLength = decoderContext.ReadSequenceLength();
-            decoderContext.GuardLimit(logEntryLength, RlpLimit);
-            int logEntryCheck = decoderContext.Position + logEntryLength;
-            Address address = decoderContext.DecodeAddress();
-            int topicsLength = decoderContext.ReadSequenceLength();
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int logEntryLength);
+            Rlp.GuardLimit(logEntryLength, rlp.Length - position, RlpLimit);
+            int logEntryCheck = position + logEntryLength;
+
+            position = RlpHelpers.DecodeAddress(rlp, position, allowNull: false, out Address? address);
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int topicsLength);
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
-            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
-            int untilPosition = decoderContext.Position + topicsLength;
+            Rlp.GuardLimit(topicCount, rlp.Length - position, RlpLimit.L4);
+            int untilPosition = position + topicsLength;
+
             using ArrayPoolListRef<Hash256> topics = new(topicCount);
-            while (decoderContext.Position < untilPosition)
+            while (position < untilPosition)
             {
-                topics.Add(decoderContext.DecodeZeroPrefixKeccakNonNull());
+                position = RlpHelpers.DecodeZeroPrefixKeccak(rlp, position, out Hash256? topic);
+                topics.Add(topic ?? RlpHelpers.ThrowNullDecodedValue<Hash256>());
             }
+
+            decoderContext.Position = position;
             decoderContext.Check(untilPosition);
 
             byte[] data = DecodeCompactData(ref decoderContext);
             decoderContext.Check(logEntryCheck);
 
-            return new LogEntry(address, data, topics.ToArray());
+            return new LogEntry(address!, data, topics.ToArray());
         }
 
         public static void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)

@@ -46,18 +46,22 @@ namespace Nethermind.Serialization.Rlp
 
         protected override ChainLevelInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            ReadOnlySpan<byte> rlp = decoderContext.Data;
+            int position = decoderContext.Position;
+
+            if (rlp[position] == Rlp.EmptyListByte)
             {
-                decoderContext.ReadByte();
+                decoderContext.Position = position + 1;
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            bool hasMainChainBlock = decoderContext.DecodeBool();
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
+            position = RlpHelpers.DecodeBool(rlp, position, out bool hasMainChainBlock);
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out _);
+            decoderContext.Position = position;
 
             List<BlockInfo> blockInfos = [];
-
-            decoderContext.ReadSequenceLength();
             while (decoderContext.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)

@@ -832,6 +832,24 @@ internal static class RlpHelpers
         }
     }
 
+    /// <summary>Decodes a hash stored without its leading zero bytes, right-aligning it.</summary>
+    /// <returns>The position past the item.</returns>
+    public static int DecodeZeroPrefixKeccak(ReadOnlySpan<byte> data, int position, out Hash256? keccak)
+    {
+        if (data[position] == Rlp.EmptyByteArrayByte)
+        {
+            keccak = null;
+            return position + 1;
+        }
+
+        position = DecodeByteArraySpan(data, position, RlpLimit.L32, -1, out ReadOnlySpan<byte> span);
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        bytes.Clear();
+        span.CopyTo(bytes[(Hash256.Size - span.Length)..]);
+        keccak = new Hash256(bytes);
+        return position;
+    }
+
     /// <summary>Decodes a 32-byte hash that must be present.</summary>
     /// <returns>The position past the hash.</returns>
     public static int DecodeKeccak(ReadOnlySpan<byte> data, int position, out Hash256 keccak)
