@@ -794,8 +794,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct PopOpcode : IOpcodeBody
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionPop(ref stack, ref gas, vm);
+        public static bool HasCheckedBody => true;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static int StackInputs => 1;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            stack.Head--;
+            return EvmExceptionType.None;
+        }
     }
 
     private readonly struct MLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag

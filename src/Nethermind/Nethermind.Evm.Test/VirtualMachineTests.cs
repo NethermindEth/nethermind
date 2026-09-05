@@ -291,6 +291,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             (Instruction.SMOD, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
             (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
+            (Instruction.POP, 1, 2),
             (Instruction.AND, 2, 3), (Instruction.OR, 2, 3), (Instruction.XOR, 2, 3),
             (Instruction.SWAP1, 2, 3), (Instruction.SWAP2, 3, 3), (Instruction.SWAP3, 4, 3), (Instruction.SWAP4, 5, 3),
             (Instruction.SWAP5, 6, 3), (Instruction.SWAP6, 7, 3), (Instruction.SWAP7, 8, 3), (Instruction.SWAP8, 9, 3),
