@@ -48,10 +48,19 @@ public static unsafe partial class EvmInstructions
         lookup[(int)Instruction.SIGNEXTEND] = &InstructionSignExtend<TGasPolicy>;
 
         // Comparison and bitwise opcodes.
+#if ZK_EVM
+        // Same gas class, same operand order, but ordering the big-endian words in place skips the eight
+        // byte swaps and two UInt256 temporaries the IOpMath2Param path needs. EQ already goes this way.
+        lookup[(int)Instruction.LT] = &InstructionBitwise<TGasPolicy, OpLtWord>;
+        lookup[(int)Instruction.GT] = &InstructionBitwise<TGasPolicy, OpGtWord>;
+        lookup[(int)Instruction.SLT] = &InstructionBitwise<TGasPolicy, OpSLtWord>;
+        lookup[(int)Instruction.SGT] = &InstructionBitwise<TGasPolicy, OpSGtWord>;
+#else
         lookup[(int)Instruction.LT] = &InstructionMath2Param<TGasPolicy, OpLt, TTracingInst>;
         lookup[(int)Instruction.GT] = &InstructionMath2Param<TGasPolicy, OpGt, TTracingInst>;
         lookup[(int)Instruction.SLT] = &InstructionMath2Param<TGasPolicy, OpSLt, TTracingInst>;
         lookup[(int)Instruction.SGT] = &InstructionMath2Param<TGasPolicy, OpSGt, TTracingInst>;
+#endif
         lookup[(int)Instruction.EQ] = &InstructionBitwise<TGasPolicy, OpBitwiseEq>;
         lookup[(int)Instruction.ISZERO] = &InstructionMath1Param<TGasPolicy, OpIsZero>;
         lookup[(int)Instruction.AND] = &InstructionBitwise<TGasPolicy, OpBitwiseAnd>;

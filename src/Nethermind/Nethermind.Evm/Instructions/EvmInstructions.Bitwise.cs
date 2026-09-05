@@ -4,6 +4,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
+#if ZK_EVM
+using Nethermind.Core.Extensions;
+#endif
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -101,6 +104,74 @@ public static partial class EvmInstructions
     {
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.Xor(a, b);
     }
+
+#if ZK_EVM
+    /// <summary>Orders two stack words as unsigned 256-bit integers.</summary>
+    /// <param name="a">The first word.</param>
+    /// <param name="b">The word to compare it against.</param>
+    /// <returns>-1 if <paramref name="a"/> sorts below <paramref name="b"/>, 1 if above, 0 if equal.</returns>
+    /// <remarks>Stack words are big-endian, so they already order lexicographically and the most
+    /// significant limb that differs decides the whole comparison. Finding that limb is a run of equality
+    /// tests, which need no byte order at all, so only the one limb that differs is ever swapped - against
+    /// eight swaps and a pair of <see cref="UInt256"/> temporaries to go through
+    /// <see cref="IOpMath2Param"/>. Guest-only: a host compares the vectors with SIMD instead.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CompareWordUnsigned(in EvmWord a, in EvmWord b)
+    {
+        ref ulong pa = ref As<EvmWord, ulong>(ref AsRef(in a));
+        ref ulong pb = ref As<EvmWord, ulong>(ref AsRef(in b));
+        for (int i = 0; i < 4; i++)
+        {
+            ulong x = Add(ref pa, i);
+            ulong y = Add(ref pb, i);
+            if (x != y)
+            {
+                return ZkEvmBitOperations.Bswap64(x) < ZkEvmBitOperations.Bswap64(y) ? -1 : 1;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <inheritdoc cref="CompareWordUnsigned" />
+    /// <remarks>Two's complement: the sign is the top bit of the leading big-endian byte, and operands
+    /// that share a sign already sort the same unsigned as signed.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CompareWordSigned(in EvmWord a, in EvmWord b)
+    {
+        int negA = As<EvmWord, byte>(ref AsRef(in a)) >> 7;
+        int negB = As<EvmWord, byte>(ref AsRef(in b)) >> 7;
+        return negA != negB ? negB - negA : CompareWordUnsigned(in a, in b);
+    }
+
+    /// <summary>Implements LT over big-endian stack words.</summary>
+    public struct OpLtWord : IOpBitwise
+    {
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) =>
+            CompareWordUnsigned(in a, in b) < 0 ? OpBitwiseEq.One : default;
+    }
+
+    /// <summary>Implements GT over big-endian stack words.</summary>
+    public struct OpGtWord : IOpBitwise
+    {
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) =>
+            CompareWordUnsigned(in a, in b) > 0 ? OpBitwiseEq.One : default;
+    }
+
+    /// <summary>Implements SLT over big-endian stack words.</summary>
+    public struct OpSLtWord : IOpBitwise
+    {
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) =>
+            CompareWordSigned(in a, in b) < 0 ? OpBitwiseEq.One : default;
+    }
+
+    /// <summary>Implements SGT over big-endian stack words.</summary>
+    public struct OpSGtWord : IOpBitwise
+    {
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) =>
+            CompareWordSigned(in a, in b) > 0 ? OpBitwiseEq.One : default;
+    }
+#endif
 
     /// <summary>
     /// Performs a bitwise equality check between two 256-bit vectors.
