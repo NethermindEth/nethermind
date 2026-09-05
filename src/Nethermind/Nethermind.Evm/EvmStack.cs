@@ -345,9 +345,16 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReadUInt256FromSlot(ref byte slot, out UInt256 value)
     {
+#if ZK_EVM
+        // The same conversion PushUInt256 and PopUInt256 already use: it shares the swap masks across
+        // the four lanes rather than rematerialising them per lane, and skips three of the four swaps
+        // outright for a word whose high limbs are zero - which is most of what arithmetic operates on.
+        value = ReadBeWord(ref slot);
+#else
         Unsafe.SkipInit(out value);
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
         Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap();
+#endif
     }
 
     /// <summary>
@@ -358,8 +365,13 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteUInt256ToSlot(ref byte slot, in UInt256 value)
     {
+#if ZK_EVM
+        // Mirrors ReadUInt256FromSlot: shared masks, and the high limbs skipped when they are zero.
+        WriteBeWord(ref Unsafe.As<byte, EvmWord>(ref slot), in value);
+#else
         EvmWord leBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
         Unsafe.As<byte, EvmWord>(ref slot) = leBytes.ByteSwap();
+#endif
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
