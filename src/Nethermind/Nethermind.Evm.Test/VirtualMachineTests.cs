@@ -4,21 +4,29 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Evm.Test;
 
@@ -73,6 +81,87 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(
             () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
             Throws.Nothing);
+
+    [TestCase(0UL, 0UL)]
+    [TestCase(MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase(20_000_000UL, MainnetSpecProvider.ShanghaiBlockTimestamp - 1)]
+    [TestCase(20_000_000UL, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+    [TestCase(23_000_000UL, MainnetSpecProvider.PragueBlockTimestamp)]
+    [TestCase(25_000_000UL, MainnetSpecProvider.OsakaBlockTimestamp)]
+    [TestCase(25_000_000UL, MainnetSpecProvider.BPO2BlockTimestamp)]
+    [TestCase(20_000_000UL, 99UL, true)]
+    [TestCase(20_000_000UL, 100UL, true)]
+    public unsafe void Warm_up_populates_the_processing_specs_opcode_tables(ulong number, ulong timestamp, bool customSchedule = false)
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        if (customSchedule)
+        {
+            chainSpec.ChainId = 12345;
+            chainSpec.Parameters.Eip3855TransitionTimestamp = 100;
+        }
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(), chainSpec, useTestSpecProvider: false))
+            .Build();
+        ISpecProvider provider = container.Resolve<ISpecProvider>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithTimestamp(timestamp).WithGasLimit(30_000_000).TestObject;
+        IReleaseSpec spec = provider.GetSpec(header);
+        EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository, provider, (number, timestamp));
+
+        object cache = ReadWarmedOpcodeField(typeof(VirtualMachine<EthereumGasPolicy>), "_opcodeTablesBySpec");
+        object[] arguments = [spec, null!];
+        Assert.That(cache.GetType().GetMethod(nameof(ConditionalWeakTable<object, object>.TryGetValue))!.Invoke(cache, arguments), Is.True,
+            "warmup must populate the entry keyed by the chain provider's spec instance");
+        object table = arguments[1];
+        string[] tableNames = ["NoTrace", "NoTraceCancelable", "Traced", "TracedCancelable"];
+        object[] warmedTables = new object[tableNames.Length];
+        for (int i = 0; i < tableNames.Length; i++)
+        {
+            warmedTables[i] = ReadWarmedOpcodeField(table.GetType(), tableNames[i], table);
+        }
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(header, provider.GetSpec(header)));
+        object[] processingTables =
+        [
+            Machine.GetOpcodeHandlers<OffFlag, OffFlag>(),
+            Machine.GetOpcodeHandlers<OffFlag, OnFlag>(),
+            Machine.GetOpcodeHandlers<OnFlag, OffFlag>(),
+            Machine.GetOpcodeHandlers<OnFlag, OnFlag>()
+        ];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < tableNames.Length; i++)
+                Assert.That(processingTables[i], Is.SameAs(warmedTables[i]), tableNames[i]);
+        }
+
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = new()
+        {
+            IsServiceTransaction = true,
+            GasLimit = 30_000_000,
+            SenderAddress = Address.SystemUser,
+            To = Address.FromNumber(0x10000)
+        };
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+        _processor.CallAndRestore(tx, tracer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "the warmup contract must be valid for the selected fork");
+            Assert.That(tracer.ReportedActionErrors, Is.Empty, "the selected fork's precompile gas cost must be covered");
+            if (spec.IsEip196Enabled)
+                Assert.That(tracer.Actions, Has.Some.Matches<TestAllTracerWithOutput.ActionTrace>(action =>
+                    action.IsPrecompileCall && action.To == BN254AddPrecompile.Address));
+        }
+    }
+
+    private static object ReadWarmedOpcodeField(Type type, string name, object? instance = null)
+    {
+        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
+            | (instance is null ? BindingFlags.Static : BindingFlags.Instance);
+        FieldInfo field = type.GetField(name, flags)
+            ?? throw new AssertionException($"Opcode cache field {type.Name}.{name} was renamed or removed.");
+        return field.GetValue(instance)
+            ?? throw new AssertionException($"Opcode cache field {type.Name}.{name} was not populated by warmup.");
+    }
 
     [Test]
     public void Tail_call_opcode_table_dispatch_executes_maximum_length_code_without_growing_the_managed_stack()
