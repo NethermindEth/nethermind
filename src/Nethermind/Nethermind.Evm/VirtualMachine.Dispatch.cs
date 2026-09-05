@@ -232,8 +232,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (!TOpcode.TryConsumeGas(ref gas))
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.OutOfGas);
-            if (!stack.EnsureDepth(TOpcode.StackInputs))
+            if (TOpcode.StackInputs != 0 && !stack.EnsureDepth(TOpcode.StackInputs))
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackUnderflow);
+            if (TOpcode.StackGrowth > 0 && stack.Head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
+                return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackOverflow);
 
             // HasCheckedBody guarantees that Execute needs neither guards nor a VM reference.
             _ = TOpcode.Execute(ref stack, ref gas, null!, ref pc);

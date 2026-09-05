@@ -920,7 +920,7 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return stack.Dup<TTracingInst>(TOpCount.Count);
+        return stack.Dup<TTracingInst, OnFlag>(TOpCount.Count);
     }
 
     /// <summary>
@@ -960,7 +960,7 @@ public static partial class EvmInstructions
 
         return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
             ? EvmExceptionType.BadInstruction
-            : stack.Dup<TTracingInst>(depth);
+            : stack.Dup<TTracingInst, OnFlag>(depth);
     }
 
     /// <summary>
