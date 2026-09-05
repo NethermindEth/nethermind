@@ -47,6 +47,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 30000;
+    public const int HeadNumber = 3;
     protected long TestTimeout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
@@ -426,7 +427,7 @@ public class TestBlockchain : IDisposable
         while (true)
         {
             cts.Token.ThrowIfCancellationRequested();
-            if (BlockTree.Head?.Number == 3) return;
+            if (BlockTree.Head?.Number == HeadNumber) return;
             await Task.Delay(1, cts.Token);
         }
     }
