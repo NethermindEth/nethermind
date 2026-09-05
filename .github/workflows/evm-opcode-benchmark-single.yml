@@ -29,10 +29,12 @@ on:
         required: false
         type: string
       opcodes:
-        description: Comma-separated opcode names. Empty measures every opcode, which takes hours.
+        # No `default:`. A dispatch that supplies an empty value gets the default substituted for it
+        # before any expression sees it, which is what made the empty-means-every-opcode mode
+        # unreachable. The `push` trigger picks its own subset below.
+        description: Comma-separated opcode names. Leave empty to measure every opcode, which takes hours.
         required: false
         type: string
-        default: SHL,SHR,SAR,MLOAD,MSTORE,ADD,LT,MUL,ADDMOD,SIGNEXTEND
       invocation_count:
         description: BenchmarkDotNet invocations per iteration. Lower it for the slow arithmetic opcodes.
         required: false
