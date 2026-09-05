@@ -144,18 +144,25 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)
+            .As<IHistoricalTrieVisitor>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
+
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
         }
         else if (flatDbConfig.HistoryRetentionBlocks != 0
             || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
-            || flatDbConfig.HistoryVerifyEveryBlock)
+            || flatDbConfig.HistoryVerifyEveryBlock
+            || flatDbConfig.ArchiveProofBuildEnabled
+            || flatDbConfig.ArchiveProofServeEnabled)
         {
             throw new InvalidConfigurationException(
-                "FlatDb.HistoryRetentionBlocks, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
-                "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
-                "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
+                "FlatDb.HistoryRetentionBlocks, FlatDb.HistorySliceAddresses, FlatDb.HistoryVerifyEveryBlock, " +
+                "FlatDb.ArchiveProofBuildEnabled and FlatDb.ArchiveProofServeEnabled all require FlatDb.HistoryEnabled: " +
+                "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
 

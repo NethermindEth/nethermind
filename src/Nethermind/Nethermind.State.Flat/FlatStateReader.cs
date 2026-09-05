@@ -15,6 +15,7 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
+    IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
 {
@@ -49,6 +50,15 @@ public class FlatStateReader(
 
         if (reader.IsHistorical)
         {
+            try
+            {
+                if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
+            }
+            catch (StateUnavailableException e)
+            {
+                throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
+            }
+
             throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
         }
 
