@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -191,6 +191,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
         _isCancelableCached = txTracer.IsCancelable;
+        DispatchFlags.Validate(txTracer);
         _worldState = worldState;
 
         _shouldRestoreRipemdTouch = false;
@@ -1311,7 +1312,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Read from the value pinned at transaction start, which is also what chose the dispatch table.
-        return _isCancelableCached switch
+        return DispatchFlags.Cancelable(_isCancelableCached) switch
         {
             false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
             true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),

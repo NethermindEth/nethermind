@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
@@ -56,7 +56,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private void PrepareOpcodes<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        if (_isCancelableCached)
+        if (DispatchFlags.Cancelable(_isCancelableCached))
             PrepareOpcodes<TTracingInst, OnFlag>();
         else
             PrepareOpcodes<TTracingInst, OffFlag>();

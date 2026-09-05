@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -30,7 +30,7 @@ public class SpecFlagsTests
     private const string Floor = nameof(Osaka);
 
     /// <summary>Newest fork the guest serves, or null to serve every fork descended from the floor.</summary>
-    private static readonly string? Max = nameof(Amsterdam);
+    private static readonly string? Max = nameof(BPO2);
 
     /// <summary>Each rule the opcode table branches on, and how it reads from a spec.</summary>
     private static readonly (string Rule, Func<IReleaseSpec, bool> Read)[] Rules =
@@ -52,11 +52,13 @@ public class SpecFlagsTests
 
         Assert.That(names, Does.Contain(Floor));
         Assert.That(names, Does.Not.Contain(nameof(Prague)), "Prague precedes the floor.");
-        if (Max is not null)
-        {
-            Assert.That(names, Does.Contain(Max));
-            Assert.That(names, Does.Not.Contain(nameof(Bogota)), "Bogota descends from the max.");
-        }
+        if (Max is null) return;
+
+        Assert.That(names, Does.Contain(Max));
+        IEnumerable<string> pastMax = AllForks()
+            .Where(static f => f.GetType().Name != Max && AtOrAbove(f, Max))
+            .Select(static f => f.GetType().Name);
+        Assert.That(names.Intersect(pastMax), Is.Empty, "The max must exclude every fork descended from it.");
     }
 
     [Test]
@@ -109,13 +111,7 @@ public class SpecFlagsTests
     /// </remarks>
     private static List<NamedReleaseSpec> ForkRange()
     {
-        List<NamedReleaseSpec> all = typeof(Osaka).Assembly.GetTypes()
-            .Where(static t => t.Namespace == typeof(Osaka).Namespace
-                && !t.IsAbstract
-                && t.IsSubclassOf(typeof(NamedReleaseSpec))
-                && t.GetConstructor(Type.EmptyTypes) is not null)
-            .Select(static t => (NamedReleaseSpec)Activator.CreateInstance(t)!)
-            .ToList();
+        List<NamedReleaseSpec> all = AllForks();
 
         NamedReleaseSpec? max = Max is null ? null : all.Find(static f => f.GetType().Name == Max);
         Assert.That(Max is null || max is not null, $"No fork named {Max}.");
@@ -126,6 +122,16 @@ public class SpecFlagsTests
         Assert.That(range, Is.Not.Empty, $"No fork lies between {Floor} and {Max ?? "the newest fork"}.");
         return range;
     }
+
+    /// <summary>Every concrete mainnet fork, each replayed onto a fresh instance.</summary>
+    private static List<NamedReleaseSpec> AllForks() =>
+        typeof(Osaka).Assembly.GetTypes()
+            .Where(static t => t.Namespace == typeof(Osaka).Namespace
+                && !t.IsAbstract
+                && t.IsSubclassOf(typeof(NamedReleaseSpec))
+                && t.GetConstructor(Type.EmptyTypes) is not null)
+            .Select(static t => (NamedReleaseSpec)Activator.CreateInstance(t)!)
+            .ToList();
 
     private static bool AtOrAbove(NamedReleaseSpec fork, string floor)
     {

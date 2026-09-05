@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -368,7 +368,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
-            int statusCode = !tracer.IsTracingInstructions ?
+            int statusCode = !DispatchFlags.Tracing(tracer.IsTracingInstructions) ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
 
@@ -1388,7 +1388,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     goto Complete;
                 }
 
-                substate = !TTracingInst.IsActive
+                substate = !DispatchFlags.Tracing(TTracingInst.IsActive)
                     ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
