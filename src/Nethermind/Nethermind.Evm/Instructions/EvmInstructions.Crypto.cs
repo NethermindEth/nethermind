@@ -30,7 +30,7 @@ public static partial class EvmInstructions
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
         ulong words = EvmCalculations.Div32Ceiling(in b, out bool outOfGas);
-        TGasPolicy.ConsumeKeccak(ref gas, words);
+        if (!TGasPolicy.TryConsumeKeccak(ref gas, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         VmState<TGasPolicy> vmState = vm.VmState;

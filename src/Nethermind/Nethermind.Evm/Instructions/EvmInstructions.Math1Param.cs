@@ -53,15 +53,16 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
-        TGasPolicy.Consume<TOpMath>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return Math1ParamCore<TOpMath>(ref stack);
     }
 
     /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>.</summary>
+    /// <remarks>When checkDepth is false, the caller must have verified at least 1 stack items.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
+    internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack, bool checkDepth = true)
         where TOpMath : struct, IOpMath1Param
     {
         // Folding a word down to a scalar through an EvmWord value makes the operand address-taken, so
@@ -69,7 +70,7 @@ public static partial class EvmInstructions
         // slot where it lies instead.
         if (!Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpIsZero))
         {
-            if (!stack.EnsureDepth(1))
+            if (checkDepth && !stack.EnsureDepth(1))
                 return EvmExceptionType.StackUnderflow;
 
             ref byte slot = ref stack.PeekBytesByRefUnchecked();
@@ -79,7 +80,7 @@ public static partial class EvmInstructions
 
         if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpNot))
         {
-            if (!stack.EnsureDepth(1))
+            if (checkDepth && !stack.EnsureDepth(1))
                 return EvmExceptionType.StackUnderflow;
 
             ref byte valueBytes = ref stack.PeekBytesByRefUnchecked();
@@ -94,7 +95,7 @@ public static partial class EvmInstructions
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
-        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+        if (checkDepth && !stack.EnsureDepth(1)) goto StackUnderflow;
         ref byte bytesRef = ref stack.PeekBytesByRefUnchecked();
 
         // Read a 256-bit value from unaligned memory on the stack.
@@ -143,7 +144,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionCountLeadingZeros<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume<LowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<LowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         if (!stack.EnsureDepth(1))
             return EvmExceptionType.StackUnderflow;
@@ -165,7 +166,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -215,7 +216,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume<LowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<LowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         // The index and the word it applies to are adjacent, so one depth check covers both.
         if (!stack.EnsureDepth(2))

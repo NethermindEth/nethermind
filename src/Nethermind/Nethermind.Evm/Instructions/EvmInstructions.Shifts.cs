@@ -58,7 +58,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
-        TGasPolicy.Consume<TOpShift>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpShift>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return ShiftCore<TOpShift, TTracingInst>(ref stack);
     }
@@ -199,7 +199,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         if (X86Base.IsSupported)
         {

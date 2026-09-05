@@ -27,7 +27,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the minimal gas cost for a POP operation.
-        TGasPolicy.Consume<BaseGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Pop from the stack; if nothing to pop, signal a stack underflow.
         return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
     }
@@ -122,7 +122,7 @@ public static partial class EvmInstructions
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Retrieve the code segment containing immediate data.
         ref byte bytes = ref stack.Code;
         nint remainingCode = stack.CodeLength - programCounter;
@@ -141,13 +141,13 @@ public static partial class EvmInstructions
 
             if (nextInstruction == Instruction.JUMP)
             {
-                TGasPolicy.Consume<JumpGasCost>(ref gas);
                 vm.OpCodeCount++;
+                if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                TGasPolicy.Consume<JumpIGasCost>(ref gas);
                 vm.OpCodeCount++;
+                if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
                 {
@@ -166,8 +166,8 @@ public static partial class EvmInstructions
             // Prefetch the cache line at the jump destination
             // since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
-            TGasPolicy.Consume<JumpDestGasCost>(ref gas);
             vm.OpCodeCount++;
+            if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
         }
@@ -871,7 +871,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<BaseGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         return stack.PushZero<TTracingInst>();
     }
 
@@ -894,7 +894,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Use the push method defined by the specific push operation.
         EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter);
         // Advance the program counter by the number of bytes consumed.
@@ -918,7 +918,7 @@ public static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return stack.Dup<TTracingInst>(TOpCount.Count);
     }
@@ -941,7 +941,7 @@ public static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
         return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
@@ -956,7 +956,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
             ? EvmExceptionType.BadInstruction
@@ -973,7 +973,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
             ? EvmExceptionType.BadInstruction
@@ -990,7 +990,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return !TryDecodePair(ref stack, ref programCounter, out int n, out int m)
             ? EvmExceptionType.BadInstruction
@@ -1091,7 +1091,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref vmState.Memory)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
         ulong dataSize = (ulong)length;
-        if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
+        if (!TGasPolicy.TryConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
         // Load the log data from memory.
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))

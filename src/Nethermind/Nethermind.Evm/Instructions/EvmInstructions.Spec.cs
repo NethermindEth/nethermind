@@ -13,7 +13,7 @@ public static partial class EvmInstructions
 {
     internal interface IAccessSpec
     {
-        static abstract bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        static abstract bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
     }
@@ -21,10 +21,10 @@ public static partial class EvmInstructions
     internal readonly struct DynamicAccessSpec : IAccessSpec
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
+            TGasPolicy.TryConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
     }
 
     internal readonly struct AccessSpec<Eip2929, Eip8038> : IAccessSpec
@@ -32,10 +32,10 @@ public static partial class EvmInstructions
         where Eip8038 : struct, IFlag
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            TGasPolicy.ConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
+            TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
     }
 
     internal interface ICallSpec : IAccessSpec
@@ -63,10 +63,10 @@ public static partial class EvmInstructions
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
             TGasPolicy.TryReserveChildGas(ref gas, in requestedGas, spec, out childGas);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
+            TGasPolicy.TryConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
     }
 
     internal readonly struct CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038> : ICallSpec
@@ -89,10 +89,10 @@ public static partial class EvmInstructions
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
             TGasPolicy.TryReserveChildGas<Eip150>(ref gas, in requestedGas, spec, out childGas);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            TGasPolicy.ConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
+            TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
     }
 
     internal interface ICreateSpec
@@ -101,7 +101,7 @@ public static partial class EvmInstructions
         static abstract bool IsEip3860Enabled(IReleaseSpec spec);
         static abstract bool TryReserveChildGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec, out ulong childGas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
-        static abstract bool ConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
+        static abstract bool TryConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>
             where Eip8037 : struct, IFlag
             where TOpCreate : struct, IOpCreate;
@@ -118,11 +118,11 @@ public static partial class EvmInstructions
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
             TGasPolicy.TryReserveChildGas(ref gas, spec, out childGas);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
+        public static bool TryConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>
             where Eip8037 : struct, IFlag
             where TOpCreate : struct, IOpCreate =>
-            TGasPolicy.ConsumeCreateGas<Eip8037, TOpCreate>(ref gas, spec, words);
+            TGasPolicy.TryConsumeCreateGas<Eip8037, TOpCreate>(ref gas, spec, words);
     }
 
     internal readonly struct CreateSpec<Eip2929, Eip150, Eip3860, Eip8038> : ICreateSpec
@@ -140,11 +140,11 @@ public static partial class EvmInstructions
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
             TGasPolicy.TryReserveChildGas<Eip150>(ref gas, spec, out childGas);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
+        public static bool TryConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>
             where Eip8037 : struct, IFlag
             where TOpCreate : struct, IOpCreate =>
-            TGasPolicy.ConsumeCreateGas<Eip8037, TOpCreate, Eip3860, Eip8038>(ref gas, spec, words);
+            TGasPolicy.TryConsumeCreateGas<Eip8037, TOpCreate, Eip3860, Eip8038>(ref gas, spec, words);
     }
 
     internal interface ISelfDestructSpec : IAccessSpec
@@ -169,10 +169,10 @@ public static partial class EvmInstructions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsEip8038Enabled(IReleaseSpec spec) => spec.IsEip8038Enabled;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            DynamicAccessSpec.ConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
+            DynamicAccessSpec.TryConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
     }
 
     internal readonly struct SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038> : ISelfDestructSpec
@@ -194,9 +194,9 @@ public static partial class EvmInstructions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsEip8038Enabled(IReleaseSpec spec) => Eip8038.IsActive;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            TAccess.ConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
+            TAccess.TryConsumeAccountAccessGas(ref gas, spec, in tracker, tracing, address, kind);
     }
 }

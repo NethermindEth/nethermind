@@ -107,8 +107,9 @@ public class SystemTransactionProcessor<TGasPolicy>(
     {
         if (tx is SystemCall)
         {
-            gasAvailable = TGasPolicy.CreateSystemTransactionAvailableGas(tx.GasLimit, intrinsicGas.Standard, spec);
-            return TransactionResult.Ok;
+            return TGasPolicy.TryCreateSystemTransactionAvailableGas(tx.GasLimit, intrinsicGas.Standard, spec, out gasAvailable)
+                ? TransactionResult.Ok
+                : TransactionResult.GasLimitBelowIntrinsicGas;
         }
 
         return base.CalculateAvailableGas(tx, spec, in intrinsicGas, out gasAvailable);

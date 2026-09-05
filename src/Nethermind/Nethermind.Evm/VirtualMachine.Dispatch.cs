@@ -217,18 +217,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
         where TContinuable : struct, IFlag
     {
-        VirtualMachine<TGasPolicy> vm = state.Vm;
-
         // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
         if (TTracingInst.IsActive)
         {
             Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-            vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
+            state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
         }
 
         pc++;
         opCodeCount++;
-        EvmExceptionType exceptionType = TOpcode.Execute(ref stack, ref gas, vm, ref pc);
+        EvmExceptionType exceptionType;
+        if (TOpcode.HasCheckedBody)
+        {
+            if (!TOpcode.TryConsumeGas(ref gas))
+                return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.OutOfGas);
+            if (!stack.EnsureDepth(TOpcode.StackInputs))
+                return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackUnderflow);
+
+            // HasCheckedBody guarantees that Execute needs neither guards nor a VM reference.
+            _ = TOpcode.Execute(ref stack, ref gas, null!, ref pc);
+            exceptionType = EvmExceptionType.None;
+        }
+        else
+        {
+            exceptionType = TOpcode.Execute(ref stack, ref gas, state.Vm, ref pc);
+        }
 
         if (!TContinuable.IsActive)
             goto Exit;
@@ -240,16 +253,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)pc < (nuint)stack.CodeLength)
             next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
 
-        if (ShouldExitFrame(exceptionType, TGasPolicy.IsOutOfGas(in gas)))
+        if (!TOpcode.HasCheckedBody && exceptionType != EvmExceptionType.None)
             goto Exit;
 
-        Debug.Assert(vm.ReturnData is null,
+        Debug.Assert(state.Vm.ReturnData is null,
             "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
         if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            state.Vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
-        // Reaching here means ShouldExitFrame said no, so the status is None and gas is left: the exit
+        // Reaching here means the halt check passed, so the status is None and gas is valid: the exit
         // block returns exactly that, and one copy of it is smaller than two.
         if (next == 0)
             goto Exit;
@@ -285,12 +298,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     Exit:
         state.OpCodeCount = opCodeCount;
         state.FinalProgramCounter = pc;
-        if (TGasPolicy.IsOutOfGas(in gas))
-        {
-            TGasPolicy.SetOutOfGas(ref gas);
-            return EvmExceptionType.OutOfGas;
-        }
+        return exceptionType;
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType ExitCheckedOpcode(ref DispatchState state, nint pc, int opCodeCount, EvmExceptionType exceptionType)
+    {
+        state.OpCodeCount = opCodeCount;
+        state.FinalProgramCounter = pc;
         return exceptionType;
     }
 
@@ -321,7 +336,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref gas, vm, pc);
         pc = result.ProgramCounter;
 
-        if (ShouldExitFrame(result.Exception, TGasPolicy.IsOutOfGas(in gas)))
+        if (result.Exception != EvmExceptionType.None)
             goto Exit;
 
         Debug.Assert(vm.ReturnData is null,
@@ -399,12 +414,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     Exit:
         state.OpCodeCount = opCodeCount;
         state.FinalProgramCounter = pc;
-        if (TGasPolicy.IsOutOfGas(in gas))
-        {
-            TGasPolicy.SetOutOfGas(ref gas);
-            return EvmExceptionType.OutOfGas;
-        }
-
         return result.Exception;
     }
 }

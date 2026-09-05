@@ -154,26 +154,26 @@ public static partial class EvmInstructions
             // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
             // static gas check before any target access, so an OOG here must not touch the BAL.
             bool valueOutOfGas = TSpec.IsEip2780Enabled(spec)
-                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas)
-                : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+                ? !TGasPolicy.TryConsumeCallValueTransferEip2780(ref gas)
+                : !TGasPolicy.TryConsumeCallValueTransfer(ref gas);
             if (valueOutOfGas) goto OutOfGas;
         }
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.ConsumeCallBaseGas(ref gas, spec) ||
+        if (!TGasPolicy.TryConsumeCallBaseGas(ref gas, spec) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
         if (TSpec.UseHotAndColdStorage(spec) &&
             delegated is not null &&
-            !TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, delegated))
+            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, delegated))
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
@@ -187,7 +187,7 @@ public static partial class EvmInstructions
                 true => hasValueTransfer && state.IsDeadAccount(target),
             });
 
-        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
+        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
 

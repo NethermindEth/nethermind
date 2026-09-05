@@ -116,7 +116,7 @@ public static partial class EvmInstructions
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
-                TGasPolicy.SetOutOfGas(ref gas);
+                TGasPolicy.ClearExecutionGas(ref gas);
                 goto OutOfGas;
             }
         }
@@ -125,7 +125,7 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
-        if (!TSpec.ConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
+        if (!TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
@@ -177,7 +177,7 @@ public static partial class EvmInstructions
         bool isAliveAccount = !state.IsDeadAccount(contractAddress);
         bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
 
-        if (chargeCreateStateGas && !TGasPolicy.ConsumeCreateStateGas(ref gas))
+        if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
         // Get remaining gas for the create operation.

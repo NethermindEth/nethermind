@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -18,6 +19,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </remarks>
     private interface IOpcodeBody
     {
+        /// <summary>Whether dispatch owns the gas/depth guards and Execute cannot fail or access the VM.</summary>
+        static virtual bool HasCheckedBody => false;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static virtual bool TryConsumeGas(ref TGasPolicy gas) => false;
+        static virtual int StackInputs => 0;
+
         static abstract EvmExceptionType Execute(
             ref EvmStack stack,
             ref TGasPolicy gas,
@@ -80,12 +87,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.GT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpGt, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SLT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSLt, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SGT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSGt, TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.EQ] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseEq>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.ISZERO] = OpcodeHandler<Math1Opcode<EvmInstructions.OpIsZero>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.AND] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseAnd>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.OR] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseOr>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.XOR] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseXor>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.NOT] = OpcodeHandler<Math1Opcode<EvmInstructions.OpNot>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.EQ] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseEq, TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.ISZERO] = OpcodeHandler<Math1Opcode<EvmInstructions.OpIsZero, TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.AND] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseAnd, TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.OR] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseOr, TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.XOR] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseXor, TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.NOT] = OpcodeHandler<Math1Opcode<EvmInstructions.OpNot, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.BYTE] = OpcodeHandler<ByteOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         if (spec.ShiftOpcodesEnabled)
@@ -496,8 +503,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpMath : struct, EvmInstructions.IOpMath2Param
         where TTracingInst : struct, IFlag
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas);
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpMath>(ref gas);
+        public static int StackInputs => 2;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!HasCheckedBody)
+                return EvmInstructions.InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas);
+
+            return EvmInstructions.Math2ParamCore<TOpMath, TTracingInst>(ref stack, checkDepth: false);
+        }
     }
 
     private readonly struct Math3Opcode<TOpMath, TTracingInst> : IOpcodeBody
@@ -508,16 +530,50 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas, vm);
     }
 
-    private readonly struct Math1Opcode<TOpMath> : IOpcodeBody where TOpMath : struct, EvmInstructions.IOpMath1Param
+    private readonly struct Math1Opcode<TOpMath, TTracingInst> : IOpcodeBody
+        where TOpMath : struct, EvmInstructions.IOpMath1Param
+        where TTracingInst : struct, IFlag
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionMath1Param<TGasPolicy, TOpMath>(ref stack, ref gas, vm);
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpMath>(ref gas);
+        public static int StackInputs => 1;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!HasCheckedBody)
+                return EvmInstructions.InstructionMath1Param<TGasPolicy, TOpMath>(ref stack, ref gas, vm);
+
+            return EvmInstructions.Math1ParamCore<TOpMath>(ref stack, checkDepth: false);
+        }
     }
 
-    private readonly struct BitwiseOpcode<TOpBitwise> : IOpcodeBody where TOpBitwise : struct, EvmInstructions.IOpBitwise
+    private readonly struct BitwiseOpcode<TOpBitwise, TTracingInst> : IOpcodeBody
+        where TOpBitwise : struct, EvmInstructions.IOpBitwise
+        where TTracingInst : struct, IFlag
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionBitwise<TGasPolicy, TOpBitwise>(ref stack, ref gas, vm);
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpBitwise>(ref gas);
+        public static int StackInputs => 2;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!HasCheckedBody)
+                return EvmInstructions.InstructionBitwise<TGasPolicy, TOpBitwise>(ref stack, ref gas, vm);
+
+            return EvmInstructions.BitwiseCore<TOpBitwise>(ref stack, checkDepth: false);
+        }
     }
 
     private readonly struct ExpOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag

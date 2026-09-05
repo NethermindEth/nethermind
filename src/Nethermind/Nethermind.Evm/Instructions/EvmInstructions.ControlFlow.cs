@@ -33,7 +33,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
-        TGasPolicy.Consume<BaseGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         return stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
     }
@@ -53,7 +53,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost specific for a jump destination marker.
-        TGasPolicy.Consume<JumpDestGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         return EvmExceptionType.None;
     }
@@ -93,13 +93,14 @@ public static partial class EvmInstructions
         where TSkipJumpDest : struct, IFlag
     {
         // Deduct the gas cost for performing a jump.
-        TGasPolicy.Consume<JumpGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
         // Pop the jump destination from the stack.
         if (!stack.EnsureDepth(1)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
         nint destination = JumpDestination(ref stack.PopBytesByRefUnchecked(), vm.VmState.Env);
         if (destination < 0) goto InvalidJumpDestination;
-        programCounter = SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination);
+        if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
+            return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
         // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
         PrefetchCodeAtDestination(ref stack, programCounter);
 
@@ -148,7 +149,7 @@ public static partial class EvmInstructions
         where TSkipJumpDest : struct, IFlag
     {
         // Deduct the high gas cost for a conditional jump.
-        TGasPolicy.Consume<JumpIGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
         // The condition sits directly below the destination, so one depth check covers both.
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte condition = ref stack.Pop2BytesByRefUnchecked();
@@ -158,7 +159,8 @@ public static partial class EvmInstructions
         {
             nint destination = JumpDestination(ref Unsafe.Add(ref condition, EvmStack.WordSize), vm.VmState.Env);
             if (destination < 0) goto InvalidJumpDestination;
-            programCounter = SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination);
+            if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
+                return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
             // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
         }
@@ -171,21 +173,22 @@ public static partial class EvmInstructions
         return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
     }
 
-    /// <summary>Charges the landed-on <c>JUMPDEST</c> and steps past it, returning the counter.</summary>
+    /// <summary>Steps past a landed-on <c>JUMPDEST</c> and returns whether its gas charge succeeded.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static nint SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, nint programCounter)
+    private static bool SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, nint destination, out nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
     {
-        if (TSkipJumpDest.IsActive && !TGasPolicy.IsOutOfGas(in gas))
+        programCounter = destination;
+        if (TSkipJumpDest.IsActive)
         {
             // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
             vm.OpCodeCount++;
-            TGasPolicy.Consume<JumpDestGasCost>(ref gas);
             programCounter++;
+            return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
         }
 
-        return programCounter;
+        return true;
     }
 
     /// <summary>
@@ -261,7 +264,7 @@ public static partial class EvmInstructions
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (TSpec.UseShanghaiDDosProtection(spec))
         {
-            if (!TGasPolicy.ConsumeSelfDestructGas(ref gas))
+            if (!TGasPolicy.TryConsumeSelfDestructGas(ref gas))
                 goto OutOfGas;
         }
 
@@ -271,7 +274,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
-        if (!TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -299,7 +302,7 @@ public static partial class EvmInstructions
         // charge execution first so an execution-gas OOG does not spill state gas.
         bool outOfGas = chargesNewAccount &&
             !((!TSpec.IsEip8038Enabled(spec) || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
-              && TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
+              && TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
 
@@ -340,7 +343,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionInvalid<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume<HighGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<HighGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         return EvmExceptionType.BadInstruction;
     }
 
