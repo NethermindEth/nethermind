@@ -55,22 +55,23 @@ public static partial class EvmInstructions
         // Deduct the gas cost associated with the math operation.
         if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return Math1ParamCore<TOpMath>(ref stack);
+        return Math1ParamCore<TOpMath, OnFlag>(ref stack);
     }
 
     /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>.</summary>
-    /// <remarks>When checkDepth is false, the caller must have verified at least 1 stack items.</remarks>
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least 1 stack item.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack, bool checkDepth = true)
+    internal static EvmExceptionType Math1ParamCore<TOpMath, TCheckDepth>(ref EvmStack stack)
         where TOpMath : struct, IOpMath1Param
+        where TCheckDepth : struct, IFlag
     {
         // Folding a word down to a scalar through an EvmWord value makes the operand address-taken, so
         // targets with no 256-bit register home it on the frame and read it back limb by limb. Test the
         // slot where it lies instead.
         if (!Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpIsZero))
         {
-            if (checkDepth && !stack.EnsureDepth(1))
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(1))
                 return EvmExceptionType.StackUnderflow;
 
             ref byte slot = ref stack.PeekBytesByRefUnchecked();
@@ -80,7 +81,7 @@ public static partial class EvmInstructions
 
         if (!Vector128.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpNot))
         {
-            if (checkDepth && !stack.EnsureDepth(1))
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(1))
                 return EvmExceptionType.StackUnderflow;
 
             ref byte valueBytes = ref stack.PeekBytesByRefUnchecked();
@@ -95,7 +96,7 @@ public static partial class EvmInstructions
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
-        if (checkDepth && !stack.EnsureDepth(1)) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(1)) goto StackUnderflow;
         ref byte bytesRef = ref stack.PeekBytesByRefUnchecked();
 
         // Read a 256-bit value from unaligned memory on the stack.
