@@ -70,10 +70,12 @@ public static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        // The 128-bit JIT lowers the paired pop/push path more efficiently than in-place conversion.
+        // On x86 without a 256-bit register the JIT lowers the paired pop/push better than in-place
+        // conversion. ARM64 is the other way round for every shift: it reverses a word in vector
+        // registers, so the paired path buys nothing and costs the push its overflow check.
         if (Vector128.IsHardwareAccelerated &&
             !Vector256.IsHardwareAccelerated &&
-            (X86Base.IsSupported || typeof(TOpShift) == typeof(OpShl)))
+            X86Base.IsSupported)
         {
             if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
 
@@ -89,8 +91,7 @@ public static partial class EvmInstructions
             return stack.PushUInt256<TTracingInst>(in shifted);
         }
 
-        if ((!Vector128.IsHardwareAccelerated ||
-             (!X86Base.IsSupported && typeof(TOpShift) == typeof(OpShr))) &&
+        if ((!Vector128.IsHardwareAccelerated || !X86Base.IsSupported) &&
             (typeof(TOpShift) == typeof(OpShl) || typeof(TOpShift) == typeof(OpShr)))
         {
             return ShiftScalar<TOpShift, TTracingInst>(ref stack);
