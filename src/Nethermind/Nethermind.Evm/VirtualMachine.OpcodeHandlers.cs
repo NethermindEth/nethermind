@@ -25,6 +25,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         static virtual bool TryConsumeGas(ref TGasPolicy gas) => false;
         static virtual int StackInputs => 0;
         static virtual int StackGrowth => 0;
+        static virtual int PushSize => -1;
 
         static abstract EvmExceptionType Execute(
             ref EvmStack stack,
@@ -921,6 +922,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct Push0Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static int PushSize => 0;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -947,6 +949,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
     {
+        public static int PushSize => TOpCount.Count;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -962,7 +965,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (!HasCheckedBody)
                 return EvmInstructions.InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, ref programCounter);
 
-            _ = TOpCount.Push<TTracingInst, OffFlag>(TOpCount.Count, ref stack, programCounter);
+            _ = TOpCount.Push<TTracingInst, OffFlag, OffFlag>(ref stack, programCounter);
             programCounter += TOpCount.Count;
             return EvmExceptionType.None;
         }
