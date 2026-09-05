@@ -359,10 +359,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     {
         for (Instruction opcode = Instruction.PUSH0; opcode <= Instruction.DUP16; opcode++)
         {
+            int width = opcode <= Instruction.PUSH32 ? opcode - Instruction.PUSH0 : 0;
+            int[] lengths = width == 0 ? [0] : width == 1 ? [0, 1] : [0, width / 2, width];
             foreach (int depth in new[] { 1023, 1024 })
             foreach (bool sufficientGas in new[] { false, true })
             foreach (int tracerMode in new[] { 0, 1, 2 })
-                yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode);
+            foreach (int immediateLength in lengths)
+                yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode, immediateLength);
         }
     }
 
@@ -390,15 +393,16 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(StackGrowthCases))]
-    public void Stack_growth_preserves_limit_and_gas_precedence(Instruction opcode, int depth, bool sufficientGas, int tracerMode)
+    public void Stack_growth_preserves_limit_and_gas_precedence(Instruction opcode, int depth, bool sufficientGas, int tracerMode, int immediateLength)
     {
-        byte[] code = new byte[depth * 2 + 1];
+        byte[] code = new byte[depth * 2 + 1 + immediateLength];
         for (int i = 0; i < depth; i++)
         {
             code[i * 2] = (byte)Instruction.PUSH1;
             code[i * 2 + 1] = 1;
         }
         code[depth * 2] = (byte)opcode;
+        code.AsSpan(depth * 2 + 1).Fill(0xa5);
         ulong cost = opcode == Instruction.PUSH0 ? GasCostOf.Base : GasCostOf.VeryLow;
         ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);

@@ -235,6 +235,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackUnderflow);
             if (TOpcode.StackGrowth > 0 && stack.Head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackOverflow);
+            // Only untraced PUSH bodies opt in: no subsequent opcode can observe the final stack value.
+            if (TOpcode.PushSize >= 0 && pc + TOpcode.PushSize >= stack.CodeLength)
+                return ExitCheckedOpcode(ref state, pc + TOpcode.PushSize, opCodeCount, EvmExceptionType.None);
 
             // HasCheckedBody guarantees that Execute needs neither guards nor a VM reference.
             _ = TOpcode.Execute(ref stack, ref gas, null!, ref pc);
@@ -252,7 +255,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // Its load chain then overlaps the rest of the handler. Zero means the counter ran off the end of
         // the code. No table entry is null, so zero cannot mean anything else.
         nint next = 0;
-        if ((nuint)pc < (nuint)stack.CodeLength)
+        if ((TOpcode.HasCheckedBody && TOpcode.PushSize >= 0) || (nuint)pc < (nuint)stack.CodeLength)
             next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
 
         if (!TOpcode.HasCheckedBody && exceptionType != EvmExceptionType.None)
@@ -266,7 +269,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         // Reaching here means the halt check passed, so the status is None and gas is valid: the exit
         // block returns exactly that, and one copy of it is smaller than two.
-        if (next == 0)
+        if (!(TOpcode.HasCheckedBody && TOpcode.PushSize >= 0) && next == 0)
             goto Exit;
 
         if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0)
