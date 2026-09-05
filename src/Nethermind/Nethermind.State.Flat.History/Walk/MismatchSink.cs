@@ -35,10 +35,13 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
 
     public void AddRange(MismatchSink other)
     {
+        List<HistoryWalkMismatch> copy;
         lock (other._mismatches)
         {
-            AddRange(other._mismatches);
+            copy = [.. other._mismatches];
         }
+
+        AddRange(copy);
     }
 
     public List<HistoryWalkMismatch> Drain()

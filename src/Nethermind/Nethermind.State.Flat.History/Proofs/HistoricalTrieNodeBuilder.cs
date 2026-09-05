@@ -137,9 +137,9 @@ internal sealed class HistoricalTrieNodeBuilder
         {
             Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
         }
-        catch (AggregateException e) when (e.InnerException is not null)
+        catch (AggregateException e)
         {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
         }
     }
 

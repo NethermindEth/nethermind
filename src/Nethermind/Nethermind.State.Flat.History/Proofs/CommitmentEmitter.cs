@@ -27,6 +27,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly object _windowWriteLock;
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
+    private readonly int _storageSnapshotDepth;
 
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
@@ -36,7 +37,6 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
     private readonly Dictionary<NodePathKey, bool> _exactBranches = [];
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
-    private readonly HashSet<NodePathKey> _touchedThisBlock = [];
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
     private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
@@ -46,22 +46,23 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _block;
     private bool _haveBlock;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int storageSnapshotDepth)
     {
         _history = history;
         _policy = policy;
         _metadata = metadata;
         _windowWriteLock = metadata.WindowWriteLock;
         _maxOpenWindowNodes = maxOpenWindowNodes;
+        _storageSnapshotDepth = storageSnapshotDepth;
         _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
         _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes);
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int storageSnapshotDepth = DefaultStorageSnapshotDepth) =>
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, storageSnapshotDepth);
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes, DefaultStorageSnapshotDepth);
 
     public CommitmentDepthPolicy Policy => _policy;
 
@@ -69,7 +70,9 @@ public sealed class CommitmentEmitter : IDisposable
 
     public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
 
-    public const int StorageSnapshotDepth = 1;
+    public const int DefaultStorageSnapshotDepth = 1;
+
+    public int StorageSnapshotDepth => _storageSnapshotDepth;
 
     public void BeginBlock(ulong block)
     {
@@ -86,7 +89,6 @@ public sealed class CommitmentEmitter : IDisposable
         _blockDirtyChildren.Clear();
         _blockStorageMaxDepth.Clear();
         _blockTrieDepths.Clear();
-        _touchedThisBlock.Clear();
     }
 
     public void RecordAccountNode(in TreePath path, ReadOnlySpan<byte> rlp)
@@ -272,7 +274,6 @@ public sealed class CommitmentEmitter : IDisposable
             _windows[key] = state;
         }
 
-        _touchedThisBlock.Add(key);
         state.LastBlock = _block;
 
         if (isEmpty)

@@ -704,6 +704,80 @@ public class ArchiveProofTests
             "windowed rows are pre-values behind a retention floor, which a proof resolution cannot replay");
     }
 
+    [Test]
+    public void The_walk_promotes_a_deep_storage_trie_to_the_per_block_tier_without_the_tip()
+    {
+        _policy = new CommitmentDepthPolicy(
+            CommitmentDepthPolicy.MinIntervalLog2,
+            CommitmentDepthPolicy.DefaultAccountExactDepth,
+            CommitmentDepthPolicy.DefaultAccountCheckpointDepth,
+            storageExactDepth: 0,
+            storageCheckpointDepth: 0,
+            largeTrieSignalDepth: 2,
+            storageRowsSignalDepth: 1);
+
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            for (int slot = 0; slot < 24; slot++) block.SetStorage(Contract, (UInt256)(5000 + slot), [(byte)(slot + 1), 0x02]);
+        });
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        ValueHash256 identity = Keccak.Compute(Contract.Bytes).ValueHash256;
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                new CommitmentMetadata(_historyColumns, _policy).StorageTrieDepth(identity),
+                Is.GreaterThanOrEqualTo(_policy.LargeTrieSignalDepth),
+                "a trie that carries a branch below the collected ceiling is deeper than that ceiling, and the walk is the only observer a retrofit has");
+            Assert.That(
+                storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 0) && key[CommitmentKeyLayout.EpochLength] == CommitmentKeyLayout.FineTier),
+                Is.True,
+                "without this the per-block storage tier only ever exists for contracts the tip happened to touch while the walk ran");
+        }
+    }
+
+    [Test]
+    public void A_quiet_contract_keeps_its_deep_storage_rows_in_the_epoch_that_survives_the_drop()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+
+        Address quiet = TestItem.AddressD;
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            for (int slot = 0; slot < 24; slot++) block.SetStorage(quiet, (UInt256)(5000 + slot), [(byte)(slot + 1), 0x02]);
+        });
+
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+        CreateRetrofit(_policy).PruneBelow(_chain.Head);
+
+        ValueHash256 identity = Keccak.Compute(quiet.Bytes).ValueHash256;
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        Assert.That(
+            storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 2)),
+            Is.True,
+            "the epoch start snapshot has to reach every depth the storage tier publishes, or dropping the older epoch leaves heights served that no row can answer");
+    }
+
+    private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)
+    {
+        int identityOffset = CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength;
+        int pathOffset = identityOffset + CommitmentKeyLayout.IdentityLength;
+        return key.Length > pathOffset
+            && key.AsSpan(identityOffset, CommitmentKeyLayout.IdentityLength).SequenceEqual(identity.Bytes[..CommitmentKeyLayout.IdentityLength])
+            && (key[pathOffset] & ~CommitmentKeyLayout.ExactRowFlag) == pathLength;
+    }
+
     private static bool IsEpochTier(byte[] key, ulong epoch, byte tier) =>
         key.Length > CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength
         && key[0] == (byte)(epoch >> 8)

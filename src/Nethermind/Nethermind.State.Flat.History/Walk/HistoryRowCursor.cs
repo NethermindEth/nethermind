@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History.Walk;
@@ -129,6 +130,12 @@ internal sealed class HistoryRowCursor : IDisposable
             {
                 _windowSize = Math.Max(MinWindow, _windowSize / 2);
                 continue;
+            }
+
+            if (!complete)
+            {
+                throw new InvalidDataException(
+                    $"Flat history holds more than {MaxWindowRows} rows for key {_flatKey.ToHexString()} across blocks {_nextLow} to {hi}, which cannot happen while a block writes at most one row per key. Replaying the truncated window would rebuild a wrong root and surface as a state root mismatch with nothing pointing here.");
             }
 
             ReverseWindow();

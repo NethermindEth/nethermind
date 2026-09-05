@@ -30,25 +30,20 @@ internal sealed class StorageSubtreeReplayer(
         (ulong from, ulong to, CommitmentEmitter? emitter, SeriesWriter series, WalkProgress progress, int item, CancellationToken token) = context;
         long replayed = 0;
         Contract[] contracts = new Contract[rows.Identities.Count];
-        for (int i = 0; i < contracts.Length; i++)
-        {
-            ValueHash256 identity = rows.Identities[i];
-            SeriesPublisher? publisher = writeSeries ? new SeriesPublisher(SeriesScope.Storage(identity), slotPrefix, SeriesScope.Storage(identity).Key(slotPrefix, scratch: true), series) : null;
-            ContractRootCheck? check = null;
-            if (!writeSeries)
-            {
-                check = new ContractRootCheck(accountHistory, rowFormat, sink);
-                check.Begin(identity, from, to, token);
-            }
-
-            contracts[i] = new Contract(identity, slotPrefix, publisher, check);
-            contracts[i].Reset(emitter, logManager);
-        }
-
         List<StreamedSlot> streams = [];
         Span<byte> flatKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         try
         {
+            for (int i = 0; i < contracts.Length; i++)
+            {
+                ValueHash256 identity = rows.Identities[i];
+                SeriesPublisher? publisher = writeSeries ? new SeriesPublisher(SeriesScope.Storage(identity), slotPrefix, SeriesScope.Storage(identity).Key(slotPrefix, scratch: true), series) : null;
+                ContractRootCheck? check = writeSeries ? null : new ContractRootCheck(accountHistory, rowFormat, sink);
+                contracts[i] = new Contract(identity, slotPrefix, publisher, check);
+                check?.Begin(identity, from, to, token);
+                contracts[i].Reset(emitter, logManager);
+            }
+
             foreach ((int contractIndex, ValueHash256 slot) in rows.StreamedSlots)
             {
                 Contract contract = contracts[contractIndex];
@@ -203,7 +198,7 @@ internal sealed class StorageSubtreeReplayer(
                 return;
             }
 
-            _changes.CollectAll(Tree!.RootRef, CommitmentEmitter.StorageSnapshotDepth, _store!);
+            _changes.CollectAll(Tree!.RootRef, emitter.StorageSnapshotDepth, _store!);
             _changes.RecordStorage(emitter, Identity, slotPrefix.Length);
         }
 

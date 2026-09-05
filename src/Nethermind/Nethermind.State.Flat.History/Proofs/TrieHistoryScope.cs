@@ -57,8 +57,10 @@ internal abstract class TrieHistoryScope(
     public void EnumerateLeaves(in TreePath prefix, ulong block, ResolutionBudget budget, List<TrieLeaf> leaves)
     {
         Span<byte> lower = stackalloc byte[MaxRowKeyLength];
-        Span<byte> upper = stackalloc byte[MaxRowKeyLength];
+        Span<byte> upper = stackalloc byte[MaxRowKeyLength + 1];
         int boundLength = WriteScopedBounds(prefix, lower, upper);
+        upper[boundLength] = 0x00;
+        int upperLength = boundLength + 1;
 
         int keyLength = RowKeyLength - sizeof(ulong);
         Span<byte> cursor = stackalloc byte[MaxRowKeyLength + 1];
@@ -71,7 +73,7 @@ internal abstract class TrieHistoryScope(
             ReadOnlySpan<byte> rowKey;
             ReadOnlySpan<byte> storedValue;
             ulong rowBlock;
-            using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..boundLength], ReadFlags.HintCacheMiss))
+            using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..upperLength], ReadFlags.HintCacheMiss))
             {
                 if (!view.MoveNext()) return;
 
@@ -101,7 +103,7 @@ internal abstract class TrieHistoryScope(
             }
 
             BinaryPrimitives.WriteUInt64BigEndian(seek[keyLength..], ~block);
-            using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..boundLength], ReadFlags.HintCacheMiss))
+            using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..upperLength], ReadFlags.HintCacheMiss))
             {
                 if (!atBlock.MoveNext()) return;
 

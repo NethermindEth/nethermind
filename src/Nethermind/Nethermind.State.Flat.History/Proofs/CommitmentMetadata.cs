@@ -181,7 +181,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
             coveredTo = toInclusive;
             if (TryReadRange(CoverageKey, out ulong from, out ulong to))
             {
-                if (fromInclusive > to + 1 || (to != ulong.MaxValue && toInclusive + 1 < from))
+                if ((to != ulong.MaxValue && fromInclusive > to + 1) || (toInclusive != ulong.MaxValue && toInclusive + 1 < from))
                 {
                     coveredFrom = from;
                     coveredTo = to;
@@ -203,22 +203,28 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         lock (_lock)
         {
             ulong start = firstCaptured;
+            ulong reached = lastCaptured;
             restarted = false;
             if (TryReadRange(TipSeriesKey, out ulong seriesStart, out ulong frontier))
             {
-                if (firstCaptured <= frontier + 1) start = seriesStart;
+                if (firstCaptured <= frontier + 1)
+                {
+                    start = seriesStart;
+                    reached = Math.Max(frontier, lastCaptured);
+                }
                 else restarted = true;
             }
 
-            WriteRange(TipSeriesKey, start, lastCaptured);
+            WriteRange(TipSeriesKey, start, reached);
 
             if (start == 0)
             {
-                WriteRange(CoverageKey, 0, lastCaptured);
+                ulong published = TryReadRange(CoverageKey, out ulong _, out ulong coveredTo) ? Math.Max(coveredTo, reached) : reached;
+                WriteRange(CoverageKey, 0, published);
             }
-            else if (TryReadRange(CoverageKey, out ulong from, out ulong to) && to + 1 >= start && lastCaptured > to)
+            else if (TryReadRange(CoverageKey, out ulong from, out ulong to) && to + 1 >= start && reached > to)
             {
-                WriteRange(CoverageKey, from, lastCaptured);
+                WriteRange(CoverageKey, from, reached);
             }
         }
     }

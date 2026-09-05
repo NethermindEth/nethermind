@@ -11,6 +11,9 @@ namespace Nethermind.State.Flat.History.Walk;
 internal sealed class TrieChangeCollector
 {
     private readonly List<(TreePath Path, TrieNode Node)> _changed = [];
+    private int _deepestReached;
+
+    public int DeepestReached => _deepestReached;
 
     public void Collect(TrieNode? root, int maxDepth) => Collect(root, maxDepth, resolver: null);
 
@@ -19,6 +22,7 @@ internal sealed class TrieChangeCollector
     private void Collect(TrieNode? root, int maxDepth, ITrieNodeResolver? resolver)
     {
         _changed.Clear();
+        _deepestReached = 0;
         if (root is null) return;
 
         TreePath path = TreePath.Empty;
@@ -39,14 +43,23 @@ internal sealed class TrieChangeCollector
         {
             if (path.Length >= minRecordedDepth) emitter.RecordStorageNode(accountPath, path, node.FullRlp.AsSpan());
         }
+
+        emitter.RecordStorageDepthReached(accountPath, _deepestReached);
     }
 
     private void Visit(TrieNode node, ref TreePath path, int maxDepth, ITrieNodeResolver? resolver)
     {
+        if (path.Length > _deepestReached) _deepestReached = path.Length;
         if ((resolver is null && node.Keccak is not null) || path.Length > maxDepth) return;
 
         _changed.Add((path, node));
-        if (node.IsLeaf || path.Length == maxDepth) return;
+        if (node.IsLeaf) return;
+
+        if (path.Length == maxDepth)
+        {
+            if (maxDepth + 1 > _deepestReached) _deepestReached = maxDepth + 1;
+            return;
+        }
 
         if (node.IsExtension)
         {
