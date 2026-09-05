@@ -225,26 +225,6 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Decode_cursor_threaded_array_matches_the_reference_decoder()
-    {
-        Hash256?[] expected = [TestItem.KeccakA, null, TestItem.KeccakB, TestItem.KeccakC];
-        byte[] rlp = Rlp.Encode(expected).Bytes;
-
-        RlpReader threaded = new(rlp);
-        Hash256?[] actual = threaded.DecodeArray<Hash256, KeccakDecoder>();
-
-        RlpReader reference = new(rlp);
-        Hash256?[] viaDecoder = reference.DecodeArray(KeccakDecoder.Instance, allowNulls: true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(actual, Is.EqualTo(viaDecoder));
-            Assert.That(threaded.Position, Is.EqualTo(reference.Position));
-        }
-    }
-
-    [Test]
     public void Decode_array_legacy_allow_nulls_parameter_is_preserved()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });

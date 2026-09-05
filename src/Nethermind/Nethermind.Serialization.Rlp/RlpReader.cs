@@ -665,45 +665,6 @@ public ref struct RlpReader
         return result;
     }
 
-    /// <summary>Decodes a sequence whose element decoder threads the cursor by value.</summary>
-    /// <remarks>
-    /// Unlike the <see cref="IRlpDecoder{T}"/> and <see cref="DecodeRlpValue{T}"/> overloads, the whole
-    /// walk runs on a local: <typeparamref name="TDecoder"/> is a constrained call, so no element
-    /// boundary pushes the cursor back through <see cref="Position"/>.
-    /// </remarks>
-    public T?[] DecodeArray<T, TDecoder>(bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
-        where TDecoder : ICursorRlpDecoder<T>
-    {
-        ReadOnlySpan<byte> data = Data;
-        int position = RlpHelpers.ReadSequenceLength(data, Position, out int sequenceLength);
-        int positionCheck = position + sequenceLength;
-        int count = RlpHelpers.CountItems(
-            data, position, checkPositions ? positionCheck : data.Length, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
-        Rlp.GuardLimit(count, data.Length - position, limit);
-        T?[] result = new T?[count];
-
-        for (int i = 0; i < result.Length; i++)
-        {
-            if (data[position] == Rlp.EmptyListByte)
-            {
-                result[i] = defaultElement;
-                position++;
-            }
-            else
-            {
-                position = TDecoder.DecodeItem(data, position, out result[i]);
-            }
-        }
-
-        Position = position;
-        if (checkPositions)
-        {
-            Check(positionCheck);
-        }
-
-        return result;
-    }
-
     public T?[] DecodeArray<T>(DecodeRlpValue<T?> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         ReadOnlySpan<byte> data = Data;

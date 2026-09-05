@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Buffers;
 using System.Diagnostics.CodeAnalysis;
@@ -9,13 +8,9 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(KeccakDecoder))]
-    public sealed class KeccakDecoder() : RlpDecoder<Hash256>, ICursorRlpDecoder<Hash256>
+    public sealed class KeccakDecoder() : RlpDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
-
-        /// <inheritdoc/>
-        public static int DecodeItem(ReadOnlySpan<byte> data, int position, out Hash256? value)
-            => RlpHelpers.DecodeKeccakOrNull(data, position, out value);
 
         protected override Hash256? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccakOrNull();
 
