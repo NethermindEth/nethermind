@@ -1627,11 +1627,18 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
+        => PushUInt256<TTracingInst, OnFlag>(in value);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType PushUInt256<TTracingInst, TCheckDepth>(in UInt256 value)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
