@@ -269,7 +269,7 @@ public static partial class EvmInstructions
 
         uint result = TOpEnv.Operation(vm.VmState);
 
-        return stack.PushUInt32<TTracingInst>(result);
+        return stack.PushUInt32<TTracingInst, OnFlag>(result);
     }
 
     [SkipLocalsInit]
@@ -281,7 +281,7 @@ public static partial class EvmInstructions
 
         uint result = (uint)stack.CodeLength;
 
-        return stack.PushUInt32<TTracingInst>(result);
+        return stack.PushUInt32<TTracingInst, OnFlag>(result);
     }
 
     /// <summary>
@@ -304,7 +304,7 @@ public static partial class EvmInstructions
 
         ulong result = TOpEnv.Operation(vm.VmState);
 
-        return stack.PushUInt64<TTracingInst>(result);
+        return stack.PushUInt64<TTracingInst, OnFlag>(result);
     }
 
     /// <summary>
@@ -327,7 +327,7 @@ public static partial class EvmInstructions
 
         ulong result = TOpEnv.Operation(vm);
 
-        return stack.PushUInt64<TTracingInst>(result);
+        return stack.PushUInt64<TTracingInst, OnFlag>(result);
     }
 
     /// <summary>
@@ -373,7 +373,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
+        return stack.PushUInt32<TTracingInst, OnFlag>((uint)vm.ReturnDataBuffer.Length);
     }
 
     /// <summary>
@@ -691,7 +691,7 @@ public static partial class EvmInstructions
 
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
-        return stack.PushUInt64<TTracingInst>(TGasPolicy.GetRemainingGas(in gas));
+        return stack.PushUInt64<TTracingInst, OnFlag>(TGasPolicy.GetRemainingGas(in gas));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -804,7 +804,7 @@ public static partial class EvmInstructions
 
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.PushUInt64<TTracingInst>(slotNumber.Value);
+        return stack.PushUInt64<TTracingInst, OnFlag>(slotNumber.Value);
         // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;

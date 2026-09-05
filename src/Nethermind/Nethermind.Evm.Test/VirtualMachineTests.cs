@@ -361,32 +361,57 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> StackGrowthCases()
     {
-        for (Instruction opcode = Instruction.PUSH0; opcode <= Instruction.DUP16; opcode++)
+        foreach (Instruction opcode in StackGrowingOpcodes())
         {
-            int width = opcode <= Instruction.PUSH32 ? opcode - Instruction.PUSH0 : 0;
+            int width = opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32 ? opcode - Instruction.PUSH0 : 0;
             int[] lengths = width == 0 ? [0] : width == 1 ? [0, 1] : [0, width / 2, width];
             foreach (int depth in new[] { 1023, 1024 })
-            foreach (bool sufficientGas in new[] { false, true })
-            foreach (int tracerMode in new[] { 0, 1, 2 })
-            foreach (int immediateLength in lengths)
-                yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode, immediateLength);
+                foreach (bool sufficientGas in new[] { false, true })
+                    foreach (int tracerMode in new[] { 0, 1, 2 })
+                        foreach (int immediateLength in lengths)
+                            yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode, immediateLength);
         }
+    }
+
+    private static IEnumerable<Instruction> StackGrowingOpcodes()
+    {
+        for (Instruction opcode = Instruction.PUSH0; opcode <= Instruction.DUP16; opcode++) yield return opcode;
+        yield return Instruction.PC;
+        yield return Instruction.GAS;
+        yield return Instruction.CODESIZE;
     }
 
     [Test]
     public void Push_immediate_consumes_only_declared_width([Range(1, 32)] int width, [Values] bool traced)
     {
-        byte[] code = new byte[width + 9];
+        byte[] code = new byte[width + 1];
         code[0] = (byte)((byte)Instruction.PUSH1 + width - 1);
         byte[] expected = new byte[32];
         for (int i = 0; i < width; i++)
             expected[32 - width + i] = code[1 + i] = (byte)(0xa0 + i);
-        new byte[] { (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE,
-            (byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 0, (byte)Instruction.RETURN }.CopyTo(code, width + 1);
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        AssertStackValue(code, expected, traced);
+    }
+
+    [Test]
+    public void Environment_value_is_pushed_after_charging_gas(
+        [Values(Instruction.PC, Instruction.GAS, Instruction.CODESIZE)] Instruction opcode, [Values] bool traced)
+    {
+        UInt256 expected = opcode switch
+        {
+            Instruction.PC => 0,
+            Instruction.GAS => 100000UL - GasCostOf.Transaction - GasCostOf.Base,
+            _ => 9
+        };
+        AssertStackValue([(byte)opcode], expected.ToBigEndian(), traced);
+    }
+
+    private void AssertStackValue(byte[] prefix, byte[] expected, bool traced)
+    {
+        byte[] code = [.. prefix, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 0, (byte)Instruction.RETURN];
         TestAllTracerWithOutput tracer = traced ? new TestAllTracerWithOutput() : new NoInstructionTracer();
 
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        Execute(tracer, code);
 
         using (Assert.EnterMultipleScope())
         {
@@ -407,7 +432,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
         code[depth * 2] = (byte)opcode;
         code.AsSpan(depth * 2 + 1).Fill(0xa5);
-        ulong cost = opcode == Instruction.PUSH0 ? GasCostOf.Base : GasCostOf.VeryLow;
+        ulong cost = opcode is Instruction.PUSH0 or Instruction.PC or Instruction.GAS or Instruction.CODESIZE ? GasCostOf.Base : GasCostOf.VeryLow;
         ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         // PrepareTx retains the activation on this shared fixture; change only this execution's header.

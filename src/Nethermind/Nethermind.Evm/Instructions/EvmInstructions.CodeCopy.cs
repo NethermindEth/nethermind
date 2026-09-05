@@ -330,7 +330,7 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst, OnFlag>((uint)accountCode.Length));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
