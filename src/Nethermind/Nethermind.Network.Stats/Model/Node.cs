@@ -62,7 +62,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= FormatHost(Address.Address);
+        public string Host => _host ??= Address.Address.ToString();
         private string? _host;
 
         /// <summary>
@@ -675,7 +675,9 @@ namespace Nethermind.Stats.Model
         [MemberNotNull(nameof(Address))]
         private void SetIPEndPoint(IPEndPoint address)
         {
-            Address = address;
+            Address = address.Address.IsIPv4MappedToIPv6
+                ? new IPEndPoint(address.Address.MapToIPv4(), address.Port)
+                : address;
             _host = null;
             _enodeHost = null;
             _paddedHost = null;
@@ -766,9 +768,6 @@ namespace Nethermind.Stats.Model
                 node.ClearDiscoveryEndpoint();
             }
         }
-
-        private static string FormatHost(IPAddress address)
-            => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');

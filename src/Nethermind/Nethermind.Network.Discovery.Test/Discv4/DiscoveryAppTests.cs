@@ -3,12 +3,24 @@
 
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Enr;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4;
@@ -38,7 +50,6 @@ public class DiscoveryAppTests
     [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
     [TestCase("2001:4860:4860::8844", "8.8.8.8", 0)]
     [TestCase("::", "8.8.8.8", 1)]
-    [TestCase("0.0.0.0", "::ffff:192.0.2.1", 0)]
     public void Should_only_use_bootnode_families_reachable_from_listener(
         string localIp,
         string bootnodeIp,
@@ -55,11 +66,26 @@ public class DiscoveryAppTests
     }
 
     [Test]
+    public void Should_normalize_mapped_bootnode_to_ipv4()
+    {
+        Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("::ffff:192.0.2.1"), 30303);
+
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes(
+            [new NetworkNode(enode)],
+            LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
+            IPAddress.Any);
+
+        Assert.That(bootNodes, Has.Count.EqualTo(1));
+        Assert.That(bootNodes[0].DiscoveryAddress.Address, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+    }
+
+    [Test]
     public void Should_reconstruct_signed_enr_before_rejecting_generic_endpoint()
     {
         NodeRecord record = CreateAsymmetricDualStackRecord();
         Assert.That(Node.TryFromEnr(record, out Node? genericNode), Is.True);
         Assert.That(genericNode!.HasDiscoveryEndpoint, Is.False);
+        genericNode.IsBootnode = true;
         genericNode.SetVerifiedEnr(record);
         genericNode.ObserveEnrSequence(record.EnrSequence + 1);
 
@@ -75,6 +101,7 @@ public class DiscoveryAppTests
             Assert.That(reachableNode!.Host, Is.EqualTo("2001:db8::1"));
             Assert.That(reachableNode.Port, Is.EqualTo(30303));
             Assert.That(reachableNode.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(reachableNode.IsBootnode, Is.True);
             Assert.That(reachableNode.IsVerifiedEnr(record), Is.True);
             Assert.That(reachableNode.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence + 1));
         }
@@ -196,6 +223,62 @@ public class DiscoveryAppTests
             IPAddress.Any);
 
         Assert.That(bootNodes, Is.Empty);
+    }
+
+    [Test]
+    public async Task StartAsync_ShouldRemoveBootnodeOutsideBoundFamilyAfterFallback()
+    {
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("2001:4860:4860::8888"),
+            tcpPort: 9001,
+            udpPort: 9001);
+        NetworkConfig networkConfig = new()
+        {
+            Bootnodes = [new NetworkNode(enr.ToString())],
+            ExternalIp = "8.8.8.8",
+            LocalIp = "::"
+        };
+        DiscoveryConfig discoveryConfig = new();
+        IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+        IProcessExitSource processExitSource = new ProcessExitSource(CancellationToken.None);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+
+        using MemDb discoveryDb = new();
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(networkConfig).As<INetworkConfig>();
+        builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
+        builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        builder.RegisterInstance(listenerState);
+        builder.RegisterInstance(processExitSource).As<IProcessExitSource>();
+        builder.RegisterInstance<IEcdsa>(new EthereumEcdsa(0));
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(Substitute.For<IForkInfo>());
+        builder.RegisterInstance(Substitute.For<INodeRecordProvider>());
+        builder.RegisterInstance(Substitute.For<INodeStatsManager>());
+        builder.RegisterInstance(new NetworkStorage(discoveryDb, LimboLogs.Instance))
+            .Keyed<INetworkStorage>(DbNames.DiscoveryNodes);
+        using IContainer container = builder.Build();
+        IEnode enode = new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303);
+        await using DiscoveryApp app = new(
+            container,
+            enode,
+            networkConfig,
+            discoveryConfig,
+            ipResolver,
+            processExitSource,
+            LimboLogs.Instance,
+            listenerState,
+            services => services.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+
+        await app.StartAsync();
+
+        kademlia.Received(1).Remove(Arg.Is<Node>(node =>
+            node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
+        kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
     }
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>

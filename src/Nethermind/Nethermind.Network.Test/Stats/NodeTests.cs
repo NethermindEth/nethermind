@@ -21,12 +21,13 @@ namespace Nethermind.Network.Test.Stats
     public class NodeTests
     {
         [Test]
-        public void Can_parse_ipv6_prefixed_ip()
+        public void Canonicalizes_mapped_ipv4()
         {
             Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
             Assert.That(node.Port, Is.EqualTo(65535));
             Assert.That(node.DiscoveryPort, Is.EqualTo(65535));
-            Assert.That(node.Address.Address.MapToIPv4().ToString(), Is.EqualTo("73.224.122.50"));
+            Assert.That(node.Address.Address, Is.EqualTo(IPAddress.Parse("73.224.122.50")));
+            Assert.That(node.DiscoveryAddress.Address, Is.EqualTo(IPAddress.Parse("73.224.122.50")));
             Assert.That(node.Host, Is.EqualTo("73.224.122.50"));
         }
 

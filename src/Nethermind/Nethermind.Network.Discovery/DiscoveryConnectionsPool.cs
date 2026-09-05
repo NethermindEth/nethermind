@@ -12,33 +12,86 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public sealed class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResolver, IDiscoveryConfig discoveryConfig) : IConnectionsPool
+internal sealed class DiscoveryConnectionsPool(
+    ILogger logger,
+    IDiscoveryConfig discoveryConfig,
+    NetworkListenerState listenerState)
 {
     private readonly ILogger _logger = logger;
-    private readonly IIPResolver _ipResolver = ipResolver;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
+    private readonly NetworkListenerState _listenerState = listenerState;
     private readonly Dictionary<int, Task<IChannel>> _byPort = [];
 
-    public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
+    public async Task<IChannel> BindAsync(
+        Func<Bootstrap> bootstrapFactory,
+        Func<IPAddress, IChannel> channelFactory,
+        int port)
     {
         if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
 
-        IPAddress ip = (await _ipResolver.Resolve()).LocalIp;
-        task = BindAsync(bootstrap, port, ip);
+        task = BindWithFallbackAsync(bootstrapFactory, channelFactory, port);
         _byPort.Add(port, task);
 
-        return await task;
-    }
-
-    private async Task<IChannel> BindAsync(Bootstrap bootstrap, int port, IPAddress ip)
-    {
         try
         {
-            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(ip, port), port);
+            return await task;
+        }
+        catch
+        {
+            _byPort.Remove(port);
+            throw;
+        }
+    }
+
+    private async Task<IChannel> BindWithFallbackAsync(
+        Func<Bootstrap> bootstrapFactory,
+        Func<IPAddress, IChannel> channelFactory,
+        int port)
+    {
+        IPAddress preferredAddress = _listenerState.PreferredAddress;
+        IPAddress fallbackAddress = _listenerState.FallbackAddress;
+        try
+        {
+            try
+            {
+                return await BindAsync(bootstrapFactory, channelFactory, preferredAddress, port);
+            }
+            catch (Exception e) when (!preferredAddress.Equals(fallbackAddress))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress}:{port} ({e.Message}). Retrying on {fallbackAddress}:{port}.");
+                return await BindAsync(bootstrapFactory, channelFactory, fallbackAddress, port);
+            }
         }
         catch (Exception e)
         {
-            _logger.Error($"Error when establishing discovery connection on Address: {ip}:{port}", e);
+            _logger.Error($"Error when establishing discovery connection on port {port}", e);
+            throw;
+        }
+    }
+
+    private async Task<IChannel> BindAsync(
+        Func<Bootstrap> bootstrapFactory,
+        Func<IPAddress, IChannel> channelFactory,
+        IPAddress address,
+        int port)
+    {
+        IChannel? createdChannel = null;
+        Bootstrap bootstrap = bootstrapFactory()
+            .ChannelFactory(() => createdChannel = channelFactory(address));
+        try
+        {
+            IChannel channel = await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(address, port), port);
+            IPEndPoint? endpoint = channel.TryGetLocalIPEndpoint();
+            if (endpoint is not null)
+            {
+                _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, channel.CloseCompletion);
+            }
+
+            return channel;
+        }
+        catch
+        {
+            await createdChannel.CloseFailedBindAsync(_logger, "discovery");
             throw;
         }
     }

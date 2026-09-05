@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Packets;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -292,11 +293,12 @@ public class KademliaAdapterTests
             Is.EqualTo(testCase.ExpectedResult));
     }
 
-    [TestCase("10.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1111", 30306, 30305)]
-    [TestCase("8.8.8.8", "fd00::1", "8.8.8.8", 30303, 30304)]
+    [TestCase("10.0.0.1", "2606:4700:4700::1111", "::1", "2606:4700:4700::1111", 30306, 30305)]
+    [TestCase("8.8.8.8", "fd00::1", "0.0.0.0", "8.8.8.8", 30303, 30304)]
     public void TryGetAcceptableNode_SelectsRoutableFamily(
         string ip,
         string ip6,
+        string localIp,
         string expectedIp,
         int expectedTcpPort,
         int expectedUdpPort)
@@ -316,7 +318,7 @@ public class KademliaAdapterTests
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
             allowNonRoutable: false,
-            localIp: IPAddress.IPv6Any,
+            localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
         Assert.That(result, Is.True);
@@ -455,7 +457,9 @@ public class KademliaAdapterTests
         currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback)));
-        IIPResolver ipResolver = CreateIpResolver(localIp ?? IPAddress.IPv6Any);
+        IPAddress listenerAddress = localIp ?? IPAddress.Any;
+        IIPResolver ipResolver = CreateIpResolver(listenerAddress);
+        NetworkListenerState listenerState = CreateListenerState(ipResolver, listenerAddress);
         _packetCodec?.Dispose();
         _packetCodec = new PacketCodec(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
@@ -473,7 +477,8 @@ public class KademliaAdapterTests
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
             ValueHash256KademliaDistance.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            listenerState);
     }
 
     private void ConfigureStoredNode(Node node)
@@ -500,6 +505,17 @@ public class KademliaAdapterTests
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
             new IIPResolver.NethermindIp(localIp, IPAddress.Loopback)));
         return ipResolver;
+    }
+
+    private static NetworkListenerState CreateListenerState(IIPResolver ipResolver, IPAddress address)
+    {
+        NetworkListenerState listenerState = new(
+            new NetworkConfig { LocalIp = address.ToString() },
+            ipResolver,
+            LimboLogs.Instance);
+        listenerState.SetRlpxAddress(address);
+        listenerState.SetDiscoveryAddress(address);
+        return listenerState;
     }
 
     private static IEnumerable<TestCaseData> AcceptableNodeRecordCases()
@@ -535,7 +551,11 @@ public class KademliaAdapterTests
     }
 
     private sealed class RejectingRefreshAdapter(NodeRecord record)
-        : KademliaAdapterBase("test", CreateIpResolver(IPAddress.Any), LimboLogs.Instance.GetClassLogger<RejectingRefreshAdapter>())
+        : KademliaAdapterBase(
+            "test",
+            CreateIpResolver(IPAddress.Any),
+            LimboLogs.Instance.GetClassLogger<RejectingRefreshAdapter>(),
+            CreateListenerState(CreateIpResolver(IPAddress.Any), IPAddress.Any))
     {
         public int RequestCount { get; private set; }
 

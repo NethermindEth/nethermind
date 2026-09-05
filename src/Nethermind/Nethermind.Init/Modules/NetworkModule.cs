@@ -52,6 +52,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<IIPResolver, IPResolver>()
+            .AddSingleton<NetworkListenerState>()
 
             .AddSingleton<EnodeProvider>()
             .Map<IEnode, EnodeProvider>(provider => provider.Enode)

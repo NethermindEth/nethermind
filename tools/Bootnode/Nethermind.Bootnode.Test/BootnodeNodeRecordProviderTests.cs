@@ -25,13 +25,11 @@ public class BootnodeNodeRecordProviderTests
             DiscoveryPort = 30303,
             P2PPort = 0
         };
-        BootnodeNodeRecordProvider provider = new(
+        BootnodeNodeRecordProvider provider = CreateProvider(
             protectedPrivateKey,
-            new EthereumEcdsa(1),
+            TestContext.CurrentContext.WorkDirectory,
             networkConfig,
-            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback),
-            LimboLogs.Instance,
-            TestContext.CurrentContext.WorkDirectory);
+            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback));
 
         NodeRecord nodeRecord = await provider.GetCurrentAsync();
 
@@ -73,7 +71,7 @@ public class BootnodeNodeRecordProviderTests
     }
 
     [Test]
-    public async Task Discovery_only_node_record_publishes_both_endpoint_families_when_configured()
+    public async Task Discovery_only_node_record_publishes_configured_endpoint_families_supported_by_listener()
     {
         string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataDir);
@@ -95,6 +93,65 @@ public class BootnodeNodeRecordProviderTests
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
         AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
+    }
+
+    [Test]
+    public async Task Discovery_only_node_record_uses_bound_listener_after_fallback()
+    {
+        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir);
+
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
+        NetworkConfig networkConfig = new()
+        {
+            DiscoveryPort = 30303,
+            P2PPort = 0
+        };
+        IPAddress ipV4 = IPAddress.Parse("192.0.2.1");
+        IPAddress ipV6 = IPAddress.Parse("2001:db8::1");
+        IIPResolver.NethermindIp resolvedIp = new(IPAddress.IPv6Any, ipV4, ipV4, ipV6);
+
+        NodeRecord nodeRecord = await CreateProvider(
+            protectedPrivateKey,
+            dataDir,
+            networkConfig,
+            resolvedIp,
+            discoveryAddress: IPAddress.Any).GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
+
+        AssertEndpointEntries(decoded, "192.0.2.1", expectedIp6: null);
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_RetriesAfterListenerBinds()
+    {
+        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir);
+
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
+        NetworkConfig networkConfig = new() { DiscoveryPort = 30303, P2PPort = 0 };
+        IPAddress externalIp = IPAddress.Parse("192.0.2.1");
+        IIPResolver.NethermindIp resolvedIp = new(IPAddress.Any, externalIp, externalIpV4: externalIp, externalIpV6: null);
+        NetworkListenerState listenerState = new(resolvedIp.LocalIp, resolvedIp.LocalIp, LimboLogs.Instance);
+        BootnodeNodeRecordProvider provider = new(
+            protectedPrivateKey,
+            new EthereumEcdsa(1),
+            networkConfig,
+            resolvedIp,
+            listenerState,
+            LimboLogs.Instance,
+            dataDir);
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await provider.GetCurrentAsync());
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+
+        NodeRecord nodeRecord = await provider.GetCurrentAsync();
+
+        AssertEndpointEntries(NodeRecord.FromEnrString(nodeRecord.ToString()), "192.0.2.1", expectedIp6: null);
     }
 
     [TestCase("0.0.0.0", "192.0.2.1", "2001:db8::1", "192.0.2.1", null, "External IPv6 address", 0)]
@@ -266,14 +323,21 @@ public class BootnodeNodeRecordProviderTests
         string dataDir,
         INetworkConfig networkConfig,
         IIPResolver.NethermindIp resolvedIp,
-        ILogManager? logManager = null) =>
-        new(
+        ILogManager? logManager = null,
+        IPAddress? discoveryAddress = null)
+    {
+        ILogManager effectiveLogManager = logManager ?? LimboLogs.Instance;
+        NetworkListenerState listenerState = new(resolvedIp.LocalIp, resolvedIp.LocalIp, effectiveLogManager);
+        listenerState.SetDiscoveryAddress(discoveryAddress ?? resolvedIp.LocalIp);
+        return new(
             protectedPrivateKey,
             new EthereumEcdsa(1),
             networkConfig,
             resolvedIp,
-            logManager ?? LimboLogs.Instance,
+            listenerState,
+            effectiveLogManager,
             dataDir);
+    }
 
     private sealed class WarningLogManager : ILogManager
     {
