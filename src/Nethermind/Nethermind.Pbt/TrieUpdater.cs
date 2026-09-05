@@ -811,6 +811,8 @@ public static class TrieUpdater
 
         internal void Store(int position, PbtNodePath path, PbtNode node)
         {
+            if (_storage.Nodes[position] == node) return;
+
             byte[] encoding = PbtNodeCodec.Encode(node);
             if (_storage.States[position] == SlotState.Persisted && PersistedEncodingEquals(position, encoding))
             {
