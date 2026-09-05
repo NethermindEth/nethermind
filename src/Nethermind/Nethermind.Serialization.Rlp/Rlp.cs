@@ -56,6 +56,8 @@ namespace Nethermind.Serialization.Rlp
         static Rlp()
         {
             RegisterDecoders(typeof(Rlp).Assembly);
+            // Not registered from TxDecoder's own initializer: the scan above already reads Instance,
+            // so the reverse direction makes the two initializers wait on each other.
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
 
