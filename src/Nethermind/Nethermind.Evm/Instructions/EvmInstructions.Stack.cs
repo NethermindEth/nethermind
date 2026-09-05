@@ -134,11 +134,21 @@ public static partial class EvmInstructions
         ref byte bytes = ref stack.Code;
         nint remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
-        // Head < MaxStackSize - 1 preserves the StackOverflow a non-fused PUSH2 would raise
-        // at head == 1024 (even though the following JUMP/JUMPI would immediately pop it).
+        if (!TTracingInst.IsActive)
+        {
+            // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
+            if (stack.Head >= EvmStack.MaxStackSize - 1)
+            {
+                programCounter += Size;
+                return EvmExceptionType.StackOverflow;
+            }
+            if (remainingCode <= Size)
+            {
+                programCounter += Size;
+                return EvmExceptionType.None;
+            }
+        }
         if (!TTracingInst.IsActive &&
-            remainingCode > Size &&
-            stack.Head < EvmStack.MaxStackSize - 1 &&
             ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI))
         {
@@ -181,15 +191,14 @@ public static partial class EvmInstructions
 
         ref byte start = ref Unsafe.Add(ref bytes, programCounter);
         EvmExceptionType result;
-        if (remainingCode >= Size)
+        if (!TTracingInst.IsActive || remainingCode >= Size)
         {
             // Optimized push for exactly two bytes.
-            result = stack.Push2Bytes<TTracingInst>(ref start);
+            result = stack.Push2Bytes<TTracingInst, TTracingInst>(ref start);
         }
         else if (remainingCode == Op1.Count)
         {
-            // Directly push the single byte.
-            result = stack.PushByte<TTracingInst, OnFlag>(start);
+            result = stack.PushUInt32<TTracingInst, OnFlag>((uint)start << 8);
         }
         else
         {

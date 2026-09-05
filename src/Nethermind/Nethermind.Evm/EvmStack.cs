@@ -1038,12 +1038,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push2Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push2Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
