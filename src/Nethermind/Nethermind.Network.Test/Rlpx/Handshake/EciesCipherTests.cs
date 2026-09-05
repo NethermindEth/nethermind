@@ -10,6 +10,11 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Crypto.Macs;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -216,6 +221,40 @@ public class EciesCipherTests
 
         byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(privateKey, cipherText));
         Assert.That(deciphered, Is.EqualTo(plainText));
+    }
+
+    // Below 114 bytes the input cannot hold the 65-byte ephemeral key, 16-byte IV, 32-byte MAC and a non-empty body
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(64)]
+    [TestCase(80)]
+    [TestCase(81)]
+    [TestCase(101)]
+    [TestCase(113)]
+    public void Decrypt_returns_failure_for_ciphertext_shorter_than_ecies_overhead(int length)
+    {
+        byte[] cipherText = new byte[length];
+        if (length > 0)
+        {
+            cipherText[0] = 4;
+        }
+
+        (bool success, byte[]? plainText) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, cipherText);
+
+        Assert.That(success, Is.False);
+        Assert.That(plainText, Is.Null);
+    }
+
+    [TestCase(0)]
+    [TestCase(31)]
+    [TestCase(32)] // MAC-only body: an empty plaintext, which no RLPx or RANDAO ciphertext produces
+    public void Ies_engine_rejects_body_not_longer_than_the_mac(int bodyLength)
+    {
+        EthereumIesEngine engine = new(new HMac(new Sha256Digest()), new Sha256Digest(),
+            new BufferedBlockCipher(new SicBlockCipher(AesUtilities.CreateEngine())));
+        engine.Init(false, new byte[32], new IesWithCipherParameters([], [], 128, 128), new byte[16]);
+
+        Assert.Throws<InvalidCipherTextException>(() => engine.ProcessBlock(new byte[bodyLength], null));
     }
 
     private static byte[] GetPlainText((bool Success, byte[]? PlainText) result)

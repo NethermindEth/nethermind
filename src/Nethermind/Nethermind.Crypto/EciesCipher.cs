@@ -18,12 +18,18 @@ namespace Nethermind.Crypto;
 public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 {
     private const int KeySize = 128;
+    private const int MacSize = 32; // HMAC-SHA256, see MakeIesEngine
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly PrivateKeyGenerator _keyGenerator = new(cryptoRandom);
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
     public (bool Success, byte[]? PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
+        if (cipherText.Length <= ephemBytesLength + KeySize / 8 + MacSize)
+        {
+            return (false, null);
+        }
+
         if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
         {
             return (false, null);
