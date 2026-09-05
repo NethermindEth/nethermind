@@ -53,7 +53,11 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp() => RegisterDecoders(typeof(Rlp).Assembly);
+        static Rlp()
+        {
+            RegisterDecoders(typeof(Rlp).Assembly);
+            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        }
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
