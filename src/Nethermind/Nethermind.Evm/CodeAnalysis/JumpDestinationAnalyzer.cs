@@ -12,11 +12,12 @@ using System.Threading;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
+public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -131,57 +132,12 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         return bitmap;
     }
 
-    [SkipLocalsInit]
-    private static void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
-    {
-        // Flags for the 64-bit bitmap segment holding the last JUMPDEST seen; flushed only when a
-        // later JUMPDEST lands in a different segment (and once at the end), so the common bytes -
-        // neither JUMPDEST nor PUSH - pay a single unsigned range check and nothing else.
-        long currentFlags = 0;
-        nuint flagsPosition = 0;
-        nuint length = (nuint)code.Length;
-        ref byte codeRef = ref MemoryMarshal.GetReference(code);
-        while (programCounter < length)
-        {
-            int op = Unsafe.AddByteOffset(ref codeRef, programCounter);
-
-            // Everything outside [JUMPDEST, PUSH32] advances by one; this covers ~3/4 of real bytecode.
-            if ((uint)(op - JUMPDEST) > PUSH32 - JUMPDEST)
-            {
-                programCounter++;
-                continue;
-            }
-
-            if (op == JUMPDEST)
-            {
-                if ((programCounter ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
-                {
-                    MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-                    currentFlags = 0;
-                }
-
-                // Shift wraps at 64, matching the bit's position within its segment.
-                currentFlags |= 1L << (int)programCounter;
-                flagsPosition = programCounter;
-                programCounter++;
-            }
-            else if (op >= PUSH1)
-            {
-                // Fast forward past the push data; it holds no jump destinations.
-                programCounter += (nuint)op - PUSH1 + 2;
-            }
-            else
-            {
-                // 0x5c-0x5f (TLOAD/TSTORE/MCOPY/PUSH0): no immediate data, single-byte advance.
-                programCounter++;
-            }
-        }
-
-        if (currentFlags != 0)
-        {
-            MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-        }
-    }
+    /// <summary>Scans <paramref name="code"/> from <paramref name="programCounter"/> and marks every
+    /// JUMPDEST it reaches in <paramref name="bitmap"/>.</summary>
+    /// <remarks>Split per target: the host walks a base plus an index, which x64 folds into the load's
+    /// addressing mode, while RISC-V has to add the two every byte and does better with a moving
+    /// reference. See <c>JumpDestinationAnalyzer.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code);
 
     [SkipLocalsInit]
     internal static long[] PopulateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
