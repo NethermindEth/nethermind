@@ -840,6 +840,26 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void PersistSnapshot_WhenBatchPopulationFails_AbandonsBeforeDispose()
+    {
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
+
+        AbandonableWriteBatch writeBatch = new(throwOnSetAccount: true);
+        _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
+
+        Assert.Throws<System.InvalidOperationException>(() => _persistenceManager.PersistSnapshot(snapshot));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writeBatch.Abandoned, Is.True);
+            Assert.That(writeBatch.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
     {
         // Finalized at the candidate block so the single-seed BFS lands directly on it.
@@ -1328,5 +1348,32 @@ public class PersistenceManagerTests
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             BarrierAtCapture = readBarrier();
+    }
+
+    private sealed class AbandonableWriteBatch(bool throwOnSetAccount) : IPersistence.IWriteBatch, IAbortableWriteBatch
+    {
+        public bool Abandoned { get; private set; }
+        public int DisposeCount { get; private set; }
+
+        public void SelfDestruct(Address addr) { }
+
+        public void SetAccount(Address addr, Account? account)
+        {
+            if (throwOnSetAccount) throw new System.InvalidOperationException();
+        }
+
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) { }
+        public void SetStateTrieNode(in TreePath path, scoped System.ReadOnlySpan<byte> rlp) { }
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped System.ReadOnlySpan<byte> rlp) { }
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped System.ReadOnlySpan<byte> rlpValue) { }
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account) { }
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) { }
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+
+        public void Abandon() => Abandoned = true;
+
+        public void Dispose() => DisposeCount++;
     }
 }
