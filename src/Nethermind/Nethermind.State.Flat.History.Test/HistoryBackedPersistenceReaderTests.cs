@@ -150,7 +150,7 @@ public class HistoryBackedPersistenceReaderTests
         }
         HistoryColumnsWriter.SetWatermarkV3(historyColumns, 10);
 
-        FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
+        FlatDbConfig config = new() { HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(historyColumns, config);
         HistoryReader historyReader = new(db, historyColumns, availability, rowFormat, LimboLogs.Instance);
 
@@ -279,7 +279,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
 
     private HistoryBackedPersistenceReader Reader(ulong block, ulong sliceFloor = 0, HistoryScopeGate? scopeGate = null, Hash256? stateRoot = null)
     {
-        FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
+        FlatDbConfig config = new() { HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         availability.PublishScope(AccountKeyOf(SlicedAddress), sliceFloor);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);

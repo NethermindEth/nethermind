@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -55,6 +56,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private volatile bool _captureProven;
 
     private readonly byte _formatVersion;
+    private readonly ulong _captureFromBlock;
     private readonly PendingV3Writes? _pendingV3;
     private bool _formatStamped;
 
@@ -77,6 +79,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _formatStamped = availability.StampedFormatVersion == _formatVersion;
         _isV3 = rowFormat.IsV3;
         _pendingV3 = _isV3 ? new PendingV3Writes() : null;
+        _captureFromBlock = config.HistoryRetention == HistoryRetentionMode.SinceBlock ? config.HistoryRetentionSinceBlock : 0;
         if (_isV3)
         {
             _accountHistoryV3 = new HistoryStoreV3(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
@@ -96,6 +99,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             _availability.VerifyFormat();
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
+            if (_captureFromBlock > 0) PublishSinceBlockFloor();
+            else if (config.HistoryRetention == HistoryRetentionMode.None && _availability.TryGetGlobalFloor(out ulong floor))
+            {
+                Metrics.FlatHistoryFloor = (long)floor;
+                if (_logger.IsInfo) _logger.Info(
+                    $"Flat history starts at block {floor}: a floor published on this database stays, HistoryRetention=None never lowers one, so reads below it keep failing closed.");
+            }
         }
     }
 
@@ -121,9 +131,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         try
         {
-            CaptureUpToCore(persistedHead, snapshotRepository, cancellationToken);
+            bool captured = CaptureUpToCore(persistedHead, snapshotRepository, cancellationToken);
             _consecutiveCaptureFailures = 0;
-            _captureProven = true;
+            if (captured) _captureProven = true;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -138,11 +148,21 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    private void CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
+    /// <summary>Returns whether the head is covered by rows: written by this walk, or already on disk at or above the
+    /// published floor. Only that proves the hook is wired and, through <see cref="CaptureHealthy"/>, that a receipt
+    /// body skipped on disk can be derived from history later; a watermark advanced below a since-block floor proves
+    /// neither.</summary>
+    private bool CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
         ulong target = persistedHead.BlockNumber;
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
-        if (hasWatermark && target <= watermark) return;
+        if (hasWatermark && target <= watermark) return !_availability.IsBelowGlobalFloor(target);
+
+        if (target < _captureFromBlock)
+        {
+            AdvanceWatermarkWithoutRows(persistedHead);
+            return false;
+        }
 
         // v3 only: oldest touch per key still waiting to learn its pre-value.
         PendingV3Writes? pending = _pendingV3;
@@ -197,7 +217,70 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             ReportUnconnectedWalk(current, hasWatermark, watermark);
         }
+
+        return connected;
     }
+
+    /// <summary>Below the first block to keep nothing is captured, but the watermark still follows every persisted
+    /// head with its marker, as durably as a capture: the first real walk connects at the previous persist like any
+    /// other (capturing the few blocks between that marker and the floor too; they sit unreadable below it), and
+    /// readers below the floor already fail closed.</summary>
+    private void AdvanceWatermarkWithoutRows(in StateId persistedHead)
+    {
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(new HistoryColumnBatches(batch).AvailableBlocks, persistedHead.BlockNumber, persistedHead.StateRoot, _formatVersion);
+        }
+
+        _availability.PublishWatermark(persistedHead.BlockNumber, _formatVersion);
+        _history.SyncWal();
+        _formatStamped = true;
+        Metrics.FlatHistoryWatermark = (long)persistedHead.BlockNumber;
+    }
+
+    /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap
+    /// pivot, where this node's history genuinely starts; one below it, or a watermark with no floor at all, is
+    /// history captured under a different setting, and publishing over it would strand rows nothing reclaims.
+    /// Published before any watermark exists, the one moment the floor-above-watermark guard admits a floor the
+    /// watermark has yet to reach; it then sits above the watermark for the whole below-floor phase, and nothing
+    /// but <see cref="SeedPivot"/> writes the floor again in this mode.</summary>
+    private void PublishSinceBlockFloor()
+    {
+        if (_availability.TryGetGlobalFloor(out ulong floor))
+        {
+            if (_captureFromBlock < floor && _logger.IsInfo) _logger.Info(
+                $"Flat history starts at block {floor}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the floor " +
+                $"was published there (a sync pivot, or an earlier setting) and never moves.");
+
+            if (_captureFromBlock > floor)
+            {
+                throw new InvalidConfigurationException(
+                    $"FlatDb.HistoryRetentionSinceBlock is {_captureFromBlock}, but this flatHistory database already publishes " +
+                    $"its floor at {floor}. A since-block floor never moves, and nothing prunes the rows a raise would leave " +
+                    $"below it. Set FlatDb.HistoryRetentionSinceBlock back to {floor}, or resync the flatHistory database.", -1);
+            }
+
+            Metrics.FlatHistoryFloor = (long)floor;
+            return;
+        }
+
+        if (_availability.TryGetWatermark(out ulong watermark))
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetention is SinceBlock, but this flatHistory database already holds history captured up to " +
+                $"block {watermark} with no floor, under another retention setting. Resync the flatHistory database to " +
+                "start it at FlatDb.HistoryRetentionSinceBlock.", -1);
+        }
+
+        _availability.PublishGlobalFloor(_captureFromBlock);
+    }
+
+    /// <summary>A walk connects at the watermark's marker. The floor is part of that check because a marker below
+    /// a rolling floor is pruned data; a since-block writer never prunes, and its watermark legitimately sits below
+    /// the floor until capture reaches the first kept block, so only the marker and root decide there.</summary>
+    private bool ConnectsAt(ulong block, in ValueHash256 stateRoot) => _captureFromBlock > 0
+        ? _availability.IsCoveredAndRootMatches(block, stateRoot)
+        : _availability.Matches(block, stateRoot);
 
     /// <summary>Returns whether it connected.</summary>
     private bool WalkAndCapture(
@@ -218,7 +301,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (hasWatermark && current.BlockNumber <= watermark)
             {
                 // A number-only connect would strand a reorged pre-finalization capture under a healthy watermark.
-                if (!_availability.Matches(current.BlockNumber, current.StateRoot))
+                if (!ConnectsAt(current.BlockNumber, current.StateRoot))
                 {
                     DisableCapture(
                         $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +
@@ -314,16 +397,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>
     /// Seeds a windowed node's floor at a snap-sync pivot: publishes watermark = floor = pivot with no rows needed
-    /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). No-op on v2,
-    /// which has no fallback to lean on. Call at the sync-completion seam before any block processes on top.
+    /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). A since-block
+    /// floor already standing above the pivot stays: the state starts at the pivot, the history at the configured
+    /// block. No-op on v2, which has no fallback to lean on. Call at the sync-completion seam before any block
+    /// processes on top.
     /// </summary>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
         if (!_enabled || !_isV3) return;
 
-        // Raise-only: seeding a pivot below an already-published floor would re-admit reads for heights whose
-        // rows the pruner has already deleted, and they would answer from live state instead of failing closed.
-        if (_availability.TryGetGlobalFloor(out ulong currentFloor) && pivotBlock < currentFloor)
+        // Raise-only for a rolling floor: seeding a pivot below it would re-admit reads for heights whose rows the
+        // pruner has already deleted, and they would answer from live state instead of failing closed. A since-block
+        // floor is config, not pruning, so a pivot below it is only where the state starts.
+        bool hasFloor = _availability.TryGetGlobalFloor(out ulong currentFloor);
+        if (hasFloor && pivotBlock < currentFloor && _captureFromBlock == 0)
         {
             throw new InvalidOperationException(
                 $"Cannot seed the flat history floor at pivot {pivotBlock}: it is below the published retention floor " +
@@ -346,7 +433,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(pivotBlock, _formatVersion);
-        _availability.PublishGlobalFloor(pivotBlock);
+        if (!hasFloor || pivotBlock >= currentFloor) _availability.PublishGlobalFloor(pivotBlock);
         _history.SyncWal();
     }
 

@@ -92,7 +92,7 @@ public sealed class HistoricalFlatDbManager(
 
     private static void ThrowUnavailable(in StateId baseBlock) =>
         throw new StateUnavailableException(
-            $"Historical state for block {baseBlock.BlockNumber} has been pruned below the flat history retention floor.");
+            $"Historical state for block {baseBlock.BlockNumber} is below the flat history retention floor.");
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values
     // only and throws on trie traversal / iteration, so post-block state-root recomputation must not walk it.

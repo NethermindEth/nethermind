@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -149,7 +150,7 @@ public class HistoryWriterTests
     [Test]
     public void A_throw_while_resolving_the_pending_rows_publishes_nothing()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ThrowingHistoryColumns throwing = new(_historyColumns, throwOnAccountWrite: 3);
         HistoryWriter writer = new(_db, throwing, config, availability, rowFormat, LimboLogs.Instance);
@@ -539,6 +540,27 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Capture_of_an_already_covered_head_proves_health()
+    {
+        SeedGenesisFloor();
+
+        _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
+
+        Assert.That(_writer.CaptureHealthy, Is.True, "a persist at a head the watermark already covers is backed by what is on disk");
+    }
+
+    [Test]
+    public void Capture_of_a_covered_head_at_a_pivot_floor_proves_health()
+    {
+        (HistoryWriter writer, _) = CreateWindowedPair(retentionBlocks: 1000);
+        writer.SeedPivot(100, StateAt(100).StateRoot);
+
+        writer.CaptureUpTo(StateAt(100), _repository, CancellationToken.None);
+
+        Assert.That(writer.CaptureHealthy, Is.True, "at the published floor the persisted flat column backs every read, so the covered head is proof");
+    }
+
+    [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
         SeedGenesisFloor();
@@ -715,6 +737,83 @@ public class HistoryWriterTests
 
         Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.WindowedFormatVersion),
             "further captures on a windowed writer must never regress the stamp back to the plain format version");
+    }
+
+    [Test]
+    public void Since_block_writer_captures_nothing_below_the_floor_and_serves_everything_from_it()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 3);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+        Assert.That(writer.CaptureHealthy, Is.False, "below the floor nothing is captured, so no receipt body may be skipped on the promise of deriving it");
+        // Capture runs before the caller persists, so the live column holds the previous head at each capture.
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(2, 20)));
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 30))]);
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(3, 30)));
+        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 40))]);
+        writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(4, 40)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "heights below the first kept block fail closed");
+            Assert.That(reader.IsPrunedBelowFloor(3), Is.False, "the first kept block itself is served");
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(4UL), "the watermark follows every persisted head, rows or not");
+            Assert.That(writer.CaptureHealthy, Is.True, "the first walk that writes rows proves the capture");
+            Assert.That(reader.TryGetAccount(3, AddrA, out AccountStruct atThree), Is.True);
+            Assert.That(atThree.Balance, Is.EqualTo((UInt256)30), "the as-of read at the floor resolves through the rows captured above it");
+            Assert.That(reader.TryGetAccount(4, AddrA, out AccountStruct atFour), Is.True);
+            Assert.That(atFour.Balance, Is.EqualTo((UInt256)40));
+        }
+    }
+
+    [Test]
+    public void Since_block_raised_over_the_published_floor_is_refused()
+    {
+        CreateSinceBlockPair(sinceBlock: 3);
+
+        Assert.That(() => CreateSinceBlockPair(sinceBlock: 5), Throws.TypeOf<InvalidConfigurationException>(),
+            "the floor never moves in this mode, and nothing would reclaim the rows a raise leaves below it");
+    }
+
+    [Test]
+    public void Since_block_below_a_pivot_floor_keeps_the_pivot_floor()
+    {
+        (HistoryWriter first, _) = CreateSinceBlockPair(sinceBlock: 3);
+        first.SeedPivot(100, StateAt(100).StateRoot);
+
+        (_, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 3);
+
+        Assert.That(reader.IsPrunedBelowFloor(99), Is.True, "history starts where the node's state starts, at the pivot");
+    }
+
+    [Test]
+    public void Since_block_seed_pivot_below_the_configured_block_keeps_the_configured_floor()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 5);
+
+        writer.SeedPivot(3, StateAt(3).StateRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(3UL), "the state starts at the pivot, so the watermark does");
+            Assert.That(reader.IsBelowGlobalFloor(4), Is.True, "the history starts at the configured block, not at the pivot");
+            Assert.That(reader.IsBelowGlobalFloor(5), Is.False);
+        }
+    }
+
+    [Test]
+    public void Since_block_over_history_captured_without_a_floor_is_refused()
+    {
+        (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 1000);
+        windowed.SeedGenesis([], StateAt(0).StateRoot);
+
+        Assert.That(() => CreateSinceBlockPair(sinceBlock: 3), Throws.TypeOf<InvalidConfigurationException>(),
+            "a watermark with no floor is another mode's history; a since-block floor published over it would orphan the rows below");
     }
 
     [Test]
@@ -1385,9 +1484,22 @@ public class HistoryWriterTests
 
     private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);
 
-    private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks)
+    private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks) => CreatePair(new FlatDbConfig
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks };
+        HistoryEnabled = true,
+        HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+        HistoryRetentionBlocks = retentionBlocks
+    });
+
+    private (HistoryWriter Writer, HistoryReader Reader) CreateSinceBlockPair(ulong sinceBlock) => CreatePair(new FlatDbConfig
+    {
+        HistoryEnabled = true,
+        HistoryRetention = HistoryRetentionMode.SinceBlock,
+        HistoryRetentionSinceBlock = sinceBlock
+    });
+
+    private (HistoryWriter Writer, HistoryReader Reader) CreatePair(FlatDbConfig config)
+    {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);

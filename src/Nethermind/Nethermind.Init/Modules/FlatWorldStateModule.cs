@@ -144,16 +144,57 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is Rolling but FlatDb.HistoryRetentionBlocks is 0, so the window has no " +
+                "size. Set the window size, or set FlatDb.HistoryRetention=None to retain history unbounded.", -1);
+        }
+
+        // The number alone used to select the windowed shape. Refusing here rather than inferring the mode keeps a
+        // configuration written against that behaviour from silently becoming an unbounded archive.
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionBlocks is set to {flatDbConfig.HistoryRetentionBlocks} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}; the block count is the size of a " +
+                "rolling window only. Set FlatDb.HistoryRetention=Rolling to keep the window, or unset the block count.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is SinceBlock but FlatDb.HistoryRetentionSinceBlock is 0, which is genesis and " +
+                "so the same as None. Set the first block to keep, or set FlatDb.HistoryRetention=None.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
+                "to start history there, or unset the block.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.SinceBlock && !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses))
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistorySliceAddresses is set but FlatDb.HistoryRetention is SinceBlock. A slice keeps one address " +
+                "below the floor a rolling window prunes; a since-block node prunes nothing and keeps every address from " +
+                "FlatDb.HistoryRetentionSinceBlock onward, so the slices would change nothing. Unset them, or use " +
+                "FlatDb.HistoryRetention=Rolling.", -1);
+        }
+
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
         }
-        else if (flatDbConfig.HistoryRetentionBlocks != 0
+        else if (flatDbConfig.IsHistoryWindowed()
             || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
             || flatDbConfig.HistoryVerifyEveryBlock)
         {
             throw new InvalidConfigurationException(
-                "FlatDb.HistoryRetentionBlocks, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
+                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
                 "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
                 "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
