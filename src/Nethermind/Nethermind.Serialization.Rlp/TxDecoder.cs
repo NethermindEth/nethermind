@@ -22,7 +22,6 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     {
         TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
-        Rlp.RegisterDecoder(typeof(Transaction), Instance);
     }
 
     /// <summary>
