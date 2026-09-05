@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -41,6 +42,15 @@ public class MemoryPositionTests : VirtualMachineTestsBase
     [TestCase(Instruction.LOG1, HighLimb)]
     [TestCase(Instruction.LOG1, MiddleLimb)]
     [TestCase(Instruction.LOG1, LowerLimb)]
+    [TestCase(Instruction.CODECOPY, HighLimb)]
+    [TestCase(Instruction.CODECOPY, MiddleLimb)]
+    [TestCase(Instruction.CODECOPY, LowerLimb)]
+    [TestCase(Instruction.CALLDATACOPY, HighLimb)]
+    [TestCase(Instruction.CALLDATACOPY, MiddleLimb)]
+    [TestCase(Instruction.CALLDATACOPY, LowerLimb)]
+    [TestCase(Instruction.EXTCODECOPY, HighLimb)]
+    [TestCase(Instruction.EXTCODECOPY, MiddleLimb)]
+    [TestCase(Instruction.EXTCODECOPY, LowerLimb)]
     public void Position_above_ulong_max_is_out_of_gas(Instruction instruction, string positionHex)
     {
         TestAllTracerWithOutput tracer = Execute(BuildCode(instruction, Bytes.FromHexString(positionHex)));
@@ -54,6 +64,9 @@ public class MemoryPositionTests : VirtualMachineTestsBase
     [TestCase(Instruction.KECCAK256, null)]
     [TestCase(Instruction.RETURN, null)]
     [TestCase(Instruction.LOG1, null)]
+    [TestCase(Instruction.CODECOPY, null)]
+    [TestCase(Instruction.CALLDATACOPY, null)]
+    [TestCase(Instruction.EXTCODECOPY, null)]
     [TestCase(Instruction.REVERT, TransactionSubstate.Revert)]
     public void Position_within_ulong_max_is_addressable(Instruction instruction, string? expectedError)
     {
@@ -80,11 +93,22 @@ public class MemoryPositionTests : VirtualMachineTestsBase
             case Instruction.LOG1:
                 code = code.PushData(0).PushData(EvmStack.WordSize);
                 break;
+            case Instruction.CODECOPY or Instruction.CALLDATACOPY or Instruction.EXTCODECOPY:
+                code = code.PushData(EvmStack.WordSize).PushData(0);
+                break;
             default:
                 code = code.PushData(EvmStack.WordSize);
                 break;
         }
 
-        return code.PushData(position).Op(instruction).Done;
+        code = code.PushData(position);
+
+        // EXTCODECOPY reads the account above the destination, so it is pushed last.
+        if (instruction == Instruction.EXTCODECOPY)
+        {
+            code = code.PushData(TestItem.AddressC);
+        }
+
+        return code.Op(instruction).Done;
     }
 }

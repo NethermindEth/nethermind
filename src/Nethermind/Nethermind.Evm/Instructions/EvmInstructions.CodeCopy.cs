@@ -30,7 +30,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
@@ -92,7 +92,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!stack.PopUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             goto StackUnderflow;
 
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
@@ -151,7 +151,9 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
         Address address = stack.PopAddress(vm.AddressCache);
-        // Pop destination offset, source offset, and length from the stack.
+        // Pop destination offset, source offset, and length from the stack. The destination keeps its
+        // vector decode here: this handler already saves seven callee-saved registers, and holding the
+        // destination in general registers instead costs an eighth and measures slower.
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
