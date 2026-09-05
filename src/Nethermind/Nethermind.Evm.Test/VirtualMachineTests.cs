@@ -357,12 +357,35 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> StackGrowthCases()
     {
-        for (Instruction opcode = Instruction.DUP1; opcode <= Instruction.DUP16; opcode++)
+        for (Instruction opcode = Instruction.PUSH0; opcode <= Instruction.DUP16; opcode++)
         {
             foreach (int depth in new[] { 1023, 1024 })
             foreach (bool sufficientGas in new[] { false, true })
             foreach (int tracerMode in new[] { 0, 1, 2 })
                 yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode);
+        }
+    }
+
+    [Test]
+    public void Push_immediate_consumes_only_declared_width([Range(1, 32)] int width, [Values] bool traced)
+    {
+        byte[] code = new byte[width + 9];
+        code[0] = (byte)((byte)Instruction.PUSH1 + width - 1);
+        byte[] expected = new byte[32];
+        for (int i = 0; i < width; i++)
+            expected[32 - width + i] = code[1 + i] = (byte)(0xa0 + i);
+        new byte[] { (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 0, (byte)Instruction.RETURN }.CopyTo(code, width + 1);
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        TestAllTracerWithOutput tracer = traced ? new TestAllTracerWithOutput() : new NoInstructionTracer();
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(6));
         }
     }
 
@@ -376,8 +399,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             code[i * 2 + 1] = 1;
         }
         code[depth * 2] = (byte)opcode;
-        ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + GasCostOf.VeryLow - (sufficientGas ? 0UL : 1UL);
+        ulong cost = opcode == Instruction.PUSH0 ? GasCostOf.Base : GasCostOf.VeryLow;
+        ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        // PrepareTx retains the activation on this shared fixture; change only this execution's header.
+        block.Header.Number = MainnetSpecProvider.CancunActivation.BlockNumber;
+        block.Header.Timestamp = MainnetSpecProvider.CancunBlockTimestamp;
         TestAllTracerWithOutput tracer = tracerMode switch
         {
             0 => new NoInstructionTracer(),

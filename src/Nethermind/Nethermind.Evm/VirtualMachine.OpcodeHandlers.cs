@@ -921,8 +921,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct Push0Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static int StackGrowth => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody
+                ? stack.PushZero<TTracingInst, OffFlag>()
+                : EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     private readonly struct Push2Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
@@ -935,8 +947,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, ref programCounter);
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static int StackGrowth => 1;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!HasCheckedBody)
+                return EvmInstructions.InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, ref programCounter);
+
+            _ = TOpCount.Push<TTracingInst, OffFlag>(TOpCount.Count, ref stack, programCounter);
+            programCounter += TOpCount.Count;
+            return EvmExceptionType.None;
+        }
     }
 
     private readonly struct DupOpcode<TOpCount, TTracingInst> : IOpcodeBody

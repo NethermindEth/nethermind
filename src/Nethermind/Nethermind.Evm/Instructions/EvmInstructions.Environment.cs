@@ -350,7 +350,7 @@ public static partial class EvmInstructions
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
-        return stack.Push32Bytes<TTracingInst>(in result);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(in result);
     }
 
     /// <summary>
@@ -449,7 +449,7 @@ public static partial class EvmInstructions
 
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(in context.BlobBaseFee);
         // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;
@@ -638,10 +638,10 @@ public static partial class EvmInstructions
         // For dead accounts, the specification requires pushing zero.
         if (state.IsDeadAccount(address))
         {
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
         ValueHash256 hash = state.GetCodeHash(address);
-        return stack.Push32Bytes<TTracingInst>(in hash);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -667,7 +667,7 @@ public static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(in vm.BlockExecutionContext.PrevRandao);
     }
 
     /// <summary>
@@ -729,7 +729,7 @@ public static partial class EvmInstructions
         // Otherwise, push zero.
         return versionedHashes is not null && result < versionedHashes.Length
             ? stack.PushBytes<TTracingInst>(versionedHashes[result.u0])
-            : stack.PushZero<TTracingInst>();
+            : stack.PushZero<TTracingInst, OnFlag>();
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

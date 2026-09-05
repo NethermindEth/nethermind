@@ -137,7 +137,7 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Load the initialization code from memory based on the specified position and length.
@@ -149,7 +149,7 @@ public static partial class EvmInstructions
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
@@ -157,7 +157,7 @@ public static partial class EvmInstructions
         if (accountNonce >= ulong.MaxValue)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Compute the contract address:
@@ -210,7 +210,7 @@ public static partial class EvmInstructions
             }
 
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         state.ClearStorage(contractAddress);

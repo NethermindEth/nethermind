@@ -132,12 +132,8 @@ public class EvmStackTests
         Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(5)]
-    [TestCase(16)]
-    [TestCase(31)]
-    public void Truncated_PUSH32_preserves_leading_bytes_and_zero_pads_tail(int used)
+    [Test]
+    public void Truncated_PUSH32_preserves_leading_bytes_and_zero_pads_tail([Values(0, 1, 5, 16, 31)] int used, [Values] bool checkDepth)
     {
         // EVM spec: truncated PUSH{n} (where code ends before n bytes of immediate) must push
         // <available-bytes, 00...00> in big-endian. Available bytes go to the high end;
@@ -148,10 +144,9 @@ public class EvmStackTests
         byte[] immediate = new byte[used];
         for (int i = 0; i < used; i++) immediate[i] = (byte)(0xA0 + i);
 
-        EvmExceptionType result = stack.PushBothPaddedBytes<OffFlag>(
-            ref MemoryMarshal.GetArrayDataReference(immediate),
-            used,
-            pushSize: 32);
+        EvmExceptionType result = checkDepth
+            ? stack.PushBothPaddedBytes<OffFlag, OnFlag>(ref MemoryMarshal.GetArrayDataReference(immediate), used, 32)
+            : stack.PushBothPaddedBytes<OffFlag, OffFlag>(ref MemoryMarshal.GetArrayDataReference(immediate), used, 32);
 
         Assert.That(result, Is.EqualTo(EvmExceptionType.None));
         Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
@@ -230,46 +225,17 @@ public class EvmStackTests
     // and breaks consensus. Verifies: low-end contains the N immediate bytes in the supplied
     // order; high-end (32-N bytes) is zero. Values 0xA0..0xA0+N-1 chosen so that byte-swap or
     // lane-swap regressions are immediately visible in the failure message.
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(10)]
-    [TestCase(11)]
-    [TestCase(12)]
-    [TestCase(13)]
-    [TestCase(14)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(18)]
-    [TestCase(19)]
-    [TestCase(20)]
-    [TestCase(21)]
-    [TestCase(22)]
-    [TestCase(23)]
-    [TestCase(24)]
-    [TestCase(25)]
-    [TestCase(26)]
-    [TestCase(27)]
-    [TestCase(28)]
-    [TestCase(29)]
-    [TestCase(30)]
-    [TestCase(31)]
-    [TestCase(32)]
-    public void PushNBytes_encodes_big_endian_low_padded_high_zero(int n)
+    [Test]
+    public void PushNBytes_encodes_big_endian_low_padded_high_zero([Range(1, 32)] int n, [Values] bool checkDepth)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         vmState.InitializeStacks(default, out EvmStack stack);
         byte[] immediate = new byte[n];
         for (int i = 0; i < n; i++) immediate[i] = (byte)(0xA0 + i);
 
-        EvmExceptionType result = InvokePushNBytes(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate));
+        EvmExceptionType result = checkDepth
+            ? InvokePushNBytes<OnFlag>(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate))
+            : InvokePushNBytes<OffFlag>(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate));
 
         Assert.That(result, Is.EqualTo(EvmExceptionType.None));
         Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
@@ -280,48 +246,48 @@ public class EvmStackTests
             Assert.That(word[32 - n + i], Is.EqualTo((byte)(0xA0 + i)), $"immediate byte {i} of PUSH{n}");
     }
 
-    private static EvmExceptionType InvokePushNBytes(int n, ref EvmStack stack, ref byte imm) => n switch
+    private static EvmExceptionType InvokePushNBytes<TCheckDepth>(int n, ref EvmStack stack, ref byte imm) where TCheckDepth : struct, IFlag => n switch
     {
-        1 => stack.PushByte<OffFlag>(imm),
+        1 => stack.PushByte<OffFlag, TCheckDepth>(imm),
         2 => stack.Push2Bytes<OffFlag>(ref imm),
-        3 => stack.Push3Bytes<OffFlag>(ref imm),
-        4 => stack.Push4Bytes<OffFlag>(ref imm),
-        5 => stack.Push5Bytes<OffFlag>(ref imm),
-        6 => stack.Push6Bytes<OffFlag>(ref imm),
-        7 => stack.Push7Bytes<OffFlag>(ref imm),
-        8 => stack.Push8Bytes<OffFlag>(ref imm),
-        9 => stack.Push9Bytes<OffFlag>(ref imm),
-        10 => stack.Push10Bytes<OffFlag>(ref imm),
-        11 => stack.Push11Bytes<OffFlag>(ref imm),
-        12 => stack.Push12Bytes<OffFlag>(ref imm),
-        13 => stack.Push13Bytes<OffFlag>(ref imm),
-        14 => stack.Push14Bytes<OffFlag>(ref imm),
-        15 => stack.Push15Bytes<OffFlag>(ref imm),
-        16 => stack.Push16Bytes<OffFlag>(ref imm),
-        17 => stack.Push17Bytes<OffFlag>(ref imm),
-        18 => stack.Push18Bytes<OffFlag>(ref imm),
-        19 => stack.Push19Bytes<OffFlag>(ref imm),
-        20 => stack.Push20Bytes<OffFlag>(ref imm),
-        21 => stack.Push21Bytes<OffFlag>(ref imm),
-        22 => stack.Push22Bytes<OffFlag>(ref imm),
-        23 => stack.Push23Bytes<OffFlag>(ref imm),
-        24 => stack.Push24Bytes<OffFlag>(ref imm),
-        25 => stack.Push25Bytes<OffFlag>(ref imm),
-        26 => stack.Push26Bytes<OffFlag>(ref imm),
-        27 => stack.Push27Bytes<OffFlag>(ref imm),
-        28 => stack.Push28Bytes<OffFlag>(ref imm),
-        29 => stack.Push29Bytes<OffFlag>(ref imm),
-        30 => stack.Push30Bytes<OffFlag>(ref imm),
-        31 => stack.Push31Bytes<OffFlag>(ref imm),
-        32 => stack.Push32Bytes<OffFlag>(ref imm),
+        3 => stack.Push3Bytes<OffFlag, TCheckDepth>(ref imm),
+        4 => stack.Push4Bytes<OffFlag, TCheckDepth>(ref imm),
+        5 => stack.Push5Bytes<OffFlag, TCheckDepth>(ref imm),
+        6 => stack.Push6Bytes<OffFlag, TCheckDepth>(ref imm),
+        7 => stack.Push7Bytes<OffFlag, TCheckDepth>(ref imm),
+        8 => stack.Push8Bytes<OffFlag, TCheckDepth>(ref imm),
+        9 => stack.Push9Bytes<OffFlag, TCheckDepth>(ref imm),
+        10 => stack.Push10Bytes<OffFlag, TCheckDepth>(ref imm),
+        11 => stack.Push11Bytes<OffFlag, TCheckDepth>(ref imm),
+        12 => stack.Push12Bytes<OffFlag, TCheckDepth>(ref imm),
+        13 => stack.Push13Bytes<OffFlag, TCheckDepth>(ref imm),
+        14 => stack.Push14Bytes<OffFlag, TCheckDepth>(ref imm),
+        15 => stack.Push15Bytes<OffFlag, TCheckDepth>(ref imm),
+        16 => stack.Push16Bytes<OffFlag, TCheckDepth>(ref imm),
+        17 => stack.Push17Bytes<OffFlag, TCheckDepth>(ref imm),
+        18 => stack.Push18Bytes<OffFlag, TCheckDepth>(ref imm),
+        19 => stack.Push19Bytes<OffFlag, TCheckDepth>(ref imm),
+        20 => stack.Push20Bytes<OffFlag, TCheckDepth>(ref imm),
+        21 => stack.Push21Bytes<OffFlag, TCheckDepth>(ref imm),
+        22 => stack.Push22Bytes<OffFlag, TCheckDepth>(ref imm),
+        23 => stack.Push23Bytes<OffFlag, TCheckDepth>(ref imm),
+        24 => stack.Push24Bytes<OffFlag, TCheckDepth>(ref imm),
+        25 => stack.Push25Bytes<OffFlag, TCheckDepth>(ref imm),
+        26 => stack.Push26Bytes<OffFlag, TCheckDepth>(ref imm),
+        27 => stack.Push27Bytes<OffFlag, TCheckDepth>(ref imm),
+        28 => stack.Push28Bytes<OffFlag, TCheckDepth>(ref imm),
+        29 => stack.Push29Bytes<OffFlag, TCheckDepth>(ref imm),
+        30 => stack.Push30Bytes<OffFlag, TCheckDepth>(ref imm),
+        31 => stack.Push31Bytes<OffFlag, TCheckDepth>(ref imm),
+        32 => stack.Push32Bytes<OffFlag, TCheckDepth>(ref imm),
         _ => throw new System.ArgumentOutOfRangeException(nameof(n), n, null),
     };
 
     private static EvmExceptionType InvokePush(string op, ref EvmStack stack) => op switch
     {
-        PushByte => stack.PushByte<OffFlag>(42),
+        PushByte => stack.PushByte<OffFlag, OnFlag>(42),
         PushOne => stack.PushOne<OffFlag>(),
-        PushZero => stack.PushZero<OffFlag>(),
+        PushZero => stack.PushZero<OffFlag, OnFlag>(),
         PushUInt32 => stack.PushUInt32<OffFlag>(0xdeadbeef),
         PushUInt64 => stack.PushUInt64<OffFlag>(0xdeadbeefcafebabeUL),
         PushUInt256 => PushUInt256Value(ref stack),

@@ -72,7 +72,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
             child.Dispose();
             ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         bool reverted = callResult.ShouldRevert;

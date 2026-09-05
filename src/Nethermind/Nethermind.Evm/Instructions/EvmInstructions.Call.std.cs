@@ -51,7 +51,7 @@ public static partial class EvmInstructions
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             vm.ReturnData = null;
-            result = stack.PushZero<TTracingInst>();
+            result = stack.PushZero<TTracingInst, OnFlag>();
             return true;
         }
 
@@ -61,7 +61,7 @@ public static partial class EvmInstructions
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             vm.ReturnData = null;
-            result = stack.PushZero<TTracingInst>();
+            result = stack.PushZero<TTracingInst, OnFlag>();
             return true;
         }
 
