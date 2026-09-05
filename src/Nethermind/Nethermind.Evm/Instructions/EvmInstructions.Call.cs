@@ -220,7 +220,7 @@ public static partial class EvmInstructions
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            EvmExceptionType pushResult = stack.PushZero<TTracingInst>();
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             // Optionally report memory changes for refund tracing.
             if (vm.TxTracer.IsTracingRefunds)

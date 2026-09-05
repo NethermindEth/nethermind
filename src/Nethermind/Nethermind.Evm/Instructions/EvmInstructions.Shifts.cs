@@ -84,7 +84,7 @@ public static partial class EvmInstructions
                 if (TTracingInst.IsActive)
                     return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
 
-                return stack.PushZero<TTracingInst>();
+                return stack.PushZero<TTracingInst, OnFlag>();
             }
 
             TOpShift.Operation(in shift, in value, out UInt256 shifted);
@@ -213,7 +213,7 @@ public static partial class EvmInstructions
                 if (TTracingInst.IsActive)
                     return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
 
-                return stack.PushZero<TTracingInst>();
+                return stack.PushZero<TTracingInst, OnFlag>();
             }
 
             As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);

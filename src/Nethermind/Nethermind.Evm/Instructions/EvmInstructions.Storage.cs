@@ -258,7 +258,7 @@ public static partial class EvmInstructions
         }
 
         // Push the loaded bytes onto the stack.
-        return stack.Push32Bytes<TTracingInst>(ref wordBytes);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(ref wordBytes);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -662,7 +662,7 @@ public static partial class EvmInstructions
         // as a single zero byte; PushZero writes the word directly instead of packing the byte.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
         EvmExceptionType pushResult = value.Length == 1 && value[0] == 0
-            ? stack.PushZero<TTracingInst>()
+            ? stack.PushZero<TTracingInst, OnFlag>()
             : stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
@@ -701,7 +701,7 @@ public static partial class EvmInstructions
         ulong offset = result.u0;
         if (!result.IsUint64 || offset >= (uint)inputData.Length)
         {
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         uint available = (uint)inputData.Length - (uint)offset;

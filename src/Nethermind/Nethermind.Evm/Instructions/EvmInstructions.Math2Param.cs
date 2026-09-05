@@ -414,7 +414,7 @@ public static partial class EvmInstructions
 
         if (a.IsZero)
         {
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
         if (a.IsOne)
         {

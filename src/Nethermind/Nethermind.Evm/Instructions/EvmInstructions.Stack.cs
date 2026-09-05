@@ -53,8 +53,9 @@ public static partial class EvmInstructions
         /// <param name="programCounter">The program counter.</param>
         /// <param name="code">The code segment containing the immediate data.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        abstract static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
-            where TTracingInst : struct, IFlag;
+        abstract static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag;
     }
 
     // Some push operations override the default Push method to handle fixed-size optimizations.
@@ -70,9 +71,10 @@ public static partial class EvmInstructions
         /// Push operation for zero
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
-        => stack.PushZero<TTracingInst>();
+            where TCheckDepth : struct, IFlag
+        => stack.PushZero<TTracingInst, TCheckDepth>();
     }
 
     /// <summary>
@@ -88,14 +90,15 @@ public static partial class EvmInstructions
         /// If exactly one byte is available, it is pushed; otherwise, zero is pushed.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             // Determine how many bytes can be used from the code.
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             return usedFromCode == Size ?
-                stack.PushByte<TTracingInst>(Unsafe.Add(ref stack.Code, programCounter)) :
-                stack.PushZero<TTracingInst>();
+                stack.PushByte<TTracingInst, TCheckDepth>(Unsafe.Add(ref stack.Code, programCounter)) :
+                stack.PushZero<TTracingInst, TCheckDepth>();
         }
     }
 
@@ -107,8 +110,9 @@ public static partial class EvmInstructions
         public static int Count => 2;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         => throw new NotSupportedException($"Use the {nameof(InstructionPush2)} opcode instead");
     }
 
@@ -182,12 +186,12 @@ public static partial class EvmInstructions
         else if (remainingCode == Op1.Count)
         {
             // Directly push the single byte.
-            result = stack.PushByte<TTracingInst>(start);
+            result = stack.PushByte<TTracingInst, OnFlag>(start);
         }
         else
         {
             // Fallback when immediate data is incomplete.
-            result = stack.PushZero<TTracingInst>();
+            result = stack.PushZero<TTracingInst, OnFlag>();
         }
         programCounter += Size;
         return result;
@@ -210,15 +214,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 3-byte value (common case); otherwise padded push.
-                stack.Push3Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push3Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -232,15 +237,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 4-byte value (common case); otherwise padded push.
-                stack.Push4Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push4Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -254,15 +260,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 5-byte value (common case); otherwise padded push.
-                stack.Push5Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push5Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -276,15 +283,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 6-byte value (common case); otherwise padded push.
-                stack.Push6Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push6Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -298,15 +306,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 7-byte value (common case); otherwise padded push.
-                stack.Push7Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push7Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -320,15 +329,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 8-byte value (common case); otherwise padded push.
-                stack.Push8Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push8Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -342,14 +352,15 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
-                stack.Push9Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push9Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -363,15 +374,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 10-byte value.
-                stack.Push10Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push10Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -385,15 +397,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 11-byte value.
-                stack.Push11Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push11Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -407,15 +420,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 12-byte value.
-                stack.Push12Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push12Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -429,15 +443,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 13-byte value.
-                stack.Push13Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push13Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -451,15 +466,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 14-byte value.
-                stack.Push14Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push14Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -473,15 +489,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 15-byte value.
-                stack.Push15Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push15Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -495,15 +512,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 16-byte value.
-                stack.Push16Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push16Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -517,15 +535,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 17-byte value.
-                stack.Push17Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push17Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -539,15 +558,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 18-byte value.
-                stack.Push18Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push18Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -561,15 +581,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 19-byte value.
-                stack.Push19Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push19Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -583,15 +604,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 20-byte value.
-                stack.Push20Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push20Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -605,15 +627,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 21-byte value.
-                stack.Push21Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push21Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -627,15 +650,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 22-byte value.
-                stack.Push22Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push22Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -649,15 +673,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 23-byte value.
-                stack.Push23Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push23Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -671,15 +696,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 24-byte value.
-                stack.Push24Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push24Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -693,15 +719,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 25-byte value.
-                stack.Push25Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push25Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -715,15 +742,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 26-byte value.
-                stack.Push26Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push26Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -737,15 +765,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 27-byte value.
-                stack.Push27Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push27Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -759,15 +788,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 28-byte value.
-                stack.Push28Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push28Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -781,15 +811,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 29-byte value.
-                stack.Push29Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push29Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -803,15 +834,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 30-byte value.
-                stack.Push30Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push30Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -825,15 +857,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 31-byte value.
-                stack.Push31Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push31Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -847,15 +880,16 @@ public static partial class EvmInstructions
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, nint programCounter)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth>(int length, ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
         {
             int usedFromCode = (int)Math.Min(stack.CodeLength - programCounter, (nint)length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
             return usedFromCode == Size ?
                 // Direct push of a 32-byte value.
-                stack.Push32Bytes<TTracingInst>(ref start) :
-                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+                stack.Push32Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, usedFromCode, length);
         }
     }
 
@@ -872,7 +906,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.PushZero<TTracingInst>();
+        return stack.PushZero<TTracingInst, OnFlag>();
     }
 
     /// <summary>
@@ -896,7 +930,7 @@ public static partial class EvmInstructions
         // Deduct a very low gas cost for the push operation.
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Use the push method defined by the specific push operation.
-        EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter);
+        EvmExceptionType result = TOpCount.Push<TTracingInst, OnFlag>(TOpCount.Count, ref stack, programCounter);
         // Advance the program counter by the number of bytes consumed.
         programCounter += TOpCount.Count;
         return result;

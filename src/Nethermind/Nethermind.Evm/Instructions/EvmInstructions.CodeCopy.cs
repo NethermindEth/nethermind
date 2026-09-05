@@ -322,7 +322,7 @@ public static partial class EvmInstructions
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
                 return new OpcodeResult(programCounter, !isCodeLengthNotZero
                     ? stack.PushOne<TTracingInst>()
-                    : stack.PushZero<TTracingInst>());
+                    : stack.PushZero<TTracingInst, OnFlag>());
             }
         }
 
