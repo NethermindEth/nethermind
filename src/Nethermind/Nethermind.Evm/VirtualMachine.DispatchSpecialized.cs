@@ -22,7 +22,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
-    /// <returns>The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts.</returns>
+    /// <returns>
+    /// The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts and <c>Suspend</c> a
+    /// yielded child frame.
+    /// </returns>
     /// <remarks>
     /// Implemented per build, split at the loop rather than the differing <c>switch</c>: direct dispatch
     /// only beats the table while the JIT inlines the handlers into the switch.
@@ -55,7 +58,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(ref stack, ref gas, ref programCounter);
 
-        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
