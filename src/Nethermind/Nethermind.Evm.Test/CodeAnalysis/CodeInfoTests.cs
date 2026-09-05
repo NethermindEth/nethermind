@@ -260,6 +260,25 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 test.TestName = "Code_All_0x00";
                 yield return test;
 
+                // Runs of plain one-byte instructions either side of the width the scalar scan steps over
+                // in one go, so a run that ends just short of, exactly on, or just past that boundary each
+                // get covered - including where the run is cut off by the end of the code.
+                foreach (int run in (int[])[1, 6, 7, 8, 9, 15, 16, 17])
+                {
+                    foreach (byte marker in (byte[])[(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, (byte)Instruction.PUSH32])
+                    {
+                        code = new byte[1024];
+                        for (int i = run; i < code.Length; i += run + 1)
+                        {
+                            code[i] = marker;
+                        }
+
+                        test = new TestCaseData(code);
+                        test.TestName = $"Code_Run{run}_{(Instruction)marker}";
+                        yield return test;
+                    }
+                }
+
                 code = new byte[1024];
                 code.AsSpan().Fill((byte)0x5b);
                 test = new TestCaseData(code);
