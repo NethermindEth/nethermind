@@ -3,10 +3,12 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-#if DEBUG
 using Nethermind.Evm.Tracing;
+#if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
 #endif
+
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
@@ -55,9 +57,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(ref stack, ref gas, ref programCounter);
 
+        bool tracedImplicitStop = false;
+        if (TTracingInst.IsActive
+            && exceptionType == EvmExceptionType.None
+            && ReturnData is null
+            && stack.CodeLength != 0
+            && programCounter >= stack.CodeLength
+            && _hasImplicitStopTracerCached)
+        {
+            if (TCancelable.IsActive && _txTracer.IsCancelled)
+                ThrowOperationCanceledException();
+
+            // Reading past non-empty code yields the zero byte, so trace its implicit STOP.
+            TGasPolicy.OnBeforeInstructionTrace(in gas, (int)programCounter, Instruction.STOP, VmState.Env.CallDepth);
+            TraceImplicitStop(_txTracer, TGasPolicy.GetRemainingGas(in gas), (int)programCounter, stack.Head);
+            TGasPolicy.OnAfterInstructionTrace(in gas);
+            tracedImplicitStop = true;
+        }
+
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
-            if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive && !tracedImplicitStop)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             UpdateCurrentState((int)programCounter, in gas, stack.Head);
         }

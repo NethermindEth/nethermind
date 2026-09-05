@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -62,7 +63,10 @@ namespace Nethermind.Test.Runner
             foreach (StateTestTxTraceEntry entry in txTrace.Entries)
             {
                 string stackJson = BuildStackJson(entry.Stack);
-                Console.Error.Write($"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize}");
+                string operationNameJson = System.Text.Json.JsonSerializer.Serialize(entry.OperationName);
+                Console.Error.Write(string.Create(CultureInfo.InvariantCulture, $"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize},\"refund\":{entry.Refund},\"opName\":{operationNameJson}"));
+                if (entry.Memory is not null)
+                    Console.Error.Write($",\"memory\":{System.Text.Json.JsonSerializer.Serialize(entry.Memory)}");
                 if (!string.IsNullOrEmpty(entry.Error))
                     Console.Error.Write($",\"error\":{System.Text.Json.JsonSerializer.Serialize(entry.Error)}");
                 Console.Error.WriteLine("}");
@@ -126,7 +130,17 @@ namespace Nethermind.Test.Runner
 
             if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
             {
-                StateTestTxTracer txTracer = new();
+                ulong standardIntrinsicGas = 0;
+                try
+                {
+                    standardIntrinsicGas = IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+                }
+                catch (InvalidDataException e)
+                {
+                    _logger.Info($"Skipping intrinsic-gas trace adjustment for {test.Name}: {e.Message}");
+                }
+
+                StateTestTxTracer txTracer = new(standardIntrinsicGas, (long)test.Fork.GasCosts.DestroyRefund);
                 txTracer.IsTracingDetailedMemory = _traceMemory;
                 // EIP-3155 always needs stack; IsTracingStack controls whether
                 // the EVM calls SetOperationStack at all.
@@ -136,14 +150,6 @@ namespace Nethermind.Test.Runner
                 StateTestTxTrace txTrace = txTracer.BuildResult();
                 txTrace.Result.Time = result.TimeInMs;
                 txTrace.State.StateRoot = result.StateRoot;
-                try
-                {
-                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
-                }
-                catch (InvalidDataException e)
-                {
-                    _logger.Info($"Skipping intrinsic-gas trace adjustment for {test.Name}: {e.Message}");
-                }
                 WriteErr(txTrace);
             }
 

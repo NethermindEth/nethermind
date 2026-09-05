@@ -466,9 +466,14 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertEntry(trace.Entries[^4], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+            AssertEntry(trace.Entries[^3], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+            AssertEntry(trace.Entries[^2], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+            Assert.That(trace.Entries[^1].ProgramCounter, Is.EqualTo(49));
+            Assert.That(trace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+        }
     }
 
     [Test]
@@ -513,6 +518,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             topLevelStop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
             "parent refund must persist after the child frame reverts"
         );
+    }
+
+    [Test]
+    public void Legacy_self_destruct_refund_is_reported_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        GethLikeTxMemoryTracer tracer = new(null, GethTraceOptions.Default, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportActionEnd(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+
+        Assert.That(tracer.BuildResult().Entries.Single().Refund, Is.EqualTo(destroyRefund));
     }
 
     [Test]

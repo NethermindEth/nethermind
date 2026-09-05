@@ -81,17 +81,15 @@ public abstract class BlockchainTestBase
 
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
-    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
+    /// <summary>
+    /// Creates the specification provider used to execute a blockchain test and trace its blocks.
+    /// </summary>
+    /// <param name="test">Blockchain test whose fork transitions define the provider.</param>
+    /// <returns>A provider configured with the test's genesis and transition forks.</returns>
+    protected static ISpecProvider CreateSpecProvider(BlockchainTest test)
     {
-        _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-        if (test.NetworkAfterTransition is not null)
-            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
-        Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
-
-        bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         // EIP-7928 introduces BlockAccessListHash in the block header, which must be computed
         // during genesis processing. Without target fork rules at genesis, the hash field is missing
@@ -103,12 +101,26 @@ public abstract class BlockchainTestBase
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
-        {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
-        }
 
-        ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+    }
 
+    protected async Task<EthereumTestResult> RunTest(
+        BlockchainTest test,
+        Stopwatch? stopwatch = null,
+        bool failOnInvalidRlp = true,
+        ITestBlockTracer? tracer = null,
+        ISpecProvider? specProvider = null)
+    {
+        _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+        if (test.NetworkAfterTransition is not null)
+            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
+        Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+
+        specProvider ??= CreateSpecProvider(test);
+
+        bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled is true)
         {

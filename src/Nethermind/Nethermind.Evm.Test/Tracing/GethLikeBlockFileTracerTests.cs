@@ -5,9 +5,13 @@ using System.Linq;
 using System.Text.Json;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
 using Nethermind.Core;
@@ -29,7 +33,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem);
+        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem, destroyRefund: 0);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -61,7 +65,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
 
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { EnableMemory = true }, fileSystem);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { EnableMemory = true }, fileSystem, destroyRefund: 0);
         ExecuteBlock(tracer, code);
 
         string fileName = tracer.FileNames.Single();
@@ -83,5 +87,72 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         }
 
         Assert.That(anyMemory, Is.True, "expected at least one entry to carry a memory blob");
+    }
+
+    [Test]
+    public void Create_collision_reports_execution_gas_without_action_trace()
+    {
+        const ulong gasLimit = 100_000;
+        byte[] initCode = [0x00];
+        (Block block, Transaction transaction) = PrepareInitTx(Activation, gasLimit, initCode);
+        Address deploymentAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(deploymentAddress, 0, nonce: 1);
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        ulong standardIntrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec, block.Header.GasLimit).Standard;
+
+        using GethLikeBlockFileTracer tracer = new(
+            block,
+            GethTraceOptions.Default,
+            fileSystem,
+            (long)Spec.GasCosts.DestroyRefund,
+            Spec);
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), txTracer);
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        using JsonDocument summary = JsonDocument.Parse(fileSystem.File.ReadAllText(tracer.FileNames.Single()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(summary.RootElement.GetProperty("output").GetString(), Is.EqualTo("0x"));
+            Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo($"0x{gasLimit - standardIntrinsicGas:x}"));
+        }
+    }
+
+    [TestCase(TxType.AccessList)]
+    [TestCase(TxType.SetCode)]
+    public void Unsupported_transaction_lists_do_not_abort_file_trace(TxType transactionType)
+    {
+        Transaction transaction = transactionType switch
+        {
+            TxType.AccessList => Build.A.Transaction
+                .WithType(transactionType)
+                .WithAccessList(AccessList.Empty)
+                .WithHash(Keccak.OfAnEmptyString)
+                .TestObject,
+            TxType.SetCode => Build.A.Transaction
+                .WithType(transactionType)
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .WithHash(Keccak.OfAnEmptyString)
+                .TestObject,
+            _ => throw new AssertionException($"Unsupported transaction type {transactionType}.")
+        };
+        Block block = Build.A.Block.WithTransactions([transaction]).TestObject;
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+
+        using GethLikeBlockFileTracer tracer = new(
+            block,
+            GethTraceOptions.Default,
+            fileSystem,
+            spec: Frontier.Instance);
+        IBlockTracer blockTracer = tracer;
+
+        Assert.That(() => blockTracer.StartNewTxTrace(transaction), Throws.Nothing);
+
+        blockTracer.EndTxTrace();
     }
 }

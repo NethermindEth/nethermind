@@ -1,17 +1,22 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Test.Tracing;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -203,7 +208,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     private static void AssertFirstPushTrace(GethLikeTxTrace trace)
     {
-        Assert.That(trace.Entries.Count, Is.EqualTo(5), "number of entries");
+        Assert.That(trace.Entries.Count, Is.EqualTo(6), "number of entries");
         GethTxTraceEntry entry = trace.Entries[1];
         using (Assert.EnterMultipleScope())
         {
@@ -214,6 +219,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(entry.StackWordCount(), Is.EqualTo(1), nameof(entry.Stack));
             Assert.That(entry.Storage, Is.Null, nameof(entry.Storage));
             Assert.That(trace.Entries[4].Opcode, Is.EqualTo("SSTORE"), "SSTORE opcode");
+            Assert.That(trace.Entries[5].Opcode, Is.EqualTo("STOP"), "implicit STOP opcode");
             Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
             Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
         }
@@ -225,6 +231,96 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
         Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
         Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
+    }
+
+    [Test]
+    public void Implicit_stop_is_only_traced_by_opted_in_tracers()
+    {
+        byte[] code = Prepare.EvmCode.PushData(1).Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        GethLikeTxMemoryTracer gethTracer = new(transaction, GethTraceOptions.Default);
+        ParityLikeTxTracer parityTracer = new(block, transaction, ParityTraceTypes.VmTrace);
+        CountingGethLikeTxTracer countingTracer = new();
+        CompositeTxTracer tracer = new(gethTracer, parityTracer, countingTracer);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        GethLikeTxTrace gethTrace = gethTracer.BuildResult();
+        ParityLikeTxTrace parityTrace = parityTracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gethTrace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+            Assert.That(gethTrace.Entries[^1].ProgramCounter, Is.EqualTo(2));
+            Assert.That(parityTrace.VmTrace.Operations, Has.Count.EqualTo(1));
+            Assert.That(countingTracer.StartedOperations, Is.EqualTo(2));
+            Assert.That(countingTracer.CompletedOperations, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Empty_code_does_not_trace_implicit_stop()
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(Array.Empty<byte>());
+
+        Assert.That(trace.Entries, Is.Empty);
+    }
+
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.STATICCALL)]
+    public void Final_call_traces_implicit_stop_after_resuming_caller(Instruction instruction)
+    {
+        byte[] calleeCode = [(byte)Instruction.STOP];
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        byte[] code = instruction switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Done,
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
+        };
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethTxTraceEntry callerStop = trace.Entries.Last(static entry => entry is { Depth: 1, Opcode: nameof(Instruction.STOP) });
+
+        Assert.That(callerStop.ProgramCounter, Is.EqualTo(code.Length));
+    }
+
+    [Test]
+    public void Implicit_stop_honors_cancellation_wrapper()
+    {
+        byte[] code = Prepare.EvmCode.PushData(1).Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        using CancellationTokenSource cancellation = new();
+        CancelAfterFirstOperationTracer innerTracer = new(cancellation);
+        CancellationTxTracer tracer = new(innerTracer, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<OperationCanceledException>(() =>
+                _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+            Assert.That(innerTracer.StartedOperations, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class CountingGethLikeTxTracer() : GethLikeTxTracer(new GethTraceOptions())
+    {
+        public int StartedOperations { get; private set; }
+        public int CompletedOperations { get; private set; }
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+            StartedOperations++;
+
+        public override void ReportOperationRemainingGas(ulong gas) => CompletedOperations++;
+    }
+
+    private sealed class CancelAfterFirstOperationTracer(CancellationTokenSource cancellation) : GethLikeTxTracer(new GethTraceOptions())
+    {
+        public int StartedOperations { get; private set; }
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+            StartedOperations++;
+
+        public override void ReportOperationRemainingGas(ulong gas) => cancellation.Cancel();
     }
 
     [Test]
