@@ -159,6 +159,10 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
+    // 0xae is reserved as EXTENSION by EIP-8163: on L1 it must keep halting exceptionally like
+    // INVALID (consuming all gas) and must never gain immediates that would affect JUMPDEST
+    // analysis. Do not assign 0xae to a new opcode.
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,
