@@ -147,14 +147,15 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Returns whether this call wrote rows (false also when the head is already covered). Only that proves
-    /// the hook is wired and, through <see cref="CaptureHealthy"/>, that a receipt body skipped on disk can be derived
-    /// from history later.</summary>
+    /// <summary>Returns whether the head is covered by rows: written by this walk, or already on disk at or above the
+    /// floor. Only that proves the hook is wired and, through <see cref="CaptureHealthy"/>, that a receipt body
+    /// skipped on disk can be derived from history later; a watermark advanced below a since-block floor proves
+    /// neither.</summary>
     private bool CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
         ulong target = persistedHead.BlockNumber;
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
-        if (hasWatermark && target <= watermark) return false;
+        if (hasWatermark && target <= watermark) return target >= _captureFromBlock;
 
         if (target < _captureFromBlock)
         {
