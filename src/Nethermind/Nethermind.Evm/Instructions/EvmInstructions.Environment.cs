@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -730,6 +731,7 @@ public static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
+    /// <see cref="EvmExceptionType.OutOfGas"/> if an EIP-7709 storage access cannot be paid;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
@@ -737,22 +739,26 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Deduct the gas cost for block hash operation.
         TGasPolicy.Consume<BlockHashGasCost>(ref gas);
 
-        // Pop the block number from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 blockNumber)) goto StackUnderflow;
 
-        // Retrieve the block hash for the given block number.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
-            ? null // Current block, future block, or unrepresentable block number
-            : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+        IReleaseSpec spec = vm.Spec;
+        if (!blockNumber.IsUint64 || blockNumber.u0 >= header.Number)
+        {
+            return stack.PushZero<TTracingInst>();
+        }
 
-        // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
+        ulong requestedBlockNumber = blockNumber.u0;
+        if (spec.IsBlockHashInStateAvailable)
+        {
+            return BlockHashFromState<TGasPolicy, TTracingInst>(vm, ref stack, ref gas, header, requestedBlockNumber, spec);
+        }
+
+        Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(header, requestedBlockNumber, spec);
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
-        // If block hash tracing is enabled and a valid block hash was obtained, report it.
         if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
         {
             vm.TxTracer.ReportBlockHash(blockHash);
@@ -762,6 +768,62 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Serves <c>BLOCKHASH</c> from the EIP-2935 history storage contract, as specified by
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7709#specification">EIP-7709</see>.
+    /// </summary>
+    /// <remarks>
+    /// Kept out of line so that the pre-EIP-7709 path — the only one that runs on today's networks — is not inflated in
+    /// every <c>(TGasPolicy, TTracingInst)</c> instantiation of <see cref="InstructionBlockHash{TGasPolicy,TTracingInst}"/>.
+    /// <para>
+    /// The opcode window (<see cref="Eip2935Constants.BlockHashServeWindow"/>) is narrower than the ring buffer the slot
+    /// is derived from (<see cref="IReleaseSpec.Eip2935RingBufferSize"/>), so an in-buffer but out-of-window block
+    /// returns zero without touching state. Within the window the read carries the full effects of <c>SLOAD</c>: the
+    /// cold/warm charge, slot warming, and state-access recording. Per EIP-2929 <c>SLOAD</c> warms the slot only, so the
+    /// history contract's account is deliberately left cold for a subsequent <c>BALANCE</c>/<c>EXTCODESIZE</c>.
+    /// </para>
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static EvmExceptionType BlockHashFromState<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        BlockHeader header,
+        ulong requestedBlockNumber,
+        IReleaseSpec spec)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (header.Number - requestedBlockNumber > Eip2935Constants.BlockHashServeWindow)
+        {
+            return stack.PushZero<TTracingInst>();
+        }
+
+        UInt256 storageIndex = new(requestedBlockNumber % spec.Eip2935RingBufferSize);
+        Address historyAddress = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        StorageCell storageCell = new(historyAddress, in storageIndex);
+        TGasPolicy.Consume<SLoadGasCost>(ref gas, spec);
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess,
+                in storageCell, StorageAccessType.SLOAD, spec))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+
+        // EIP-2935 stores hashes with leading zeros stripped, so the value is padded back to 32 bytes on the stack.
+        ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
+        bool isZero = value.Length == 1 && value[0] == 0;
+        EvmExceptionType pushResult = isZero
+            ? stack.PushZero<TTracingInst>()
+            : stack.PushBytes<TTracingInst>(value);
+
+        if (vm.TxTracer.IsTracingBlockHash && !isZero)
+        {
+            vm.TxTracer.ReportBlockHash(Hash256.FromBytesWithPadding(value));
+        }
+
+        return pushResult;
     }
 
     /// <summary>
