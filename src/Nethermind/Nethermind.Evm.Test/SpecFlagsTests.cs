@@ -79,6 +79,12 @@ public class SpecFlagsTests
             .Select(static m => m.Groups["rule"].Value).ToHashSet();
 
         StringBuilder wrong = new();
+
+        // Everything below walks Rules, so a constant with no entry there would go unexamined - the
+        // one way the generated file could drift while this test still passed.
+        Assert.That(constants.Keys.Except(Rules.Select(static r => r.Rule)), Is.Empty,
+            "A folded constant with no entry in Rules is never checked against the fork graph.");
+
         foreach ((string rule, Func<IReleaseSpec, bool> read) in Rules)
         {
             bool value = read(range[0]);

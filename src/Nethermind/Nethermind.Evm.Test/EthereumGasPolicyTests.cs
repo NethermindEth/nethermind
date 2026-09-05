@@ -96,6 +96,85 @@ public class EthereumGasPolicyTests
         _ = spec.DidNotReceive().UseHotAndColdStorage;
     }
 
+    [Test, Combinatorial]
+    public void Specialized_net_metered_sstore_matches_dynamic_policy_without_reading_fork_flags(
+        [Values] bool eip8038,
+        [Values(0UL, 100UL, 2200UL, 100000UL)] ulong availableGas)
+    {
+        IReleaseSpec spec = CreateGasCostSpec(eip8038);
+        EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
+        EthereumGasPolicy specializedGas = dynamicGas;
+        bool expected = NetMeteredDynamic(ref dynamicGas, spec);
+        spec.ClearReceivedCalls();
+        bool actual = eip8038
+            ? EthereumGasPolicy.ConsumeNetMeteredSStoreGas<OnFlag>(ref specializedGas, spec)
+            : EthereumGasPolicy.ConsumeNetMeteredSStoreGas<OffFlag>(ref specializedGas, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            AssertGasMatches(in specializedGas, in dynamicGas);
+        }
+        _ = spec.DidNotReceive().IsEip8038Enabled;
+    }
+
+    [Test, Combinatorial]
+    public void Specialized_storage_write_matches_dynamic_policy_without_reading_fork_flags(
+        [Values] bool eip8037, [Values] bool slotCreation, [Values] bool eip8038,
+        [Values(0UL, 100UL, 20000UL, 100000UL)] ulong availableGas)
+    {
+        IReleaseSpec spec = CreateGasCostSpec(eip8038);
+        EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
+        EthereumGasPolicy specializedGas = dynamicGas;
+        bool expected = StorageWriteDynamic(ref dynamicGas, spec, eip8037, slotCreation);
+        spec.ClearReceivedCalls();
+        bool actual = StorageWriteSpecialized(ref specializedGas, spec, eip8037, slotCreation, eip8038);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            AssertGasMatches(in specializedGas, in dynamicGas);
+        }
+        _ = spec.DidNotReceive().IsEip8038Enabled;
+    }
+
+    // The net-metered charge has no non-generic form on the policy, so reach the interface default.
+    private static bool NetMeteredDynamic<TPolicy>(ref TPolicy gas, IReleaseSpec spec)
+        where TPolicy : struct, IGasPolicy<TPolicy> => TPolicy.ConsumeNetMeteredSStoreGas(ref gas, spec);
+
+    private static bool StorageWriteDynamic(ref EthereumGasPolicy gas, IReleaseSpec spec, bool eip8037, bool slotCreation) =>
+        (eip8037, slotCreation) switch
+        {
+            (true, true) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OnFlag>(ref gas, spec),
+            (true, false) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OffFlag>(ref gas, spec),
+            (false, true) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OnFlag>(ref gas, spec),
+            (false, false) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OffFlag>(ref gas, spec),
+        };
+
+    private static bool StorageWriteSpecialized(ref EthereumGasPolicy gas, IReleaseSpec spec, bool eip8037, bool slotCreation, bool eip8038) =>
+        (eip8037, slotCreation, eip8038) switch
+        {
+            (true, true, true) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OnFlag, OnFlag>(ref gas, spec),
+            (true, true, false) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OnFlag, OffFlag>(ref gas, spec),
+            (true, false, true) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OffFlag, OnFlag>(ref gas, spec),
+            (true, false, false) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OffFlag, OffFlag>(ref gas, spec),
+            (false, true, true) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OnFlag, OnFlag>(ref gas, spec),
+            (false, true, false) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OnFlag, OffFlag>(ref gas, spec),
+            (false, false, true) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OffFlag, OnFlag>(ref gas, spec),
+            (false, false, false) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OffFlag, OffFlag>(ref gas, spec),
+        };
+
+    // The costs have to agree with the flag: SpecGasCosts folds NetMeteredSStoreCost to Free under
+    // EIP-8038, and that is the invariant the specialized forms rely on.
+    private static IReleaseSpec CreateGasCostSpec(bool eip8038)
+    {
+        IReleaseSpec source = eip8038 ? Amsterdam.Instance : Osaka.Instance;
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8038Enabled.Returns(eip8038);
+        spec.GasCosts.Returns(source.GasCosts);
+        return spec;
+    }
+
     private static IReleaseSpec CreateAccessSpec(bool hotAndCold, bool eip8038)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();

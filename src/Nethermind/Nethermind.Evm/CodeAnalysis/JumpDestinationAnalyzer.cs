@@ -146,7 +146,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         }
         else
         {
-            ProcessJumpDestinationBitmap_Scalar(skippedBytes: 0, bitmap, code);
+            ProcessJumpDestinationBitmap_Scalar(bitmap, code);
         }
 #else
         // A PUSH in the first word predicts code where the byte scanner is cheaper on the JIT.
@@ -156,7 +156,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         }
         else
         {
-            ProcessJumpDestinationBitmap_Scalar(skippedBytes: 0, bitmap, code);
+            ProcessJumpDestinationBitmap_Scalar(bitmap, code);
         }
 #endif
 
@@ -164,14 +164,14 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     }
 
     [SkipLocalsInit]
-    private static void ProcessJumpDestinationBitmap_Scalar(nuint skippedBytes, Span<long> bitmap, ReadOnlySpan<byte> code)
+    private static void ProcessJumpDestinationBitmap_Scalar(Span<long> bitmap, ReadOnlySpan<byte> code)
     {
         long currentFlags = 0;
         nuint flagsPosition = 0;
         nuint length = (nuint)code.Length;
         nuint wordEnd = length & ~(nuint)(BytesPerUInt64 - 1);
         ref byte codeRef = ref MemoryMarshal.GetReference(code);
-        nuint programCounter = skippedBytes;
+        nuint programCounter = 0;
         ulong byteHighBits = ByteHighBits;
         ulong jumpDestBytes = JumpDestBytes;
         ulong byteOnes = 0x0101010101010101UL;

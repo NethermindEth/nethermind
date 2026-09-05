@@ -69,6 +69,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // The fork comes from Spec here and in GetOpcodeTable, so the cache key and the table contents
         // cannot describe different forks.
         IReleaseSpec spec = Spec;
+        // Per transaction, not per table build: a cached table would otherwise let a later block
+        // outside the compiled fork range run against rules that do not describe it.
+        SpecFlags.Validate(spec);
         OpcodeTable table = GetOpcodeTable();
 
         // Traced tables are left alone: a tracing run is short, and rebuilding one would cost more than

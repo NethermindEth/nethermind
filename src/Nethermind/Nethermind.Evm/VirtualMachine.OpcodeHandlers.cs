@@ -55,8 +55,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType> badInstruction =
             TerminatingOpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
 
-        SpecFlags.Validate(spec);
-
         for (int i = 0; i < lookup.Length; i++)
             lookup[i] = badInstruction;
 
@@ -814,18 +812,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             OpcodeResult result = TTracingInst.IsActive
                 ? EvmInstructions.InstructionJump(ref stack, ref gas, vm, programCounter)
                 : EvmInstructions.InstructionJumpAndSkipJumpDest(ref stack, ref gas, vm, programCounter);
-            programCounter = result.ProgramCounter;
-            return result.Exception;
-        }
-    }
-
-    private readonly struct JumpIfOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
-    {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
-        {
-            OpcodeResult result = TTracingInst.IsActive
-                ? EvmInstructions.InstructionJumpIf(ref stack, ref gas, vm, programCounter)
-                : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref gas, vm, programCounter);
             programCounter = result.ProgramCounter;
             return result.Exception;
         }
