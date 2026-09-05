@@ -438,6 +438,12 @@ internal sealed class MethodResolver(Assembly assembly)
             return aliasType;
         }
 
+        // An array suffix looks like an empty generic argument list, so it has to be taken first.
+        if (typeName.EndsWith("[]", StringComparison.Ordinal))
+        {
+            return ResolveTypeParam(typeName[..^2], declaringType)?.MakeArrayType();
+        }
+
         int argumentStart = typeName.IndexOfAny(['<', '[']);
         if (argumentStart > 0 && typeName[^1] is '>' or ']')
         {
