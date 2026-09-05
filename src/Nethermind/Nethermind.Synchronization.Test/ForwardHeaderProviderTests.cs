@@ -278,7 +278,7 @@ public partial class ForwardHeaderProviderTests
         int allocationTimeout = -1;
         ctx.PeerPool
             .Allocate(Arg.Do<IPeerAllocationStrategy>(s => strategy = s), Arg.Any<AllocationContexts>(), Arg.Do<int>(t => allocationTimeout = t), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(SyncPeerAllocation.FailedAllocation));
+            .Returns(Task.FromResult(new SyncPeerAllocation(AllocationContexts.None)));
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await ctx.ForwardHeaderProvider.GetBlockHeaders(0, 128, CancellationToken.None);
         using (Assert.EnterMultipleScope())
@@ -544,14 +544,15 @@ public partial class ForwardHeaderProviderTests
         public void ConfigureBestPeer(ISyncPeer syncPeer) =>
             ConfigureBestPeer(new PeerInfo(syncPeer));
 
-        public void ConfigureBestPeer(PeerInfo peerInfo)
-        {
-            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
-
+        public void ConfigureBestPeer(PeerInfo peerInfo) =>
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult(peerAllocation));
-        }
+                .Returns(ci =>
+                {
+                    SyncPeerAllocation peerAllocation = new(ci.ArgAt<AllocationContexts>(1), null);
+                    peerAllocation.AllocatePeer(peerInfo);
+                    return Task.FromResult(peerAllocation);
+                });
     }
 
     private class SyncPeerMock : ISyncPeer

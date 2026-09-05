@@ -62,56 +62,48 @@ public class PowForwardHeaderProvider(
     {
         // PrepareRequest must return to the dispatcher when no better peer exists so a feed-state
         // transition is observed; an unbounded allocation would remain parked inside this method.
-        SyncPeerAllocation allocation = await syncPeerPool.Allocate(
+        using SyncPeerAllocation allocation = await syncPeerPool.Allocate(
             _bestPeerAllocationStrategy,
             AllocationContexts.ForwardHeader,
             timeoutMilliseconds: 0,
             cancellationToken: cancellation);
 
-        // Skip Free for a failed allocation: it holds no peer and would signal peers-changed each poll.
         PeerInfo? peerInfo = allocation.Current;
         if (peerInfo is null) return null;
 
-        try
+        if (peerInfo != _currentBestPeer)
         {
-            if (peerInfo != _currentBestPeer)
-            {
-                OnNewBestPeer(peerInfo);
-            }
+            OnNewBestPeer(peerInfo);
+        }
 
-            syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
+        syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
 
-            if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
+        if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
 
-            // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
-            // TODO: Unit test this mechanism.
-            IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
-            if (headers is not null)
-            {
-                ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
-                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
-                return headers;
-            }
-
-            headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
-            if (headers is not null)
-            {
-                ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
-                if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"No header received");
-                _currentBestPeer = null;
-            }
-
-            if (headers is not null && headers.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.AsSpan().ToPooledList();
+        // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
+        // TODO: Unit test this mechanism.
+        IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
+        if (headers is not null)
+        {
+            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
             return headers;
         }
-        finally
+
+        headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
+        if (headers is not null)
         {
-            syncPeerPool.Free(allocation);
+            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
         }
+        else
+        {
+            if (_logger.IsTrace) _logger.Trace($"No header received");
+            _currentBestPeer = null;
+        }
+
+        if (headers is not null && headers.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.AsSpan().ToPooledList();
+        return headers;
     }
 
     private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch()

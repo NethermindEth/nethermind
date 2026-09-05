@@ -836,12 +836,17 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payloadResultB3 = await AddNewBlockV3(rpcModuleB, chainB, 1);
 
         SyncPeerMock chainAPeer = new(chainA.BlockTree);
-        SyncPeerAllocation alloc = new(new PeerInfo(chainAPeer), AllocationContexts.All);
+        PeerInfo chainAPeerInfo = new(chainAPeer);
         chainC.SyncPeerPool!.Allocate(
             Arg.Any<IPeerAllocationStrategy>(),
             Arg.Any<AllocationContexts>(),
             Arg.Any<int>(),
-            Arg.Any<CancellationToken>())!.Returns(Task.FromResult(alloc));
+            Arg.Any<CancellationToken>())!.Returns(ci =>
+            {
+                SyncPeerAllocation allocation = new(ci.ArgAt<AllocationContexts>(1));
+                allocation.AllocatePeer(chainAPeerInfo);
+                return Task.FromResult(allocation);
+            });
 
 
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(payloadResultA1.BlockHash, chainC.BlockTree.GenesisHash!, chainC.BlockTree.GenesisHash!), null);
