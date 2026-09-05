@@ -222,15 +222,22 @@ public static partial class EvmInstructions
         // The index and the word it applies to are adjacent, so one depth check covers both.
         if (!stack.EnsureDepth(2))
             goto StackUnderflow;
-        ref byte bytesRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
+        ref byte bytesRef = ref stack.Pop1Peek32BytesUnchecked();
 
-        if (a >= BigInt32)
+        // Only an index below 32 extends anything, so test the index where it lies. Decoding it as
+        // a 256-bit value reverses 32 bytes to reach one, and the word has to go to the frame and
+        // come back to be read as scalars.
+        ref ulong index = ref As<byte, ulong>(ref Add(ref bytesRef, EvmStack.WordSize));
+        ulong indexLow = Add(ref index, 3);
+        nint selector = (nint)(indexLow >> 56);
+        if ((index | Add(ref index, 1) | Add(ref index, 2) |
+            (indexLow & 0x00FF_FFFF_FFFF_FFFFUL)) != 0 || selector >= EvmStack.WordSize)
         {
             // If the index is out-of-range, no extension is needed.
             return EvmExceptionType.None;
         }
 
-        int position = 31 - (int)a;
+        int position = 31 - (int)selector;
 
         // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
         sbyte sign = (sbyte)Add(ref bytesRef, position);
