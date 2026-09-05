@@ -8,7 +8,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Core.Extensions;
 
-public static class EvmWordExtensions
+public static partial class EvmWordExtensions
 {
     extension(EvmWord word)
     {
@@ -39,14 +39,19 @@ public static class EvmWordExtensions
                 return Vector256.Create(lower, upper).AsByte();
             }
 
-            Vector256<ulong> u = word.AsUInt64();
-            ulong out0 = Bytes.Bswap64(u.GetElement(3));
-            ulong out1 = Bytes.Bswap64(u.GetElement(2));
-            ulong out2 = Bytes.Bswap64(u.GetElement(1));
-            ulong out3 = Bytes.Bswap64(u.GetElement(0));
-            return Vector256.Create(out0, out1, out2, out3).AsByte();
+            return ByteSwapScalar(word);
         }
     }
+
+    /// <summary>Byte-reverses a 32-byte word without SIMD.</summary>
+    /// <param name="word">The word to reverse.</param>
+    /// <returns><paramref name="word"/> with its bytes in the opposite order.</returns>
+    /// <remarks>Split per target. Both arms reverse the same four lanes and swap their order; they differ
+    /// only in how they get at them. A host reaches this at all only without AVX2 or AdvSimd, so it keeps
+    /// the vector spelling; the guest has no vectors, where <c>GetElement</c> and <c>Vector256.Create</c>
+    /// become a stack round-trip per lane around a byte swap that is already only a few instructions.
+    /// See <c>EvmWordExtensions.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial EvmWord ByteSwapScalar(EvmWord word);
 
     // PSHUFB / PermuteVar32x8 mask that byte-reverses a 256-bit word.
     // Property form so the JIT folds it to a PC-relative rodata load at every call site.
