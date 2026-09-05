@@ -714,7 +714,8 @@ public class ArchiveProofTests
             storageExactDepth: 0,
             storageCheckpointDepth: 0,
             largeTrieSignalDepth: 2,
-            storageRowsSignalDepth: 1);
+            storageRowsSignalDepth: 1,
+            storageSnapshotDepth: 0);
 
         _chain.AddBlock(Blocks + 1, block =>
         {
@@ -739,8 +740,9 @@ public class ArchiveProofTests
         }
     }
 
-    [Test]
-    public void A_quiet_contract_keeps_its_deep_storage_rows_in_the_epoch_that_survives_the_drop()
+    [TestCase(HistoryWalkVerifier.DefaultMaxRowsPerPartition, TestName = "WholeSubtree")]
+    [TestCase(40L, TestName = "SplitBySlotPrefix")]
+    public void A_quiet_contract_keeps_its_deep_storage_rows_in_the_epoch_that_survives_the_drop(long maxRowsPerPartition)
     {
         _policy = EpochPolicy;
         _recentEpochs = 1;
@@ -748,7 +750,7 @@ public class ArchiveProofTests
         Address quiet = TestItem.AddressD;
         _chain.AddBlock(Blocks + 1, block =>
         {
-            for (int slot = 0; slot < 24; slot++) block.SetStorage(quiet, (UInt256)(5000 + slot), [(byte)(slot + 1), 0x02]);
+            for (int slot = 0; slot < 64; slot++) block.SetStorage(quiet, (UInt256)(5000 + slot), [(byte)(slot + 1), 0x02]);
         });
 
         for (ulong number = Blocks + 2; number <= 300; number++)
@@ -758,15 +760,175 @@ public class ArchiveProofTests
         }
 
         _chain.PublishWatermark();
-        BuildCommitments();
+        BuildCommitments(maxRowsPerPartition);
         CreateRetrofit(_policy).PruneBelow(_chain.Head);
 
         ValueHash256 identity = Keccak.Compute(quiet.Bytes).ValueHash256;
         IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 0)),
+                Is.True,
+                "sixty-four slot rows overflow a forty-row budget, so the contract is split by slot prefix and its root is only ever folded from the partitions' series; the epoch start has to reach that fold, or the root of a contract that stood still has no row in the epoch that survives the drop");
+            Assert.That(
+                storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 2)),
+                Is.True,
+                "a split partition publishes its view at the split depth, but the epoch start snapshot has to reach every depth the storage tier publishes below it, or dropping the older epoch leaves heights served that no row can answer");
+        }
+    }
+
+    [Test]
+    public void Pruning_holds_at_the_last_epoch_the_walk_verified()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        BuildCommitments();
+
+        CreateRetrofit(_policy).PruneBelow(_policy.EpochStart(5));
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        CommitmentMetadata metadata = new(_historyColumns, _policy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 1, CommitmentKeyLayout.CoarseTier)),
+                Is.True,
+                "only the walk writes the epoch snapshot a retained epoch needs, so rows of an epoch the walk never reached must stay on disk even after the floor has moved past them");
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(5ul), "the floor itself rises, which only narrows what is served");
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(1ul), "deletion stops at the last epoch whose start the walk verified");
+        }
+    }
+
+    [Test]
+    public void Coverage_advanced_by_the_tip_alone_does_not_let_the_pruner_delete()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        Assert.That(verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None).Mismatches, Is.Empty);
+
+        CommitmentMetadata metadata = new(_historyColumns, _policy);
+        metadata.AdvanceTipSeries(0, _chain.Head, out _);
+        Assert.That(metadata.TryGetCoverage(out ulong _, out ulong coveredTo) && coveredTo == _chain.Head, Is.True, "the tip publishes coverage from genesis on its own");
+
+        retrofit.PruneBelow(_chain.Head);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)),
+                Is.True,
+                "the tip writes rows only for nodes a block changed and never an epoch snapshot, so its coverage says nothing about whether an epoch can be dropped");
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(0ul));
+        }
+    }
+
+    [Test]
+    public void Walk_coverage_that_does_not_reach_an_epoch_start_reclaims_nothing()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        CommitmentMetadata metadata = new(_historyColumns, _policy);
+        Assert.That(metadata.TryPublishVerifiedCoverage(300, 380, out _, out _), Is.True);
+
+        CreateRetrofit(_policy).PruneBelow(_policy.EpochStart(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(5ul));
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(0ul), "epoch 2 starts at block 256, which the walk did not cover, so no retained epoch has a snapshot yet");
+        }
+    }
+
+    [Test]
+    public void Reclaim_is_bounded_per_pass_and_resumes_from_its_cursor()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        for (ulong number = Blocks + 1; number <= 780; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        CommitmentMetadata metadata = new(_historyColumns, _policy);
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+
+        retrofit.PruneBelow(_chain.Head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(6ul));
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(4ul), "a pass deletes at most four epochs so the capture round that runs it is never held for long");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 3, CommitmentKeyLayout.CoarseTier)), Is.False);
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 4, CommitmentKeyLayout.CoarseTier)), Is.True, "the epochs past the budget wait for the next pass");
+        }
+
+        retrofit.PruneBelow(_chain.Head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(6ul));
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 4, CommitmentKeyLayout.CoarseTier) || IsEpochTier(key, epoch: 5, CommitmentKeyLayout.CoarseTier)), Is.False);
+        }
+    }
+
+    [Test]
+    public void Floors_only_ever_rise()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.TryRaiseRetainedFromEpoch(3), Is.True);
+            Assert.That(metadata.TryRaiseRetainedFromEpoch(2), Is.False, "two pruners run at once, one on the capture round and one after the walk, and a stale write from either must not move a floor back");
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
+        }
+    }
+
+    [Test]
+    public void A_stamp_of_the_previous_length_is_a_layout_mismatch()
+    {
+        byte[] previous = new byte[1 + CommitmentDepthPolicy.StampLength - 1];
+        previous[0] = CommitmentMetadata.FormatVersion;
+        Span<byte> current = stackalloc byte[CommitmentDepthPolicy.StampLength];
+        TestPolicy.WriteStamp(current);
+        current[..(CommitmentDepthPolicy.StampLength - 1)].CopyTo(previous.AsSpan(1));
+        _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).PutSpan([0xFE, 0x01], previous);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => new CommitmentMetadata(_historyColumns, TestPolicy).EnsureLayout(TestPolicy, discardMismatched: false, LimboLogs.Instance.GetClassLogger<ArchiveProofTests>()), Throws.InstanceOf<InvalidConfigurationException>(),
+                "columns written before the snapshot depth joined the stamp cannot be told apart from a shallower layout, so they are refused rather than read");
+            Assert.That(() => new CommitmentMetadata(_historyColumns, TestPolicy).EnsureLayout(TestPolicy, discardMismatched: true, LimboLogs.Instance.GetClassLogger<ArchiveProofTests>()), Throws.Nothing);
+        }
+    }
+
+    [Test]
+    public void A_storage_snapshot_deeper_than_the_checkpoint_tier_is_refused() =>
         Assert.That(
-            storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 2)),
-            Is.True,
-            "the epoch start snapshot has to reach every depth the storage tier publishes, or dropping the older epoch leaves heights served that no row can answer");
+            () => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, 2, 5, 2, 4, 6, 4, storageSnapshotDepth: 5),
+            Throws.InstanceOf<InvalidConfigurationException>(),
+            "a snapshot row below the checkpoint depth would be written by nothing else and read by nothing");
+
+    [Test]
+    public void Turning_epoch_dropping_on_after_a_build_no_longer_matches_the_layout()
+    {
+        CommitmentDepthPolicy keeping = CommitmentDepthPolicy.FromConfig(new FlatDbConfig { HistoryEnabled = true });
+        CommitmentDepthPolicy dropping = CommitmentDepthPolicy.FromConfig(new FlatDbConfig { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofRecentEpochs = 1 });
+
+        Span<byte> stamp = stackalloc byte[CommitmentDepthPolicy.StampLength];
+        keeping.WriteStamp(stamp);
+
+        Assert.That(dropping.MatchesStamp(stamp), Is.False,
+            "the epoch snapshot depth decides which storage nodes get a row, so flipping it has to be refused or discard the columns rather than silently reuse shallower snapshots the first drop would strand");
     }
 
     private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)
@@ -806,7 +968,7 @@ public class ArchiveProofTests
         }
     }
 
-    private static CommitmentDepthPolicy EpochPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1, CommitmentDepthPolicy.DefaultAccountComposedDepths, epochLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
+    private static CommitmentDepthPolicy EpochPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1, CommitmentDepthPolicy.DefaultAccountComposedDepths, epochLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1, storageSnapshotDepth: CommitmentDepthPolicy.DefaultStorageCheckpointDepth);
 
     private int _recentEpochs;
     private int _fineEpochs;

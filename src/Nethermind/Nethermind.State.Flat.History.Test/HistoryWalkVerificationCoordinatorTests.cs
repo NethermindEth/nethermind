@@ -149,6 +149,7 @@ public class HistoryWalkVerificationCoordinatorTests
         }
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.TryPublishVerifiedCoverage(0, 3, out _, out _);
         metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems);
         metadata.AdvanceTipSeries(2, 8, out _);
         availability.PublishWatermark(8, rowFormat.FormatVersion);
@@ -166,6 +167,39 @@ public class HistoryWalkVerificationCoordinatorTests
             Assert.That(coordinator.LastVerdict, Is.Null, "an interrupted catch-up whose blocks the tip has already committed must be dropped, not resumed: resuming costs a scan of the whole key space to find blocks that are already there");
             Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "and its marks must go, or the next restart resumes it again");
         }
+    }
+
+    [Test]
+    public async Task AnUnfinishedWalkOverBlocksNoWalkHasVerified_IsResumedRatherThanDropped()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems);
+        metadata.AdvanceTipSeries(0, 8, out _);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        Assert.That(coordinator.LastVerdict?.Verified, Is.True,
+            "the tip series brackets every range the coordinator picks once the retained floor has risen above the block the tip started at, so dropping on that alone would leave a first walk, and the epoch snapshots pruning needs, permanently unwritten");
     }
 
     [Test]

@@ -22,9 +22,7 @@ public sealed class ArchiveProofRetrofit(
 
     public ulong WindowGranularity => policy.Interval;
 
-    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata, StorageSnapshotDepth);
-
-    private int StorageSnapshotDepth => settings.RecentEpochs > 0 ? policy.StorageCheckpointDepth : CommitmentEmitter.DefaultStorageSnapshotDepth;
+    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata);
 
     public void Prepare()
     {
@@ -42,24 +40,21 @@ public sealed class ArchiveProofRetrofit(
         if (headEpoch + 1 <= (ulong)settings.RecentEpochs) return 0;
 
         ulong floorEpoch = headEpoch + 1 - (ulong)settings.RecentEpochs;
-        ulong retained = metadata.RetainedFromEpoch;
-        if (floorEpoch <= retained) return policy.EpochStart(retained);
-
-        metadata.SetRetainedFromEpoch(floorEpoch);
-        if (metadata.FineFromEpoch < floorEpoch) metadata.SetFineFromEpoch(floorEpoch);
-        return policy.EpochStart(floorEpoch);
+        if (metadata.TryRaiseRetainedFromEpoch(floorEpoch)) metadata.TryRaiseFineFromEpoch(floorEpoch);
+        return policy.EpochStart(metadata.RetainedFromEpoch);
     }
 
-    public void PublishCoverage(ulong fromInclusive, ulong toInclusive)
+    public bool PublishCoverage(ulong fromInclusive, ulong toInclusive)
     {
         if (!metadata.TryPublishVerifiedCoverage(fromInclusive, toInclusive, out ulong coveredFrom, out ulong coveredTo))
         {
             if (_logger.IsWarn) _logger.Warn(
                 $"Archive proof commitments for blocks {fromInclusive} to {toInclusive} were built but not published: they do not touch the already published coverage {coveredFrom} to {coveredTo}, and coverage is one contiguous range. Build the gap between them to join the two.");
-            return;
+            return false;
         }
 
         if (_logger.IsInfo) _logger.Info(
             $"Archive proof commitments cover blocks {coveredFrom} to {coveredTo}; eth_getProof serves that range once FlatDb.ArchiveProofServeEnabled is on.");
+        return true;
     }
 }

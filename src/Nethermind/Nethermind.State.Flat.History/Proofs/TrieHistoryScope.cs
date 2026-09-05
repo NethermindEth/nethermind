@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence;
@@ -70,15 +69,12 @@ internal abstract class TrieHistoryScope(
 
         while (true)
         {
-            ReadOnlySpan<byte> rowKey;
-            ReadOnlySpan<byte> storedValue;
-            ulong rowBlock;
             using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..upperLength], ReadFlags.HintCacheMiss))
             {
                 if (!view.MoveNext()) return;
 
                 budget.ChargeRow();
-                rowKey = view.CurrentKey;
+                ReadOnlySpan<byte> rowKey = view.CurrentKey;
                 if (rowKey.Length != RowKeyLength)
                 {
                     cursorLength = Advance(cursor, rowKey);
@@ -86,8 +82,8 @@ internal abstract class TrieHistoryScope(
                 }
 
                 rowKey[..keyLength].CopyTo(seek);
-                rowBlock = rowFormat.DecodeSuffixBlock(rowKey[keyLength..]);
-                storedValue = view.CurrentValue;
+                ulong rowBlock = rowFormat.DecodeSuffixBlock(rowKey[keyLength..]);
+                ReadOnlySpan<byte> storedValue = view.CurrentValue;
                 if (rowBlock <= block && BelongsToScope(rowKey))
                 {
                     Collect(seek[..keyLength], rowBlock, storedValue, block, leaves);
@@ -102,7 +98,7 @@ internal abstract class TrieHistoryScope(
                 continue;
             }
 
-            BinaryPrimitives.WriteUInt64BigEndian(seek[keyLength..], ~block);
+            rowFormat.EncodeSuffixBlock(seek[keyLength..], block);
             using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..upperLength], ReadFlags.HintCacheMiss))
             {
                 if (!atBlock.MoveNext()) return;

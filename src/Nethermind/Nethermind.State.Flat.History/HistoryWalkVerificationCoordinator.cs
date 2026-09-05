@@ -119,7 +119,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
                     {
-                        if (TipCovers(pendingFrom, pendingTo))
+                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom))
                         {
                             _metadata.ClearWalk(HistoryWalkRun.WorkItems);
                             if (_logger.IsInfo) _logger.Info(
@@ -149,7 +149,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                             return;
                         }
 
-                        _retrofit?.PublishCoverage(from, to);
+                        if (_retrofit is not null && !_retrofit.PublishCoverage(from, to)) return;
+
                         _retrofit?.PruneBelow(to);
                         if (_logger.IsInfo) _logger.Info(
                             $"History walk verification PASSED: {verdict.BlocksCompared} blocks rebuilt from rows and matched against headers in {elapsed}.");
@@ -188,6 +189,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>
         _metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
+
+    private bool VerifiedReaches(ulong fromInclusive) =>
+        fromInclusive > 0 && _metadata.TryGetWalkVerified(out ulong _, out ulong verified) && verified >= fromInclusive - 1;
 
     private void LogFailure(HistoryWalkVerdict verdict, TimeSpan elapsed)
     {

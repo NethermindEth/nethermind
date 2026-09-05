@@ -22,6 +22,9 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private static ReadOnlySpan<byte> WalkRangeKey => [Marker, 0x04];
     private static ReadOnlySpan<byte> RetainedFromEpochKey => [Marker, 0x07];
     private static ReadOnlySpan<byte> FineFromEpochKey => [Marker, 0x08];
+    private static ReadOnlySpan<byte> DroppedThroughEpochKey => [Marker, 0x09];
+    private static ReadOnlySpan<byte> DemotedThroughEpochKey => [Marker, 0x0A];
+    private static ReadOnlySpan<byte> WalkVerifiedKey => [Marker, 0x0B];
     private const byte WalkItemMarker = 0x05;
     private const byte WalkItemProgressMarker = 0x06;
     public const int MaxWalkItems = 1 << 16;
@@ -139,27 +142,40 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         return fromInclusive <= toInclusive;
     }
 
-    public ulong RetainedFromEpoch
+    public ulong RetainedFromEpoch => ReadEpoch(RetainedFromEpochKey);
+
+    public bool TryRaiseRetainedFromEpoch(ulong epoch) => TryRaiseEpoch(RetainedFromEpochKey, epoch);
+
+    public ulong FineFromEpoch => ReadEpoch(FineFromEpochKey);
+
+    public bool TryRaiseFineFromEpoch(ulong epoch) => TryRaiseEpoch(FineFromEpochKey, epoch);
+
+    public ulong DroppedThroughEpoch => ReadEpoch(DroppedThroughEpochKey);
+
+    public bool TryRaiseDroppedThroughEpoch(ulong epoch) => TryRaiseEpoch(DroppedThroughEpochKey, epoch);
+
+    public ulong DemotedThroughEpoch => ReadEpoch(DemotedThroughEpochKey);
+
+    public bool TryRaiseDemotedThroughEpoch(ulong epoch) => TryRaiseEpoch(DemotedThroughEpochKey, epoch);
+
+    public bool TryGetWalkVerified(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkVerifiedKey, out fromInclusive, out toInclusive);
+
+    private ulong ReadEpoch(ReadOnlySpan<byte> key)
     {
-        get
-        {
-            byte[]? value = _column.Get(RetainedFromEpochKey);
-            return value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
-        }
+        byte[]? value = _column.Get(key);
+        return value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
     }
 
-    public void SetRetainedFromEpoch(ulong epoch) => WriteEpoch(RetainedFromEpochKey, epoch);
-
-    public ulong FineFromEpoch
+    private bool TryRaiseEpoch(ReadOnlySpan<byte> key, ulong epoch)
     {
-        get
+        lock (_lock)
         {
-            byte[]? value = _column.Get(FineFromEpochKey);
-            return value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
+            if (epoch <= ReadEpoch(key)) return false;
+
+            WriteEpoch(key, epoch);
+            return true;
         }
     }
-
-    public void SetFineFromEpoch(ulong epoch) => WriteEpoch(FineFromEpochKey, epoch);
 
     private void WriteEpoch(ReadOnlySpan<byte> key, ulong epoch)
     {
@@ -190,9 +206,17 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
                 coveredFrom = Math.Min(from, fromInclusive);
                 coveredTo = Math.Max(to, toInclusive);
-                if (coveredFrom == from && coveredTo == to) return true;
             }
 
+            ulong walkFrom = fromInclusive;
+            ulong walkTo = toInclusive;
+            if (TryReadRange(WalkVerifiedKey, out ulong knownFrom, out ulong knownTo))
+            {
+                walkFrom = Math.Min(walkFrom, knownFrom);
+                walkTo = Math.Max(walkTo, knownTo);
+            }
+
+            WriteRange(WalkVerifiedKey, walkFrom, walkTo);
             WriteRange(CoverageKey, coveredFrom, coveredTo);
             return true;
         }

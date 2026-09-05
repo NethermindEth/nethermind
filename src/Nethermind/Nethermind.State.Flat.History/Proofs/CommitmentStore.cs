@@ -99,11 +99,14 @@ internal sealed class CommitmentStore
     {
         Span<byte> lower = stackalloc byte[CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength];
         Span<byte> upper = stackalloc byte[CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength];
+        Span<byte> reclaimUpper = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];
         CommitmentKeyLayout.WriteEpochTier(lower, epoch, tier);
         CommitmentKeyLayout.WriteEpochTier(upper, epoch, (byte)(tier + 1));
+        reclaimUpper.Fill(0xFF);
+        lower.CopyTo(reclaimUpper);
         IRangeRemovableKeyValueStore removable = (IRangeRemovableKeyValueStore)_column;
         removable.RemoveRange(lower, upper);
-        removable.ReclaimRange(lower, upper);
+        removable.ReclaimRange(lower, reclaimUpper);
     }
 
     public sealed class RowChain : IDisposable

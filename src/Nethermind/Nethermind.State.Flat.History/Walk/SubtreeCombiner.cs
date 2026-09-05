@@ -117,6 +117,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 while (nextEpochStart <= to && nextEpochStart < block)
                 {
                     emitter!.BeginBlock(nextEpochStart);
+                    for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(nextEpochStart, groupViews[nibble], emitter);
                     rootPublisher.Publish(nextEpochStart, current, emitter);
                     emitter.CompleteBlock();
                     nextEpochStart += emitter.Policy.EpochBlocks;

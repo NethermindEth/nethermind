@@ -13,8 +13,6 @@ internal sealed class TrieChangeCollector
     private readonly List<(TreePath Path, TrieNode Node)> _changed = [];
     private int _deepestReached;
 
-    public int DeepestReached => _deepestReached;
-
     public void Collect(TrieNode? root, int maxDepth) => Collect(root, maxDepth, resolver: null);
 
     public void CollectAll(TrieNode? root, int maxDepth, ITrieNodeResolver resolver) => Collect(root, maxDepth, resolver);

@@ -48,4 +48,7 @@ public sealed class HistoryRowFormat
         ulong raw = BinaryPrimitives.ReadUInt64BigEndian(suffix);
         return IsV3 ? raw : ~raw;
     }
+
+    public void EncodeSuffixBlock(Span<byte> suffix, ulong block) =>
+        BinaryPrimitives.WriteUInt64BigEndian(suffix, IsV3 ? block : ~block);
 }

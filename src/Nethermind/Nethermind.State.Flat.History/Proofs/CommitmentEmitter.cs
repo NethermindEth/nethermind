@@ -27,7 +27,6 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly object _windowWriteLock;
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
-    private readonly int _storageSnapshotDepth;
 
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
@@ -46,23 +45,22 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _block;
     private bool _haveBlock;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int storageSnapshotDepth)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes)
     {
         _history = history;
         _policy = policy;
         _metadata = metadata;
         _windowWriteLock = metadata.WindowWriteLock;
         _maxOpenWindowNodes = maxOpenWindowNodes;
-        _storageSnapshotDepth = storageSnapshotDepth;
         _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
         _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int storageSnapshotDepth = DefaultStorageSnapshotDepth) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes, storageSnapshotDepth);
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
+        new(history, policy, metadata, WalkMaxOpenWindowNodes);
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes, DefaultStorageSnapshotDepth);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes);
 
     public CommitmentDepthPolicy Policy => _policy;
 
@@ -70,9 +68,6 @@ public sealed class CommitmentEmitter : IDisposable
 
     public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
 
-    public const int DefaultStorageSnapshotDepth = 1;
-
-    public int StorageSnapshotDepth => _storageSnapshotDepth;
 
     public void BeginBlock(ulong block)
     {
