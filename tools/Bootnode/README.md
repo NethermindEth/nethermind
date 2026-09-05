@@ -39,10 +39,14 @@ The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode a
 
 ## Release Assets
 
-Bootnode side releases use `bootnode-*` tags and the `Release Bootnode` GitHub workflow. The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image:
+Bootnode maintains an independent version line starting at `1.0.0`. Its separate GitHub Release tag includes the `bootnode-` prefix, for example `bootnode-1.0.0`; package archive names and Docker tags use the same unprefixed Bootnode version, for example `nethermind-bootnode-1.0.0-linux-x64.tar.gz` and `nethermind/bootnode:1.0.0`. The `Release Bootnode` workflow always marks its GitHub release as not latest, so it does not replace the Nethermind client release in the repository sidebar.
+
+To publish a new version, update `VersionPrefix` in `tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj` and dispatch `Release Bootnode` from a ref containing that change. To re-upload an existing published version, dispatch from its `bootnode-<version>` tag; delete a stale draft before re-cutting that version at another commit. Each release includes `SHA256SUMS` and detached `.asc` signatures. The `nethermind/bootnode` image name replaces `nethermind/nethermind-bootnode`.
+
+The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For the highest published Bootnode version, select `publish_latest` to also refresh the Bootnode `latest` image tag; an older version still publishes its versioned image but leaves `latest` unchanged.
 
 ```powershell
-docker pull nethermind/nethermind-bootnode:bootnode-r1
+docker pull nethermind/bootnode:latest
 ```
 
 The default container command stores state in `/nethermind-bootnode/data` and binds REST and Prometheus to all interfaces:
@@ -53,7 +57,7 @@ docker run --rm -it `
   -p 127.0.0.1:8546:8546 `
   -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
-  nethermind/nethermind-bootnode:bootnode-r1
+  nethermind/bootnode:latest
 ```
 
 Pass CLI options after the image name to override the defaults, for example:
@@ -64,7 +68,7 @@ docker run --rm -it `
   -p 127.0.0.1:8546:8546 `
   -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
-  nethermind/nethermind-bootnode:bootnode-r1 `
+  nethermind/bootnode:latest `
   --local-ip :: `
   --external-ip-v4 203.0.113.10 `
   --external-ip-v6 2001:db8::10
