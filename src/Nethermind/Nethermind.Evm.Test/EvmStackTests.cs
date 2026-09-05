@@ -97,7 +97,7 @@ public class EvmStackTests
         EvmExceptionType result = op switch
         {
             Dup => stack.Dup<OffFlag>(2),            // need >= 2 elements
-            Swap => stack.Swap<OffFlag>(2),          // swap top with 2nd, need >= 2
+            Swap => stack.Swap<OffFlag, OnFlag>(2),          // swap top with 2nd, need >= 2
             Exchange => stack.Exchange<OffFlag>(1, 2), // need depth >= 2
             _ => throw new System.ArgumentOutOfRangeException(nameof(op), op, null),
         };

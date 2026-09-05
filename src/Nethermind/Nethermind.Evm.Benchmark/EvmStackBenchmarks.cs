@@ -137,10 +137,10 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.Swap<OffFlag>(2);
-            stack.Swap<OffFlag>(2);
-            stack.Swap<OffFlag>(2);
-            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag, OnFlag>(2);
+            stack.Swap<OffFlag, OnFlag>(2);
+            stack.Swap<OffFlag, OnFlag>(2);
+            stack.Swap<OffFlag, OnFlag>(2);
         }
 
         [Benchmark(OperationsPerInvoke = 4)]

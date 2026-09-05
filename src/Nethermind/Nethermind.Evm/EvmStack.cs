@@ -2251,13 +2251,15 @@ public ref partial struct EvmStack
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least <paramref name="depth"/> stack items.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly EvmExceptionType Swap<TTracingInst>(int depth)
+    public readonly EvmExceptionType Swap<TTracingInst, TCheckDepth>(int depth)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint head = Head;
-        if (head < depth)
+        if (TCheckDepth.IsActive && head < depth)
         {
             return EvmExceptionType.StackUnderflow;
         }

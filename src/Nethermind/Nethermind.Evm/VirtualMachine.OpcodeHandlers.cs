@@ -518,7 +518,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (!HasCheckedBody)
                 return EvmInstructions.InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas);
 
-            return EvmInstructions.Math2ParamCore<TOpMath, TTracingInst>(ref stack, checkDepth: false);
+            return EvmInstructions.Math2ParamCore<TOpMath, TTracingInst, OffFlag>(ref stack);
         }
     }
 
@@ -549,7 +549,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (!HasCheckedBody)
                 return EvmInstructions.InstructionMath1Param<TGasPolicy, TOpMath>(ref stack, ref gas, vm);
 
-            return EvmInstructions.Math1ParamCore<TOpMath>(ref stack, checkDepth: false);
+            return EvmInstructions.Math1ParamCore<TOpMath, OffFlag>(ref stack);
         }
     }
 
@@ -572,7 +572,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (!HasCheckedBody)
                 return EvmInstructions.InstructionBitwise<TGasPolicy, TOpBitwise>(ref stack, ref gas, vm);
 
-            return EvmInstructions.BitwiseCore<TOpBitwise>(ref stack, checkDepth: false);
+            return EvmInstructions.BitwiseCore<TOpBitwise, OffFlag>(ref stack);
         }
     }
 
@@ -941,8 +941,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static int StackInputs => TOpCount.Count + 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody
+                ? stack.Swap<TTracingInst, OffFlag>(TOpCount.Count + 1)
+                : EvmInstructions.InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, vm);
     }
 
     private readonly struct LogOpcode<TOpCount> : IOpcodeBody where TOpCount : struct, EvmInstructions.IOpCount
