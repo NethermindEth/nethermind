@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -279,6 +280,70 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
         Assert.That(tracer.PollCount, Is.EqualTo(2));
+    }
+
+    private static IEnumerable<TestCaseData> FixedCostOpcodeGasCases()
+    {
+        (Instruction Opcode, int Depth, ulong Cost)[] operations =
+        [
+            (Instruction.ADD, 2, 3), (Instruction.MUL, 2, 5), (Instruction.SUB, 2, 3),
+            (Instruction.DIV, 2, 5), (Instruction.SDIV, 2, 5), (Instruction.MOD, 2, 5),
+            (Instruction.SMOD, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
+            (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
+            (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
+            (Instruction.AND, 2, 3), (Instruction.OR, 2, 3), (Instruction.XOR, 2, 3)
+        ];
+        foreach ((Instruction opcode, int depth, ulong cost) in operations)
+        {
+            foreach (int tracerMode in new[] { 0, 1, 2 })
+            {
+                foreach (bool sufficientStack in new[] { false, true })
+                {
+                    foreach (bool sufficientGas in new[] { false, true })
+                    {
+                        foreach (bool appendStop in new[] { false, true })
+                        {
+                            yield return new TestCaseData(opcode, depth, cost, tracerMode, sufficientStack, sufficientGas, appendStop)
+                                .SetName($"Fixed_cost_gas_{opcode}_tracer_{tracerMode}_stack_{sufficientStack}_gas_{sufficientGas}_stop_{appendStop}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(FixedCostOpcodeGasCases))]
+    public void Fixed_cost_opcode_gas_status_preserves_failure_precedence(
+        Instruction opcode, int depth, ulong cost, int tracerMode, bool sufficientStack, bool sufficientGas, bool appendStop)
+    {
+        int pushes = sufficientStack ? depth : depth - 1;
+        byte[] code = new byte[pushes * 2 + 1 + (appendStop ? 1 : 0)];
+        for (int i = 0; i < pushes; i++)
+        {
+            code[i * 2] = (byte)Instruction.PUSH1;
+            code[i * 2 + 1] = 1;
+        }
+        code[pushes * 2] = (byte)opcode;
+        ulong gasLimit = GasCostOf.Transaction + (ulong)pushes * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        TestAllTracerWithOutput tracer = tracerMode switch
+        {
+            0 => new NoInstructionTracer(),
+            1 => new TestAllTracerWithOutput(),
+            _ => new CountingCancellationTracer()
+        };
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        string expectedError = !sufficientGas ? nameof(EvmExceptionType.OutOfGas)
+            : !sufficientStack ? nameof(EvmExceptionType.StackUnderflow) : null;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(expectedError));
+            Assert.That(tracer.StatusCode, Is.EqualTo(expectedError is null ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(pushes + 1 + (appendStop && expectedError is null ? 1 : 0)));
+        }
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]

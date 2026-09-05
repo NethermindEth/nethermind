@@ -46,7 +46,7 @@ public static partial class EvmInstructions
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
         IReleaseSpec spec = vm.Spec;
 
-        if (!TGasPolicy.ConsumePrecompileGas(ref childGas, precompile, callData, spec))
+        if (!TGasPolicy.TryConsumePrecompileGas(ref childGas, precompile, callData, spec))
         {
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -57,7 +57,7 @@ public static partial class EvmInstructions
 
         if (!(vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
         {
-            TGasPolicy.SetOutOfGas(ref childGas);
+            TGasPolicy.ClearExecutionGas(ref childGas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             vm.ReturnData = null;

@@ -76,10 +76,6 @@ public static class VirtualMachineStatics
     /// correct for any value of <see cref="EvmExceptionType.None"/>, which is hand-numbered; the OR only
     /// ever sets bit 0, so it cannot cancel a nonzero difference. While <c>None</c> is zero it folds away.
     /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool ShouldExitFrame(EvmExceptionType status, bool outOfGas) =>
-        (((int)status - (int)EvmExceptionType.None) | Unsafe.BitCast<bool, byte>(outOfGas)) != 0;
-
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
     /// </summary>
@@ -540,7 +536,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode))
         {
-            TGasPolicy.Consume(ref _currentState.Gas, gasAvailableForCodeDeposit);
+            TGasPolicy.UpdateGas(ref _currentState.Gas, gasAvailableForCodeDeposit);
             // Code deposit failure is an exceptional halt of the child CREATE frame.
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding
@@ -955,7 +951,7 @@ public partial class VirtualMachine<TGasPolicy>(
             }
 
             // Otherwise, if no exception but precompile did not succeed, exhaust the remaining gas.
-            TGasPolicy.SetOutOfGas(ref currentState.Gas);
+            TGasPolicy.ClearExecutionGas(ref currentState.Gas);
         }
 
         // If execution reaches here, the precompile operation is considered successful.
@@ -1144,7 +1140,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         // The policy reads the precompile's own base/data cost (with the overflow guard inside).
-        if (!TGasPolicy.ConsumePrecompileGas(ref gas, precompile, callData, spec))
+        if (!TGasPolicy.TryConsumePrecompileGas(ref gas, precompile, callData, spec))
         {
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1373,6 +1369,9 @@ public partial class VirtualMachine<TGasPolicy>(
         return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
 
     ReturnFailure:
+        if (exceptionType == EvmExceptionType.OutOfGas)
+            TGasPolicy.ClearExecutionGas(ref gas);
+
         // EIP-8037: write gas back so RestoreChildStateGasOnHalt can read the child frame's state gas.
         _currentState.Gas = gas;
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);

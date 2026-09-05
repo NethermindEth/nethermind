@@ -25,7 +25,7 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<TOpMath>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
         // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
         if (!stack.EnsureDepth(3)) goto StackUnderflow;
