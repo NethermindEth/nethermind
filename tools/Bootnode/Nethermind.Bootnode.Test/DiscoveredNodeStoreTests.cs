@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Text;
 using System.Net;
+using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Crypto;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -22,7 +25,8 @@ public class DiscoveredNodeStoreTests
         DiscoveredNodeStore store = new();
 
         DiscoverySnapshot configuredSnapshot = store.AddConfiguredBootnodes([networkNode]);
-        DiscoverySnapshot activeSnapshot = store.AddOrUpdate(node, "discv4", isActive: true);
+        store.AddOrUpdate(node, "discv4", isActive: true);
+        DiscoverySnapshot activeSnapshot = store.CreateSnapshot();
         NodeDto activeNode = store.GetActiveNodes().Single();
 
         using (Assert.EnterMultipleScope())
@@ -56,6 +60,28 @@ public class DiscoveredNodeStoreTests
         }
     }
 
+    [TestCase("127.0.0.1")]
+    [TestCase("::ffff:127.0.0.1")]
+    [TestCase("2001:db8::1")]
+    public void Node_dto_host_matches_node_host(string address)
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node node = Node.FromDiscoveryEndpoint(
+            privateKey.PublicKey,
+            new IPEndPoint(IPAddress.Parse(address), 30303));
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(node, "discv4", isActive: true);
+
+        NodeDto[] activeNodes = store.GetActiveNodes();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(activeNodes, Has.Length.EqualTo(1));
+            Assert.That(activeNodes[0].Host, Is.EqualTo(node.Host));
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Retention_limit_prunes_inactive_nodes_before_active_nodes(bool deactivateAfterAdd)
@@ -76,11 +102,12 @@ public class DiscoveredNodeStoreTests
             store.Remove(secondNode, "discv5");
         }
 
-        DiscoverySnapshot snapshot = store.AddOrUpdate(thirdNode, "discv4", isActive: true);
+        store.AddOrUpdate(thirdNode, "discv4", isActive: true);
+        DiscoverySnapshot snapshot = store.CreateSnapshot();
         NodeDto[] retainedNodes = store.GetAllNodes();
         NodeDto[] activeRetainedNodes = store.GetActiveNodes();
-        string[] retainedNodeIds = retainedNodes.Select(static node => node.NodeId).ToArray();
-        string[] activeRetainedNodeIds = activeRetainedNodes.Select(static node => node.NodeId).ToArray();
+        string[] retainedNodeIds = Array.ConvertAll(retainedNodes, static node => node.NodeId);
+        string[] activeRetainedNodeIds = Array.ConvertAll(activeRetainedNodes, static node => node.NodeId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -114,7 +141,8 @@ public class DiscoveredNodeStoreTests
 
         store.AddConfiguredBootnodes([configuredNetworkNode]);
         store.AddOrUpdate(firstNode, "discv4", isActive: false);
-        DiscoverySnapshot snapshot = store.AddOrUpdate(secondNode, "discv5", isActive: false);
+        store.AddOrUpdate(secondNode, "discv5", isActive: false);
+        DiscoverySnapshot snapshot = store.CreateSnapshot();
         NodeDto[] retainedNodes = store.GetAllNodes(limit: 2);
         string[] retainedNodeIds = new string[retainedNodes.Length];
         for (int i = 0; i < retainedNodes.Length; i++)
@@ -150,6 +178,89 @@ public class DiscoveredNodeStoreTests
     }
 
     [Test]
+    public void Retained_node_does_not_keep_discovery_graph_alive()
+    {
+        DiscoveredNodeStore store = new();
+        (WeakReference<Node> nodeReference, WeakReference<NodeRecord> enrReference, string enr) = AddNodeWithEnr(store);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        NodeDto retainedNode = store.GetAllNodes().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeReference.TryGetTarget(out _), Is.False);
+            Assert.That(enrReference.TryGetTarget(out _), Is.False);
+            Assert.That(retainedNode.Enr, Is.EqualTo(enr));
+        }
+
+        GC.KeepAlive(store);
+    }
+
+    [TestCase(1ul, false)]
+    [TestCase(2ul, false)]
+    [TestCase(3ul, true)]
+    public void Enr_sequence_controls_retained_enr_replacement(ulong candidateSequence, bool shouldReplace)
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node original = CreateNodeWithEnr(privateKey, sequence: 2, udpPort: 30303);
+        Node candidate = CreateNodeWithEnr(privateKey, candidateSequence, udpPort: 30304);
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(original, "discv5", isActive: true);
+        store.AddOrUpdate(candidate, "discv5", isActive: true);
+
+        NodeDto[] retainedNodes = store.GetAllNodes();
+        NodeRecord expected = shouldReplace ? candidate.Enr! : original.Enr!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedNodes, Has.Length.EqualTo(1));
+            Assert.That(candidate.Enr!.ToString(), Is.Not.EqualTo(original.Enr!.ToString()));
+            Assert.That(retainedNodes[0].Enr, Is.EqualTo(expected.ToString()));
+        }
+    }
+
+    [Test]
+    public void Unsigned_enr_is_not_retained()
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node node = new(privateKey.PublicKey, "127.0.0.1", 30303)
+        {
+            Enr = new NodeRecord()
+        };
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(node, "discv5", isActive: true);
+
+        NodeDto[] retainedNodes = store.GetAllNodes();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedNodes, Has.Length.EqualTo(1));
+            Assert.That(retainedNodes[0].Enr, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Enr_formatting_does_not_allocate_an_intermediate_encoding()
+    {
+        byte[] rlp = new byte[300];
+        _ = DiscoveredNodeStore.ToEnrString(rlp);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        string enr = DiscoveredNodeStore.ToEnrString(rlp);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enr, Is.EqualTo($"enr:{Base64Url.EncodeToString(rlp)}"));
+            Assert.That(allocated, Is.LessThanOrEqualTo(enr.Length * sizeof(char) + 128));
+        }
+    }
+
+    [Test]
     public void Removing_one_protocol_keeps_node_active_on_the_other_protocol()
     {
         using PrivateKeyGenerator generator = new();
@@ -159,11 +270,13 @@ public class DiscoveredNodeStoreTests
 
         store.AddOrUpdate(node, "discv4", isActive: true);
         store.AddOrUpdate(node, "discv5", isActive: true);
-        DiscoverySnapshot discv4Removed = store.Remove(node, "discv4");
+        store.Remove(node, "discv4");
+        DiscoverySnapshot discv4Removed = store.CreateSnapshot();
         NodeDto[] activeNodes = store.GetActiveNodes();
         Assert.That(activeNodes, Has.Length.EqualTo(1));
         NodeDto retainedNode = activeNodes[0];
-        DiscoverySnapshot discv5Removed = store.Remove(node, "discv5");
+        store.Remove(node, "discv5");
+        DiscoverySnapshot discv5Removed = store.CreateSnapshot();
 
         using (Assert.EnterMultipleScope())
         {
@@ -182,17 +295,28 @@ public class DiscoveredNodeStoreTests
         using PrivateKey firstKey = generator.Generate();
         using PrivateKey secondKey = generator.Generate();
         using PrivateKey thirdKey = generator.Generate();
+        Node firstNode = CreateNode(firstKey, 30303);
+        Node secondNodeEntry = CreateNode(secondKey, 30304);
+        Node thirdNode = CreateNode(thirdKey, 30305);
         DiscoveredNodeStore store = new();
-        store.AddOrUpdate(CreateNode(firstKey, 30303), "discv4", isActive: true);
-        store.AddOrUpdate(CreateNode(secondKey, 30304), "discv4", isActive: true);
-        store.AddOrUpdate(CreateNode(thirdKey, 30305), "discv5", isActive: false);
+        store.AddOrUpdate(firstNode, "discv4", isActive: true);
+        store.AddOrUpdate(secondNodeEntry, "discv4", isActive: true);
+        store.AddOrUpdate(thirdNode, "discv5", isActive: false);
 
         NodeDto[] allNodes = store.GetAllNodes(limit: 3);
         NodeDto[] secondNode = store.GetAllNodes(offset: 1, limit: 1);
         NodeDto[] secondActiveNode = store.GetActiveNodes(offset: 1, limit: 1);
+        string[] expectedOrder =
+        [
+            firstNode.IdHash.ToString(),
+            secondNodeEntry.IdHash.ToString(),
+            thirdNode.IdHash.ToString()
+        ];
+        Array.Sort(expectedOrder, StringComparer.Ordinal);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Array.ConvertAll(allNodes, static node => node.IdHash), Is.EqualTo(expectedOrder));
             Assert.That(secondNode, Has.Length.EqualTo(1));
             Assert.That(secondNode[0].IdHash, Is.EqualTo(allNodes[1].IdHash));
             Assert.That(secondActiveNode, Has.Length.EqualTo(1));
@@ -202,4 +326,30 @@ public class DiscoveredNodeStoreTests
 
     private static Node CreateNode(PrivateKey privateKey, int port) =>
         new(privateKey.PublicKey, "127.0.0.1", port);
+
+    private static Node CreateNodeWithEnr(PrivateKey privateKey, ulong sequence, int udpPort)
+    {
+        NodeRecord nodeRecord = new() { EnrSequence = sequence };
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        nodeRecord.SetEntry(new UdpEntry(udpPort));
+        new NodeRecordSigner(new Ecdsa(), privateKey).Sign(nodeRecord);
+        Node node = CreateNode(privateKey, udpPort);
+        node.SetVerifiedEnr(nodeRecord);
+        return node;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference<Node>, WeakReference<NodeRecord>, string) AddNodeWithEnr(DiscoveredNodeStore store)
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        new NodeRecordSigner(new Ecdsa(), privateKey).Sign(nodeRecord);
+        Node node = new(privateKey.PublicKey, "127.0.0.1", 30303);
+        node.SetVerifiedEnr(nodeRecord);
+        string enr = nodeRecord.ToString();
+        store.AddOrUpdate(node, "discv5", isActive: true);
+        return (new WeakReference<Node>(node), new WeakReference<NodeRecord>(nodeRecord), enr);
+    }
 }
