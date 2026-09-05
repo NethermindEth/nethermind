@@ -1866,19 +1866,7 @@ public ref partial struct EvmStack
             return false;
         }
 
-        ref byte slot = ref Unsafe.Add(ref baseRef, head * WordSize);
-
-        // A whole-word compare pays off only where it reaches the flags in one instruction, which is
-        // x86 with a 256-bit register. ARM64 reduces the vector and then moves the result across to a
-        // general register, and a target with no vector unit at all compares the 32 bytes one at a
-        // time through the frame. Both beat that by testing the limbs where they lie.
-        if (Vector256.IsHardwareAccelerated)
-        {
-            return Unsafe.ReadUnaligned<EvmWord>(ref slot) == default;
-        }
-
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
-        return (limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3)) == 0;
+        return IsSlotZero(ref Unsafe.Add(ref baseRef, head * WordSize));
     }
 
     /// <summary>
@@ -1985,20 +1973,19 @@ public ref partial struct EvmStack
     /// <remarks>
     /// Folding a whole word down to one bit is the case where a <see cref="EvmWord"/> value has to be
     /// address-taken on targets that cannot hold one in a register, which spills the slot to the frame
-    /// and reads it back. Each width tests the slot where it lies instead.
+    /// and reads it back. Both widths test the slot where it lies instead.
+    /// <para>
+    /// There is deliberately no 128-bit middle path. Reducing a pair of <see cref="HalfWord"/>s to a
+    /// bool costs a cross-domain move that the limbs do not: on SSE it measured ISZERO at 4.856 ns
+    /// against 3.124 ns for the limbs, and on ARM64 it is the <c>umov</c> this branch removes
+    /// elsewhere.
+    /// </para>
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsSlotZero(ref byte slot)
     {
         if (Vector256.IsHardwareAccelerated)
             return Unsafe.ReadUnaligned<EvmWord>(ref slot) == default;
-
-        if (Vector128.IsHardwareAccelerated)
-        {
-            HalfWord folded = Unsafe.ReadUnaligned<HalfWord>(ref slot) |
-                Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref slot, Vector128<byte>.Count));
-            return folded == default;
-        }
 
         ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
         return (parts | Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3)) == 0UL;
