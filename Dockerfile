@@ -19,7 +19,7 @@ COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
-  dotnet restore --locked-mode && \
+  dotnet restore && \
   dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
@@ -29,6 +29,18 @@ RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-resolute@sha256:e12b240891f34144edd813a11e86649dca6120165adfb5ad0a29bbde6753a975
 
 WORKDIR /nethermind
+
+# One jemalloc for the whole process: this RocksDB bundles no allocator, so its C++ and C
+# allocations fall through here too. Bare soname resolves per-arch; the maps grep fails the
+# build if ld.so cannot preload it, since a bad soname is otherwise only a warning.
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends libjemalloc2 && \
+  rm -rf /var/lib/apt/lists/* && \
+  LD_PRELOAD=libjemalloc.so.2 sh -c 'grep -q jemalloc /proc/self/maps'
+
+ENV LD_PRELOAD=libjemalloc.so.2
+# Purge from a background thread rather than inline in free; the campaign's best-CV lever.
+ENV MALLOC_CONF=background_thread:true
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
