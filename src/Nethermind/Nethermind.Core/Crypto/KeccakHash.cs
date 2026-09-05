@@ -122,6 +122,17 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Hands back a sponge state whose lanes are zero wherever the first absorb will not write.</summary>
+    /// <param name="state">The state to initialise.</param>
+    /// <param name="inputLength">Length of the message <see cref="ComputeHash"/> is about to absorb.</param>
+    /// <param name="roundSize">The rate in bytes, as returned by <see cref="GetRoundSize"/>.</param>
+    /// <remarks>Split per target. The host zeroes all 200 bytes, which at a constant size is a handful of
+    /// vector stores; the guest has no vectors and a 200-byte <c>= default</c> becomes a
+    /// <c>SpanHelpers.ClearWithoutReferences</c> call, so it zeroes lane by lane and skips the rate block
+    /// when <see cref="AbsorbMessageIntoZeroState"/> is about to write it outright.
+    /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize);
+
     [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
@@ -142,7 +153,7 @@ public sealed partial class KeccakHash
 
         // A struct local rather than stackalloc: localloc would pin this method at Tier0-FullOpts
         // (no tiering or dynamic PGO) and add GS-cookie and stack-probe overhead per call.
-        KeccakState stateBuffer = default; // the sponge state must start all-zero
+        InitializeState(out KeccakState stateBuffer, inputLength, roundSize);
         Span<ulong> state = stateBuffer;
         Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 

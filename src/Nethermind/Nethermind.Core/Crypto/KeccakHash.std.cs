@@ -16,6 +16,11 @@ public sealed partial class KeccakHash
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
 
+    /// <inheritdoc cref="KeccakHash.InitializeState" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize) =>
+        state = default;
+
     /// <inheritdoc cref="KeccakHash.AbsorbMessageIntoZeroState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
