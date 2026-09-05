@@ -36,10 +36,40 @@ namespace Nethermind.Serialization.Rlp
         public Hash256 DecodeStorageRootOnly(ref RlpReader context)
         {
             ReadOnlySpan<byte> data = context.Data;
-            int position = SkipToHashes(data, context.Position);
-
-            context.Position = DecodeStorageRoot(data, position, out Hash256 storageRoot);
+            context.Position = DecodeStorageRoot(data, SkipToHashes(data, context.Position), out Hash256 storageRoot);
             return storageRoot;
+        }
+
+        /// <summary>Reads the storage root straight out of an account payload.</summary>
+        /// <remarks>
+        /// Saves the caller an <see cref="RlpReader"/> whose only job would be to carry a cursor for one
+        /// call. The reader is a ~40-byte ref struct that is address-exposed once passed by reference,
+        /// so constructing one is a real run of stores.
+        /// </remarks>
+        public Hash256 DecodeStorageRootOnly(ReadOnlySpan<byte> accountRlp)
+        {
+            DecodeStorageRoot(accountRlp, SkipToHashes(accountRlp, 0), out Hash256 storageRoot);
+            return storageRoot;
+        }
+
+        /// <inheritdoc cref="TryDecodeStruct(ref RlpReader, out AccountStruct)"/>
+        /// <remarks><inheritdoc cref="DecodeStorageRootOnly(ReadOnlySpan{byte})" path="/remarks"/></remarks>
+        public bool TryDecodeStruct(ReadOnlySpan<byte> accountRlp, out AccountStruct account)
+        {
+            int position = RlpHelpers.ReadSequenceLength(accountRlp, 0, out int length);
+            if (length == 1)
+            {
+                account = AccountStruct.TotallyEmpty;
+                return false;
+            }
+
+            position = RlpHelpers.DecodeULong(accountRlp, position, out ulong nonce);
+            position = RlpHelpers.DecodeUInt256(accountRlp, position, -1, out UInt256 balance);
+            position = DecodeStorageRootStruct(accountRlp, position, out ValueHash256 storageRoot);
+            DecodeCodeHashStruct(accountRlp, position, out ValueHash256 codeHash);
+
+            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            return true;
         }
 
         /// <summary>Skips the sequence header, the nonce and the balance.</summary>

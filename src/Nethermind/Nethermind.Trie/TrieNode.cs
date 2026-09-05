@@ -392,7 +392,7 @@ namespace Nethermind.Trie
                 IsPersisted = true;
             }
 
-            if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
+            if (!DecodeRlp(rlp.AsSpan(), bufferPool, out int numberOfItems))
             {
                 ThrowUnexpectedNumberOfItems(numberOfItems, path);
             }
@@ -441,7 +441,7 @@ namespace Nethermind.Trie
                     ThrowInvalidKeccak(path);
                 }
 
-                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
+                if (!DecodeRlp(rlp.AsSpan(), bufferPool, out int numberOfItems))
                 {
                     ThrowUnexpectedNumberOfItems(numberOfItems, rlp, path);
                 }
@@ -524,7 +524,7 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                return DecodeRlp(new RlpReader(rlp), bufferPool, out _);
+                return DecodeRlp(rlp.AsSpan(), bufferPool, out _);
             }
             catch (RlpException)
             {
@@ -560,7 +560,7 @@ namespace Nethermind.Trie
                 }
 
                 if (!VerifyWarmerOwnedRlp(rlp)) return false;
-                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out _)) return false;
+                if (!DecodeRlp(rlp.AsSpan(), bufferPool, out _)) return false;
 
                 if (!HasRlp)
                 {
@@ -633,11 +633,10 @@ namespace Nethermind.Trie
         private bool VerifyWarmerOwnedRlp(in CappedArray<byte> rlp) =>
             Keccak is not { } keccak || ValueKeccak.Compute(rlp.AsSpan()) == keccak;
 
-        private bool DecodeRlp(RlpReader rlpReader, ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(ReadOnlySpan<byte> data, ICappedArrayPool bufferPool, out int itemsCount)
         {
             Metrics.IncrementTreeNodeRlpDecodings();
 
-            ReadOnlySpan<byte> data = rlpReader.Data;
             int position = RlpHelpers.ReadSequenceLength(data, 0, out _);
 
             // micro optimization to prevent searches beyond 3 items for branches (search up to three)
@@ -1368,8 +1367,7 @@ namespace Nethermind.Trie
                 }
                 else if (Value.Length > 64) // if not a storage leaf
                 {
-                    RlpReader valueReader = new(Value.AsSpan());
-                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueReader);
+                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsSpan());
                     if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
                         Hash256 storagePath;
