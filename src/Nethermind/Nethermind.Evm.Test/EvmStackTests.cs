@@ -156,6 +156,33 @@ public class EvmStackTests
 
     [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    public void Traced_PUSH2_zero_pads_missing_immediate_bytes(int used)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        byte[] immediate = new byte[used];
+        for (int i = 0; i < used; i++) immediate[i] = (byte)(0xa0 + i);
+        StackPushTracer tracer = new();
+        vmState.InitializeStacks(tracer, immediate, out EvmStack stack);
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(GasCostOf.VeryLow);
+        nint pc = 0;
+
+        EvmExceptionType result = EvmInstructions.InstructionPush2<EthereumGasPolicy, OnFlag>(ref stack, ref gas, null!, ref pc);
+
+        UInt256 expected = used switch { 0 => 0, 1 => 0xa000, _ => 0xa0a1 };
+        Assert.That(stack.PopUInt256(out UInt256 value), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(value, Is.EqualTo(expected));
+            Assert.That(new UInt256(tracer.StackItem, isBigEndian: true), Is.EqualTo(expected));
+            Assert.That(pc, Is.EqualTo((nint)2));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.Zero);
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
     [TestCase(17)]
     [TestCase(31)]
     [TestCase(32)]
@@ -249,7 +276,7 @@ public class EvmStackTests
     private static EvmExceptionType InvokePushNBytes<TCheckDepth>(int n, ref EvmStack stack, ref byte imm) where TCheckDepth : struct, IFlag => n switch
     {
         1 => stack.PushByte<OffFlag, TCheckDepth>(imm),
-        2 => stack.Push2Bytes<OffFlag>(ref imm),
+        2 => stack.Push2Bytes<OffFlag, TCheckDepth>(ref imm),
         3 => stack.Push3Bytes<OffFlag, TCheckDepth>(ref imm),
         4 => stack.Push4Bytes<OffFlag, TCheckDepth>(ref imm),
         5 => stack.Push5Bytes<OffFlag, TCheckDepth>(ref imm),
