@@ -88,10 +88,10 @@ public sealed class HistoryWindowPruner(
         if (configured.Count > 0 && !rowFormat.IsV3)
         {
             throw new InvalidConfigurationException(
-                "FlatDb.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
-                "(HistoryRetention is None). Per-contract slices require the v3 pre-value format used by " +
-                "windowed retention; unset HistorySliceAddresses or set HistoryRetention=Rolling with a " +
-                "HistoryRetentionBlocks window size.", -1);
+                "FlatDb.HistorySliceAddresses is set, but this flatHistory database holds unwindowed (v2) history. " +
+                "Per-contract slices require the v3 pre-value format used by windowed retention; unset " +
+                "HistorySliceAddresses, or set HistoryRetention=Rolling with a HistoryRetentionBlocks window size " +
+                "on a fresh flatHistory database.", -1);
         }
 
         foreach (SliceScopeEntry entry in configured)

@@ -108,6 +108,20 @@ public class FlatRocksDbConfigAdjusterTests
     }
 
     [Test]
+    public void FlatHistoryDatabase_SinceBlock_LeavesCompactOnDeletionsOff()
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetention.Returns(HistoryRetentionMode.SinceBlock);
+        _flatDbConfig.HistoryRetentionSinceBlock.Returns(15_000_000UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result.CompactOnDeletions, Is.False, "a mode that never deletes has nothing for the deletion collector to see");
+    }
+
+    [Test]
     public void FlatDatabase_DelegatesToBaseFactoryWithCorrectParameters()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);

@@ -100,6 +100,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             _availability.VerifyFormat();
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
+            else if (config.HistoryRetention == HistoryRetentionMode.None && _availability.TryGetGlobalFloor(out ulong floor) && _logger.IsInfo) _logger.Info(
+                $"Flat history floor stays at block {floor}, published under an earlier retention setting: HistoryRetention=None never lowers a floor, so reads below it keep failing closed.");
         }
     }
 
