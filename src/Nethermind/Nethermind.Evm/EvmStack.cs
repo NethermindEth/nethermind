@@ -2092,7 +2092,7 @@ public ref partial struct EvmStack
         }
         Head = newHead;
         ref byte baseRef = ref _stack;
-        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out position);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, (newHead + 1) * WordSize), out position);
         word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, newHead * WordSize), WordSize);
         return true;
     }
