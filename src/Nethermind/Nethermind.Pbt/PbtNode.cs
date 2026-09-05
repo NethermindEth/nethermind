@@ -27,6 +27,7 @@ internal static class PbtNodeCodec
 {
     private const byte LeafTag = 0;
     private const byte BranchTag = 1;
+    private const int MaxStackHashPreimageLength = 256;
 
     public static byte[] Encode(PbtNode node) => node switch
     {
@@ -86,22 +87,28 @@ internal static class PbtNodeCodec
     internal static ValueHash256 HashLeaf(PbtFullKey key, ReadOnlySpan<byte> value)
     {
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
-        byte[] preimage = GC.AllocateUninitializedArray<byte>(1 + key.Length + 32);
+        int preimageLength = 1 + key.Length + 32;
+        Span<byte> preimage = preimageLength <= MaxStackHashPreimageLength
+            ? stackalloc byte[preimageLength]
+            : GC.AllocateUninitializedArray<byte>(preimageLength);
         preimage[0] = LeafTag;
-        key.Bytes.CopyTo(preimage.AsSpan(1));
-        value.CopyTo(preimage.AsSpan(1 + key.Length));
+        key.Bytes.CopyTo(preimage[1..]);
+        value.CopyTo(preimage[(1 + key.Length)..]);
         return Blake3Hash.Hash(preimage);
     }
 
     internal static ValueHash256 HashBranch(PbtBitPrefix prefix, in ValueHash256 left, in ValueHash256 right)
     {
         int prefixByteCount = prefix.Bytes.Length;
-        byte[] preimage = GC.AllocateUninitializedArray<byte>(3 + prefixByteCount + 64);
+        int preimageLength = 3 + prefixByteCount + 64;
+        Span<byte> preimage = preimageLength <= MaxStackHashPreimageLength
+            ? stackalloc byte[preimageLength]
+            : GC.AllocateUninitializedArray<byte>(preimageLength);
         preimage[0] = BranchTag;
-        BinaryPrimitives.WriteUInt16BigEndian(preimage.AsSpan(1), (ushort)prefix.BitCount);
-        prefix.Bytes.CopyTo(preimage.AsSpan(3));
-        left.Bytes.CopyTo(preimage.AsSpan(3 + prefixByteCount));
-        right.Bytes.CopyTo(preimage.AsSpan(3 + prefixByteCount + 32));
+        BinaryPrimitives.WriteUInt16BigEndian(preimage[1..], (ushort)prefix.BitCount);
+        prefix.Bytes.CopyTo(preimage[3..]);
+        left.Bytes.CopyTo(preimage[(3 + prefixByteCount)..]);
+        right.Bytes.CopyTo(preimage[(3 + prefixByteCount + 32)..]);
         return Blake3Hash.Hash(preimage);
     }
 

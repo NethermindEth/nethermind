@@ -301,6 +301,31 @@ public class Eip8297CanonicalTreeTests
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(Hash([0, .. key, .. value])));
     }
 
+    [TestCase(222)]
+    [TestCase(223)]
+    [TestCase(224)]
+    public void Node_hashes_match_independent_preimages_at_stack_threshold(int keyLength)
+    {
+        byte[] key = new byte[keyLength];
+        key[^1] = 1;
+        byte[] value = Value(7);
+        PbtLeafNode leaf = new(new PbtFullKey(key), value);
+
+        int prefixBitCount = (keyLength - 34) * 8;
+        byte[] prefixBytes = key[..(keyLength - 34)];
+        PbtBitPrefix prefix = new(prefixBytes, prefixBitCount);
+        ValueHash256 left = new(Hash([0, .. key, .. value]));
+        ValueHash256 right = new(Value(8));
+        PbtBranchNode branch = new(prefix, left, right);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leaf.Hash.Bytes.ToArray(), Is.EqualTo(Hash([0, .. key, .. value])), "leaf");
+            Assert.That(branch.Hash.Bytes.ToArray(), Is.EqualTo(Hash(
+                [1, (byte)(prefixBitCount >> 8), (byte)prefixBitCount, .. prefixBytes, .. left.Bytes, .. right.Bytes])), "branch");
+        }
+    }
+
     [Test]
     public void Current_key_derivation_emits_exact_zone_lengths()
     {
