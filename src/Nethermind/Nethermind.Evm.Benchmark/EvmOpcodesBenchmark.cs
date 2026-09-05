@@ -38,6 +38,10 @@ namespace Nethermind.Evm.Benchmark;
 /// Stack values are prepared per benchmark case based on <see cref="Opcode"/>.
 /// Run: dotnet run -c Release --filter "*EvmOpcodesBenchmark*"
 /// </summary>
+/// <remarks>
+/// Includes a harness call, gas reset and cleanup check per opcode. Use <see cref="OpcodeChainBenchmarks"/>
+/// to measure sustained interpreter dispatch without those per-opcode harness costs.
+/// </remarks>
 [Config(typeof(EvmOpcodesBenchmarkConfig))]
 public unsafe class EvmOpcodesBenchmark
 {
