@@ -18,7 +18,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public interface IDebugBridge
 {
     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
-    GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
