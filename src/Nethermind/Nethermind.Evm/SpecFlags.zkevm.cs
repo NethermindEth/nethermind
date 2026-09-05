@@ -47,6 +47,8 @@ internal static partial class SpecFlags
 
     public static bool Eip8038(IReleaseSpec spec) => spec.IsEip8038Enabled;
 
+    private static IReleaseSpec? _validated;
+
     /// <summary>Rejects a spec outside the fork range this build folded its rules for.</summary>
     /// <remarks>
     /// Without this a spec from outside the range runs against constants that do not describe it,
@@ -54,10 +56,15 @@ internal static partial class SpecFlags
     /// </remarks>
     public static void Validate(IReleaseSpec spec)
     {
+        // A spec is fixed for the block, so the checks run once per spec rather than once per
+        // transaction. One slot suffices: the guest validates a single block and runs single-threaded.
+        if (ReferenceEquals(_validated, spec)) return;
+
         Check(spec.Use63Over64Rule, ConstEip150, "EIP-150");
         Check(spec.ClearEmptyAccountWhenTouched, ConstEip158, "EIP-158");
         Check(spec.UseHotAndColdStorage, ConstEip2929, "EIP-2929");
         Check(spec.IsEip3860Enabled, ConstEip3860, "EIP-3860");
+        _validated = spec;
 
         static void Check(bool actual, bool compiled, string eip)
         {
