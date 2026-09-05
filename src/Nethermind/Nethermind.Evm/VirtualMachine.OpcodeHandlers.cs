@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -55,11 +55,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType> badInstruction =
             TerminatingOpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
 
+        SpecFlags.Validate(spec);
+
         for (int i = 0; i < lookup.Length; i++)
             lookup[i] = badInstruction;
 
         lookup[(int)Instruction.STOP] = TerminatingOpcodeHandler<StopOpcode, TTracingInst, TCancelable>();
-        if (spec.UseHotAndColdStorage)
+        if (SpecFlags.Eip2929(spec))
             ConfigureAccessOpcodes<TTracingInst, TCancelable, OnFlag>(lookup, spec);
         else
             ConfigureAccessOpcodes<TTracingInst, TCancelable, OffFlag>(lookup, spec);
@@ -265,7 +267,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        spec.UseHotAndColdStorage
+        SpecFlags.Eip2929(spec)
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, OffFlag>(spec);
 
@@ -275,7 +277,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag =>
-        spec.Use63Over64Rule
+        SpecFlags.Eip150(spec)
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, OffFlag>(spec);
 
@@ -286,7 +288,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag =>
-        spec.ClearEmptyAccountWhenTouched
+        SpecFlags.Eip158(spec)
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, OffFlag>(spec);
 
@@ -298,7 +300,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag
         where Eip158 : struct, IFlag =>
-        spec.IsEip2780Enabled
+        SpecFlags.Eip2780(spec)
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, OffFlag>(spec);
 
@@ -311,7 +313,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip150 : struct, IFlag
         where Eip158 : struct, IFlag
         where Eip2780 : struct, IFlag =>
-        spec.IsEip8038Enabled
+        SpecFlags.Eip8038(spec)
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip2780, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip2780, OffFlag>(spec);
 
@@ -325,7 +327,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
         where Eip2780 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        (SpecFlags.Eip8037(spec), SpecFlags.Eip7708(spec)) switch
         {
             (true, true) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OnFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
             (true, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
@@ -338,7 +340,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        spec.UseHotAndColdStorage
+        SpecFlags.Eip2929(spec)
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, OffFlag>(spec);
 
@@ -348,7 +350,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag =>
-        spec.Use63Over64Rule
+        SpecFlags.Eip150(spec)
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, OffFlag>(spec);
 
@@ -359,7 +361,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag =>
-        spec.IsEip3860Enabled
+        SpecFlags.Eip3860(spec)
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, OffFlag>(spec);
 
@@ -371,7 +373,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag
         where Eip3860 : struct, IFlag =>
-        spec.IsEip8038Enabled
+        SpecFlags.Eip8038(spec)
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, OffFlag>(spec);
 
@@ -384,7 +386,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip150 : struct, IFlag
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        spec.IsEip8037Enabled
+        SpecFlags.Eip8037(spec)
             ? OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OnFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038>>, TTracingInst, TCancelable>()
             : OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OffFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038>>, TTracingInst, TCancelable>();
 
@@ -393,7 +395,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag
     {
-        if (spec.IsEip8038Enabled)
+        if (SpecFlags.Eip8038(spec))
             ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929, OnFlag>(lookup, spec);
         else
             ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929, OffFlag>(lookup, spec);
@@ -433,7 +435,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TAccess : struct, EvmInstructions.IAccessSpec
         where Eip8038 : struct, IFlag
         where Eip150 : struct, IFlag =>
-        spec.ClearEmptyAccountWhenTouched
+        SpecFlags.Eip158(spec)
             ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, OnFlag>(spec)
             : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, OffFlag>(spec);
 
@@ -472,7 +474,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
         where Eip6780 : struct, IFlag
         where Eip8246 : struct, IFlag =>
-        (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        (SpecFlags.Eip8037(spec), SpecFlags.Eip7708(spec)) switch
         {
             (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038>>, TTracingInst, TCancelable>(),
             (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038>>, TTracingInst, TCancelable>(),
@@ -768,10 +770,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip2929 : struct, IFlag =>
         spec.UseNetGasMetering
             ? spec.UseNetGasMeteringWithAStipendFix
-                ? spec.IsEip8037Enabled
+                ? SpecFlags.Eip8037(spec)
                     ? OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OnFlag, OnFlag, Eip8038, Eip2929>, TTracingInst, TCancelable>()
                     : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OnFlag, OffFlag, Eip8038, Eip2929>, TTracingInst, TCancelable>()
-                : spec.IsEip8037Enabled
+                : SpecFlags.Eip8037(spec)
                     ? OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OnFlag, Eip8038, Eip2929>, TTracingInst, TCancelable>()
                     : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OffFlag, Eip8038, Eip2929>, TTracingInst, TCancelable>()
             : OpcodeHandler<SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929>, TTracingInst, TCancelable>();
