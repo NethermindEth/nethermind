@@ -47,11 +47,17 @@ public class HistoryWalkVerificationCoordinatorTests
         return (availability, HistoryRowFormat.Resolve(availability, config));
     }
 
+    private ArchiveProofRetrofit CreateRetrofit(CommitmentMetadata metadata, FlatDbConfig config, HistoryRowFormat rowFormat)
+    {
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        return new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, new CommitmentReclaimer(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, LimboLogs.Instance), LimboLogs.Instance);
+    }
+
     private HistoryWalkVerificationCoordinator CreateCoordinator(FlatDbConfig config, FakeHeaders headers)
     {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         return new HistoryWalkVerificationCoordinator(
-            _db, _historyColumns, headers, availability, rowFormat, config, new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), config, rowFormat), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
     }
 
     [Test]
@@ -82,7 +88,7 @@ public class HistoryWalkVerificationCoordinatorTests
         availability.PublishWatermark(2, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
-            _db, _historyColumns, headers, availability, rowFormat, config, new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), config, rowFormat), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
         coordinator.Start();
 
         Assert.That(coordinator.Started, Is.True);
@@ -120,7 +126,7 @@ public class HistoryWalkVerificationCoordinatorTests
 
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, headers, availability, rowFormat, config,
-            new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance),
+            CreateRetrofit(metadata, config, rowFormat),
             metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
 
         availability.PublishWatermark(8, rowFormat.FormatVersion);
@@ -156,7 +162,7 @@ public class HistoryWalkVerificationCoordinatorTests
 
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, headers, availability, rowFormat, config,
-            new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance),
+            CreateRetrofit(metadata, config, rowFormat),
             metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
 
         coordinator.Start();
@@ -192,7 +198,7 @@ public class HistoryWalkVerificationCoordinatorTests
 
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, headers, availability, rowFormat, config,
-            new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance),
+            CreateRetrofit(metadata, config, rowFormat),
             metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
 
         coordinator.Start();

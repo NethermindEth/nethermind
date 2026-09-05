@@ -59,6 +59,8 @@ public class FlatHistoryModule : Module
             .AddSingleton<CommitmentDepthPolicy>(ctx => CommitmentDepthPolicy.FromConfig(ctx.Resolve<IFlatDbConfig>()))
             .AddSingleton<CommitmentMetadata>()
             .AddSingleton<ArchiveProofSettings>()
+            .AddSingleton<CommitmentReclaimer>()
+            .AddStep(typeof(StartCommitmentReclaimer))
             .AddSingleton<ArchiveProofRetrofit>()
             .AddSingleton<ForwardCommitmentCapture>()
             .AddSingleton<ArchiveProofSource>()

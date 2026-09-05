@@ -21,7 +21,7 @@ public sealed class ForwardCommitmentCapture
     private readonly ArchiveProofSettings _settings;
     private readonly long _maxBufferedBytes;
     private readonly ILogger _logger;
-    private readonly CommitmentPruner _pruner;
+    private readonly CommitmentReclaimer _reclaimer;
     private readonly SortedDictionary<ulong, CapturedBlock> _buffered = [];
     private readonly Stack<CapturedBlock> _spare = new();
     private long _bufferedBytes;
@@ -34,8 +34,9 @@ public sealed class ForwardCommitmentCapture
         CommitmentDepthPolicy policy,
         CommitmentMetadata metadata,
         ArchiveProofSettings settings,
+        CommitmentReclaimer reclaimer,
         ILogManager logManager)
-        : this(history, policy, metadata, settings, logManager, DefaultMaxBufferedBytes)
+        : this(history, policy, metadata, settings, reclaimer, logManager, DefaultMaxBufferedBytes)
     {
     }
 
@@ -44,6 +45,7 @@ public sealed class ForwardCommitmentCapture
         CommitmentDepthPolicy policy,
         CommitmentMetadata metadata,
         ArchiveProofSettings settings,
+        CommitmentReclaimer reclaimer,
         ILogManager logManager,
         long maxBufferedBytes)
     {
@@ -53,7 +55,7 @@ public sealed class ForwardCommitmentCapture
         _settings = settings;
         _maxBufferedBytes = maxBufferedBytes;
         _logger = logManager.GetClassLogger<ForwardCommitmentCapture>();
-        _pruner = new CommitmentPruner(history, policy, metadata, settings, logManager);
+        _reclaimer = reclaimer;
     }
 
     public bool Enabled => _settings.BuildEnabled;
@@ -222,7 +224,7 @@ public sealed class ForwardCommitmentCapture
         _metadata.AdvanceTipSeries(first, last, out bool restarted);
         if (restarted && _logger.IsWarn) _logger.Warn(
             $"Archive proof commitments at the tip resume at block {first} after a gap; the series restarts there and the gap is left to the retrofit walk.");
-        _pruner.PruneBelow(last);
+        _reclaimer.PruneBelow(last);
     }
 
     private void EnsureStamp() => _metadata.EnsureLayout(_policy, _settings.DiscardMismatchedLayout, _logger);

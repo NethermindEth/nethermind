@@ -57,7 +57,7 @@ public sealed class ArchiveProofSource(
         where TCtx : struct, INodeContext<TCtx>
     {
         ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows);
-        ulong minEpoch = metadata.TryGetCoverage(out ulong coveredFrom, out _) ? policy.Epoch(coveredFrom) : 0;
+        ulong minEpoch = metadata.DroppedThroughEpoch;
         PatriciaTree tree = new(CreateAccountStore(stateId.BlockNumber, budget, minEpoch), logManager);
         tree.Accept(visitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
     }

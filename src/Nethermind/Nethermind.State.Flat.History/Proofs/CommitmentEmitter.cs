@@ -68,6 +68,8 @@ public sealed class CommitmentEmitter : IDisposable
 
     public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
 
+    public const int StorageSnapshotDepth = 1;
+
 
     public void BeginBlock(ulong block)
     {

@@ -44,7 +44,8 @@ public class ForwardCommitmentCaptureTests
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         _metadata = new CommitmentMetadata(_historyColumns, Policy);
-        ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, settings, new CommitmentReclaimer(_historyColumns, Policy, _metadata, settings, LimboLogs.Instance), LimboLogs.Instance);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
     }
 
@@ -195,8 +196,9 @@ public class ForwardCommitmentCaptureTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
         ForwardCommitmentCapture bounded = new(
-            _historyColumns, Policy, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes);
+            _historyColumns, Policy, _metadata, settings, new CommitmentReclaimer(_historyColumns, Policy, _metadata, settings, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes);
         return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
     }
 

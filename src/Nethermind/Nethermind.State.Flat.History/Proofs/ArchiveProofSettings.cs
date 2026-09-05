@@ -17,14 +17,8 @@ public sealed class ArchiveProofSettings
         ServeEnabled = config.ArchiveProofServeEnabled && supported;
         RetrofitEnabled = BuildEnabled && config.HistoryVerifyEveryBlock;
         DiscardMismatchedLayout = config.ArchiveProofDiscardMismatchedLayout;
-        bool prunable = RetrofitEnabled;
-        RecentEpochs = prunable && config.ArchiveProofRecentEpochs > 0 ? config.ArchiveProofRecentEpochs : 0;
-        FineEpochs = prunable && config.ArchiveProofFineEpochs > 0 ? config.ArchiveProofFineEpochs : 0;
-        if (!prunable && (config.ArchiveProofRecentEpochs > 0 || config.ArchiveProofFineEpochs > 0) && logger.IsWarn)
-        {
-            logger.Warn(
-                "Archive proof epochs are configured to be pruned, but this node builds its commitments from the tip alone, which writes no epoch-start snapshot: a node that has not changed for an epoch keeps its only row in an older one, so dropping that epoch would leave heights published but unprovable. Nothing is pruned. Turn FlatDb.HistoryVerifyEveryBlock on to build through the walk, which writes those snapshots.");
-        }
+        RecentEpochs = BuildEnabled && config.ArchiveProofRecentEpochs > 0 ? config.ArchiveProofRecentEpochs : 0;
+        FineEpochs = BuildEnabled && config.ArchiveProofFineEpochs > 0 ? config.ArchiveProofFineEpochs : 0;
 
         if (!supported && (config.ArchiveProofBuildEnabled || config.ArchiveProofServeEnabled) && logger.IsWarn)
         {

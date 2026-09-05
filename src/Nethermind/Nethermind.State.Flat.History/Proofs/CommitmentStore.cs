@@ -31,6 +31,11 @@ internal sealed class CommitmentStore
 
     public CommitmentDepthPolicy Policy => _policy;
 
+    public ISortedKeyValueStore Sorted => _sorted;
+
+    public RowChain OpenNewestInEpoch(scoped ReadOnlySpan<byte> prefix, ulong epoch) =>
+        new(_sorted, prefix, TierOf(prefix), ulong.MaxValue, budget: null, epoch, epoch);
+
     public ulong EpochOf(scoped ReadOnlySpan<byte> prefix, ulong suffix) =>
         CommitmentKeyLayout.IsExactPrefix(prefix, _identityLength) ? _policy.Epoch(suffix) : _policy.EpochOfWindow(suffix);
 
@@ -86,7 +91,7 @@ internal sealed class CommitmentStore
         ulong epoch = EpochOf(prefix, suffix);
         if (startEpoch is { } hint && hint < epoch)
         {
-            epoch = hint;
+            epoch = Math.Max(hint, minEpoch);
             suffix = ulong.MaxValue;
         }
 

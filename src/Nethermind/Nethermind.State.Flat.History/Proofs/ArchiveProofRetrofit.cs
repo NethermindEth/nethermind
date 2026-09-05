@@ -11,10 +11,10 @@ public sealed class ArchiveProofRetrofit(
     CommitmentDepthPolicy policy,
     CommitmentMetadata metadata,
     ArchiveProofSettings settings,
+    CommitmentReclaimer reclaimer,
     ILogManager logManager) : ICommitmentEmitterSource
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ArchiveProofRetrofit>();
-    private readonly CommitmentPruner _pruner = new(history, policy, metadata, settings, logManager);
 
     public bool Enabled => settings.RetrofitEnabled;
 
@@ -30,7 +30,7 @@ public sealed class ArchiveProofRetrofit(
         if (_logger.IsInfo) _logger.Info($"Archive proof commitments will be emitted along the history walk ({policy}).");
     }
 
-    public void PruneBelow(ulong headBlock) => _pruner.PruneBelow(headBlock);
+    public void PruneBelow(ulong headBlock) => reclaimer.PruneBelow(headBlock);
 
     public ulong FirstBlockToBuild(ulong headBlock)
     {
