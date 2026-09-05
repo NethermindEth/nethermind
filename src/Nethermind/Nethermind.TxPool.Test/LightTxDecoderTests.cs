@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Test;
 public class LightTxDecoderTests
 {
     [Test]
-    public void should_roundtrip_sparse_blob_tx_cell_mask_and_consensus_size()
+    public void should_roundtrip_sparse_blob_tx_cell_mask_and_elided_network_size()
     {
         Transaction tx = BuildBlobTx();
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
@@ -34,7 +34,7 @@ public class LightTxDecoderTests
 
         Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
         Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
-        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(tx.GetLength(shouldCountBlobs: false)));
+        Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(tx.GetElidedNetworkLength()));
         Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
     }
 
@@ -73,12 +73,12 @@ public class LightTxDecoderTests
         {
             Assert.That(second.ProofVersion, Is.EqualTo(first.ProofVersion));
             Assert.That(second.BlobCellMask, Is.EqualTo(first.BlobCellMask));
-            Assert.That(second.GetConsensusEncodingSize(), Is.EqualTo(first.GetConsensusEncodingSize()));
+            Assert.That(second.GetElidedNetworkSize(), Is.EqualTo(first.GetElidedNetworkSize()));
         }
     }
 
     [Test]
-    public void should_not_treat_legacy_sparse_network_size_as_consensus_encoding_size()
+    public void should_not_treat_legacy_unversioned_size_as_elided_network_size()
     {
         Transaction tx = BuildBlobTx();
         BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
@@ -87,12 +87,65 @@ public class LightTxDecoderTests
             tx,
             includeProofVersion: true,
             cellMask,
-            sparseBlobNetworkSize: 12345));
+            persistedSize: 12345));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
-            Assert.That(decoded.GetConsensusEncodingSize(), Is.Zero);
+            Assert.That(decoded.GetElidedNetworkSize(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void should_not_treat_persisted_consensus_size_as_elided_network_size()
+    {
+        // Format version 1 records hold the *consensus* encoding size, which is not a valid eth/72
+        // announcement size. They must be read back as unknown so the transaction is not announced
+        // with an understated size until it churns through the pool again.
+        Transaction tx = BuildBlobTx();
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+
+        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(
+            tx,
+            includeProofVersion: true,
+            cellMask,
+            persistedSize: tx.GetLength(shouldCountBlobs: false),
+            sizeFormatVersion: 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+            Assert.That(decoded.GetElidedNetworkSize(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void elided_network_size_is_the_blob_elided_wire_length()
+    {
+        Transaction tx = BuildBlobTx();
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        LightTransaction lightTx = new(tx);
+
+        Transaction elided = new();
+        tx.CopyTo(elided, copyHash: true);
+        elided.NetworkWrapper = wrapper with { Blobs = [], CellMask = default, Cells = null };
+        elided.ClearLengthCache();
+
+        int consensusSize = tx.GetLength(shouldCountBlobs: false);
+        int wrapperOverhead =
+            1                                                       // wrapper_version
+            + Rlp.OfEmptyList.Length                                // elided blobs
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lightTx.GetElidedNetworkSize(), Is.EqualTo(elided.GetLength()));
+            Assert.That(
+                lightTx.GetElidedNetworkSize(),
+                Is.EqualTo(1 + Rlp.LengthOfSequence(consensusSize - 1 + wrapperOverhead)));
+            Assert.That(lightTx.GetElidedNetworkSize(), Is.LessThan(tx.GetLength()));
+            Assert.That(lightTx.GetElidedNetworkSize() - consensusSize, Is.GreaterThan(8));
         }
     }
 
@@ -107,7 +160,7 @@ public class LightTxDecoderTests
         // Entries persisted before the mask field was added always hold full blobs.
         Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
         Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
-        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(0));
+        Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(0));
         Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
     }
 
@@ -128,7 +181,7 @@ public class LightTxDecoderTests
             Assert.That(typeof(LightTransaction).GetConstructor(constructorParameters), Is.Not.Null);
             Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
-            Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
+            Assert.That(lightTx.GetElidedNetworkSize(), Is.EqualTo(fullTx.GetElidedNetworkLength()));
         }
     }
 
@@ -144,7 +197,8 @@ public class LightTxDecoderTests
         Transaction tx,
         bool includeProofVersion,
         BlobCellMask? cellMask = null,
-        int? sparseBlobNetworkSize = null)
+        int? persistedSize = null,
+        byte? sizeFormatVersion = null)
     {
         int length = Rlp.LengthOf(tx.Timestamp)
             + Rlp.LengthOf(tx.SenderAddress)
@@ -160,7 +214,8 @@ public class LightTxDecoderTests
             + Rlp.LengthOf(tx.GetLength())
             + (includeProofVersion ? Rlp.LengthOf(sizeof(byte)) : 0)
             + (cellMask is null ? 0 : Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0))
-            + (sparseBlobNetworkSize is null ? 0 : Rlp.LengthOf(sparseBlobNetworkSize.Value));
+            + (persistedSize is null ? 0 : Rlp.LengthOf(persistedSize.Value))
+            + (sizeFormatVersion is null ? 0 : Rlp.LengthOf(sizeFormatVersion.Value));
 
         byte[] bytes = new byte[length];
         RlpWriter writer = new(bytes);
@@ -188,9 +243,14 @@ public class LightTxDecoderTests
             writer.Encode(maskBytes);
         }
 
-        if (sparseBlobNetworkSize is { } networkSize)
+        if (persistedSize is { } networkSize)
         {
             writer.Encode(networkSize);
+        }
+
+        if (sizeFormatVersion is { } formatVersion)
+        {
+            writer.Encode(formatVersion);
         }
 
         return bytes;
