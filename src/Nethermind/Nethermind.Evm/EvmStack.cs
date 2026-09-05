@@ -1559,25 +1559,7 @@ public ref partial struct EvmStack
         }
         Head = (nint)newOffset;
 
-        if (Avx2.IsSupported)
-        {
-            EvmWord shuffle = ByteSwap256Mask;
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                EvmWord data = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
-                head = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-            }
-            else
-            {
-                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
-                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-                head = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, EvmWord>(ref convert), shuffle);
-            }
-        }
-        else
-        {
-            WriteBeWord(ref head, in value);
-        }
+        WriteUInt256ToSlot(ref Unsafe.As<EvmWord, byte>(ref head), in value);
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref head), WordSize));
@@ -1623,26 +1605,7 @@ public ref partial struct EvmStack
         Head = head;
         ref byte bytes = ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
 
-        if (Avx2.IsSupported)
-        {
-            EvmWord data = Unsafe.ReadUnaligned<EvmWord>(ref bytes);
-            EvmWord shuffle = ByteSwap256Mask;
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                EvmWord convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-                result = Unsafe.As<EvmWord, UInt256>(ref convert);
-            }
-            else
-            {
-                EvmWord convert = Avx2.Shuffle(data, shuffle);
-                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<EvmWord, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
-                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
-            }
-        }
-        else
-        {
-            result = ReadBeWord(ref bytes);
-        }
+        ReadUInt256FromSlot(ref bytes, out result);
 
         return true;
     }
