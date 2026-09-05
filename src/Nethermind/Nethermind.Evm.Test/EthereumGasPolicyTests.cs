@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -86,6 +88,7 @@ public class EthereumGasPolicyTests
     [TestCase(100UL, 40UL, -10L, 70UL, TestName = "negative_reservoir_spill_is_added_back")]
 #if !DEBUG
     // In Debug, the invariant guard terminates the test process before the Release fallback can run.
+    // The read-only fallback only applies on SkipValidation paths (see companion throw test below).
     [TestCase(100UL, 101UL, 0L, 100UL, TestName = "gas_left_above_limit_falls_back_to_gas_limit")]
     [TestCase(ulong.MaxValue, 0UL, -1L, ulong.MaxValue, TestName = "spill_overflowing_ulong_falls_back_to_gas_limit")]
 #endif
@@ -97,12 +100,28 @@ public class EthereumGasPolicyTests
     {
         EthereumGasPolicy gas = new() { Value = remainingGas, StateReservoir = stateReservoir };
 
-        ulong preRefundGas = GetPreRefundGas(in gas, gasLimit);
+        ulong preRefundGas = GetPreRefundGas(in gas, gasLimit, ExecutionOptions.SkipValidation);
 
         Assert.That(preRefundGas, Is.EqualTo(expected));
     }
 
-    private static ulong GetPreRefundGas<TGasPolicy>(in TGasPolicy gas, ulong gasLimit)
+#if !DEBUG
+    // On validated (block production/import) paths an out-of-range pre-refund gas is an internal accounting
+    // bug and must fail loud instead of silently charging the full gas limit. In Debug the assert traps first.
+    [TestCase(100UL, 101UL, 0L, TestName = "gas_left_above_limit_throws")]
+    [TestCase(ulong.MaxValue, 0UL, -1L, TestName = "spill_overflowing_ulong_throws")]
+    public void GetPreRefundGas_throws_on_validated_path_when_invariant_violated(
+        ulong gasLimit,
+        ulong remainingGas,
+        long stateReservoir)
+    {
+        EthereumGasPolicy gas = new() { Value = remainingGas, StateReservoir = stateReservoir };
+
+        Assert.That(() => GetPreRefundGas(in gas, gasLimit, ExecutionOptions.Commit), Throws.TypeOf<InvalidDataException>());
+    }
+#endif
+
+    private static ulong GetPreRefundGas<TGasPolicy>(in TGasPolicy gas, ulong gasLimit, ExecutionOptions opts)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => TGasPolicy.GetPreRefundGas(in gas, gasLimit);
+        => TGasPolicy.GetPreRefundGas(in gas, gasLimit, opts);
 }

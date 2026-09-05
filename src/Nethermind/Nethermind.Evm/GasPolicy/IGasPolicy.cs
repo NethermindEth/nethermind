@@ -3,10 +3,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -30,11 +33,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <summary>EIP-8037 pre-refund spent gas: <c>txGasLimit - gas_left - state reservoir</c>.</summary>
     /// <remarks>
     /// Centralizes the execution↔state boundary conversion: the reservoir may be negative due to net child spill.
-    /// If the accounting invariant is violated, the full transaction gas limit is returned to keep accounting conservative
-    /// without unsigned wraparound.
+    /// The result being out of range is not reachable on valid input; it can only signal an internal accounting bug.
+    /// On validated paths (block production/import) such a slip is raised as <see cref="InvalidDataException"/> so the
+    /// node fails loud at the source instead of emitting or accepting divergent gas. Read-only paths
+    /// (<c>eth_call</c>, <c>eth_estimateGas</c>, trace) keep the conservative full-limit fallback rather than surfacing
+    /// a hard error to untrusted callers.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit)
+    static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit, ExecutionOptions opts)
     {
         ulong remainingGas = TSelf.GetRemainingGas(in gas);
         long stateReservoir = TSelf.GetStateReservoir(in gas);
@@ -42,9 +48,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         bool inRange = preRefundGas >= 0 && preRefundGas <= ulong.MaxValue;
         Debug.Assert(inRange,
             $"Gas invariant violated: pre-refund gas ({preRefundGas}) must fit in ulong for gas limit ({txGasLimit}), remaining gas ({remainingGas}), and state reservoir ({stateReservoir}).");
+        if (inRange) return (ulong)preRefundGas;
+        if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            ThrowPreRefundGasInvariantViolated(txGasLimit, remainingGas, stateReservoir);
         // Charging the full limit avoids undercharging and makes validation reject divergent gas accounting.
-        return inRange ? (ulong)preRefundGas : txGasLimit;
+        return txGasLimit;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPreRefundGasInvariantViolated(ulong txGasLimit, ulong remainingGas, long stateReservoir) =>
+        throw new InvalidDataException(
+            $"EIP-8037 gas invariant violated: pre-refund gas out of range for gas limit ({txGasLimit}), remaining gas ({remainingGas}), and state reservoir ({stateReservoir}).");
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
