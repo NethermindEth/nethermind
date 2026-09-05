@@ -412,7 +412,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
