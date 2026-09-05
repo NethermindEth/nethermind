@@ -10,6 +10,22 @@ namespace Nethermind.JsonRpc;
 
 internal static class JsonRpcArrayReader
 {
+    public static bool IsEmpty(ReadOnlyMemory<byte> arrayBody)
+    {
+        Utf8JsonReader reader = new(arrayBody.Span, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+        {
+            ThrowExpectedJsonArray();
+        }
+
+        if (!reader.Read())
+        {
+            ThrowIncompleteJsonArray();
+        }
+
+        return reader.TokenType == JsonTokenType.EndArray;
+    }
+
     public static int CountItems(ReadOnlyMemory<byte> arrayBody)
     {
         Utf8JsonReader reader = new(arrayBody.Span, isFinalBlock: true, state: default);
