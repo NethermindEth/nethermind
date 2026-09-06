@@ -16,23 +16,9 @@ namespace Nethermind.Trie.ZkEvm.Test;
 /// </remarks>
 public class GuestNibblesTests
 {
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(31)]
-    [TestCase(32)]
-    [TestCase(33)]
-    public void Expand_nibbles_matches_the_scalar_reference(int count)
+    [Test]
+    public void Expand_nibbles_matches_the_scalar_reference(
+        [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33)] int count)
     {
         byte[] bytes = Fill(count, seed: 7);
         byte[] expected = ExpandReference(bytes);
@@ -49,8 +35,8 @@ public class GuestNibblesTests
     /// a symmetric byte value would hide.
     /// </remarks>
     [Test]
-    public void Expand_nibbles_orders_the_pair_high_then_low_across_every_tail(
-        [Values(1, 2, 3, 5, 6, 7, 8, 9, 11, 12, 13, 16)] int count)
+    public void Expand_nibbles_orders_the_pair_high_then_low_across_every_body_and_tail(
+        [Values(1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)] int count)
     {
         byte[] bytes = new byte[count];
         Array.Fill(bytes, (byte)0x0F);
@@ -80,14 +66,8 @@ public class GuestNibblesTests
         Assert.That(actual[(count * 2)..], Is.All.EqualTo((byte)0xCC));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(16)]
-    [TestCase(33)]
-    public void Common_prefix_length_matches_the_bcl_when_equal(int length)
+    [Test]
+    public void Common_prefix_length_matches_the_bcl_when_equal([Values(0, 1, 7, 8, 9, 16, 33)] int length)
     {
         byte[] left = Fill(length, seed: 11);
         byte[] right = (byte[])left.Clone();
