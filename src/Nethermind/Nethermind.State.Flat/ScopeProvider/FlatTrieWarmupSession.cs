@@ -88,7 +88,10 @@ internal sealed class FlatTrieWarmupSession :
                 node = CreateUnknownNode(hash);
             }
 
-            node = _transientResource.GetOrAddStateNode(in path, node);
+            if (node.NodeType != NodeType.Unknown)
+            {
+                node = _transientResource.GetOrAddStateNode(in path, node);
+            }
         }
 
         return ValidateNode(node, address: null, in path, hash);
@@ -104,7 +107,10 @@ internal sealed class FlatTrieWarmupSession :
                 node = CreateUnknownNode(hash);
             }
 
-            node = _transientResource.GetOrAddStorageNode(address, in path, node);
+            if (node.NodeType != NodeType.Unknown)
+            {
+                node = _transientResource.GetOrAddStorageNode(address, in path, node);
+            }
         }
 
         return ValidateNode(node, address, in path, hash);
