@@ -266,12 +266,8 @@ namespace Nethermind.Core.Test
         [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
         public void Common_input_lengths_match_known_hash(int inputLength, string expected)
         {
-            byte[] input = new byte[inputLength];
+            byte[] input = FilledInput(inputLength);
             byte[] output = new byte[32];
-            for (int i = 0; i < input.Length; i++)
-            {
-                input[i] = (byte)(i * 37 + 11);
-            }
 
             KeccakHash.ComputeHash(input, output);
 
@@ -317,17 +313,15 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(1)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(66)]
-        public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(int outputLength)
+        // The 20- and 32-byte inputs take ComputeHash's sub-rate fast paths, which write the terminator at
+        // stateBytes[input.Length] without comparing it against the rate. That is only safe because the rate
+        // is at least 68, which the widest output, 66, exercises at its tightest.
+        [Test]
+        public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(
+            [Values(20, 32, 300)] int inputLength,
+            [Values(1, 32, 64, 66)] int outputLength)
         {
-            byte[] input = new byte[300];
-            for (int i = 0; i < input.Length; i++)
-            {
-                input[i] = (byte)(i * 37 + 11);
-            }
+            byte[] input = FilledInput(inputLength);
 
             byte[] oneShot = new byte[outputLength];
             KeccakHash.ComputeHash(input, oneShot);
@@ -1475,6 +1469,17 @@ namespace Nethermind.Core.Test
         {
             public Memory<byte> Memory => data;
             public void Dispose() { }
+        }
+
+        private static byte[] FilledInput(int length)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            return input;
         }
 
         private static FieldInfo GetRemainderCacheField()
