@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -145,36 +144,24 @@ public class PrewarmerScopeProvider(
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
-        private int _isDisposed;
         // Root of the state the next commit starts from: the base block's, then each committed root in turn.
         private Hash256? _committedStateRoot = baseStateRoot;
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
-
-            ObserveWriteBatchToDispose();
             if (isPrewarmer)
             {
-                try
-                {
-                    trieWarmupSession?.Dispose();
-                }
-                finally
-                {
-                    baseScope.Dispose();
-                }
+                ObserveWriteBatchToDispose();
+                trieWarmupSession?.Dispose();
+                baseScope.Dispose();
                 return;
             }
 
             // Unregister before teardown so no new warm hints target a disposing scope.
-            lock (preBlockCaches)
-            {
-                if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
-            }
-
+            preBlockCaches.MainScope = null;
             try
             {
+                ObserveWriteBatchToDispose();
                 baseScope.Dispose();
             }
             finally

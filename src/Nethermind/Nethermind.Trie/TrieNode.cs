@@ -37,11 +37,6 @@ namespace Nethermind.Trie
         private const byte _dirtyMask = 0b001;
         private const byte _persistedMask = 0b010;
         private const byte _boundaryProof = 0b100;
-        // A warmer-owned node is shared with live readers, which use it only once resolved; a single resolver at a
-        // time holds the resolving bit and verifies the RLP hash before it publishes.
-        private const byte _warmerOwnedMask = 0b0000_1000;
-        private const byte _warmerResolvingMask = 0b0001_0000;
-        private const byte _warmerResolvedMask = 0b0010_0000;
 
         private byte _blockAndFlags = 0;
 
@@ -101,24 +96,6 @@ namespace Nethermind.Trie
 
         public bool IsDirty => (ReadBlockAndFlags() & _dirtyMask) != 0;
 
-        internal bool IsWarmerOwned => (ReadBlockAndFlags() & _warmerOwnedMask) != 0;
-
-        internal bool IsWarmerResolved => (ReadBlockAndFlags() & _warmerResolvedMask) != 0;
-
-        internal void MarkWarmerOwned()
-        {
-            byte previousValue = ReadBlockAndFlags();
-            while (true)
-            {
-                if ((previousValue & _warmerOwnedMask) != 0) return;
-
-                byte newValue = (byte)(previousValue | _warmerOwnedMask);
-                byte currentValue = ExchangeBlockAndFlags(newValue, previousValue);
-                if (currentValue == previousValue) return;
-
-                previousValue = currentValue;
-            }
-        }
 
         /// <summary>
         /// Node will no longer be mutable
@@ -344,12 +321,6 @@ namespace Nethermind.Trie
         public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
         {
-            if (IsWarmerOwned)
-            {
-                ResolveWarmerOwnedNode(tree, path, readFlags, bufferPool);
-                return;
-            }
-
             if (NodeType != NodeType.Unknown) return;
 
             try
@@ -409,92 +380,12 @@ namespace Nethermind.Trie
                     path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
         }
 
-        private void ResolveWarmerOwnedNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
-            ICappedArrayPool? bufferPool)
-        {
-            if (!TryAcquireWarmerResolution()) return;
-
-            bool resolved = false;
-            try
-            {
-                CappedArray<byte> rlp = ReadRlp();
-                if (rlp.IsNull)
-                {
-                    Hash256 keccak = Keccak;
-                    if (keccak is null)
-                    {
-                        ThrowMissingKeccak();
-                    }
-
-                    byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
-                    if (fullRlp is null)
-                    {
-                        ThrowNullRlp();
-                    }
-
-                    rlp = new CappedArray<byte>(fullRlp);
-                    IsPersisted = true;
-                }
-
-                if (!VerifyWarmerOwnedRlp(rlp))
-                {
-                    ThrowInvalidKeccak(path);
-                }
-
-                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
-                {
-                    ThrowUnexpectedNumberOfItems(numberOfItems, rlp, path);
-                }
-
-                if (!HasRlp)
-                {
-                    WriteRlp(rlp);
-                }
-
-                resolved = true;
-            }
-            catch (RlpException rlpException)
-            {
-                ThrowDecodingError(rlpException, path);
-            }
-            finally
-            {
-                CompleteWarmerResolution(resolved);
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
-
-            // A path-keyed store serving another version of the node is staleness, not corruption.
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowInvalidKeccak(in TreePath nodePath) => throw new TrieNodeException(
-                $"Trie returned RLP with an unexpected Keccak for node {Keccak}", nodePath,
-                Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowUnexpectedNumberOfItems(int numberOfItems, in CappedArray<byte> rlp, in TreePath nodePath) => throw new TrieNodeException(
-                $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({rlp.AsSpan().ToHexString()})",
-                nodePath, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath nodePath) => throw new TrieNodeException($"Error when decoding node {Keccak}", nodePath,
-                Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
-        }
-
         /// <summary>
         /// Highly optimized
         /// </summary>
         public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
         {
-            if (IsWarmerOwned)
-            {
-                return TryResolveWarmerOwnedNode(tree, ref path, readFlags, bufferPool);
-            }
-
             try
             {
                 CappedArray<byte> rlp = ReadRlp();
@@ -531,107 +422,6 @@ namespace Nethermind.Trie
                 return false;
             }
         }
-
-        private bool TryResolveWarmerOwnedNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags,
-            ICappedArrayPool? bufferPool)
-        {
-            if (!TryAcquireWarmerResolution()) return true;
-
-            bool resolved = false;
-            try
-            {
-                CappedArray<byte> rlp = ReadRlp();
-                if (rlp.IsNull)
-                {
-                    Hash256 keccak = Keccak;
-                    if (keccak is null)
-                    {
-                        return false;
-                    }
-
-                    byte[]? fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
-                    if (fullRlp is null)
-                    {
-                        return false;
-                    }
-
-                    rlp = new CappedArray<byte>(fullRlp);
-                    IsPersisted = true;
-                }
-
-                if (!VerifyWarmerOwnedRlp(rlp)) return false;
-                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out _)) return false;
-
-                if (!HasRlp)
-                {
-                    WriteRlp(rlp);
-                }
-
-                resolved = true;
-                return true;
-            }
-            catch (RlpException)
-            {
-                return false;
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return false;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return false;
-            }
-            finally
-            {
-                CompleteWarmerResolution(resolved);
-            }
-        }
-
-        private bool TryAcquireWarmerResolution()
-        {
-            SpinWait spinWait = default;
-            while (true)
-            {
-                byte currentValue = ReadBlockAndFlags();
-                if ((currentValue & _warmerResolvedMask) != 0) return false;
-
-                if ((currentValue & _warmerResolvingMask) != 0)
-                {
-                    spinWait.SpinOnce(sleep1Threshold: -1);
-                    continue;
-                }
-
-                byte newValue = (byte)(currentValue | _warmerResolvingMask);
-                if (ExchangeBlockAndFlags(newValue, currentValue) == currentValue)
-                {
-                    return true;
-                }
-
-                spinWait.SpinOnce(sleep1Threshold: -1);
-            }
-        }
-
-        private void CompleteWarmerResolution(bool resolved)
-        {
-            byte previousValue = ReadBlockAndFlags();
-            while (true)
-            {
-                byte newValue = (byte)(previousValue & ~_warmerResolvingMask);
-                if (resolved)
-                {
-                    newValue |= _warmerResolvedMask;
-                }
-
-                byte currentValue = ExchangeBlockAndFlags(newValue, previousValue);
-                if (currentValue == previousValue) return;
-
-                previousValue = currentValue;
-            }
-        }
-
-        private bool VerifyWarmerOwnedRlp(in CappedArray<byte> rlp) =>
-            Keccak is not { } keccak || ValueKeccak.Compute(rlp.AsSpan()) == keccak;
 
         private bool DecodeRlp(RlpReader rlpReader, ICappedArrayPool bufferPool, out int itemsCount)
         {
@@ -1417,16 +1207,8 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode CreateInlineChild(ReadOnlySpan<byte> fullRlp)
-        {
-            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-            if (IsWarmerOwned)
-            {
-                child.MarkWarmerOwned();
-            }
-
-            return child;
-        }
+        private TrieNode CreateInlineChild(ReadOnlySpan<byte> fullRlp) =>
+            new(NodeType.Unknown, fullRlp.ToArray());
 
         private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
         {
