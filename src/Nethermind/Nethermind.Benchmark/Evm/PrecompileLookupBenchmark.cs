@@ -171,10 +171,12 @@ public class PrecompileLookupBenchmark
     {
         public bool IsPrecompile(Address address)
         {
+            if (!address.CouldBePrecompile()) return false;
+
             int index = address.PrecompileIndexOrNegative();
             return (uint)index < 64
                 ? (mask & (1UL << index)) != 0
-                : address.CouldBePrecompile() && precompiles.Contains(address);
+                : precompiles.Contains(address);
         }
     }
 
