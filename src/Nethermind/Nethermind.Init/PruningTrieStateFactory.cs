@@ -152,7 +152,7 @@ public class MainPruningTrieStoreFactory
 
         if (stateDb is IFullPruningDb fullPruningDb)
         {
-            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
+            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy, pruningConfig.PruningBoundary);
         }
 
         // Interpose the barrier on the node storage flush so a block's deferred block-data is made durable
