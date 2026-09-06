@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,8 +13,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 {
     private ExecutionHandlers? _executionHandlers;
 
-    private ExecutionHandlers GetExecutionHandlers() =>
-        _executionHandlers ??= GetOpcodeTable().GetExecutionHandlers(Spec);
+    /// <remarks>Keeping this call boundary reduces guest execution cost.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ExecutionHandlers GetExecutionHandlers()
+    {
+        Debug.Assert(_executionHandlers is not null, "PrepareOpcodes resolves frame handlers before execution.");
+        return _executionHandlers!;
+    }
 
     /// <summary>Frame operations selected once for the same spec as the opcode tables.</summary>
     private sealed class ExecutionHandlers(IReleaseSpec spec)
