@@ -327,7 +327,8 @@ public static partial class EvmInstructions
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
         // Load call data from memory.
-        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadMemoryAfterGas(in dataOffset, in dataLength);
+        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+            return EvmExceptionType.OutOfGas;
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
@@ -429,12 +430,13 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
+            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
 
-        vm.ReturnData = vm.VmState.Memory.LoadMemoryAfterGas(in position, in length).ToArray();
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.

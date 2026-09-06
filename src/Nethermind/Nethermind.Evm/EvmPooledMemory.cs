@@ -236,19 +236,6 @@ public struct EvmPooledMemory
         return true;
     }
 
-    /// <summary>Loads a range whose memory expansion gas has already been charged.</summary>
-    /// <remarks>The result aliases this memory owner and must not outlive it.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ReadOnlyMemory<byte> LoadMemoryAfterGas(in UInt256 location, in UInt256 length)
-    {
-        Debug.Assert(length.IsUint64);
-        if (length.u0 == 0) return default;
-
-        Debug.Assert(location.IsUint64);
-        PrepareAccessAfterGas(location.u0 + length.u0);
-        return GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
-    }
-
     /// <summary>Loads a range that remains valid after this memory owner is reused.</summary>
     internal bool TryLoadOwned(in UInt256 location, in UInt256 length, out ReadOnlyMemory<byte> data)
     {
