@@ -105,13 +105,13 @@ public class FrameTxBlockProductionTests
     /// <summary>The <see href="https://eips.ethereum.org/EIPS/eip-8037">EIP-8037</see> block totals a
     /// producer carries must charge a frame transaction's state growth to the state dimension and
     /// nowhere else.</summary>
-    /// <remarks>A frame transaction nets its EIP-3529 refund before splitting the charge across the two
-    /// dimensions, so both totals and the receipt sit on one basis; the refunding case pins that, the
-    /// ordinary path instead keeping block gas pre-refund per
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7778">EIP-7778</see>.</remarks>
+    /// <remarks>Per <see href="https://eips.ethereum.org/EIPS/eip-7778">EIP-7778</see> the block's
+    /// execution dimension is accounted before the EIP-3529 refund, so the refund lowers the payer's
+    /// charge and the post-refund receipt total without freeing block capacity; the refunding case pins
+    /// that the block totals stay gross of the refund while the receipt nets it.</remarks>
     [TestCase(StateScenario.None, 0UL, false, TestName = "A frame transaction that grows no state moves no state total")]
     [TestCase(StateScenario.FreshSlot, (ulong)GasCostOf.SSetState, false, TestName = "A fresh slot's growth charge lands in the block state total")]
-    [TestCase(StateScenario.RestoredSlot, 0UL, true, TestName = "A refunding frame transaction keeps the block totals on the receipt's basis")]
+    [TestCase(StateScenario.RestoredSlot, 0UL, true, TestName = "A refunding frame transaction keeps the block totals pre-refund while the receipt nets the refund")]
     public void Produced_block_totals_carry_the_state_dimension_of_a_frame_transaction(
         StateScenario scenario, ulong expectedStateGas, bool expectsRefund)
     {
@@ -136,8 +136,9 @@ public class FrameTxBlockProductionTests
             // the state dimension on top of the execution one instead would bill the block twice.
             ulong grossGas = GrossFrameGas(frameTx, receipt);
             Assert.That(receipt.GasUsedTotal, expectsRefund ? Is.LessThan(grossGas) : Is.EqualTo(grossGas));
-            // Both block totals partition that same charge, so the tracer's two accumulators must sum to it.
-            Assert.That(produced.ExecutionGas + produced.StateGas, Is.EqualTo(receipt.GasUsedTotal));
+            // EIP-7778: the block's execution dimension stays gross of the refund, so the two block
+            // accumulators sum to the pre-refund gross, not the post-refund total the receipt settles on.
+            Assert.That(produced.ExecutionGas + produced.StateGas, Is.EqualTo(grossGas));
             // Both dimensions share the block limit, so the header carries whichever bound is tighter.
             Assert.That(produced.Block.Header.GasUsed, Is.EqualTo(Math.Max(produced.ExecutionGas, produced.StateGas)));
         }
