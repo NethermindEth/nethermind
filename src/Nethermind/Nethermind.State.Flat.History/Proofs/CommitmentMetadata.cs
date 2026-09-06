@@ -38,6 +38,8 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private readonly object _depthWriteLock = new();
     private readonly ClockCache<ValueHash256, int> _storageTrieDepths = new(StorageTrieDepthCacheEntries);
     private bool _layoutEnsured;
+    private long _droppedThroughEpoch = -1;
+    private long _demotedThroughEpoch = -1;
 
     public object WindowWriteLock { get; } = new();
 
@@ -118,6 +120,8 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         Discard(_column, first, last);
         Discard(_storageColumn, first, last);
         _storageTrieDepths.Clear();
+        Volatile.Write(ref _droppedThroughEpoch, -1);
+        Volatile.Write(ref _demotedThroughEpoch, -1);
     }
 
     private static void Discard(IDb column, ReadOnlySpan<byte> first, ReadOnlySpan<byte> last)
@@ -155,19 +159,50 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryRaiseFineFromEpoch(ulong epoch) => TryRaiseEpoch(FineFromEpochKey, epoch);
 
-    public ulong DroppedThroughEpoch => ReadEpoch(DroppedThroughEpochKey);
+    public ulong DroppedThroughEpoch => ReadMirroredEpoch(ref _droppedThroughEpoch, DroppedThroughEpochKey);
 
-    public bool TryRaiseDroppedThroughEpoch(ulong epoch) => TryRaiseEpoch(DroppedThroughEpochKey, epoch);
+    public bool TryRaiseDroppedThroughEpoch(ulong epoch) => TryRaiseMirroredEpoch(ref _droppedThroughEpoch, DroppedThroughEpochKey, epoch);
 
-    public ulong DemotedThroughEpoch => ReadEpoch(DemotedThroughEpochKey);
+    public ulong DemotedThroughEpoch => ReadMirroredEpoch(ref _demotedThroughEpoch, DemotedThroughEpochKey);
 
-    public bool TryRaiseDemotedThroughEpoch(ulong epoch) => TryRaiseEpoch(DemotedThroughEpochKey, epoch);
+    public bool TryRaiseDemotedThroughEpoch(ulong epoch) => TryRaiseMirroredEpoch(ref _demotedThroughEpoch, DemotedThroughEpochKey, epoch);
 
     public void LowerDemotedThroughEpoch(ulong epoch)
     {
         lock (_lock)
         {
-            if (epoch < ReadEpoch(DemotedThroughEpochKey)) WriteEpoch(DemotedThroughEpochKey, epoch);
+            if (epoch >= ReadMirroredEpoch(ref _demotedThroughEpoch, DemotedThroughEpochKey)) return;
+
+            WriteEpoch(DemotedThroughEpochKey, epoch);
+            Volatile.Write(ref _demotedThroughEpoch, (long)epoch);
+        }
+    }
+
+    private ulong ReadMirroredEpoch(ref long mirror, ReadOnlySpan<byte> key)
+    {
+        long known = Volatile.Read(ref mirror);
+        if (known >= 0) return (ulong)known;
+
+        lock (_lock)
+        {
+            known = Volatile.Read(ref mirror);
+            if (known >= 0) return (ulong)known;
+
+            ulong epoch = ReadEpoch(key);
+            Volatile.Write(ref mirror, (long)epoch);
+            return epoch;
+        }
+    }
+
+    private bool TryRaiseMirroredEpoch(ref long mirror, ReadOnlySpan<byte> key, ulong epoch)
+    {
+        lock (_lock)
+        {
+            if (epoch <= ReadMirroredEpoch(ref mirror, key)) return false;
+
+            WriteEpoch(key, epoch);
+            Volatile.Write(ref mirror, (long)epoch);
+            return true;
         }
     }
 

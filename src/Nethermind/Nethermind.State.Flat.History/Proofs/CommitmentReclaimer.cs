@@ -24,6 +24,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     private Thread? _loop;
     private bool _started;
     private int _disposed;
+    private readonly object _wakeLock = new();
 
     public bool Enabled => settings.RecentEpochs > 0 || settings.FineEpochs > 0;
 
@@ -71,7 +72,10 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     private void Wake()
     {
-        if (Volatile.Read(ref _disposed) == 0) _wake.Set();
+        lock (_wakeLock)
+        {
+            if (_disposed == 0) _wake.Set();
+        }
     }
 
     public void ResweepDemotionFrom(ulong epoch)
@@ -317,7 +321,10 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_wakeLock)
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        }
 
         _cts.Cancel();
         _loop?.Join();

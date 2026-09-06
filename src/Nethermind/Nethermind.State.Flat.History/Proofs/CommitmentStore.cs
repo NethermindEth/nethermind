@@ -207,8 +207,13 @@ internal sealed class CommitmentStore
             _view = _column.GetViewBetween(seekKey[..keyLength], upperBound[..upperLength]);
         }
 
+        private bool _disposed;
+
         public void Dispose()
         {
+            if (_disposed) return;
+
+            _disposed = true;
             _view?.Dispose();
             _view = null;
             ArrayPool<byte>.Shared.Return(_prefix);

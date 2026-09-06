@@ -72,7 +72,7 @@ internal abstract class TrieHistoryScope(
         lower[..boundLength].CopyTo(cursor);
         int cursorLength = boundLength;
         Span<byte> found = stackalloc byte[MaxRowKeyLength];
-        Span<byte> value = stackalloc byte[LeafValueBuffer];
+        Span<byte> value = stackalloc byte[MaxLeafValueLength];
         Span<byte> owner = stackalloc byte[MaxRowKeyLength];
 
         bool haveRow = false;
@@ -124,23 +124,15 @@ internal abstract class TrieHistoryScope(
         }
     }
 
-    private const int LeafValueBuffer = 512;
+    private const int MaxLeafValueLength = 512;
 
     private bool SeekRow(ReadOnlySpan<byte> from, ReadOnlySpan<byte> bound, ResolutionBudget budget, Span<byte> key, out int keyLength, Span<byte> value, out int valueLength)
     {
         if (!rows.TryGetCeiling(from, bound, key, out keyLength, value, out valueLength)) return false;
 
         budget.ChargeRow();
-        if (valueLength <= value.Length) return true;
-
-        using ISortedView view = rows.GetViewBetween(from, bound);
-        if (!view.MoveNext()) return false;
-
-        ReadOnlySpan<byte> stored = view.CurrentValue;
-        valueLength = stored.Length;
         if (valueLength > value.Length) throw new StateUnavailableException($"A history row value of {valueLength} bytes exceeds the {value.Length} bytes a leaf can carry.");
 
-        stored.CopyTo(value);
         return true;
     }
 

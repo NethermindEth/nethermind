@@ -40,5 +40,13 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
         _published = true;
     }
 
-    public void Dispose() => ChildVector.Return(_lastChildren);
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        _disposed = true;
+        ChildVector.Return(_lastChildren);
+    }
 }

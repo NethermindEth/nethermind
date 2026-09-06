@@ -107,8 +107,13 @@ internal sealed class NodeSeriesState : IDisposable
         _refs.Clear();
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed) return;
+
+        _disposed = true;
         ChildVector.Return(_refs);
         if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
         _whole = null;

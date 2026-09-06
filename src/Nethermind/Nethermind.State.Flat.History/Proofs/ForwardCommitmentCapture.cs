@@ -14,6 +14,7 @@ public sealed class ForwardCommitmentCapture : IDisposable
 {
     public const int MaxBufferedBlocks = 4096;
     public const long DefaultMaxBufferedBytes = 256L * 1024 * 1024;
+    private const int MaxSpareBlocks = 128;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly CommitmentDepthPolicy _policy;
@@ -28,6 +29,8 @@ public sealed class ForwardCommitmentCapture : IDisposable
     private ulong _firstBuffered;
     private ulong _lastBuffered;
     private bool _stopped;
+    private bool _roundOverflowed;
+    private CommitmentEmitter? _emitter;
 
     public ForwardCommitmentCapture(
         IColumnsDb<FlatHistoryColumns> history,
@@ -62,7 +65,7 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     public void Capture(ulong block, Snapshot snapshot)
     {
-        if (!Enabled || _stopped) return;
+        if (!Enabled || _stopped || _roundOverflowed) return;
 
         try
         {
@@ -88,7 +91,7 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     public void Capture(ulong block, WholeReadScanner scanner)
     {
-        if (!Enabled || _stopped) return;
+        if (!Enabled || _stopped || _roundOverflowed) return;
 
         try
         {
@@ -120,6 +123,8 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     public void Dispose()
     {
+        _emitter?.Dispose();
+        _emitter = null;
         foreach (CapturedBlock captured in _buffered.Values) captured.Dispose();
         _buffered.Clear();
         _bufferedBytes = 0;
@@ -128,6 +133,7 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     public void Complete()
     {
+        _roundOverflowed = false;
         if (_buffered.Count == 0) return;
 
         try
@@ -148,6 +154,12 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     private void Recycle(CapturedBlock captured)
     {
+        if (_spare.Count >= MaxSpareBlocks)
+        {
+            captured.Dispose();
+            return;
+        }
+
         captured.Reset();
         _spare.Push(captured);
     }
@@ -180,9 +192,9 @@ public sealed class ForwardCommitmentCapture : IDisposable
         {
             Recycle(captured);
             Discard();
-            _stopped = true;
+            _roundOverflowed = true;
             if (_logger.IsWarn) _logger.Warn(
-                $"Archive proof commitment capture at the tip stopped: a single capture round spans more than {MaxBufferedBlocks} blocks or {_maxBufferedBytes} bytes of trie nodes. The retrofit walk covers that range instead.");
+                $"Archive proof commitment capture skipped a round spanning more than {MaxBufferedBlocks} blocks or {_maxBufferedBytes} bytes of trie nodes; the tip series restarts at the next round and the gap is left to the retrofit walk.");
             return;
         }
 
@@ -201,6 +213,8 @@ public sealed class ForwardCommitmentCapture : IDisposable
     private void Stop(Exception e)
     {
         _stopped = true;
+        _emitter?.Dispose();
+        _emitter = null;
         Discard();
         if (_logger.IsError) _logger.Error("Archive proof commitment capture at the tip failed and is stopped until restart; the retrofit walk can rebuild the missing range.", e);
     }
@@ -211,23 +225,21 @@ public sealed class ForwardCommitmentCapture : IDisposable
         ulong last = _lastBuffered;
 
         EnsureStamp();
-        using (CommitmentEmitter emitter = CommitmentEmitter.ForTip(_history, _policy, _metadata))
+        CommitmentEmitter emitter = _emitter ??= CommitmentEmitter.ForTip(_history, _policy, _metadata);
+        foreach ((ulong block, CapturedBlock captured) in _buffered)
         {
-            foreach ((ulong block, CapturedBlock captured) in _buffered)
+            emitter.BeginBlock(block);
+            if (captured.StorageDepths is { } depths)
             {
-                emitter.BeginBlock(block);
-                if (captured.StorageDepths is { } depths)
-                {
-                    foreach ((ValueHash256 account, int depth) in depths) emitter.RecordStorageDepthReached(account, depth);
-                }
-
-                foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, captured.Arena.Slice(change.Offset, change.Length));
-                foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, captured.Arena.Slice(change.Offset, change.Length));
-                emitter.CompleteBlock();
+                foreach ((ValueHash256 account, int depth) in depths) emitter.RecordStorageDepthReached(account, depth);
             }
 
-            emitter.FlushOpenWindows();
+            foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, captured.Arena.Slice(change.Offset, change.Length));
+            foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, captured.Arena.Slice(change.Offset, change.Length));
+            emitter.CompleteBlock();
         }
+
+        emitter.FlushOpenWindows();
 
         _metadata.AdvanceTipSeries(first, last, out bool restarted);
         if (restarted && _logger.IsWarn) _logger.Warn(

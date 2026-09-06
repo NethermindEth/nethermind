@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -177,6 +178,7 @@ internal sealed class HistoryRowScanner(
         WriteStorageBounds(storagePrefix, slotPrefix, lower, upper);
 
         StorageRowCollector collector = new(rows, clears, from, to, maxRows, rowFormat);
+        bool cannotSplit = slotPrefix.Length == CommitmentDepthPolicy.MaxTrieDepth;
         using ISortedView view = storageHistory.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
         while (view.MoveNext())
         {
@@ -185,7 +187,7 @@ internal sealed class HistoryRowScanner(
 
             if (!collector.TryAdd(view.CurrentKey, view.CurrentValue))
             {
-                if (collector.DistinctKeys == 1 && rows.StreamedSlots.Count < MaxStreamedKeys)
+                if (cannotSplit || (collector.DistinctKeys == 1 && rows.StreamedSlots.Count < MaxStreamedKeys))
                 {
                     rows.StreamedSlots.Add(collector.Current);
                     rows.Reset();

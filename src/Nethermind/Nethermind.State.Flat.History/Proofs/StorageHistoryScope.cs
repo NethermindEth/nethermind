@@ -60,12 +60,21 @@ internal sealed class StorageHistoryScope(
         return written + IdentitySuffixLength + sizeof(ulong);
     }
 
-    private bool? _hasAnyClear;
+    private const int ClearsUnknown = 0;
+    private const int NoClears = 1;
+    private const int HasClears = 2;
+    private int _clears;
 
     protected override bool SurvivesTo(in ValueHash256 triePath, ulong writtenAtBlock, ulong block)
     {
-        _hasAnyClear ??= clears.HasClearInRange(accountPath.Bytes, 0, block);
-        return !_hasAnyClear.Value || !clears.HasClearInRange(accountPath.Bytes, writtenAtBlock, block);
+        int state = Volatile.Read(ref _clears);
+        if (state == ClearsUnknown)
+        {
+            state = clears.HasClearInRange(accountPath.Bytes, 0, block) ? HasClears : NoClears;
+            Volatile.Write(ref _clears, state);
+        }
+
+        return state == NoClears || !clears.HasClearInRange(accountPath.Bytes, writtenAtBlock, block);
     }
 
     protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)

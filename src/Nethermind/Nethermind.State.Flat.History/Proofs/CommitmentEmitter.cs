@@ -40,6 +40,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
+    private bool _disposed;
     private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
 
     private IColumnsWriteBatch<FlatHistoryColumns>? _batch;
@@ -180,29 +181,30 @@ public sealed class CommitmentEmitter : IDisposable
     public void CompleteBlock()
     {
         PersistStorageDepthsReached();
-        bool retained = _floorsEpoch >= _retainedFloor;
         bool fine = _floorsEpoch >= _fineFloor;
-        foreach ((NodePathKey key, (int offset, int length)) in _blockNodes)
+        if (_floorsEpoch >= _retainedFloor)
         {
-            if (!retained) break;
-
-            CommitmentTier tier = key.IsStorage
-                ? _policy.StorageTier(key.Depth, StorageTrieDepth(key.Scope))
-                : _policy.AccountTier(key.Depth);
-
-            ReadOnlySpan<byte> rlp = length == EmptyRecord ? ReadOnlySpan<byte>.Empty : _blockArena.Slice(offset, length);
-            switch (tier)
+            foreach ((NodePathKey key, (int offset, int length)) in _blockNodes)
             {
-                case CommitmentTier.PerChange:
-                    if (fine) WriteExact(key, rlp, isEmpty: length == EmptyRecord);
-                    Accumulate(key, rlp, isEmpty: length == EmptyRecord);
-                    break;
-                case CommitmentTier.Checkpoint:
-                    Accumulate(key, rlp, isEmpty: length == EmptyRecord);
-                    break;
-                case CommitmentTier.Composed:
-                    break;
+                CommitmentTier tier = key.IsStorage
+                    ? _policy.StorageTier(key.Depth, StorageTrieDepth(key.Scope))
+                    : _policy.AccountTier(key.Depth);
+
+                ReadOnlySpan<byte> rlp = length == EmptyRecord ? ReadOnlySpan<byte>.Empty : _blockArena.Slice(offset, length);
+                switch (tier)
+                {
+                    case CommitmentTier.PerChange:
+                        if (fine) WriteExact(key, rlp, isEmpty: length == EmptyRecord);
+                        Accumulate(key, rlp, isEmpty: length == EmptyRecord);
+                        break;
+                    case CommitmentTier.Checkpoint:
+                        Accumulate(key, rlp, isEmpty: length == EmptyRecord);
+                        break;
+                    case CommitmentTier.Composed:
+                        break;
+                }
             }
+
         }
 
         if (_policy.ClosesWindow(_block))
@@ -223,6 +225,9 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+
+        _disposed = true;
         CommitBatch();
         foreach (WindowState state in _windows.Values) state.Release();
         _windows.Clear();
@@ -481,6 +486,7 @@ public sealed class CommitmentEmitter : IDisposable
     private sealed class WindowState
     {
         private byte[]? _whole;
+        private bool _released;
 
         public WindowKind Kind;
         public ulong LastBlock;
@@ -533,6 +539,9 @@ public sealed class CommitmentEmitter : IDisposable
 
         public void Release()
         {
+            if (_released) return;
+
+            _released = true;
             if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
             _whole = null;
             ChildVector.Return(Latest);

@@ -219,20 +219,7 @@ internal sealed class HistoricalTrieNodeBuilder
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
                 byte[]? child = children[index];
-                if (child is null)
-                {
-                    views[index] = NodeView.Empty;
-                    continue;
-                }
-
-                try
-                {
-                    views[index] = NodeViews.FromRlp(child);
-                }
-                catch (Exception e) when (e is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
-                {
-                    return null;
-                }
+                views[index] = child is null ? NodeView.Empty : NodeViews.FromRlp(child);
             }
 
             NodeView composed = NodeViews.Combine(views);
@@ -244,6 +231,10 @@ internal sealed class HistoricalTrieNodeBuilder
             {
                 composed.Release();
             }
+        }
+        catch (Exception e) when (e is RlpException or InvalidDataException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            return null;
         }
         finally
         {

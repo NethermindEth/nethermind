@@ -40,7 +40,18 @@ internal static class NodeViews
     public static NodeView FromRlp(ReadOnlySpan<byte> rlp)
     {
         ChildVector children = ChildVector.Rent();
-        if (BranchRlp.TryReadChildren(rlp, children)) return NodeView.Branch(children, rlp, knownHash: null);
+        bool isBranch;
+        try
+        {
+            isBranch = BranchRlp.TryReadChildren(rlp, children);
+        }
+        catch
+        {
+            ChildVector.Return(children);
+            throw;
+        }
+
+        if (isBranch) return NodeView.Branch(children, rlp, knownHash: null);
 
         ChildVector.Return(children);
         return NodeView.Whole(rlp);

@@ -1017,6 +1017,61 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_malformed_short_node_at_a_composed_level_is_refused_not_thrown()
+    {
+        BuildCommitments();
+        byte route = (byte)(_accounts[3].ToAccountPath.Bytes[0] >> 4);
+        byte nibble = (byte)((route + 1) & 0x0F);
+        IDb history = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        foreach (byte[] key in history.GetAllKeys().ToList())
+        {
+            if (key.Length > Hash256.Size && key[0] >> 4 == nibble) history.Remove(key);
+        }
+
+        byte[] shortList = Bytes.FromHexString("c58083616263");
+        byte[] row = new byte[ParentRowCodec.WholeNodeRowLength(shortList.Length)];
+        int rowLength = ParentRowCodec.EncodeWholeNode(Blocks, shortList, row);
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        const int header = CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength;
+        byte[]? kept = null;
+        foreach (byte[] key in accounts.GetAllKeys().ToList())
+        {
+            if (key.Length <= header + sizeof(ulong)) continue;
+
+            int depth = key[header] & ~CommitmentKeyLayout.ExactRowFlag;
+            if (depth < 2 || key[header + 1] >> 4 != nibble) continue;
+
+            ReadOnlySpan<byte> prefix = key.AsSpan(header + 1, CommitmentKeyLayout.PathBytes(depth));
+            if (depth == 2 && (kept is null || prefix.SequenceEqual(kept)))
+            {
+                kept ??= prefix.ToArray();
+                accounts.PutSpan(key, row.AsSpan(0, rowLength));
+            }
+            else accounts.Remove(key);
+        }
+
+        Assert.That(kept, Is.Not.Null);
+        AccountProof expected = _chain.ExpectedProof(_accounts[3], Blocks);
+        AccountProof? actual = null;
+        Assert.That(() => { actual = ProveFromArchive(_accounts[3], Blocks); }, Throws.Nothing.Or.InstanceOf<StateUnavailableException>(),
+            "a composed level with a single surviving child merges that child's nibble into it; when the child's bytes are a short node that does not decode, the merge must be refused like any other malformed commitment rather than let the decoding error reach the visitor");
+        if (actual is not null) Assert.That(actual.Proof, Is.EqualTo(expected.Proof));
+    }
+
+    [Test]
+    public void Physical_floors_read_back_what_this_instance_raised_and_what_another_persisted()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
+        Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
+        Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
+        Assert.That(new CommitmentMetadata(_historyColumns, EpochPolicy).DroppedThroughEpoch, Is.EqualTo(3ul), "the mirror is a cache of the persisted key, not a replacement for it");
+        metadata.TryRaiseDemotedThroughEpoch(5);
+        metadata.LowerDemotedThroughEpoch(2);
+        Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(2ul));
+    }
+
+    [Test]
     public void The_reclaimer_deletes_nothing_under_a_layout_it_cannot_validate()
     {
         _policy = EpochPolicy;

@@ -116,7 +116,7 @@ public class ForwardCommitmentCaptureTests
     }
 
     [Test]
-    public void A_capture_round_holding_more_trie_bytes_than_the_bound_stops_instead_of_growing()
+    public void A_capture_round_holding_more_trie_bytes_than_the_bound_is_skipped_and_the_next_round_restarts_the_series()
     {
         HistoryWriter writer = CreateWriter(maxBufferedBytes: 100);
         for (ulong block = 0; block <= 3; block++) CommitBlock(block, PerChangePath, LeafRlp((int)block));
@@ -128,6 +128,16 @@ public class ForwardCommitmentCaptureTests
             Assert.That(AccountRowAtOrBelow(PerChangePath, 3, exact: true), Is.Null,
                 "a round whose buffered trie nodes exceed the byte bound is dropped whole; the retrofit walk owns that range");
             Assert.That(_metadata.TryGetTipSeries(out _, out _), Is.False, "nothing was replayed, so no tip series may claim the range");
+        }
+
+        CommitBlock(4, PerChangePath, LeafRlp(4));
+        writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AccountRowAtOrBelow(PerChangePath, 4, exact: true), Is.EqualTo(LeafRlp(4)),
+                "an oversized round is a capacity condition of that round alone; the next round that fits is captured, the series restarting there");
+            Assert.That(_metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start == 4 && frontier == 4, Is.True);
         }
     }
 
