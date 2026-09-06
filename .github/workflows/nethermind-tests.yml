@@ -176,7 +176,10 @@ jobs:
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
@@ -186,10 +189,22 @@ jobs:
             exit 0
           elif [[ $rc -eq 1 ]]; then
             exit 1
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -275,7 +290,10 @@ jobs:
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
@@ -285,10 +303,22 @@ jobs:
             exit 0
           elif [[ $rc -eq 1 ]]; then
             exit 1
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -354,7 +384,10 @@ jobs:
             dotnet build ${{ matrix.test.project }}.csproj -c release
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
@@ -364,10 +397,22 @@ jobs:
             exit 0
           elif [[ $rc -eq 1 ]]; then
             exit 1
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.runner }}-hang-dump
+          path: src/Nethermind/${{ matrix.test.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
   # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
@@ -391,12 +436,13 @@ jobs:
         run: |
           # Intentional exclusions:
           # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
-          # - Nethermind.Core.ZkEvm.Test, Nethermind.Trie.ZkEvm.Test: run with EnableZkEvm=true in stateless-tests.yml
+          # - Nethermind.Core.ZkEvm.Test, Nethermind.Trie.ZkEvm.Test, Nethermind.Evm.ZkEvm.Test: run with
+          #   EnableZkEvm=true in stateless-tests.yml
           # - Ethereum.Blockchain.Pyspec.Test: the fixture shards are superseded by the nethtest job
           #   (see run-nethtest.yml). The assembly also holds plain unit tests (StatelessSchemaTests)
           #   that remain unwired: test discovery loads the full pyspec fixture sets, so a matrix
           #   run exceeds the job timeout. Wiring those tests needs a project move.
-          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Nethermind.Trie.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
+          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Nethermind.Trie.ZkEvm.Test Nethermind.Evm.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
           missing=0
           for dir in src/Nethermind/*.Test; do
             project=$(basename "$dir")

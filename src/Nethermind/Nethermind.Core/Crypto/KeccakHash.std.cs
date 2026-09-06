@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 
@@ -14,6 +15,17 @@ public sealed partial class KeccakHash
 {
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
+
+    /// <inheritdoc cref="KeccakHash.AbsorbMessageIntoZeroState" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    {
+        // Held here rather than in the guest arm, which cannot run on a host: this is the arm a Debug test
+        // run executes, so it is the one that can catch a caller the guest arm would then hash wrongly.
+        Debug.Assert(!stateBytes.ContainsAnyExcept((byte)0), "the guest arm writes the first block, not XORs it");
+
+        return AbsorbFullBlocks(state, stateBytes, input, roundSize);
+    }
 
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
