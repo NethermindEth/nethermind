@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
@@ -9,10 +10,19 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 [Parallelizable(ParallelScope.Self)]
-public class MemoryPositionTests : VirtualMachineTestsBase
+[TestFixture(false)]
+[TestFixture(true)]
+public class MemoryPositionTests(bool tracing) : VirtualMachineTestsBase
 {
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
+
+    protected override TestAllTracerWithOutput CreateTracer() => tracing ? new TestAllTracerWithOutput() : new NoInstructionTracer();
+
+    private sealed class NoInstructionTracer : TestAllTracerWithOutput
+    {
+        public override bool IsTracingInstructions => false;
+    }
 
     // A position is popped as its low 64 bits plus a marker for the other three limbs. Each case
     // sets one bit in one of those limbs and leaves the low limb zero, so dropping the marker
@@ -20,6 +30,51 @@ public class MemoryPositionTests : VirtualMachineTestsBase
     private const string HighLimb = "0x0000000000000001000000000000000000000000000000000000000000000000";
     private const string MiddleLimb = "0x0000000000000000000000000000000100000000000000000000000000000000";
     private const string LowerLimb = "0x0000000000000000000000000000000000000000000000010000000000000000";
+
+    [Test]
+    public void Memory_opcode_preserves_gas_and_stack_failure_order(
+        [Values(Instruction.MLOAD, Instruction.MSTORE, Instruction.MSTORE8)] Instruction instruction,
+        [Values(0, 1, 2)] int depth, [Values(2UL, 3UL, 5UL, 6UL)] ulong availableGas)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++) code = code.PushData(0);
+        int requiredDepth = instruction == Instruction.MLOAD ? 1 : 2;
+        string? error = availableGas < 3 ? nameof(EvmExceptionType.OutOfGas)
+            : depth < requiredDepth ? nameof(EvmExceptionType.StackUnderflow)
+            : availableGas < 6 ? nameof(EvmExceptionType.OutOfGas) : null;
+        ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + availableGas;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code.Op(instruction).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(error));
+            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
+        }
+    }
+
+    [Test]
+    public void Byte_store_followed_by_word_load_preserves_neighbours(
+        [Values(0, 7, 8, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512)] int position)
+    {
+        int wordPosition = position / EvmStack.WordSize * EvmStack.WordSize;
+        byte[] expected = Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        byte[] code = Prepare.EvmCode
+            .PushData(expected).PushData(wordPosition).Op(Instruction.MSTORE)
+            .PushData(0x1234ab).PushData(position).Op(Instruction.MSTORE8)
+            .PushData(wordPosition).Op(Instruction.MLOAD)
+            .PushData(0).Op(Instruction.MSTORE)
+            .PushData(EvmStack.WordSize).PushData(0).Op(Instruction.RETURN).Done;
+        expected[position - wordPosition] = 0xab;
+
+        TestAllTracerWithOutput tracer = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+        }
+    }
 
     [TestCase(Instruction.MSTORE, HighLimb)]
     [TestCase(Instruction.MSTORE, MiddleLimb)]

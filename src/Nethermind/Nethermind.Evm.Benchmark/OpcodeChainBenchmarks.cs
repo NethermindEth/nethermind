@@ -38,7 +38,7 @@ public class OpcodeChainBenchmarks
     private CodeInfo _code = null!;
     private byte[] _input = new byte[96];
 
-    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "CallData", "CallDataPartial", "CallDataMissing", "Context", "Memory", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "CallData", "CallDataPartial", "CallDataMissing", "Context", "Memory", "MemoryByte", "MemoryBoundary", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -142,6 +142,12 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.CALLDATASIZE, (byte)Instruction.POP, (byte)Instruction.TIMESTAMP, (byte)Instruction.POP], 6),
                 "Memory" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE,
                     (byte)Instruction.PUSH0, (byte)Instruction.MLOAD, (byte)Instruction.POP], 6),
+                "MemoryByte" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE8,
+                    (byte)Instruction.PUSH0, (byte)Instruction.MLOAD, (byte)Instruction.POP], 6),
+                "MemoryBoundary" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH1, 63, (byte)Instruction.MSTORE8,
+                    (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP,
+                    (byte)Instruction.DUP1, (byte)Instruction.PUSH1, 64, (byte)Instruction.MSTORE8,
+                    (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP], 12),
                 _ => throw new ArgumentOutOfRangeException(nameof(Chain))
             };
             for (int i = 0; i < BodyOpcodeCount / body.Opcodes; i++) code.AddRange(body.Sequence);

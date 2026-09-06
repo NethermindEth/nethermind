@@ -188,13 +188,10 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop the memory offset from the stack; if missing, signal a stack underflow.
-        if (!stack.PopMemoryPosition(out UInt256 result)) goto StackUnderflow;
-
-        // Pop a single byte from the stack; PopByte returns -1 on underflow.
-        int popped = stack.PopByte();
-        if (popped < 0) goto StackUnderflow;
-        byte data = (byte)popped;
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte word = ref stack.Pop2BytesByRefUnchecked();
+        EvmStack.ReadMemoryPositionFromSlot(ref Unsafe.Add(ref word, EvmStack.WordSize), out UInt256 result);
+        byte data = (byte)(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref word, EvmStack.WordSize - sizeof(ulong))) >> 56);
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
@@ -238,14 +235,15 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop the memory offset; if missing, signal a stack underflow.
-        if (!stack.PopMemoryPosition(out UInt256 result)) goto StackUnderflow;
+        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+        EvmStack.ReadMemoryPositionFromSlot(ref stack.PeekBytesByRefUnchecked(), out UInt256 result);
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for a 32-byte load.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
         {
+            stack.Head--;
             goto OutOfGas;
         }
 
@@ -257,8 +255,7 @@ public static partial class EvmInstructions
             vm.TxTracer.ReportMemoryChange(result, MemoryMarshal.CreateReadOnlySpan(ref wordBytes, EvmPooledMemory.WordSize));
         }
 
-        // Push the loaded bytes onto the stack.
-        return stack.Push32Bytes<TTracingInst, OnFlag>(ref wordBytes);
+        return stack.WriteRightPaddedBytes<TTracingInst>(ref stack.PeekBytesByRefUnchecked(), ref wordBytes, EvmStack.WordSize);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
