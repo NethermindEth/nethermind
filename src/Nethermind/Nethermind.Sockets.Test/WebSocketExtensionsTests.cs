@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,7 +14,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
-using NSubstitute.Extensions;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Sockets.Test;
@@ -48,7 +48,19 @@ public class WebSocketExtensionsTests
             return Task.FromResult(_receiveResults.Dequeue());
         }
 
-        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken) => throw new NotImplementedException();
+        public long SentBytes { get; private set; }
+        public int SentEndMessages { get; private set; }
+
+        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
+        {
+            SentBytes += buffer.Count;
+            if (endOfMessage)
+            {
+                SentEndMessages++;
+            }
+
+            return Task.CompletedTask;
+        }
 
         public override WebSocketCloseStatus? CloseStatus { get; }
         public override string CloseStatusDescription { get; }
@@ -99,21 +111,35 @@ public class WebSocketExtensionsTests
         WebSocketMock mock = new(receiveResult);
 
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
+        static async ValueTask WriteResponses(CallInfo callInfo)
         {
-            (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
-            (JsonRpcResult.Collection(new JsonRpcBatchResult(static (e, c) =>
-                new List<JsonRpcResult.Entry>()
+            IJsonRpcResponseSink sink = callInfo.Arg<IJsonRpcResponseSink>();
+            CancellationToken cancellationToken = callInfo.Arg<CancellationToken>();
+
+            await sink.WriteSingleAsync(new JsonRpcResponse(), new RpcReport("single", 0, true), cancellationToken);
+            await sink.BeginBatchAsync(cancellationToken);
+            for (int index = 0; index < 3; index++)
             {
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-            }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
-        }.ToAsyncEnumerable());
+                await sink.WriteBatchItemAsync(new JsonRpcResponse(), new RpcReport("batch", 0, true), cancellationToken);
+            }
+            await sink.EndBatchAsync(cancellationToken);
+        }
+
+        processor
+            .ProcessAsync(
+                Arg.Any<PipeReader>(),
+                Arg.Any<JsonRpcContext>(),
+                Arg.Any<IJsonRpcResponseSink>(),
+                Arg.Any<JsonRpcProcessingOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(WriteResponses);
 
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
 
         IJsonRpcLocalStats localStats = Substitute.For<IJsonRpcLocalStats>();
+        localStats.IsEnabled.Returns(true);
+        long receivedBefore = Metrics.JsonRpcBytesReceivedWebSockets;
+        long sentBefore = Metrics.JsonRpcBytesSentWebSockets;
 
         JsonRpcSocketsClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
             "TestClient",
@@ -121,24 +147,23 @@ public class WebSocketExtensionsTests
             RpcEndpoint.Ws,
             processor,
             localStats,
-            Substitute.For<IJsonSerializer>(),
+            new EthereumJsonSerializer(),
             null,
             30.MB,
             1);
 
-        webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
-        {
-            JsonRpcResult par = x.Arg<JsonRpcResult>();
-            return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
-        });
-
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
 
-        Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024));
-        Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(400));
-        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
-        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.JsonRpcBytesReceivedWebSockets - receivedBefore, Is.EqualTo(1024));
+            Assert.That(Metrics.JsonRpcBytesSentWebSockets - sentBefore, Is.EqualTo(mock.SentBytes));
+            Assert.That(mock.SentEndMessages, Is.EqualTo(2));
+        }
+        localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method != "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
+        localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method == "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
+        localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
     }
 
     [Test]
@@ -234,7 +259,10 @@ public class WebSocketExtensionsTests
     [Test]
     public void Correct_isnull_on_result()
     {
-        Assert.That(new ReceiveResult().IsNull, Is.False);
-        Assert.That(default(ReceiveResult).IsNull, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ReceiveResult().IsNull, Is.False);
+            Assert.That(default(ReceiveResult).IsNull, Is.True);
+        }
     }
 }

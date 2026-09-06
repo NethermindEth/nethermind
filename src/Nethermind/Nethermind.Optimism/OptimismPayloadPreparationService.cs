@@ -41,7 +41,7 @@ public class OptimismPayloadPreparationService(
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(currentBestBlock.Header);
+            IOptimismReleaseSpec spec = (IOptimismReleaseSpec)_specProvider.GetSpec(currentBestBlock.Header);
             if (spec.IsOpHoloceneEnabled)
             {
                 // NOTE: This operation should never fail since headers should be valid at this point.

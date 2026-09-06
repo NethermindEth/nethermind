@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -19,11 +18,13 @@ public class PrecompileCachedCodeInfoRepository(
     IWorldState worldState,
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
+    PrecompileCaches? precompileCaches) : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCache is null
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCaches is null
         ? precompileProvider.GetPrecompiles()
-        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCaches));
+
+    public bool IsCodeOverridable => baseCodeInfoRepository.IsCodeOverridable;
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
@@ -50,43 +51,43 @@ public class PrecompileCachedCodeInfoRepository(
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
+        PrecompileCaches caches)
     {
         IPrecompile precompile = originalPrecompile.Value.Precompile!;
 
-        return !precompile.SupportsCaching
+        return !precompile.SupportsCaching || !caches.TryGetPartition(originalPrecompile.Key.Value, out PrecompileCaches.Partition? partition)
             ? originalPrecompile.Value
-            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, partition));
     }
 
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
+        PrecompileCaches.Partition cache) : IPrecompile
     {
-        public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
+        public string Name => precompile.Name;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
+
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
-            PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
-            if (!cache.TryGetValue(key, out Result<byte[]> result))
+            PrecompileCaches.Key key = new(address, effectiveInput, releaseSpec);
+            if (cache.TryGet(key, out Result<byte[]> result))
             {
-                result = precompile.Run(inputData, releaseSpec);
-
-                // no need to spend memory on caching invalid-length inputs
-                // it's fast to check and is the first verification done by a precompile
-                if (result is { IsError: true, Error: Errors.InvalidInputLength })
-                    return result;
-
-                // we need to rebuild the key with data copy as the data can be changed by VM processing
-                // effective-input bounds are expected to remain the same
-                key = new(address, effectiveInput.ToArray());
-                cache.TryAdd(key, result);
+                return result;
             }
 
+            result = precompile.Run(inputData, releaseSpec);
+
+            // no need to spend memory on caching invalid-length inputs
+            // it's fast to check and is the first verification done by a precompile
+            if (result is { IsError: true, Error: Errors.InvalidInputLength })
+                return result;
+
+            cache.TryAdd(key, result);
             return result;
         }
     }

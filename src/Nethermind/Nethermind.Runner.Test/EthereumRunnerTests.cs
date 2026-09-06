@@ -15,21 +15,18 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Autofac.Core.Lifetime;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -101,7 +98,7 @@ public class EthereumRunnerTests
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
-        List<(string, ConfigProvider)> result = new(resultQueue);
+        List<(string, ConfigProvider)> result = [.. resultQueue];
         result.Sort();
 
         {
@@ -120,6 +117,15 @@ public class EthereumRunnerTests
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
             result.Add(("flashbots", configProvider));
+        }
+
+        {
+            // Censorship detector
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
+            result.Add(("censorship-detector", configProvider));
         }
 
         return result;
@@ -211,15 +217,7 @@ public class EthereumRunnerTests
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
         _ = api.Config<IHealthChecksConfig>(); // Randomly fail type discovery if not resolved early.
 
-        api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
-        api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
-        api.NonceManager = Substitute.For<INonceManager>();
-
-        if (api is AuRaNethermindApi auRaNethermindApi)
-        {
-            auRaNethermindApi.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
-        }
 
         try
         {
@@ -230,7 +228,7 @@ public class EthereumRunnerTests
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-            foreach (PropertyInfo? propertyInfo in api.GetType().Properties())
+            foreach (PropertyInfo? propertyInfo in api.GetType().GetProperties())
             {
                 // Property with `SkipServiceCollection` make property from container.
                 if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
@@ -305,6 +303,8 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(INetworkStorage),
+                typeof(NetworkStorage),
                 typeof(ITracer), // Completely different construction on every case
                 typeof(IReadOnlyStateProvider), // For which block? Use IChainHeadInfoProvider, or preferably, IStateReader instead
                 typeof(string),
@@ -349,7 +349,7 @@ public class EthereumRunnerTests
             initConfig.BaseDbPath = tempPath.Path;
 
             IDbConfig dbConfig = configProvider.GetConfig<IDbConfig>();
-            dbConfig.FlushOnExit = false;
+            dbConfig.FlushOnExit = FlushOnExitMode.None;
 
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
             int port = basePort + testIndex;
@@ -437,8 +437,8 @@ public class EthereumRunnerTests
                 base.Load(builder);
 
                 IIPResolver ipResolver = Substitute.For<IIPResolver>();
-                ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
-                ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
+                ipResolver.Resolve(Arg.Any<CancellationToken>())
+                    .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Parse("127.0.0.1"), IPAddress.Parse("127.0.0.1"))));
 
                 builder
                     .AddSingleton(ipResolver)
@@ -461,6 +461,8 @@ public class EthereumRunnerTests
                     // pass in runner test.
                     builder
                         .AddSingleton(Substitute.For<IReportingValidator>())
+                        // Pin a deterministic node key so resolving components does not load/generate a real key file.
+                        .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA))
                         ;
                 }
 

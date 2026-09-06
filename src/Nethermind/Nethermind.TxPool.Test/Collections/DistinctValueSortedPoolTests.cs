@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -30,11 +29,11 @@ namespace Nethermind.TxPool.Test.Collections
         private const int Capacity = 16;
         private ITransactionComparerProvider _transactionComparerProvider;
 
-        private static Transaction[] GenerateTransactions(int count = Capacity, UInt256? gasPrice = null, Address address = null, UInt256? nonce = null) =>
+        private static Transaction[] GenerateTransactions(int count = Capacity, UInt256? gasPrice = null, Address address = null, ulong? nonce = null) =>
             Enumerable.Range(0, count).Select(i =>
             {
                 UInt256 iUint256 = (UInt256)i;
-                Transaction transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? iUint256)
+                Transaction transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? (ulong)i)
                     .WithSenderAddress(address ?? TestItem.Addresses[i]).TestObject;
                 transaction.Hash = Keccak.Compute(i.ToString());
                 return transaction;
@@ -80,7 +79,7 @@ namespace Nethermind.TxPool.Test.Collections
                 pool.TryInsert(transaction.Hash, transaction);
             });
 
-            pool.Count.Should().Be(expectedCount);
+            Assert.That(pool.Count, Is.EqualTo(expectedCount));
         }
 
         [TestCase(true)]
@@ -98,8 +97,8 @@ namespace Nethermind.TxPool.Test.Collections
                 pool.TryInsert(transaction.Hash, transaction);
             }
 
-            pool.Count.Should().Be(1);
-            pool.GetSnapshot().First().GasPrice.Should().Be(Capacity - 1);
+            Assert.That(pool.Count, Is.EqualTo(1));
+            Assert.That(pool.GetSnapshot().First().GasPrice, Is.EqualTo((UInt256)(Capacity - 1)));
         }
 
         private static int _finalizedCount;
@@ -174,9 +173,9 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeLessThanOrEqualTo(expectedAllCount - Capacity);
-            pool.Count.Should().Be(Capacity);
+            Assert.That(_allCount, Is.EqualTo(expectedAllCount));
+            Assert.That(_finalizedCount, Is.LessThanOrEqualTo(expectedAllCount - Capacity));
+            Assert.That(pool.Count, Is.EqualTo(Capacity));
         }
 
         [TestCase(0, 16)]
@@ -202,7 +201,7 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             pool.Shrink(Capacity - shrinkValue);
-            pool.Count.Should().Be(expectedCapacity);
+            Assert.That(pool.Count, Is.EqualTo(expectedCapacity));
         }
 
         [Test]
@@ -220,17 +219,17 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _finalizedCount.Should().BeLessThanOrEqualTo(Capacity * (capacityMultiplier - 1));
-            _allCount.Should().Be(Capacity * capacityMultiplier);
-            pool.Count.Should().Be(Capacity);
+            Assert.That(_finalizedCount, Is.LessThanOrEqualTo(Capacity * (capacityMultiplier - 1)));
+            Assert.That(_allCount, Is.EqualTo(Capacity * capacityMultiplier));
+            Assert.That(pool.Count, Is.EqualTo(Capacity));
         }
 
         [Test]
         public async Task Capacity_is_never_exceeded_with_multiple_threads()
         {
             int capacityMultiplier = 10;
-            _finalizedCount.Should().Be(0);
-            _allCount.Should().Be(0);
+            Assert.That(_finalizedCount, Is.EqualTo(0));
+            Assert.That(_allCount, Is.EqualTo(0));
 
             WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
@@ -265,8 +264,8 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             int expectedAllCount = Capacity * capacityMultiplier * 3;
-            _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeGreaterThanOrEqualTo(expectedAllCount - Capacity);
+            Assert.That(_allCount, Is.EqualTo(expectedAllCount));
+            Assert.That(_finalizedCount, Is.GreaterThanOrEqualTo(expectedAllCount - Capacity));
         }
 
         private static void CollectAndFinalize()

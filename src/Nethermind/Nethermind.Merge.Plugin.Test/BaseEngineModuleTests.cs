@@ -7,7 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -18,6 +18,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Events;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -43,6 +44,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 using Nethermind.History;
 using Nethermind.Init.Modules;
 
@@ -91,7 +93,7 @@ public abstract partial class BaseEngineModuleTests
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
         ulong slotLength = 12)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
         Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
@@ -103,14 +105,14 @@ public abstract partial class BaseEngineModuleTests
         {
             ExecutionPayload getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader, parentBlock.Timestamp + slotLength, random ?? TestItem.KeccakA, Address.Zero);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
-            payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
             if (setHead)
             {
                 Hash256 newHead = getPayloadResult.BlockHash;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-                setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-                setHeadResponse.Data.PayloadId.Should().Be(null);
+                Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
             }
 
             blocks.Add(getPayloadResult);
@@ -159,10 +161,31 @@ public abstract partial class BaseEngineModuleTests
         public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
-        public Task WaitForImprovedBlock(Hash256? parentHash = null) =>
+        /// <summary>
+        /// Waits for an improved block built on <paramref name="parentHash"/> that carries at least
+        /// <paramref name="minTransactions"/> transactions.
+        /// </summary>
+        /// <remarks>
+        /// The payload service publishes an empty block for a parent before improving it, so a parent-only wait is
+        /// satisfied by that empty improvement; callers that submitted transactions must pass a minimum.
+        /// </remarks>
+        /// <param name="parentHash">The required parent hash, or <see langword="null"/> to match any parent.</param>
+        /// <param name="minTransactions">The minimum transaction count, or zero to impose no transaction requirement.</param>
+        public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
-                b => parentHash is null || b.Header.ParentHash == parentHash);
+                b => (parentHash is null || b.Header.ParentHash == parentHash)
+                     && b.Transactions.Length >= minTransactions);
 
+        /// <summary>Waits for the tx pool to finish processing <paramref name="blockHash"/> as its head.</summary>
+        /// <remarks>
+        /// Callers must create the wait before the <c>forkchoiceUpdated</c> that canonicalizes the block, and should
+        /// assert that call succeeded — otherwise the event never fires and the wait times out without a cause.
+        /// </remarks>
+        public Task WaitForTxPoolHead(Hash256 blockHash) =>
+            Wait.ForEventCondition<Block>(CancellationToken,
+                h => TxPool.TxPoolHeadChanged += h,
+                h => TxPool.TxPoolHeadChanged -= h,
+                b => b.Hash == blockHash);
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 
@@ -191,14 +214,19 @@ public abstract partial class BaseEngineModuleTests
 
         public bool? ParallelExecutionOverride { get; set; }
 
+        private const double CiSafeSingleBlockImprovementOfSlot = 5;
+
+        /// <summary>
+        /// Overrides the payload improvement window as a fraction of a slot. Must be set before <c>Build()</c>;
+        /// assigning it afterwards is a no-op because the configs are materialized during build.
+        /// </summary>
+        public double? SingleBlockImprovementOfSlotOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
             MergeConfig.TerminalTotalDifficulty ??= "0";
-            // Production default (7s) is too tight under Flat DB CI load — validation
-            // races the timeout and the handler returns SYNCING, breaking tests that
-            // assert VALID/INVALID. Tests that exercise timeout→SYNCING behavior pass
-            // an explicit shorter value.
+            // Production default (7s) is too tight under Flat DB CI load, causing spurious SYNCING; timeout tests pass an explicit shorter value.
             if (MergeConfig.NewPayloadBlockProcessingTimeout == DefaultNewPayloadBlockProcessingTimeout)
             {
                 MergeConfig.NewPayloadBlockProcessingTimeout = 60_000;
@@ -206,6 +234,8 @@ public abstract partial class BaseEngineModuleTests
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
+
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
 
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
@@ -219,13 +249,26 @@ public abstract partial class BaseEngineModuleTests
                     ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
                     : c);
             }
-            return configs;
+
+            List<IConfig> materialized = configs.ToList();
+            foreach (IConfig config in materialized)
+            {
+                if (config is not IBlocksConfig blocksConfig) continue;
+                blocksConfig.SingleBlockImprovementOfSlot = SingleBlockImprovementOfSlotOverride ?? CiSafeSingleBlockImprovementOfSlot;
+            }
+            return materialized;
         }
+
+        /// <summary>
+        /// The core merge module installed by <see cref="TestMergeModule"/>. AuRa-merge blockchains return
+        /// <c>null</c> and install <c>AuRaMergeModule</c> themselves, so <c>BaseMergePluginModule</c> loads exactly once.
+        /// </summary>
+        protected virtual IModule? MergeModule => new MergePluginModule();
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-                .AddModule(new TestMergeModule(configProvider))
+                .AddModule(new TestMergeModule(MergeModule))
                 .AddDecorator<IBranchProcessor>((_, branchProcessor) => new TestBranchProcessorInterceptor(branchProcessor, _blockProcessingThrottle))
                 .AddDecorator<IBlockImprovementContextFactory>((_, factory) =>
                 {
@@ -260,13 +303,15 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
                 blocksConfig,
                 LogManager,
-                targetAdjustedGasLimitCalculator);
+                targetAdjustedGasLimitCalculator,
+                InclusionListTxSource);
 
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
@@ -278,12 +323,9 @@ public abstract partial class BaseEngineModuleTests
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);
-            BeaconSync.AllowBeaconHeaderSync();
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
             return bc;
         }
-
-        public IManualBlockFinalizationManager BlockFinalizationManager => Container.Resolve<IManualBlockFinalizationManager>();
 
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>
             Container.Resolve<IBlockImprovementContextFactory>();

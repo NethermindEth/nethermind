@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -39,7 +38,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsSuccess(TestItem.AddressA, 100, [], []);
 
-            tracer.TxReceipts[0].TxType.Should().Be(TxType.AccessList);
+            Assert.That(tracer.TxReceipts[0].TxType, Is.EqualTo(TxType.AccessList));
         }
 
         [Test]
@@ -100,10 +99,10 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.SetReceipt(2, receipt);
 
-            tracer.TxReceipts.Length.Should().Be(3);
-            wrappedTracer.TxReceipts.Length.Should().Be(3);
-            tracer.TxReceipts[2].Should().BeSameAs(receipt);
-            wrappedTracer.TxReceipts[2].Should().BeSameAs(receipt);
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
+            Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
+            Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
+            Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
         }
 
         [Test]
@@ -120,7 +119,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetReceipt(2, new TxReceipt { Logs = [] });
 
             Assert.DoesNotThrow(() => tracer.EndBlockTrace());
-            block.Header.Bloom.Should().NotBeNull();
+            Assert.That(block.Header.Bloom, Is.Not.Null);
         }
 
         [Test]
@@ -140,8 +139,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.ResetForParallelTx(nextBlock, nextOtherTracer);
 
-            tracer.TxReceipts.Length.Should().Be(0);
-            tracer.InnerTracer.Should().BeSameAs(NullTxTracer.Instance);
+            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+            Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
             previousOtherTracer.Received(1).StartNewBlockTrace(previousBlock);
             previousOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
             nextOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);

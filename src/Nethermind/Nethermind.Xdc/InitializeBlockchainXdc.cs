@@ -2,20 +2,37 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
+using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Xdc;
 
-internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
-    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+internal class InitializeBlockchainXdc(
+    INethermindApi api,
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    ITxGossipPolicy txGossipPolicy,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy, specChangeTxValidator)
 {
     private readonly INethermindApi _api = api;
+
+    // Non-trivial cast: ISpecProvider -> XdcChainSpecBasedSpecProvider.
+    // Safe in the XDC context because XDC nodes are always configured with
+    // XdcChainSpecBasedSpecProvider. Throws early at startup if the DI
+    // container is mis-configured rather than silently returning null.
+    private XdcChainSpecBasedSpecProvider XdcSpecProvider =>
+        _api.SpecProvider as XdcChainSpecBasedSpecProvider
+        ?? throw new InvalidOperationException(
+            $"Expected {nameof(XdcChainSpecBasedSpecProvider)} but got {_api.SpecProvider?.GetType().Name}. " +
+            "Ensure the DI container registers XdcChainSpecBasedSpecProvider for ISpecProvider.");
+
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         ISnapshotManager snapshotManager = _api.Context.Resolve<ISnapshotManager>();
@@ -25,11 +42,14 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
+                _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
-                new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
-                _api.HeadTxValidator,
+                [
+                    new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
+                    new BlackListedAddressFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager)
+                ],
                 true
             );
 
@@ -37,8 +57,6 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
         return txPool;
     }
 
-    // Consensus loop must run on all nodes to keep QC/TC state current
-    protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
-
-    protected new IComparer<Transaction> CreateTxPoolTxComparer() => new XdcTransactionComparerProvider(_api.SpecProvider!, _api.BlockTree!).GetDefaultComparer();
+    protected new IComparer<Transaction> CreateTxPoolTxComparer() =>
+        new XdcTransactionComparerProvider(XdcSpecProvider, _api.BlockTree!).GetDefaultComparer();
 }

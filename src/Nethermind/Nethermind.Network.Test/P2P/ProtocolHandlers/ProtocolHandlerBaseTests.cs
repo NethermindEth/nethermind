@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -12,6 +13,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -28,8 +30,13 @@ public class ProtocolHandlerBaseTests
     private static readonly Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> SyncServeValueTaskHandler =
         static (_, _) => ValueTask.FromResult(new TestResponseMessage());
 
-    private class TestProtocolHandler(ISession session, TimeSpan initTimeout, IBackgroundTaskScheduler? backgroundTaskScheduler = null)
-        : ProtocolHandlerBase(session, Substitute.For<INodeStatsManager>(), Substitute.For<IMessageSerializationService>(), backgroundTaskScheduler ?? Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance)
+    private class TestProtocolHandler(
+        ISession session,
+        TimeSpan initTimeout,
+        IBackgroundTaskScheduler? backgroundTaskScheduler = null,
+        IMessageSerializationService? serializationService = null,
+        ILogManager? logManager = null)
+        : ProtocolHandlerBase(session, Substitute.For<INodeStatsManager>(), serializationService ?? Substitute.For<IMessageSerializationService>(), backgroundTaskScheduler ?? Substitute.For<IBackgroundTaskScheduler>(), logManager ?? LimboLogs.Instance)
     {
         public override string Name => "test";
         protected override TimeSpan InitTimeout => initTimeout;
@@ -46,6 +53,7 @@ public class ProtocolHandlerBaseTests
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
         public void ScheduleSyncServeValueTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> syncServe) =>
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
+        public TestRequestMessage Deserialize(byte[] data) => Deserialize<TestRequestMessage>(data);
         public override void Init() { }
         public override void Dispose() { }
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
@@ -149,5 +157,23 @@ public class ProtocolHandlerBaseTests
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         Assert.That(allocated, Is.Zero);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Rlp_deserialization_exceptions_are_not_logged_at_debug(bool limitExceeded)
+    {
+        Exception exception = limitExceeded ? new RlpLimitException("limit") : new RlpException("invalid");
+        IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
+        serializationService.Deserialize<TestRequestMessage>(Arg.Any<ArraySegment<byte>>()).Returns(_ => throw exception);
+        TestLogger logger = new() { IsTrace = false };
+        TestProtocolHandler handler = new(
+            Substitute.For<ISession>(),
+            TimeSpan.FromMilliseconds(50),
+            serializationService: serializationService,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        Assert.That(() => handler.Deserialize([]), Throws.TypeOf(exception.GetType()));
+        Assert.That(logger.LogList, Is.Empty);
     }
 }

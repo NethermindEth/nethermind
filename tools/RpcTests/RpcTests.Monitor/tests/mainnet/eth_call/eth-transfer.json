@@ -1,0 +1,29 @@
+[
+  {
+    "run": "EveryBlocks(3)",
+    "test": {
+      "description": "ETH transfer"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_call",
+      "params": [
+        {
+          "from": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH contract - always has ETH
+          "to": "0x0000000000000000000000000000000000000000",
+          "gas": "0x5208",
+          "gasPrice": "{{Hex(Recent.BaseFeePerGas)}}",
+          "value": "0x229322"
+        },
+        "{{Hex(Recent.Number)}}"
+      ],
+      "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": "0x"
+    }
+  }
+]
+

@@ -26,6 +26,7 @@ namespace Nethermind.Core.Extensions
         internal const string ErrMissingPrefix = "hex string without 0x prefix";
         internal const string ErrOddLength = "hex string of odd length";
         internal const string ErrSyntax = "invalid hex string";
+        private const int MaxPaddingLengthToClear = 256;
 
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
@@ -147,11 +148,10 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0) return ZeroByteSpan;
-
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
-            // Keep one or it will be interpreted as null
-            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
+            // Keep one zero byte or it will be interpreted as null; return the shared constant
+            // instead of aliasing the source.
+            return nonZeroIndex < 0 ? ZeroByteSpan : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -941,9 +941,25 @@ namespace Nethermind.Core.Extensions
                 data = data[i..];
             }
 
-            for (int i = 0; i < data.Length; i++)
+            // Word-at-a-time tail. This is the whole loop on targets without vector acceleration
+            // (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
+            // intrinsic gas calculation.
+            ref byte tail = ref MemoryMarshal.GetReference(data);
+            int offset = 0;
+            for (; offset <= data.Length - sizeof(ulong); offset += sizeof(ulong))
             {
-                if (data[i] == 0)
+                ulong word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref tail, offset));
+                // Sets 0x80 in every zero byte. The shorter `(w - 0x01..) & ~w & 0x80..` form is not
+                // usable here: it only reports whether *some* byte is zero, because a borrow out of
+                // one byte corrupts its neighbour's flag. This form carries within each byte only.
+                ulong zeroFlags = ~((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) | 0x7F7F7F7F7F7F7F7FUL);
+                // Sum the flags without PopCount, which lacks a hardware instruction on some targets.
+                totalZeros += (int)((zeroFlags >> 7) * 0x0101010101010101UL >> 56);
+            }
+
+            for (; offset < data.Length; offset++)
+            {
+                if (Unsafe.Add(ref tail, offset) == 0)
                 {
                     totalZeros++;
                 }
@@ -1007,19 +1023,58 @@ namespace Nethermind.Core.Extensions
 
             int oddMod = hexString.Length % 2;
             int actualLength = (chars.Length >> 1) + oddMod;
-            byte[] result = GC.AllocateArray<byte>(length);
-            Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+            int paddingLength = length - actualLength;
+            byte[] result = AllocateFixedLengthHexResult(length, paddingLength);
+            Span<byte> writeToSpan = result.AsSpan(paddingLength);
             FromHexString(chars, writeToSpan, oddMod);
             return result;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte[] AllocateFixedLengthHexResult(int length, int paddingLength)
+        {
+            if (paddingLength >= 0 && paddingLength <= MaxPaddingLengthToClear)
+            {
+                byte[] result = GC.AllocateUninitializedArray<byte>(length);
+                if (paddingLength > 0)
+                {
+                    result.AsSpan(0, paddingLength).Clear();
+                }
+
+                return result;
+            }
+
+            return GC.AllocateArray<byte>(length);
+        }
+
         private static void FromHexString(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
         {
-            bool isSuccess = oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2
-                ? HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan)
-                : HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
+            bool isSuccess = TryDecodeFromUtf16(chars, writeToSpan, oddMod);
 
             if (!isSuccess) throw new FormatException(ErrSyntax);
+        }
+
+        private static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
+        {
+            if (oddMod == 0)
+            {
+                if (Avx512BW.IsSupported && chars.Length >= Vector512<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector512(chars, writeToSpan);
+                }
+
+                if (Avx2.IsSupported && chars.Length >= Vector256<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector256(chars, writeToSpan);
+                }
+
+                if ((Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
+                }
+            }
+
+            return HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
         }
 
         private static ReadOnlySpan<char> Trim0X(ReadOnlySpan<char> hexString)

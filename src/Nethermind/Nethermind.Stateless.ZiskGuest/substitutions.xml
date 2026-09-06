@@ -1,0 +1,18 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions specific to this guest. The universal float-elimination set ships
+  inside bflat and is applied automatically for -\-libc zisk.
+-->
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <!-- Nethermind's config binder is the only ChangeType caller in the closure, and the
+         guest builds its config objects directly - but reachability alone compiles the
+         whole IConvertible conversion matrix. Throwing keeps a future string-bound path loud. -->
+    <type fullname="System.Convert">
+      <method signature="System.Object ChangeType(System.Object,System.Type)" body="remove" />
+      <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
+    </type>
+  </assembly>
+</linker>

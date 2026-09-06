@@ -19,11 +19,11 @@ namespace Nethermind.Wallet.Test
 {
     public class AccountUnlockerTests
     {
-        private static readonly List<(string Name, string Content)> _files = new()
-        {
+        private static readonly List<(string Name, string Content)> _files =
+        [
             ("TestingFileF1", "PF1"),
             ("TestingFileF2", "PF2")
-        };
+        ];
 
         private string TestDir => TestContext.CurrentContext.WorkDirectory;
 
@@ -48,7 +48,7 @@ namespace Nethermind.Wallet.Test
                 {
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
-                    PasswordFiles = new List<string> { _files[0].Name },
+                    PasswordFiles = [_files[0].Name],
                     ExpectedPasswords = new[] { _files[0].Content, _files[0].Content },
                 };
 
@@ -56,7 +56,7 @@ namespace Nethermind.Wallet.Test
                 {
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
-                    PasswordFiles = new List<string> { _files[0].Name, _files[1].Name },
+                    PasswordFiles = [_files[0].Name, _files[1].Name],
                     ExpectedPasswords = new[] { _files[0].Content, _files[1].Content },
                 };
 
@@ -107,7 +107,7 @@ namespace Nethermind.Wallet.Test
         public class UnlockAccountsTest
         {
             public string[] Passwords { get; set; } = [];
-            public List<string> PasswordFiles { get; set; } = new List<string>();
+            public List<string> PasswordFiles { get; set; } = [];
             public Address[] UnlockAccounts { get; set; } = [];
             public string[] ExpectedPasswords { get; set; } = [];
 

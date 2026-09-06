@@ -3,9 +3,9 @@
 
 using System;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus
@@ -25,12 +25,13 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Test()
         {
             NullSealEngine engine = NullSealEngine.Instance;
-            engine.Address.Should().Be(Address.Zero);
-            engine.CanSeal(0, null).Should().BeTrue();
-            engine.ValidateParams(null, null).Should().BeTrue();
-            engine.ValidateSeal(null, true).Should().BeTrue();
-            engine.ValidateSeal(null, false).Should().BeTrue();
-            engine.SealBlock(null, CancellationToken.None).Result.Should().Be(null);
+            Assert.That(engine.Address, Is.EqualTo(Address.Zero));
+            Assert.That(engine.CanSeal(0, null), Is.True);
+            Assert.That(engine.ValidateParams(null, null), Is.True);
+            Assert.That(engine.ValidateSeal(null, true), Is.True);
+            Assert.That(engine.ValidateSeal(null, false), Is.True);
+            Block block = Build.A.Block.TestObject;
+            Assert.That(engine.SealBlock(block, CancellationToken.None).Result, Is.EqualTo(block));
         }
     }
 }

@@ -16,7 +16,6 @@ internal static class DBSizeGenerator
         "state",
         "receipts",
         "blocks",
-        "bloom",
         "headers",
         "code",
         "blobTransactions"

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#pragma warning disable IDE0130 // Generated code expects these attributes under Nethermind.Serialization.Ssz
 namespace Nethermind.Serialization.Ssz;
+#pragma warning restore IDE0130
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public class SszContainerAttribute(bool isCollectionItself = false) : Attribute
@@ -19,9 +21,9 @@ public class SszFieldAttribute(int index) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class SszListAttribute(int limit) : Attribute
+public class SszListAttribute(ulong limit) : Attribute
 {
-    public int Limit { get; } = limit;
+    public ulong Limit { get; } = limit;
 }
 
 [AttributeUsage(AttributeTargets.Property)]

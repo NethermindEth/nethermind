@@ -3,9 +3,8 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Core;
 using Nethermind.Facade.Filters;
+using Nethermind.Core;
 
 namespace Nethermind.Facade.Find
 {

@@ -33,7 +33,7 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
                 if (_resetRequested.Task.IsCompleted)
                 {
                     Clear();
-                    _resetRequested = new();
+                    _resetRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     _resetCompleted.SetResult();
                     continue;
                 }
@@ -96,8 +96,8 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
         _frameQueue.Clear();
     }
 
-    private TaskCompletionSource _resetCompleted = new();
-    private TaskCompletionSource _resetRequested = new();
+    private TaskCompletionSource _resetCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _resetRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task Reset(CancellationToken token)
     {
@@ -105,6 +105,6 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
 
         _resetRequested.SetResult();
         await _resetCompleted.Task;
-        _resetCompleted = new();
+        _resetCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

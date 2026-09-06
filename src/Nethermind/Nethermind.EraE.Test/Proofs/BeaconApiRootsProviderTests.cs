@@ -3,7 +3,6 @@
 
 using System.Net;
 using System.Text;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Proofs;
 using NUnit.Framework;
@@ -30,9 +29,9 @@ public class BeaconApiRootsProviderTests
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
-        result.Should().NotBeNull();
-        result!.Value.BeaconBlockRoot.ToByteArray()[0].Should().Be(0xaa);
-        result.Value.StateRoot.ToByteArray()[0].Should().Be(0x11);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Value.BeaconBlockRoot.ToByteArray()[0], Is.EqualTo(0xaa));
+        Assert.That(result.Value.StateRoot.ToByteArray()[0], Is.EqualTo(0x11));
     }
 
     [Test]
@@ -47,7 +46,25 @@ public class BeaconApiRootsProviderTests
         await sut.GetBeaconRoots(1);
         await sut.GetBeaconRoots(1);
 
-        handler.CallCount.Should().Be(2, "cache hit on second call must skip both HTTP requests");
+        Assert.That(handler.CallCount, Is.EqualTo(2), "cache hit on second call must skip both HTTP requests");
+    }
+
+    [Test]
+    public async Task GetBeaconRoots_WhenCacheCapacityExceeded_EvictsOldestSlot()
+    {
+        SequentialHttpMessageHandler handler = new();
+        using BeaconApiRootsProvider sut = new(new Uri("http://localhost:5052"), new HttpClient(handler));
+
+        for (int slot = 0; slot <= HistoricalRootConstants.SlotsPerHistoricalRoot; slot++)
+        {
+            EnqueueRootsResponses(handler);
+            await sut.GetBeaconRoots(slot);
+        }
+
+        EnqueueRootsResponses(handler);
+        await sut.GetBeaconRoots(0);
+
+        Assert.That(handler.CallCount, Is.EqualTo((HistoricalRootConstants.SlotsPerHistoricalRoot + 2) * 2));
     }
 
     [Test]
@@ -58,7 +75,7 @@ public class BeaconApiRootsProviderTests
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -68,7 +85,7 @@ public class BeaconApiRootsProviderTests
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -80,7 +97,7 @@ public class BeaconApiRootsProviderTests
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     private static BeaconApiRootsProvider Build(params (HttpStatusCode StatusCode, string Body)[] responses)
@@ -89,6 +106,12 @@ public class BeaconApiRootsProviderTests
         foreach ((HttpStatusCode statusCode, string body) in responses)
             handler.Enqueue(statusCode, body);
         return new BeaconApiRootsProvider(new Uri("http://localhost:5052"), new HttpClient(handler));
+    }
+
+    private static void EnqueueRootsResponses(SequentialHttpMessageHandler handler)
+    {
+        handler.Enqueue(HttpStatusCode.OK, HeadersJson);
+        handler.Enqueue(HttpStatusCode.OK, StateRootJson);
     }
 
     private sealed class SequentialHttpMessageHandler : HttpMessageHandler

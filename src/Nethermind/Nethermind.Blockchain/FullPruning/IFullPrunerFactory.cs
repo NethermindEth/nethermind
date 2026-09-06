@@ -8,5 +8,5 @@ namespace Nethermind.Blockchain.FullPruning;
 
 public interface IFullPrunerFactory
 {
-    FullPruner? Create(IStateReader stateReader, IPruningTrieStore trieStore);
+    FullPruner? Create(IWorldStateManager worldStateManager, IPruningTrieStore trieStore);
 }

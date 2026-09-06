@@ -29,6 +29,15 @@ namespace Nethermind.Wallet
             return TrySign(in hash, address, out signature);
         }
 
+        bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+            => TrySign(in message, address, out signature);
+
+        bool TrySignMessage(byte[] message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        {
+            ValueHash256 hash = Eip191Hasher.HashMessageValue(message);
+            return TrySign(in hash, address, passphrase, out signature);
+        }
+
         bool TrySignTransaction(Transaction tx, ulong chainId)
         {
             ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);

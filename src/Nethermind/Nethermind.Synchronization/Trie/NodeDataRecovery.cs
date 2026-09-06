@@ -18,6 +18,7 @@ using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -130,7 +131,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 return data[0].ToArray();
             }
         }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
+        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer) && snapSyncPeer.CanGetTrieNodes())
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");
             PathGroup group;
@@ -160,7 +161,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([group]),
             }, cancellationToken);
 
-            if (item is not null && item.Count > 0)
+            if (item is not null && item.Count > 0 && ValueKeccak.Compute(item[0]) == hash)
             {
                 return item[0].ToArray();
             }

@@ -45,6 +45,8 @@ namespace Nethermind.Abi
 
         public override string Name { get; }
 
+        internal override int GetHeadSize(bool packed) => packed ? LengthInBytes : PaddingSize;
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (UInt256 value, int length) = DecodeUInt(data, position, packed);

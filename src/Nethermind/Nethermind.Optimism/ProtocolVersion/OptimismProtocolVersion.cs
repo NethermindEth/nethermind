@@ -70,7 +70,7 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public new static V0 Read(ReadOnlySpan<byte> span)
         {
-            byte version = span[0];
+            byte version = span.TakeAndMove(1)[0];
             if (version != 0) throw new ParseException($"Expected version 0, got {version}");
 
             ReadOnlySpan<byte> reserved = span.TakeAndMove(7);
@@ -87,9 +87,8 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public override void Write(Span<byte> span)
         {
-            span[0] = 0;
-
-            span.TakeAndMove(7);
+            span.TakeAndMove(1)[0] = 0;
+            span.TakeAndMove(7).Clear();
 
             Build.CopyTo(span.TakeAndMove(8));
             BinaryPrimitives.WriteUInt32BigEndian(span.TakeAndMove(4), Major);

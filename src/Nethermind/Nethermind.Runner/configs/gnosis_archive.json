@@ -26,9 +26,6 @@
   "Metrics": {
     "NodeName": "Gnosis Archive"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [ 16, 16, 16 ]
-  },
   "Pruning": {
     "Mode": "None"
   },
@@ -37,5 +34,10 @@
   },
   "Db": {
     "SkipCheckingSstFileSizesOnDbOpen": true
+  },
+  "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

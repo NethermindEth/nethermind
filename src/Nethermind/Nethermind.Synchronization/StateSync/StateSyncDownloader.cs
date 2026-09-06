@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.StateSync
                     hashList = HashList.Rent(batch.RequestedNodes);
                     task = snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
-                else
+                else if (ProtocolSupportsTrieNodes(snapHandler))
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
@@ -80,6 +80,8 @@ namespace Nethermind.Synchronization.StateSync
 
         protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
+        protected virtual bool ProtocolSupportsTrieNodes(ISnapSyncPeer peer) => peer.CanGetTrieNodes();
+
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
         /// The grouping decrease requests size.
@@ -88,8 +90,8 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
-            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
+            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = [];
+            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = [];
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
@@ -97,7 +99,7 @@ namespace Nethermind.Synchronization.StateSync
                 {
                     if (!itemsGroupedByAccount.TryGetValue(item.Address, out List<(TreePath path, StateSyncItem syncItem)> storagePaths))
                     {
-                        storagePaths = new List<(TreePath, StateSyncItem)>();
+                        storagePaths = [];
                         itemsGroupedByAccount[item.Address] = storagePaths;
                     }
 

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -21,9 +20,9 @@ namespace Nethermind.AuRa.Test
         {
             ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), manualTimestamper, LimboLogs.Instance);
-            long step = calculator.CurrentStep;
+            ulong step = calculator.CurrentStep;
             manualTimestamper.Add(calculator.TimeToNextStep);
-            calculator.CurrentStep.Should().Be(step + 1, calculator.TimeToNextStep.ToString());
+            Assert.That(calculator.CurrentStep, Is.EqualTo(step + 1), calculator.TimeToNextStep.ToString());
         }
 
         [TestCase(2)]
@@ -33,7 +32,7 @@ namespace Nethermind.AuRa.Test
             ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), manualTimestamper, LimboLogs.Instance);
             manualTimestamper.Add(calculator.TimeToNextStep);
-            calculator.TimeToNextStep.Should().BeCloseTo(TimeSpan.FromSeconds(stepDuration), TimeSpan.FromMilliseconds(200));
+            Assert.That(calculator.TimeToNextStep, Is.EqualTo(TimeSpan.FromSeconds(stepDuration)).Within(TimeSpan.FromMilliseconds(200)));
         }
 
         [TestCase(100000060005L, 2)]
@@ -42,30 +41,30 @@ namespace Nethermind.AuRa.Test
             DateTimeOffset time = DateTimeOffset.FromUnixTimeMilliseconds(milliSeconds);
             ManualTimestamper timestamper = new(time.UtcDateTime);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), timestamper, LimboLogs.Instance);
-            calculator.CurrentStep.Should().Be(time.ToUnixTimeSeconds() / stepDuration);
+            Assert.That(calculator.CurrentStep, Is.EqualTo((ulong)(time.ToUnixTimeSeconds() / stepDuration)));
         }
 
-        [TestCase(100000060005L, 2, 50000030)]
-        [TestCase(100000060005L, 2, 50000000)]
-        [TestCase(100000060005L, 2, 50000031)]
-        [TestCase(100000060005L, 2, 50000035)]
-        public void time_to_step_is_calculated_correctly(long milliSeconds, int stepDuration, int checkedStep)
+        [TestCase(100000060005L, 2, 50000030UL)]
+        [TestCase(100000060005L, 2, 50000000UL)]
+        [TestCase(100000060005L, 2, 50000031UL)]
+        [TestCase(100000060005L, 2, 50000035UL)]
+        public void time_to_step_is_calculated_correctly(long milliSeconds, int stepDuration, ulong checkedStep)
         {
-            const long currentStep = 50000030;
+            const ulong currentStep = 50000030UL;
             TimeSpan timeToNextStep = TimeSpan.FromMilliseconds(1995);
             DateTimeOffset time = DateTimeOffset.FromUnixTimeMilliseconds(milliSeconds);
             ManualTimestamper timestamper = new(time.UtcDateTime);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), timestamper, LimboLogs.Instance);
-            TimeSpan expected = checkedStep <= currentStep ? TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds((checkedStep - currentStep - 1) * stepDuration) + timeToNextStep;
+            TimeSpan expected = checkedStep <= currentStep ? TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds((double)(checkedStep - currentStep - 1) * stepDuration) + timeToNextStep;
             TestContext.Out.WriteLine($"Expected time to step {checkedStep} is {expected}");
-            calculator.TimeToStep(checkedStep).Should().Be(expected);
+            Assert.That(calculator.TimeToStep(checkedStep), Is.EqualTo(expected));
         }
 
         public static IEnumerable StepDurationsTests
         {
             get
             {
-                IList<(long SecondsOffset, long StepDuration)> secondsDurations = new List<(long SecondsOffset, long StepDuration)>() { (0, 5), (7, 7), (25, 10) };
+                IList<(long SecondsOffset, long StepDuration)> secondsDurations = [(0, 5), (7, 7), (25, 10)];
                 yield return new TestCaseData(secondsDurations, 0, BaseOffset / 5, 5) { TestName = "0 seconds" };
                 yield return new TestCaseData(secondsDurations, 3, BaseOffset / 5, 2) { TestName = "3 seconds" };
                 yield return new TestCaseData(secondsDurations, 10, BaseOffset / 5 + 2, 7) { TestName = "10 seconds" };
@@ -84,15 +83,16 @@ namespace Nethermind.AuRa.Test
         {
             DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(BaseOffset);
             ManualTimestamper timestamper = new(now.UtcDateTime);
-            Dictionary<long, long> stepDurations = secondsDurations.ToDictionary(
-                kvp => kvp.SecondsOffset == 0 ? 0 : kvp.SecondsOffset + now.ToUnixTimeSeconds(),
+            Dictionary<ulong, long> stepDurations = secondsDurations.ToDictionary(
+                kvp => kvp.SecondsOffset == 0 ? 0UL : (ulong)(kvp.SecondsOffset + now.ToUnixTimeSeconds()),
                 kvp => kvp.StepDuration);
             AuRaStepCalculator calculator = new(stepDurations, timestamper, LimboLogs.Instance);
             timestamper.Add(TimeSpan.FromSeconds(second));
-            calculator.CurrentStep.Should().Be(expectedStep);
-            calculator.TimeToNextStep.Should().Be(TimeSpan.FromSeconds(expectedSecondsToNextStep));
+            Assert.That(calculator.CurrentStep, Is.EqualTo(expectedStep));
+            Assert.That(calculator.TimeToNextStep, Is.EqualTo(TimeSpan.FromSeconds(expectedSecondsToNextStep)));
         }
 
-        private IDictionary<long, long> GetStepDurationsForSingleStep(long stepDuration) => new Dictionary<long, long>() { { 0, stepDuration } };
+        private IDictionary<ulong, long> GetStepDurationsForSingleStep(long stepDuration) =>
+            new Dictionary<ulong, long>() { { 0UL, stepDuration } };
     }
 }

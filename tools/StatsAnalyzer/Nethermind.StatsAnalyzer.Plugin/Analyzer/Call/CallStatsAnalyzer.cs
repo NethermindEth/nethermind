@@ -9,7 +9,7 @@ public readonly record struct CallStat(Address Address, ulong Count);
 
 public class CallStatsAnalyzer(int topN) : TopNAnalyzer<Address, Address, CallStat>(topN)
 {
-    private readonly Dictionary<Address, ulong> _counts = new();
+    private readonly Dictionary<Address, ulong> _counts = [];
 
 
     public override void Add(IEnumerable<Address> calls)

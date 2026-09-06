@@ -9,12 +9,12 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 - **Triggers**: Be explicit — `pull_request:`, `push: branches: [master]`, or `workflow_dispatch:` with inputs as needed.
 - **Secrets**: Never log or echo secrets; use `${{ secrets.X }}` and restrict env vars to the job that needs them.
 - **Matrix**: For test workflows, the project list in `nethermind-tests.yml` is the source of truth; keep matrix project names in sync with actual test project names (e.g. `Nethermind.Evm.Test`).
-- **Runner labels**: Reproducible benchmarks use `reproducible-benchmarks`; other jobs typically use `ubuntu-latest` unless the workflow doc specifies otherwise.
+- **Runner labels**: Reproducible benchmarks use `reproducible-benchmarks-arm` (Nethermind + flat layout only — the only snapshot set that runner carries); other jobs typically use `ubuntu-latest` unless the workflow doc specifies otherwise.
 - **Temporary files**: Workflows that render or generate config (e.g. benchmark config) must do so to a temp path and must not modify tracked source files.
 
 ## Actions (composite or custom)
 
-- Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `runner-setup.sh.j2`, `runner-configure.sh`).
+- Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `create.sh`, `startup-script.sh`).
 - Scripts must be executable and safe for the runner OS (Linux unless noted).
 - Prefer `actions/checkout` and standard `actions/*` where possible; document any third-party action version and reason.
 

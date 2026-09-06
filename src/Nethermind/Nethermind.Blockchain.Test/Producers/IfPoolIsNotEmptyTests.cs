@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -24,6 +23,6 @@ public class IfPoolIsNotEmptyTests
         IBlockProductionTrigger withCondition = trigger.IfPoolIsNotEmpty(pool);
         withCondition.TriggerBlockProduction += (s, e) => triggered = true;
         trigger.BuildBlock();
-        triggered.Should().Be(shouldTrigger);
+        Assert.That(triggered, Is.EqualTo(shouldTrigger));
     }
 }

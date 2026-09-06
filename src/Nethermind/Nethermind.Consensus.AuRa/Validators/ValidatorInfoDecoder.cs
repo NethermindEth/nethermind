@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class ValidatorInfoDecoder : RlpDecoder<ValidatorInfo>
     {
-        protected override ValidatorInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override ValidatorInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -18,8 +18,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             int length = decoderContext.ReadSequenceLength();
             int check = decoderContext.Position + length;
-            long finalizingBlockNumber = decoderContext.DecodeLong();
-            long previousFinalizingBlockNumber = decoderContext.DecodeLong();
+            ulong finalizingBlockNumber = decoderContext.DecodeULong();
+            ulong previousFinalizingBlockNumber = decoderContext.DecodeULong();
 
             int addressesSequenceLength = decoderContext.ReadSequenceLength();
             int addressesCheck = decoderContext.Position + addressesSequenceLength;
@@ -37,22 +37,22 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public override void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
             (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.FinalizingBlockNumber);
-            stream.Encode(item.PreviousFinalizingBlockNumber);
-            stream.StartSequence(validatorLength);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.FinalizingBlockNumber);
+            writer.Encode(item.PreviousFinalizingBlockNumber);
+            writer.StartSequence(validatorLength);
             for (int i = 0; i < item.Validators.Length; i++)
             {
-                stream.Encode(item.Validators[i]);
+                writer.Encode(item.Validators[i]);
             }
         }
 

@@ -9,7 +9,7 @@ namespace Nethermind.Core.Test.Builders;
 
 public class ChainSpecBuilder : BuilderBase<ChainSpec>
 {
-    private Dictionary<Address, ChainSpecAllocation> _allocations = new();
+    private Dictionary<Address, ChainSpecAllocation> _allocations = [];
 
     public ChainSpecBuilder WithAllocation(Address address, UInt256 ether)
     {

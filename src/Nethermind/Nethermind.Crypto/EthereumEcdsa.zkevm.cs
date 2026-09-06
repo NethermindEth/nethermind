@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#pragma warning disable NETH003 // Build variant: only one of EthereumEcdsa.std.cs / EthereumEcdsa.zkevm.cs is compiled per build
+
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -8,7 +10,6 @@ using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Crypto;
 
-#pragma warning disable NETH003 // Build variant: only one of EthereumEcdsa.std.cs / EthereumEcdsa.zkevm.cs is compiled per build
 public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
 {
     public ulong ChainId => chainId;
@@ -16,11 +17,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
     public Address? RecoverAddress(Signature signature, in ValueHash256 message)
     {
         Span<byte> publicKey = stackalloc byte[64];
-
-        Accelerators.Status status = Accelerators.SecP256k1Recover(
-            message.Bytes, signature.Bytes, signature.RecoveryId, publicKey);
-
-        return status == Accelerators.Status.OK ? PublicKey.ComputeAddress(publicKey) : null;
+        return RecoverAddressRaw(signature.Bytes, signature.RecoveryId, message.Bytes, publicKey)
+            ? PublicKey.ComputeAddress(publicKey)
+            : null;
     }
 
     public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) =>
@@ -29,11 +28,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
     public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message)
     {
         Span<byte> publicKey = stackalloc byte[64];
-
-        Accelerators.Status status = Accelerators.SecP256k1Recover(
-            message.Bytes, signature.Bytes, signature.RecoveryId, publicKey);
-
-        return status == Accelerators.Status.OK ? new(publicKey) : null;
+        return RecoverAddressRaw(signature.Bytes, signature.RecoveryId, message.Bytes, publicKey)
+            ? new(publicKey)
+            : null;
     }
 
     public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => throw new NotSupportedException();

@@ -18,7 +18,7 @@ public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, C
         sort, ct) => IsTracingActions = true;
 
 
-    public override CallAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)
+    public override CallAnalyzerTxTrace BuildResult(ulong fromBlock = 0UL, ulong toBlock = 0UL)
     {
         Build();
         CallAnalyzerTxTrace trace = new();
@@ -45,7 +45,7 @@ public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, C
         t is ExecutionType.CALL or ExecutionType.STATICCALL
           or ExecutionType.CALLCODE or ExecutionType.DELEGATECALL;
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
         if (Skip) return;

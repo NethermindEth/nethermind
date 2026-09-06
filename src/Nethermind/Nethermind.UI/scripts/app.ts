@@ -300,7 +300,7 @@ sse.addEventListener("forkChoice", (e) => {
   txsToAdd.push(...mergedData);
   lastBlockTxs = txsToAdd.length;
 
-  if (txsToAdd.length > 250000) txsToAdd.slice(txsToAdd.length - 25000);
+  if (txsToAdd.length > 250000) txsToAdd = txsToAdd.slice(txsToAdd.length - 25000);
 
   blockTxs = mapByHash(mergedData)
 });

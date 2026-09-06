@@ -9,12 +9,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.KeyStore;
+using Nethermind.Logging;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
-    public class PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore) : IPersonalRpcModule
+    public class PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore, ILogManager logManager) : IPersonalRpcModule
     {
+        private readonly ILogger _logger = logManager.GetClassLogger<PersonalRpcModule>();
+
+        public PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore)
+            : this(ecdsa, wallet, keyStore, NullLogManager.Instance)
+        {
+        }
+
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
         {
@@ -23,7 +31,19 @@ namespace Nethermind.JsonRpc.Modules.Personal
             return ResultWrapper<Address>.Success(privateKey.Address);
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts() => ResultWrapper<Address[]>.Success(wallet.GetAccounts());
+        public ResultWrapper<Address[]> personal_listAccounts()
+        {
+            try
+            {
+                return ResultWrapper<Address[]>.Success(wallet.GetAccounts());
+            }
+            catch (Exception e)
+            {
+                const string message = "Error while getting key addresses from wallet.";
+                if (_logger.IsError) _logger.Error(message, e);
+                return ResultWrapper<Address[]>.Fail(message);
+            }
+        }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
@@ -67,13 +87,19 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Signature> personal_sign(byte[] message, Address address, string passphrase = null)
         {
-            if (!wallet.IsUnlocked(address) && passphrase is not null)
+            bool signed;
+            Signature signature;
+            if (passphrase is not null)
             {
-                SecureString notSecuredHere = passphrase.Secure();
-                wallet.UnlockAccount(address, notSecuredHere);
+                using SecureString securePassphrase = passphrase.Secure();
+                signed = wallet.TrySignMessage(message, address, securePassphrase, out signature);
+            }
+            else
+            {
+                signed = wallet.TrySignMessage(message, address, out signature);
             }
 
-            return wallet.TrySignMessage(message, address, out Signature signature)
+            return signed
                 ? ResultWrapper<Signature>.Success(signature)
                 : ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
         }

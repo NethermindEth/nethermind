@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 
 namespace Nethermind.Core.Crypto;
@@ -15,7 +16,21 @@ public sealed partial class KeccakHash
 {
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
+    private const int STATE_LANES = STATE_SIZE / sizeof(ulong);
     private const int HASH_DATA_AREA = 136;
+    private const int ROUNDS = 24;
+
+    private static readonly ulong[] RoundConstants =
+    [
+        0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
+        0x8000000080008000UL, 0x000000000000808bUL, 0x0000000080000001UL,
+        0x8000000080008081UL, 0x8000000000008009UL, 0x000000000000008aUL,
+        0x0000000000000088UL, 0x0000000080008009UL, 0x000000008000000aUL,
+        0x000000008000808bUL, 0x800000000000008bUL, 0x8000000000008089UL,
+        0x8000000000008003UL, 0x8000000000008002UL, 0x8000000000000080UL,
+        0x000000000000800aUL, 0x800000008000000aUL, 0x8000000080008081UL,
+        0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
+    ];
 
     private byte[] _remainderBuffer = [];
     private ulong[] _state = [];
@@ -69,23 +84,84 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
+    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into a fresh sponge.</summary>
+    /// <returns>What is left of <paramref name="input"/>: fewer than <paramref name="roundSize"/> bytes,
+    /// already XORed into the state.</returns>
+    /// <remarks>Requires at least <paramref name="roundSize"/> bytes of <paramref name="input"/> and the
+    /// capacity lanes of <paramref name="state"/> zero. Its rate lanes must be zero too, except at a
+    /// 136-byte rate, where the guest arm writes the first block rather than XORing it and so may be
+    /// handed them undefined — which is what lets <see cref="InitializeState"/> skip them there, and what
+    /// makes a caller resuming a used sponge get a wrong digest on the guest and a right one on the host.
+    /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
+    /// more in register pressure than it saves, so the host form is the plain loop. See
+    /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
+
+    /// <summary>Absorbs the whole rate blocks of <paramref name="input"/>, of which there is at least one,
+    /// then XORs the sub-block tail into the state.</summary>
+    /// <returns>That tail: fewer than <paramref name="roundSize"/> bytes.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> AbsorbFullBlocks(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    {
+        do
+        {
+            XorVectors(stateBytes, input[..roundSize]);
+            KeccakF(state);
+            input = input[roundSize..];
+        } while (input.Length >= roundSize);
+
+        AbsorbTail(stateBytes, input);
+        return input;
+    }
+
+    /// <summary>XORs a sub-rate tail, possibly empty, into the state.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AbsorbTail(Span<byte> stateBytes, ReadOnlySpan<byte> input)
+    {
+        if (input.Length > 0)
+        {
+            XorVectors(stateBytes, input);
+        }
+    }
+
+    /// <summary>Hands back a sponge state whose lanes are zero wherever the first absorb will not write.</summary>
+    /// <param name="state">The state to initialise.</param>
+    /// <param name="inputLength">Length of the message <see cref="ComputeHash"/> is about to absorb.</param>
+    /// <param name="roundSize">The rate in bytes, as returned by <see cref="GetRoundSize"/>.</param>
+    /// <remarks>Split per target. The host zeroes all 200 bytes, which at a constant size is a handful of
+    /// vector stores; the guest has no vectors and a 200-byte <c>= default</c> becomes a
+    /// <c>SpanHelpers.ClearWithoutReferences</c> call, so it zeroes lane by lane and skips the rate block
+    /// when <see cref="AbsorbMessageIntoZeroState"/> is about to write it outright.
+    /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize);
+
+    [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
         if ((uint)(output.Length - 1) >= STATE_SIZE)
             ThrowInvalidOutputSize(output.Length);
 
-#if ZK_EVM
-        if (output.Length == HASH_SIZE)
+        int inputLength = input.Length;
+        // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
+        if (Avx512F.VL.IsSupported && output.Length == HASH_SIZE &&
+            inputLength is Address.Size or 32 or 64)
         {
-            ComputeHash256(input, output);
+            ComputeHash256Avx512VL(
+                ref MemoryMarshal.GetReference(input), inputLength, ref MemoryMarshal.GetReference(output));
             return;
         }
-#endif
+
         int roundSize = GetRoundSize(output.Length);
 
-        Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
+        // A struct local rather than stackalloc: localloc would pin this method at Tier0-FullOpts
+        // (no tiering or dynamic PGO) and add GS-cookie and stack-probe overhead per call.
+        InitializeState(out KeccakState stateBuffer, inputLength, roundSize);
+        Span<ulong> state = stateBuffer;
         Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
+        // The guest's InitializeState leaves the rate lanes undefined for exactly the one branch below
+        // that reaches AbsorbMessageIntoZeroState at a 136-byte rate; adding or reordering a branch here
+        // has to keep that predicate true.
         if (input.Length == Address.Size)
         {
             // Hashing Address, 20 bytes which is uint+Vector128
@@ -102,19 +178,7 @@ public sealed partial class KeccakHash
         }
         else if (input.Length >= roundSize)
         {
-            // Process full rounds
-            do
-            {
-                XorVectors(stateBytes, input[..roundSize]);
-                KeccakF(state);
-                input = input[roundSize..];
-            } while (input.Length >= roundSize);
-
-            if (input.Length > 0)
-            {
-                // XOR the remaining input bytes into the state
-                XorVectors(stateBytes, input);
-            }
+            input = AbsorbMessageIntoZeroState(state, stateBytes, input, roundSize);
         }
         else
         {
@@ -173,6 +237,7 @@ public sealed partial class KeccakHash
         return output;
     }
 
+    [SkipLocalsInit]
     public ValueHash256 GenerateValueHash()
     {
         Unsafe.SkipInit(out ValueHash256 output);
@@ -180,6 +245,7 @@ public sealed partial class KeccakHash
         return output;
     }
 
+    [SkipLocalsInit]
     public void Update(ReadOnlySpan<byte> input)
     {
         if (_hash is not null)
@@ -259,21 +325,12 @@ public sealed partial class KeccakHash
         }
     }
 
+    [SkipLocalsInit]
     public void UpdateFinalTo(Span<byte> output)
     {
         if (_hash is not null)
             ThrowHashingComplete();
 
-#if ZK_EVM
-        if (_state.Length == 0 && _roundSize == HASH_DATA_AREA && output.Length == HASH_SIZE)
-        {
-            ComputeHash256(_remainderBuffer.AsSpan(0, _remainderLength), output);
-            Pool.ReturnRemainder(ref _remainderBuffer);
-
-            _remainderLength = 0;
-            return;
-        }
-#endif
         ulong[] state = _state;
 
         if (state.Length == 0)
@@ -364,7 +421,8 @@ public sealed partial class KeccakHash
 
     private static partial void KeccakF(Span<ulong> st);
 
-    private static int GetRoundSize(int hashSize) => checked(STATE_SIZE - 2 * hashSize);
+    // Callers bound hashSize to [1, STATE_SIZE], so the arithmetic cannot overflow.
+    private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
 
     private byte[] GenerateHash()
     {
@@ -373,7 +431,6 @@ public sealed partial class KeccakHash
         // Obtain the state data in the desired (hash) size we want.
         _hash = output;
 
-        // Return the result.
         return output;
     }
 
@@ -381,6 +438,37 @@ public sealed partial class KeccakHash
     private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
     {
         ref byte stateRef = ref MemoryMarshal.GetReference(state);
+
+        // A full rate block is the overwhelmingly common absorb and is exactly seventeen lanes.
+        // Spelling them out drops the loop bound and residue handling entirely and lets every offset
+        // fold into a load/store displacement. Only reachable with no vector width, i.e. the guest.
+        // The state is ulong-aligned so it stays a ulong ref; the input is a caller-supplied span with
+        // no such guarantee, hence ReadUnaligned, which costs nothing (riscv64 emits a plain ld for
+        // both spellings, and every rate block starts on a multiple of eight anyway). The lanes are
+        // spelled out as read-xor-write rather than `^=` for the reason given at the unrolled loop
+        if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
+        {
+            ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);
+            ref byte inRef = ref MemoryMarshal.GetReference(input);
+            Unsafe.Add(ref st, 0) = Unsafe.Add(ref st, 0) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
+            Unsafe.Add(ref st, 1) = Unsafe.Add(ref st, 1) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
+            Unsafe.Add(ref st, 2) = Unsafe.Add(ref st, 2) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
+            Unsafe.Add(ref st, 3) = Unsafe.Add(ref st, 3) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
+            Unsafe.Add(ref st, 4) = Unsafe.Add(ref st, 4) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
+            Unsafe.Add(ref st, 5) = Unsafe.Add(ref st, 5) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
+            Unsafe.Add(ref st, 6) = Unsafe.Add(ref st, 6) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
+            Unsafe.Add(ref st, 7) = Unsafe.Add(ref st, 7) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
+            Unsafe.Add(ref st, 8) = Unsafe.Add(ref st, 8) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
+            Unsafe.Add(ref st, 9) = Unsafe.Add(ref st, 9) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
+            Unsafe.Add(ref st, 10) = Unsafe.Add(ref st, 10) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
+            Unsafe.Add(ref st, 11) = Unsafe.Add(ref st, 11) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
+            Unsafe.Add(ref st, 12) = Unsafe.Add(ref st, 12) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
+            Unsafe.Add(ref st, 13) = Unsafe.Add(ref st, 13) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
+            Unsafe.Add(ref st, 14) = Unsafe.Add(ref st, 14) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
+            Unsafe.Add(ref st, 15) = Unsafe.Add(ref st, 15) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
+            Unsafe.Add(ref st, 16) = Unsafe.Add(ref st, 16) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+            return;
+        }
         if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
         {
             // Convert to uint for the mod else the Jit does a more complicated signed mod
@@ -441,10 +529,25 @@ public sealed partial class KeccakHash
         {
             int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
             ref byte inputRef = ref MemoryMarshal.GetReference(input);
-            for (int i = 0; i < ulongLength; i += sizeof(ulong))
+            int i = 0;
+            // Unrolled by four: this is the whole absorb on targets without vector acceleration, and
+            // at one lane per iteration the loop bookkeeping costs as much again as the XOR itself.
+            for (; i <= ulongLength - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
+            {
+                ref ulong s0 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
+                ref byte in0 = ref Unsafe.Add(ref inputRef, i);
+                // Explicit read-xor-write: a compound assignment captures the element address in a
+                // temp (lvalue-once), which blocks base+offset folding into the loads and stores.
+                s0 = s0 ^ Unsafe.ReadUnaligned<ulong>(ref in0);
+                Unsafe.Add(ref s0, 1) = Unsafe.Add(ref s0, 1) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
+                Unsafe.Add(ref s0, 2) = Unsafe.Add(ref s0, 2) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
+                Unsafe.Add(ref s0, 3) = Unsafe.Add(ref s0, 3) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
+            }
+
+            for (; i < ulongLength; i += sizeof(ulong))
             {
                 ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
-                ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                ulong input64 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i));
                 state64 ^= input64;
             }
 
@@ -468,6 +571,12 @@ public sealed partial class KeccakHash
     [DoesNotReturn]
     private static void ThrowInvalidOutputSize(int length) => throw new ArgumentOutOfRangeException(
         nameof(length), length, $"Must be between 1 and {STATE_SIZE}.");
+
+    [InlineArray(STATE_LANES)]
+    private struct KeccakState
+    {
+        private ulong _lane0;
+    }
 
     private static class Pool
     {

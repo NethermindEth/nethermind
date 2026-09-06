@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Era1;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.EraE.Exceptions;
 

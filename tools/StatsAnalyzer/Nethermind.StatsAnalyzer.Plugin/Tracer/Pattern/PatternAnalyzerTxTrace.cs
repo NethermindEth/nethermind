@@ -9,10 +9,10 @@ namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 public class PatternAnalyzerTxTrace
 {
     [JsonPropertyName("initialBlockNumber")]
-    public long InitialBlockNumber { get; set; }
+    public ulong InitialBlockNumber { get; set; }
 
     [JsonPropertyName("currentBlockNumber")]
-    public long CurrentBlockNumber { get; set; }
+    public ulong CurrentBlockNumber { get; set; }
 
     [JsonPropertyName("errorPerItem")]
     public double ErrorPerItem { get; set; }
@@ -21,5 +21,5 @@ public class PatternAnalyzerTxTrace
 
 
     [JsonPropertyName("stats")]
-    public List<PatternAnalyzerTraceEntry> Entries { get; set; } = new();
+    public List<PatternAnalyzerTraceEntry> Entries { get; set; } = [];
 }

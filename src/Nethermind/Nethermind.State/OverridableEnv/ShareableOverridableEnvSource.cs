@@ -26,13 +26,13 @@ public sealed class ShareableOverridableEnvSource<T>(
     private int _activeCount;
     private volatile bool _disposed;
 
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
     {
         IOverridableEnv<T> env = Rent();
         Scope<T> innerScope;
         try
         {
-            innerScope = env.BuildAndOverride(header, stateOverride);
+            innerScope = env.BuildAndOverride(header, stateOverride, blockOverride: blockOverride);
         }
         catch
         {
@@ -60,7 +60,7 @@ public sealed class ShareableOverridableEnvSource<T>(
 
     private IOverridableEnv<T> Rent()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(ShareableOverridableEnvSource<T>));
+        if (_disposed) throw new ObjectDisposedException(nameof(ShareableOverridableEnvSource<>));
 
         int active = Interlocked.Increment(ref _activeCount);
         if (active > maxConcurrent)

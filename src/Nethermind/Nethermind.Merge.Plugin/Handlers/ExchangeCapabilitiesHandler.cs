@@ -37,7 +37,7 @@ public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyLi
                 enabled?.Add(key);
                 if (flags.ShouldWarnIfMissing() && !methods.Contains(key))
                 {
-                    missing ??= new List<string>();
+                    missing ??= [];
                     missing.Add(key);
                 }
             }

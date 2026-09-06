@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -49,7 +50,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public CodeChange[] CodeChanges { get; }
 
-    private readonly Dictionary<UInt256, ReadOnlySlotChanges> _storageChanges;
+    private readonly Dictionary<UInt256, ReadOnlySlotChanges>? _storageChanges;
     private readonly HashSet<UInt256>? _storageReadSet;
 
     public ReadOnlyAccountChanges(
@@ -62,15 +63,23 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         Address = address;
         StorageChanges = storageChanges;
-        _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length);
-        UInt256[] changedSlots = new UInt256[storageChanges.Length];
-        for (int i = 0; i < storageChanges.Length; i++)
+        if (storageChanges.Length > 0)
         {
-            ReadOnlySlotChanges sc = storageChanges[i];
-            _storageChanges.Add(sc.Key, sc);
-            changedSlots[i] = sc.Key;
+            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length);
+            UInt256[] changedSlots = new UInt256[storageChanges.Length];
+            for (int i = 0; i < storageChanges.Length; i++)
+            {
+                ReadOnlySlotChanges sc = storageChanges[i];
+                _storageChanges.Add(sc.Key, sc);
+                changedSlots[i] = sc.Key;
+            }
+            ChangedSlots = changedSlots;
         }
-        ChangedSlots = changedSlots;
+        else
+        {
+            _storageChanges = null;
+            ChangedSlots = [];
+        }
         StorageReads = storageReads;
         BalanceChanges = balanceChanges;
         NonceChanges = nonceChanges;
@@ -83,7 +92,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-        => _storageChanges.TryGetValue(key, out slotChanges);
+        => _storageChanges.TryGetValueOrNull(key, out slotChanges);
 
     public bool IsStorageRead(UInt256 slot)
     {
@@ -145,7 +154,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         => BalanceChanges.Length > 0
             || NonceChanges.Length > 0
             || CodeChanges.Length > 0
-            || _storageChanges.Count > 0;
+            || StorageChanges.Length > 0;
 
     /// <summary>
     /// Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.
@@ -179,11 +188,15 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         if (other is null) return false;
         if (Address != other.Address) return false;
-        if (_storageChanges.Count != other._storageChanges.Count) return false;
-        foreach (KeyValuePair<UInt256, ReadOnlySlotChanges> kv in _storageChanges)
+        if (StorageChanges.Length != other.StorageChanges.Length) return false;
+        if (_storageChanges is not null)
         {
-            if (!other._storageChanges.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
-                return false;
+            Dictionary<UInt256, ReadOnlySlotChanges> otherDict = other._storageChanges!;
+            foreach (KeyValuePair<UInt256, ReadOnlySlotChanges> kv in _storageChanges)
+            {
+                if (!otherDict.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
+                    return false;
+            }
         }
         // Span casts force MemoryExtensions.SequenceEqual (zero-alloc) over LINQ's.
         return ((ReadOnlySpan<UInt256>)StorageReads).SequenceEqual(other.StorageReads)

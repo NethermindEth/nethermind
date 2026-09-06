@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(c).Returns(200);
             _statsManager.GetCurrentReputation(d).Returns(10);
 
-            List<Peer> peers = new() { peerA, peerB, peerC, peerD, peerE };
+            List<Peer> peers = [peerA, peerB, peerC, peerD, peerE];
 
             _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);

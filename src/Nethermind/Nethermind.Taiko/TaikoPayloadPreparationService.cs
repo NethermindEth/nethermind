@@ -159,7 +159,7 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        Rlp.ValueDecoderContext ctx = new(payloadAttributes.BlockMetadata!.TxList!);
+        RlpReader ctx = new(payloadAttributes.BlockMetadata!.TxList!);
 
         int transactionsSequenceLength = ctx.ReadSequenceLength();
         int transactionsCheck = ctx.Position + transactionsSequenceLength;

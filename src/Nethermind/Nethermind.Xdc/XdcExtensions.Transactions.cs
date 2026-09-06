@@ -18,10 +18,10 @@ internal static partial class XdcExtensions
             || IsLendingFinalizedTradeTransaction(currentTx, spec)
             || IsTradingStateTransaction(currentTx, spec);
     public static bool IsSignTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.BlockSignerContract;
-    public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary && spec.IsTIPXDCXMiner;
-    public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary && spec.IsTIPXDCXMiner;
-    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary && spec.IsTIPXDCXMiner;
-    public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary && spec.IsTIPXDCXMiner;
+    public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary && spec.IsTIPXDCXReceiver;
+    public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary && spec.IsTIPXDCXReceiver;
+    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary && spec.IsTIPXDCXReceiver;
+    public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary && spec.IsTIPXDCXReceiver;
 
     public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {

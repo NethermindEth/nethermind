@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -106,9 +107,9 @@ public class Eip7778Tests : VirtualMachineTestsBase
     [Test]
     public void GasConsumed_struct_tracks_block_gas_separately()
     {
-        long spentGas = 21000;
-        long operationGas = 20000;
-        long blockGas = 25000;
+        ulong spentGas = 21000UL;
+        ulong operationGas = 20000UL;
+        ulong blockGas = 25000UL;
 
         GasConsumed gasConsumed = new(spentGas, operationGas, blockGas);
 
@@ -121,33 +122,33 @@ public class Eip7778Tests : VirtualMachineTestsBase
     [Test]
     public void GasConsumed_effective_block_gas_uses_spent_gas_when_block_gas_is_zero()
     {
-        long spentGas = 21000;
-        long operationGas = 20000;
+        ulong spentGas = 21000UL;
+        ulong operationGas = 20000UL;
 
         GasConsumed gasConsumed = new(spentGas, operationGas);
 
-        Assert.That(gasConsumed.BlockGas, Is.EqualTo(0));
+        Assert.That(gasConsumed.BlockGas, Is.EqualTo(0UL));
         Assert.That(gasConsumed.EffectiveBlockGas, Is.EqualTo(spentGas));
     }
 
     [Test]
-    public void GasConsumed_implicit_conversion_from_long()
+    public void GasConsumed_implicit_conversion_from_ulong()
     {
-        long gas = 21000;
+        ulong gas = 21000UL;
         GasConsumed gasConsumed = gas;
 
         Assert.That(gasConsumed.SpentGas, Is.EqualTo(gas));
         Assert.That(gasConsumed.OperationGas, Is.EqualTo(gas));
-        Assert.That(gasConsumed.BlockGas, Is.EqualTo(0));
+        Assert.That(gasConsumed.BlockGas, Is.EqualTo(0UL));
     }
 
     [Test]
-    public void GasConsumed_implicit_conversion_to_long()
+    public void GasConsumed_implicit_conversion_to_ulong()
     {
-        GasConsumed gasConsumed = new(21000, 20000, 25000);
-        long gas = gasConsumed;
+        GasConsumed gasConsumed = new(21000UL, 20000UL, 25000UL);
+        ulong gas = gasConsumed;
 
-        Assert.That(gas, Is.EqualTo(21000));
+        Assert.That(gas, Is.EqualTo(21000UL));
     }
 
     [Test]
@@ -435,7 +436,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Transaction_allowance_uses_post_refund_receipt_gas_when_eip7778_enabled()
+    public void Transaction_admission_uses_pre_refund_block_gas_when_eip7778_enabled()
     {
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.CreateAccount(Recipient, 1.Ether);
@@ -470,16 +471,16 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
-
         tracer.StartNewTxTrace(tx1);
         TransactionResult result1 = _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
+        tracer.EndBlockTrace();
 
-        Assert.That(result1, Is.EqualTo(TransactionResult.Ok));
+        Assert.That(result1, Is.EqualTo(TransactionResult.Ok), "precondition: first transaction must succeed");
 
-        long blockGasAfterTx1 = block.Header.GasUsed;
-        long receiptGasAfterTx1 = tracer.TxReceipts[0].GasUsedTotal;
-        Assert.That(blockGasAfterTx1, Is.GreaterThan(receiptGasAfterTx1), "First transaction should create a refund gap between block gas and receipt gas");
+        ulong blockGasAfterTx1 = block.Header.GasUsed;
+        ulong receiptGasAfterTx1 = tracer.TxReceipts[0].GasUsedTotal;
+        Assert.That(blockGasAfterTx1, Is.GreaterThan(receiptGasAfterTx1), "precondition: tx1 must create a refund gap between pre-refund block gas and post-refund receipt gas");
 
         block.Header.GasLimit = blockGasAfterTx1 + GasCostOf.Transaction - 1;
 
@@ -491,13 +492,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        tracer.StartNewTxTrace(tx2);
-        TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(result2, Is.EqualTo(TransactionResult.Ok), "Second transaction should be admitted based on post-refund receipt gas");
-        Assert.That(block.Header.GasUsed, Is.GreaterThan(block.Header.GasLimit), "Block gas should overflow only after the second transaction executes");
+        Assert.That(result2, Is.EqualTo(TransactionResult.BlockGasLimitExceeded), "second transaction must be rejected: admission uses pre-refund block gas, leaving no room");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "a rejected transaction must not change block gas");
+        Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit), "block gas must never exceed the gas limit");
     }
 
     [Test]
@@ -534,7 +533,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
 
-        long blockGasAfterTx1 = block.Header.GasUsed;
+        ulong blockGasAfterTx1 = block.Header.GasUsed;
         TxReceipt receipt1 = tracer.TxReceipts[0];
 
         // Prepare and execute second transaction (no refund)
@@ -640,7 +639,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // Take snapshot after first tx
         int snapshotAfterTx1 = tracer.TakeSnapshot();
-        long blockGasAfterTx1 = block.Header.GasUsed;
+        ulong blockGasAfterTx1 = block.Header.GasUsed;
         TxReceipt receipt1 = tracer.TxReceipts[0];
 
         // Execute second transaction
@@ -696,7 +695,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         // Snapshot 1 (after tx1)
         int snapshot1 = tracer.TakeSnapshot();
-        long gasAfterTx1 = block.Header.GasUsed;
+        ulong gasAfterTx1 = block.Header.GasUsed;
 
         // Execute tx2 (call to Recipient which has code deployed)
         Transaction tx2 = Build.A.Transaction

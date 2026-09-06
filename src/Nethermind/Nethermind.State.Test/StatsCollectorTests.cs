@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -70,20 +69,23 @@ namespace Nethermind.Store.Test
             stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
             TrieStats stats = statsCollector.Stats;
 
-            stats.CodeCount.Should().Be(1);
-            stats.MissingCode.Should().Be(1);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stats.CodeCount, Is.EqualTo(1));
+                Assert.That(stats.MissingCode, Is.EqualTo(1));
 
-            stats.NodesCount.Should().Be(1348);
+                Assert.That(stats.NodesCount, Is.EqualTo(1348));
 
-            stats.StateBranchCount.Should().Be(1);
-            stats.StateExtensionCount.Should().Be(1);
-            stats.AccountCount.Should().Be(2);
+                Assert.That(stats.StateBranchCount, Is.EqualTo(1));
+                Assert.That(stats.StateExtensionCount, Is.EqualTo(1));
+                Assert.That(stats.AccountCount, Is.EqualTo(2));
 
-            stats.StorageCount.Should().Be(1343);
-            stats.StorageBranchCount.Should().Be(337);
-            stats.StorageExtensionCount.Should().Be(12);
-            stats.StorageLeafCount.Should().Be(994);
-            stats.MissingStorage.Should().Be(1);
+                Assert.That(stats.StorageCount, Is.EqualTo(1343));
+                Assert.That(stats.StorageBranchCount, Is.EqualTo(337));
+                Assert.That(stats.StorageExtensionCount, Is.EqualTo(12));
+                Assert.That(stats.StorageLeafCount, Is.EqualTo(994));
+                Assert.That(stats.MissingStorage, Is.EqualTo(1));
+            }
         }
     }
 }

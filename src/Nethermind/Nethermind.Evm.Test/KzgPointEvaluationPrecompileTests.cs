@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
@@ -30,7 +29,7 @@ public class KzgPointEvaluationPrecompileTests
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)
     {
         (ReadOnlyMemory<byte> output, bool success) = KzgPointEvaluationPrecompile.Instance.Run(input, Cancun.Instance);
-        output.ToArray().Should().BeEquivalentTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer);
+        Assert.That(output.ToArray(), Is.EqualTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer));
         return success;
     }
 
@@ -56,21 +55,21 @@ public class KzgPointEvaluationPrecompileTests
     [TestCaseSource(nameof(GasTests))]
     public void Test_PointEvaluationPrecompile_Has_Specific_Constant_Gas_Cost(byte[] input)
     {
-        const long fixedGasCost = 50000;
-        long gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
+        const ulong fixedGasCost = 50000;
+        ulong gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
                         KzgPointEvaluationPrecompile.Instance.BaseGasCost(Cancun.Instance);
-        gasSpent.Should().Be(fixedGasCost);
+        Assert.That(gasSpent, Is.EqualTo(fixedGasCost));
     }
 
     public static IEnumerable<TestCaseData> GasTests => InvalidTestCases.Union(ValidTestCases);
 
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {
-        versionedHash.Length.Should().Be(64);
-        z.Length.Should().Be(64);
-        y.Length.Should().Be(64);
-        commitment.Length.Should().Be(96);
-        proof.Length.Should().Be(96);
+        Assert.That(versionedHash.Length, Is.EqualTo(64));
+        Assert.That(z.Length, Is.EqualTo(64));
+        Assert.That(y.Length, Is.EqualTo(64));
+        Assert.That(commitment.Length, Is.EqualTo(96));
+        Assert.That(proof.Length, Is.EqualTo(96));
         return Bytes.FromHexString(versionedHash + z + y + commitment + proof);
     }
 

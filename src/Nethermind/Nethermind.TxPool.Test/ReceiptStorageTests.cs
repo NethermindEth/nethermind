@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -73,7 +72,7 @@ namespace Nethermind.TxPool.Test
         {
             Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
             TxReceipt[] receipts = byBlock ? _receiptFinder.Get(block) : _receiptFinder.Get(block.Hash);
-            receipts.Should().BeEmpty();
+            Assert.That(receipts, Is.Empty);
         }
 
         private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null, bool clearSender = false)
@@ -91,14 +90,14 @@ namespace Nethermind.TxPool.Test
             storage.Insert(block, receipt);
             receipt = storage.Get(block)[0];
             Hash256 blockHash = storage.FindBlockHash(transaction.Hash);
-            blockHash.Should().Be(block.Hash);
+            Assert.That(blockHash, Is.EqualTo(block.Hash));
             TxReceipt fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
-            receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
-            receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
-            receipt.TxHash.Should().Be(transaction.Hash);
+            Assert.That(receipt.StatusCode, Is.EqualTo(fetchedReceipt.StatusCode));
+            Assert.That(receipt.PostTransactionState, Is.EqualTo(fetchedReceipt.PostTransactionState));
+            Assert.That(receipt.TxHash, Is.EqualTo(transaction.Hash));
             if (clearSender)
             {
-                receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
+                Assert.That(receipt.Sender, Is.EqualTo(TestItem.AddressA));
             }
         }
 

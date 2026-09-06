@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -12,7 +11,7 @@ namespace Nethermind.Evm.Test
 {
     public class Eip2315Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [TestCase("0x60045e005c5d", Description = "Simple routine")]
@@ -30,7 +29,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
         }
     }
 }

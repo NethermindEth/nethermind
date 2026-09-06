@@ -2,19 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -37,7 +35,7 @@ public class ProgressTrackerTests
             for (int i = 0; i < loopIteration; i++)
             {
                 bool finished = progressTracker.IsFinished(out SnapSyncBatch? snapSyncBatch);
-                finished.Should().BeFalse();
+                Assert.That(finished, Is.False);
                 progressTracker.EnqueueNextSlot(snapSyncBatch!.StorageRangeRequest!);
             }
         });
@@ -46,7 +44,7 @@ public class ProgressTrackerTests
         {
             for (int i = 0; i < loopIteration; i++)
             {
-                progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+                Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
             }
         });
 
@@ -77,16 +75,16 @@ public class ProgressTrackerTests
         for (int i = 0; i < 4; i++)
         {
             bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
-            request!.AccountRangeRequest.Should().NotBeNull();
-            request.AccountRangeRequest!.StartingHash.Should().Be(expectedStarts[i]);
-            request.AccountRangeRequest.LimitHash!.Value.Should().Be(expectedLimits[i]);
-            finished.Should().BeFalse();
+            Assert.That(request!.AccountRangeRequest, Is.Not.Null);
+            Assert.That(request.AccountRangeRequest!.StartingHash, Is.EqualTo(expectedStarts[i]));
+            Assert.That(request.AccountRangeRequest.LimitHash!.Value, Is.EqualTo(expectedLimits[i]));
+            Assert.That(finished, Is.False);
             request.Dispose();
         }
 
         bool finalFinished = progressTracker.IsFinished(out SnapSyncBatch? finalRequest);
-        finalRequest.Should().BeNull();
-        finalFinished.Should().BeFalse();
+        Assert.That(finalRequest, Is.Null);
+        Assert.That(finalFinished, Is.False);
     }
 
     [Test]
@@ -108,8 +106,8 @@ public class ProgressTrackerTests
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        request!.CodesRequest.Should().NotBeNull();
-        request.StorageRangeRequest.Should().BeNull();
+        Assert.That(request!.CodesRequest, Is.Not.Null);
+        Assert.That(request.StorageRangeRequest, Is.Null);
         request.Dispose();
     }
 
@@ -132,31 +130,54 @@ public class ProgressTrackerTests
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        request!.CodesRequest.Should().BeNull();
-        request.StorageRangeRequest.Should().NotBeNull();
+        Assert.That(request!.CodesRequest, Is.Null);
+        Assert.That(request.StorageRangeRequest, Is.Not.Null);
         request.Dispose();
     }
 
     [Test]
-    public void Will_mark_progress_and_flush_when_finished()
+    public void Will_mark_range_phase_finished_when_ranges_drain()
     {
-        BlockTree blockTree = Build.A.BlockTree()
-            .WithStateRoot(Keccak.EmptyTreeHash)
-            .OfChainLength(2).TestObject;
-        TestMemDb memDb = new();
-        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
-        using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        request!.AccountRangeRequest.Should().NotBeNull();
+        Assert.That(request!.AccountRangeRequest, Is.Not.Null);
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
         request.Dispose();
         bool finished = progressTracker.IsFinished(out _);
-        finished.Should().BeTrue();
+        Assert.That(finished, Is.True);
 
-        memDb.WasFlushed.Should().BeTrue();
-        memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
+        snapTrieFactory.Received(1).MarkRangePhaseFinished();
+    }
+
+    [Test]
+    public void Will_skip_account_ranges_when_range_phase_already_finished()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.IsRangePhaseFinished().Returns(true);
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+
+        progressTracker.LoadProgress();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
+        Assert.That(request, Is.Null);
+    }
+
+    // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
+    [Test]
+    public void Will_request_account_ranges_when_range_phase_not_finished()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.IsRangePhaseFinished().Returns(false);
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+
+        progressTracker.LoadProgress();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.False);
+        Assert.That(request!.AccountRangeRequest, Is.Not.Null);
+        request.Dispose();
     }
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
@@ -182,18 +203,18 @@ public class ProgressTrackerTests
 
         //expecting 2 batches
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
-        isFinished.Should().BeFalse();
-        batch1.Should().NotBeNull();
+        Assert.That(isFinished, Is.False);
+        Assert.That(batch1, Is.Not.Null);
 
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch2);
-        isFinished.Should().BeFalse();
-        batch2.Should().NotBeNull();
+        Assert.That(isFinished, Is.False);
+        Assert.That(batch2, Is.Not.Null);
 
-        batch2?.StorageRangeRequest?.StartingHash.Should().Be(batch1?.StorageRangeRequest?.LimitHash?.IncrementPath());
-        batch1?.StorageRangeRequest?.StartingHash.Should().Be(lastProcessedHash.IncrementPath());
-        batch2?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
+        Assert.That(batch2?.StorageRangeRequest?.StartingHash, Is.EqualTo(batch1?.StorageRangeRequest?.LimitHash?.IncrementPath()));
+        Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
+        Assert.That(batch2?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
 
-        batch1?.StorageRangeRequest?.LimitHash.Should().Be(new ValueHash256(expectedSplit));
+        Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(new ValueHash256(expectedSplit)));
     }
 
 
@@ -219,17 +240,17 @@ public class ProgressTrackerTests
 
         //expecting 1 batch
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
-        isFinished.Should().BeFalse();
-        batch1.Should().NotBeNull();
+        Assert.That(isFinished, Is.False);
+        Assert.That(batch1, Is.Not.Null);
 
-        batch1?.StorageRangeRequest?.StartingHash.Should().Be(lastProcessedHash.IncrementPath());
-        batch1?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
+        Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
+        Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false)
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
-        return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

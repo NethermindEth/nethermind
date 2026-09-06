@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Tools.Kute.MessageProvider;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,10 +24,10 @@ public class MessageProviderTests
         JsonRpcMessageProvider provider = new(stringProvider);
         List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
-        jsonRpcs.Should().HaveCount(3);
-        jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[1].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[2].Should().BeOfType<JsonRpc.Request.Batch>();
+        Assert.That(jsonRpcs, Has.Count.EqualTo(3));
+        Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Batch>());
     }
 
     [Test]
@@ -45,9 +44,9 @@ public class MessageProviderTests
         UnwrapBatchJsonRpcMessageProvider provider = new(new JsonRpcMessageProvider(stringProvider));
         List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
-        jsonRpcs.Should().HaveCount(3);
-        jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[1].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[2].Should().BeOfType<JsonRpc.Request.Single>();
+        Assert.That(jsonRpcs, Has.Count.EqualTo(3));
+        Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Single>());
     }
 }

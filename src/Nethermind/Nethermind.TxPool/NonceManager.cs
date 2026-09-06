@@ -5,7 +5,6 @@ using NonBlocking;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -14,14 +13,14 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
     private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts = accounts;
 
-    public NonceLocker ReserveNonce(Address address, out UInt256 reservedNonce)
+    public NonceLocker ReserveNonce(Address address, out ulong reservedNonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, static _ => new AddressNonceManager());
         return addressNonceManager.ReserveNonce(_accounts.GetNonce(address), out reservedNonce);
     }
 
-    public NonceLocker TxWithNonceReceived(Address address, UInt256 nonce)
+    public NonceLocker TxWithNonceReceived(Address address, ulong nonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, static _ => new AddressNonceManager());
@@ -30,18 +29,18 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
 
     private class AddressNonceManager
     {
-        private readonly HashSet<UInt256> _usedNonces = new();
-        private UInt256 _currentNonce;
-        private UInt256 _reservedNonce;
-        private UInt256 _previousAccountNonce;
+        private readonly HashSet<ulong> _usedNonces = [];
+        private ulong _currentNonce;
+        private ulong _reservedNonce;
+        private ulong _previousAccountNonce;
 
         private readonly SemaphoreSlim _accountLock = new(1);
 
-        public NonceLocker ReserveNonce(UInt256 accountNonce, out UInt256 reservedNonce)
+        public NonceLocker ReserveNonce(ulong accountNonce, out ulong reservedNonce)
         {
             NonceLocker locker = new(_accountLock, TxAccepted);
             ReleaseNonces(accountNonce);
-            _currentNonce = UInt256.Max(_currentNonce, accountNonce);
+            _currentNonce = ulong.Max(_currentNonce, accountNonce);
             _reservedNonce = _currentNonce;
             reservedNonce = _currentNonce;
             return locker;
@@ -56,16 +55,16 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             }
         }
 
-        public NonceLocker TxWithNonceReceived(UInt256 nonce)
+        public NonceLocker TxWithNonceReceived(ulong nonce)
         {
             NonceLocker locker = new(_accountLock, TxAccepted);
             _reservedNonce = nonce;
             return locker;
         }
 
-        private void ReleaseNonces(UInt256 accountNonce)
+        private void ReleaseNonces(ulong accountNonce)
         {
-            for (UInt256 i = _previousAccountNonce; i < accountNonce; i++)
+            for (ulong i = _previousAccountNonce; i < accountNonce; i++)
             {
                 _usedNonces.Remove(i);
             }

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -19,17 +18,17 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void new_is_empty()
         {
-            LinkedHashSet<int> linkedHashSet = new();
-            linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
-            linkedHashSet.Count.Should().Be(0);
+            LinkedHashSet<int> linkedHashSet = [];
+            Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void initializes_from_enumerable()
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
         [Test]
@@ -40,76 +39,82 @@ namespace Nethermind.Core.Test.Collections
             {
                 linkedHashSet.Add(_defaultSet[i]);
             }
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
         [Test]
         public void ignores_adding_duplicates()
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             for (int i = 0; i < _defaultSet.Length; i++)
             {
                 linkedHashSet.Add(_defaultSet[i]);
             }
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
         [Test]
         public void can_clear()
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             linkedHashSet.Clear();
-            linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
-            linkedHashSet.Count.Should().Be(0);
+            Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void can_copy()
         {
             int[] array = new int[4];
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             linkedHashSet.CopyTo(array, 1);
-            array.Skip(1).Should().BeEquivalentTo(_defaultSet);
+            Assert.That(array.Skip(1), Is.EqualTo(_defaultSet));
         }
 
         [Test]
         public void contains_added_elements()
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            _defaultSet.Select(i => linkedHashSet.Contains(i)).Should().AllBeEquivalentTo(true);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
+            Assert.That(_defaultSet.Select(i => linkedHashSet.Contains(i)), Is.All.EqualTo(true));
         }
 
         [Test]
         public void not_contains_not_added_elements()
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            linkedHashSet.Contains(_unknownElement).Should().BeFalse();
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
+            Assert.That(linkedHashSet.Contains(_unknownElement), Is.False);
         }
 
         [Test]
         public void removes_elements([Values(false, true)] bool reverse)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             IEnumerable<int> toDelete = reverse ? _defaultSet.Reverse() : _defaultSet;
             int expectedCount = linkedHashSet.Count;
             foreach (int i in toDelete)
             {
-                linkedHashSet.Remove(i).Should().BeTrue();
-                linkedHashSet.Count.Should().Be(--expectedCount);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(linkedHashSet.Remove(i), Is.True);
+                    Assert.That(linkedHashSet.Count, Is.EqualTo(--expectedCount));
+                }
             }
 
-            linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
+            Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
         }
 
         [Test]
         public void not_removes_unknown_elements()
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            linkedHashSet.Remove(_unknownElement).Should().BeFalse();
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(linkedHashSet.Remove(_unknownElement), Is.False);
+                Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+                Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
+            }
         }
 
 
@@ -128,10 +133,10 @@ namespace Nethermind.Core.Test.Collections
         private void ChangeSetTest(IEnumerable<int> expected, Action<LinkedHashSet<int>> action)
         {
             expected = expected as int[] ?? expected.ToArray();
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             action(linkedHashSet);
-            linkedHashSet.Count.Should().Be(expected.Count());
-            linkedHashSet.Should().BeEquivalentTo(expected);
+            Assert.That(linkedHashSet.Count, Is.EqualTo(expected.Count()));
+            Assert.That(linkedHashSet, Is.EqualTo(expected));
         }
 
         [TestCase(new[] { 1, 2, 3 }, ExpectedResult = true)]
@@ -139,7 +144,7 @@ namespace Nethermind.Core.Test.Collections
         [TestCase(new[] { 1, 2 }, ExpectedResult = false)]
         public bool set_equals(IEnumerable<int> set)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             return linkedHashSet.SetEquals(set);
         }
 
@@ -149,7 +154,7 @@ namespace Nethermind.Core.Test.Collections
         [TestCase(new[] { 4 }, ExpectedResult = false)]
         public bool overlaps(IEnumerable<int> set)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             return linkedHashSet.Overlaps(set);
         }
 
@@ -159,7 +164,7 @@ namespace Nethermind.Core.Test.Collections
         [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = true)]
         public bool is_subset_of(IEnumerable<int> set)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             return linkedHashSet.IsSubsetOf(set);
         }
 
@@ -169,7 +174,7 @@ namespace Nethermind.Core.Test.Collections
         [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = false)]
         public bool is_superset_of(IEnumerable<int> set)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             return linkedHashSet.IsSupersetOf(set);
         }
 
@@ -179,7 +184,7 @@ namespace Nethermind.Core.Test.Collections
         [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = true)]
         public bool is_proper_subset_of(IEnumerable<int> set)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             return linkedHashSet.IsProperSubsetOf(set);
         }
 
@@ -189,7 +194,7 @@ namespace Nethermind.Core.Test.Collections
         [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = false)]
         public bool is_proper_superset_of(IEnumerable<int> set)
         {
-            LinkedHashSet<int> linkedHashSet = new(_defaultSet);
+            LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
             return linkedHashSet.IsProperSupersetOf(set);
         }
     }

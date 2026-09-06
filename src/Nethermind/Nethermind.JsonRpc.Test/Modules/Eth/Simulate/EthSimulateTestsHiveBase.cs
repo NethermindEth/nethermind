@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -22,7 +21,7 @@ using NUnit.Framework;
 using static Nethermind.Core.Test.Blockchain.TestBlockchain;
 using ResultType = Nethermind.Core.ResultType;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsHiveBase
 {
@@ -80,11 +79,12 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
     public async Task TestsimulateHive(string name, bool shouldSucceed, string data)
     {
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data)
+            ?? throw new InvalidOperationException("Hive simulate payload deserialized as null.");
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
         Console.WriteLine($"current test: {name}");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Console.WriteLine();
         if (shouldSucceed)
@@ -106,7 +106,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
     [Combinatorial]
     public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
         [Values(2, 12)] int secondsPerSlot,
-        [Values(0, 1, 2, 5)] int blockNumber)
+        [Values(0u, 1u, 2u, 5u)] uint blockNumber)
     {
         string data = $$"""
                               {
@@ -129,9 +129,10 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
                               }
                             """;
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data)
+            ?? throw new InvalidOperationException("Simulate payload deserialized as null.");
 
-        TestRpcBlockchain chain = await TestRpcBlockchain
+        using TestRpcBlockchain chain = await TestRpcBlockchain
             .ForTest(new TestRpcBlockchain())
             .WithBlocksConfig(new BlocksConfig
             {
@@ -147,11 +148,14 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
-        BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data;
-        SimulateBlockResult<SimulateCallResult> simulated = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data[0];
+        BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data
+            ?? throw new InvalidOperationException("Parent block lookup returned null.");
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> results = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data
+            ?? throw new InvalidOperationException("Simulation returned null.");
+        SimulateBlockResult<SimulateCallResult> simulated = results[0];
 
-        simulated.ParentHash.Should().Be(parent.Hash!);
-        (simulated.Number - parent.Number).Should().Be(1);
-        (simulated.Timestamp - parent.Timestamp).Should().Be((UInt256)secondsPerSlot);
+        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash!));
+        Assert.That((simulated.Number - parent.Number), Is.EqualTo(1));
+        Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
     }
 }

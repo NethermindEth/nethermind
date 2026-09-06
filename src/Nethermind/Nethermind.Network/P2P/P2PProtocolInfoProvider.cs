@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
@@ -10,10 +11,12 @@ namespace Nethermind.Network.P2P
     {
         public static string DefaultCapabilitiesToString()
         {
-            IEnumerable<string> capabilities = ProtocolsManager.DefaultCapabilities
+            HashSet<Capability> capabilities = [];
+            new DefaultP2PCapabilityResolver().Resolve(capabilities);
+            IEnumerable<string> formatted = capabilities
                 .OrderBy(static x => x.ProtocolCode).ThenByDescending(static x => x.Version)
                 .Select(static x => $"{x.ProtocolCode}/{x.Version}");
-            return string.Join(",", capabilities);
+            return string.Join(",", formatted);
         }
     }
 }

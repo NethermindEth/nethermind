@@ -19,8 +19,8 @@ public interface ITransactionProcessor
 
     public interface IBlobBaseFeeCalculator
     {
-        bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
-            UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee);
+        bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
+            ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee);
     }
 }
 
@@ -54,8 +54,7 @@ public static class ITransactionProcessorExtensions
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         /// <summary>
-        /// Call transaction, no validations, don't commit state.
-        /// Will NOT charge gas from sender account.
+        /// Call transaction with real fee and nonce semantics, no validations, don't commit state.
         /// </summary>
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);

@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Extensions;
+using System.Buffers;
+using System.IO;
+using System.IO.Pipelines;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
-using System;
-using System.Diagnostics;
-using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
 
@@ -21,6 +20,48 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
+    public static void AssertSuccess(JsonRpcResponse response)
+    {
+        Assert.That(response, Is.InstanceOf<IResultWrapper>(), GetFailureMessage(response));
+        IResultWrapper resultWrapper = (IResultWrapper)response;
+        Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Success), resultWrapper.Result.ToString());
+    }
+
+    public static T AssertSuccess<T>(JsonRpcResponse response)
+    {
+        Assert.That(response, Is.InstanceOf<ResultWrapper<T>>(), GetFailureMessage(response));
+        ResultWrapper<T> resultWrapper = (ResultWrapper<T>)response;
+        Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Success), resultWrapper.Result.ToString());
+        return resultWrapper.Data;
+    }
+
+    public static Error AssertError(JsonRpcResponse response)
+    {
+        if (response is JsonRpcErrorResponse { Error: { } error })
+        {
+            return error;
+        }
+
+        Assert.That(response, Is.InstanceOf<IResultWrapper>(), GetFailureMessage(response));
+        IResultWrapper resultWrapper = (IResultWrapper)response;
+        Assert.That(resultWrapper.Result.ResultType, Is.Not.EqualTo(ResultType.Success), resultWrapper.Result.ToString());
+        return new Error
+        {
+            Code = resultWrapper.ErrorCode,
+            Message = resultWrapper.Result.Error,
+            Data = resultWrapper.HasErrorData ? resultWrapper.Data : null,
+            SuppressWarning = resultWrapper.IsTemporary
+        };
+    }
+
+    public static string SerializeResponse(JsonRpcResponse? response)
+    {
+        Assert.That(response, Is.Not.Null);
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, response!, EthereumJsonSerializer.JsonOptions);
+        return Encoding.UTF8.GetString(writer.WrittenSpan);
+    }
+
     public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         await using IContainer container = CreateContainerForModule<T>(module);
@@ -32,7 +73,6 @@ public static class RpcTest
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 60.Seconds());
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
@@ -43,21 +83,26 @@ public static class RpcTest
             : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
-        EthereumJsonSerializer serializer = new();
+        if (response.TryGetStreamableResult(out _))
+        {
+            using MemoryStream stream = new();
+            PipeWriter pipeWriter = PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true));
+            await JsonRpcResponseWriter.WriteAsync(pipeWriter, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+            await pipeWriter.FlushAsync();
+            await pipeWriter.CompleteAsync();
 
-        Stream stream = new MemoryStream();
-        long size = await serializer.SerializeAsync(stream, response, cts.Token).ConfigureAwait(false);
+            string streamableSerialized = Encoding.UTF8.GetString(stream.ToArray());
+            await TestContext.Out.WriteLineAsync(streamableSerialized);
+            return streamableSerialized;
+        }
 
-        // for coverage (and to prove that it does not throw)
-        Stream indentedStream = new MemoryStream();
-        await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
 
-        stream.Seek(0, SeekOrigin.Begin);
-        string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
-
+        string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        size.Should().Be(serialized.Length);
+        Assert.That(writer.WrittenCount, Is.EqualTo(serialized.Length));
 
         return serialized;
     }
@@ -87,4 +132,9 @@ public static class RpcTest
             Id = 67
         };
     }
+
+    private static string GetFailureMessage(JsonRpcResponse response) =>
+        response is JsonRpcErrorResponse error
+            ? $"RPC error: {error.Error?.Code} {error.Error?.Message}"
+            : $"Unexpected response type: {response.GetType().FullName}";
 }

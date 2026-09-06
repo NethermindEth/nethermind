@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -10,6 +9,6 @@ namespace Nethermind.Core.Test
     public class NetworkDiagTracerTests
     {
         [Test]
-        public void Test() => NetworkDiagTracer.NetworkDiagTracerPath.Should().NotStartWith("C:");
+        public void Test() => Assert.That(NetworkDiagTracer.NetworkDiagTracerPath, Does.Not.StartWith("C:"));
     }
 }

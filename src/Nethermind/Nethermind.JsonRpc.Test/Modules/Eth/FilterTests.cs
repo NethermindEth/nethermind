@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Text.Json;
 
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -107,7 +106,47 @@ public class FilterTests
         Filter filter = new();
         using JsonDocument doc = JsonDocument.Parse(json);
         filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-        filter.Should().BeEquivalentTo(expectation);
+        Assert.That(filter.Address, Is.EqualTo(expectation.Address));
+        Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
+        Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
+        Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ReadJson_materializes_topics_before_json_document_is_disposed(bool filterAsString)
+    {
+        string filterJson = JsonSerializer.Serialize(
+            new
+            {
+                topics = new object?[]
+                {
+                    "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
+                    null,
+                    new[]
+                    {
+                        "0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001",
+                        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+                    }
+                }
+            });
+        string json = filterAsString ? JsonSerializer.Serialize(filterJson) : filterJson;
+        Filter filter = new();
+
+        using (JsonDocument doc = JsonDocument.Parse(json))
+        {
+            filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+        }
+
+        Assert.That(filter.Topics, Is.EqualTo(new Hash256[]?[]
+        {
+            [new("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")],
+            null,
+            [
+                new("0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001"),
+                new("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
+            ]
+        }));
     }
 
     [Test]
@@ -117,6 +156,6 @@ public class FilterTests
         string oversized = $"\"{new string('a', 1_000_001)}\"";
         using JsonDocument doc = JsonDocument.Parse(oversized);
         Action act = () => filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-        act.Should().Throw<ArgumentException>().WithMessage("*exceeds maximum*");
+        Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains(@"exceeds maximum"));
     }
 }

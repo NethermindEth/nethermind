@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -91,7 +92,7 @@ public class ValidateSubmissionHandler(
         return FlashbotsResult.Valid();
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, ulong registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
     {
         error = null;
 
@@ -178,7 +179,7 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, ulong registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
     {
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
@@ -197,7 +198,11 @@ public class ValidateSubmissionHandler(
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
-        RecoverSenderAddress(block, releaseSpec);
+        if (!RecoverSenderAddress(block, releaseSpec, out error))
+        {
+            return false;
+        }
+
         UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -248,15 +253,29 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private void RecoverSenderAddress(Block block, IReleaseSpec spec)
+    private bool RecoverSenderAddress(Block block, IReleaseSpec spec, out string? error)
     {
         foreach (Transaction tx in block.Transactions)
         {
-            tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            if (tx.SenderAddress is not null)
+            {
+                continue;
+            }
+
+            if (!_ethereumEcdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
+            {
+                error = $"Transaction {tx.Hash} sender address is not recoverable";
+                return false;
+            }
+
+            tx.SenderAddress = senderAddress;
         }
+
+        error = null;
+        return true;
     }
 
-    private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlockMetadata(Block block, ulong registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
     {
         if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
         {
@@ -275,7 +294,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
+        ulong calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
         if (calculatedGasLimit != block.Header.GasLimit)
         {
@@ -286,20 +305,22 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
+    private ulong GetGasLimit(BlockHeader parentHeader, ulong desiredGasLimit, IReleaseSpec releaseSpec)
     {
-        long parentGasLimit = parentHeader.GasLimit;
-        long gasLimit = parentGasLimit;
+        ulong parentGasLimit = parentHeader.GasLimit;
+        ulong gasLimit = parentGasLimit;
+        ulong newBlockNumber = parentHeader.Number + 1;
 
-        long? targetGasLimit = desiredGasLimit;
-        long newBlockNumber = parentHeader.Number + 1;
+        ulong maxGasLimitDifference = (parentGasLimit / releaseSpec.GasLimitBoundDivisor).SaturatingSub(1);
 
-        if (targetGasLimit is not null)
+        if (desiredGasLimit > parentGasLimit)
         {
-            long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
-            gasLimit = targetGasLimit.Value > parentGasLimit
-                ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
-                : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
+            gasLimit = parentGasLimit + Math.Min(desiredGasLimit - parentGasLimit, maxGasLimitDifference);
+        }
+        else if (desiredGasLimit < parentGasLimit)
+        {
+            // Non-trivial: parentGasLimit - desiredGasLimit is safe (parentGasLimit > desiredGasLimit here).
+            gasLimit = parentGasLimit - Math.Min(parentGasLimit - desiredGasLimit, maxGasLimitDifference);
         }
 
         gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(releaseSpec, gasLimit, newBlockNumber);
@@ -382,7 +403,6 @@ public class ValidateSubmissionHandler(
             error = "Malformed proposer payment, max priority fee per gas not equal to block max priority fee per gas";
             return false;
         }
-
 
         error = null;
         return true;

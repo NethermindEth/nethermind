@@ -8,8 +8,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
-using FluentAssertions;
-using FluentAssertions.Equivalency;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
@@ -17,28 +15,13 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test
 {
     [Explicit]
     public partial class ConsensusHelperTests
     {
-        private static readonly Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>> ReceiptOptions = static options => options.WithStrictOrdering()
-                .IncludingNestedObjects()
-                .Including(static r => r.TransactionHash)
-                .Including(static r => r.TransactionIndex)
-                .Including(static r => r.BlockHash)
-                .Including(static r => r.BlockNumber)
-                .Including(static r => r.From)
-                .Including(static r => r.To)
-                .Including(static r => r.CumulativeGasUsed)
-                .Including(static r => r.GasUsed)
-                .Including(static r => r.ContractAddress)
-                .Including(static r => r.LogsBloom)
-                .Including(static r => r.Logs)
-                .Including(static r => r.Root)
-                .Including(static r => r.Status);
-
         public static IEnumerable Tests
         {
             get
@@ -56,7 +39,7 @@ namespace Nethermind.JsonRpc.Test
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt1Source = GetSource<IEnumerable<ReceiptForRpc>>(uri1);
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt2Source = GetSource<IEnumerable<ReceiptForRpc>>(uri2);
             TrySetData(blockHash, receipt1Source, receipt2Source);
-            await CompareCollection(receipt1Source, receipt2Source, false, ReceiptOptions);
+            await CompareCollection(receipt1Source, receipt2Source, false);
         }
 
         [TestCaseSource(nameof(Tests))]
@@ -65,7 +48,7 @@ namespace Nethermind.JsonRpc.Test
             using IConsensusDataSource<ReceiptForRpc> receipt1Source = GetSource<ReceiptForRpc>(uri1);
             using IConsensusDataSource<ReceiptForRpc> receipt2Source = GetSource<ReceiptForRpc>(uri2);
             TrySetData(blockHash, receipt1Source, receipt2Source);
-            await Compare(receipt1Source, receipt2Source, false, ReceiptOptions);
+            await Compare(receipt1Source, receipt2Source, false);
         }
 
         [TestCaseSource(nameof(Tests))]
@@ -91,7 +74,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareParityBlockTrace(Uri uri1, Uri uri2, long blockNumber)
+        public async Task CompareParityBlockTrace(Uri uri1, Uri uri2, ulong blockNumber)
         {
             using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt1Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri1);
             using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt2Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri2);
@@ -154,26 +137,30 @@ namespace Nethermind.JsonRpc.Test
 
         private static async Task Compare<T>(IConsensusDataSource<T> source1,
             IConsensusDataSource<T> source2,
-            bool compareJson,
-            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
+            bool compareJson)
         {
 
             if (compareJson)
             {
-                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
-                data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"]!.ToString());
+                string dataJson = await source1.GetJsonData();
+                string expectationJson = await source2.GetJsonData();
+                JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
+
+                JsonNode? error = data["error"];
+                Assert.That(error, Is.Null, error?.ToString());
             }
             else
             {
                 string dataJson = string.Empty, expectationJson = string.Empty;
                 try
                 {
-                    T data, expectation;
-                    (data, dataJson) = await source1.GetData();
-                    (expectation, expectationJson) = await source2.GetData();
-                    data.Should().BeEquivalentTo(expectation, options ?? (static o => o));
+                    (_, dataJson) = await source1.GetData();
+                    (_, expectationJson) = await source2.GetData();
+                    JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                    JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                    Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
                 }
                 finally
                 {
@@ -184,26 +171,30 @@ namespace Nethermind.JsonRpc.Test
 
         private static async Task CompareCollection<T>(IConsensusDataSource<IEnumerable<T>> source1,
             IConsensusDataSource<IEnumerable<T>> source2,
-            bool compareJson,
-            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
+            bool compareJson)
         {
 
             if (compareJson)
             {
-                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
-                data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"]!.ToString());
+                string dataJson = await source1.GetJsonData();
+                string expectationJson = await source2.GetJsonData();
+                JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
+
+                JsonNode? error = data["error"];
+                Assert.That(error, Is.Null, error?.ToString());
             }
             else
             {
                 string dataJson = string.Empty, expectationJson = string.Empty;
                 try
                 {
-                    IEnumerable<T> data, expectation;
-                    (data, dataJson) = await source1.GetData();
-                    (expectation, expectationJson) = await source2.GetData();
-                    data.Should().BeEquivalentTo(expectation, options ?? (static o => o));
+                    (_, dataJson) = await source1.GetData();
+                    (_, expectationJson) = await source2.GetData();
+                    JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                    JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                    Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
                 }
                 finally
                 {
@@ -248,7 +239,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 if (token is JsonObject jObject)
                 {
-                    JsonObject copy = new();
+                    JsonObject copy = [];
                     foreach (KeyValuePair<string, JsonNode?> prop in jObject)
                     {
                         JsonNode? child = prop.Value;
@@ -265,7 +256,7 @@ namespace Nethermind.JsonRpc.Test
                 }
                 else if (token is JsonArray jArray)
                 {
-                    JsonArray copy = new();
+                    JsonArray copy = [];
                     foreach (JsonNode? item in jArray)
                     {
                         JsonNode? child = item;

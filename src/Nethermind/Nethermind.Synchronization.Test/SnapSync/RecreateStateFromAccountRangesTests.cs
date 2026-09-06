@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -65,7 +64,7 @@ public class RecreateStateFromAccountRangesTests
         IScopedTrieStore store = new RawScopedTrieStore(db);
         StateTree tree = new(store, LimboLogs.Instance);
 
-        IList<TrieNode> nodes = new List<TrieNode>();
+        IList<TrieNode> nodes = [];
         TreePath emptyPath = TreePath.Empty;
 
         for (int i = 0; i < (firstProof!).Length; i++)
@@ -166,6 +165,25 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
         Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False); // the root node is NOT a part of the proof nodes
+    }
+
+    [TestCase("ffffffff", TestName = "undecodable RLP")]
+    [TestCase("c28080", TestName = "valid RLP list, invalid trie node")]
+    public void AddAccountRange_with_malformed_proof_is_rejected_and_does_not_throw(string corruptProofNodeHex)
+    {
+        Hash256 rootHash = _inputTree.RootHash;
+
+        byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
+        byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
+        firstProof[0] = Bytes.FromHexString(corruptProofNodeHex);
+
+        using IContainer container = CreateContainer();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+
+        AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths,
+            new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
 
     [Test]
@@ -334,20 +352,20 @@ public class RecreateStateFromAccountRangesTests
             return moreChildrenToRight;
         }
 
-        HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path).Should().BeFalse();
-        HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeTrue(); //expect leaves exactly at limit path to be included
-        HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
-        HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
+        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path), Is.False);
+        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path), Is.True); //expect leaves exactly at limit path to be included
+        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path), Is.True);
+        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path), Is.True);
 
         UInt256 between1and2 = new(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
         between1and2 += 5;
 
-        HasMoreChildren(new Hash256(between1and2.ToBigEndian())).Should().BeFalse();
+        Assert.That(HasMoreChildren(new Hash256(between1and2.ToBigEndian())), Is.False);
 
         UInt256 between2and3 = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
         between2and3 -= 1;
 
-        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeTrue();
+        Assert.That(HasMoreChildren(new Hash256(between2and3.ToBigEndian())), Is.True);
     }
 
     [Test]
@@ -383,16 +401,16 @@ public class RecreateStateFromAccountRangesTests
             return moreChildrenToRight;
         }
 
-        HasMoreChildren(ac1.Path).Should().BeFalse();
-        HasMoreChildren(ac2.Path).Should().BeFalse();
+        Assert.That(HasMoreChildren(ac1.Path), Is.False);
+        Assert.That(HasMoreChildren(ac2.Path), Is.False);
 
         UInt256 between2and3 = new(ac2.Path.Bytes, true);
         between2and3 += 5;
 
-        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+        Assert.That(HasMoreChildren(new Hash256(between2and3.ToBigEndian())), Is.False);
 
         // The special case
-        HasMoreChildren(Keccak.MaxValue).Should().BeTrue();
+        Assert.That(HasMoreChildren(Keccak.MaxValue), Is.True);
     }
 
     [Test]
@@ -406,7 +424,7 @@ public class RecreateStateFromAccountRangesTests
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 100);
         Hash256 rootHash = inputTree.RootHash;
 
-        List<PathWithAccount> allAccounts = new();
+        List<PathWithAccount> allAccounts = [];
         for (int i = 0; i < 100; i++)
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
@@ -437,8 +455,8 @@ public class RecreateStateFromAccountRangesTests
         // Root hash verification inside AddAccountRange validates that the keccak-only leaf
         // reference produces a correct root hash — if leaves were handled incorrectly,
         // the computed root would differ from expectedRootHash
-        result1.Should().Be(AddRangeResult.OK);
-        result2.Should().Be(AddRangeResult.OK);
+        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+        Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
     }
 
     [Test]
@@ -450,7 +468,7 @@ public class RecreateStateFromAccountRangesTests
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 50);
         Hash256 rootHash = inputTree.RootHash;
 
-        List<PathWithAccount> allAccounts = new();
+        List<PathWithAccount> allAccounts = [];
         for (int i = 0; i < 50; i++)
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
@@ -474,7 +492,7 @@ public class RecreateStateFromAccountRangesTests
         (AddRangeResult result, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
             SnapProviderHelper.AddAccountRange(factory, 0, rootHash, rangeAccounts[0].Path, Keccak.MaxValue, rangeAccounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proofs.Length, proofs)));
 
-        result.Should().Be(AddRangeResult.OK);
+        Assert.That(result, Is.EqualTo(AddRangeResult.OK));
     }
 
     [Test]
@@ -485,7 +503,7 @@ public class RecreateStateFromAccountRangesTests
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 80);
         Hash256 rootHash = inputTree.RootHash;
 
-        List<PathWithAccount> allAccounts = new();
+        List<PathWithAccount> allAccounts = [];
         for (int i = 0; i < 80; i++)
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
@@ -515,7 +533,10 @@ public class RecreateStateFromAccountRangesTests
                 SnapProviderHelper.AddAccountRange(factory, 0, rootHash, startHash.ToCommitment(), Keccak.MaxValue, chunk, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
         }
 
-        results.Should().AllSatisfy(r => r.Should().Be(AddRangeResult.OK));
+        foreach (AddRangeResult result in results)
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+        }
     }
 
     [Test]

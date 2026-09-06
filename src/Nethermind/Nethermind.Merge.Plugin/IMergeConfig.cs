@@ -30,7 +30,7 @@ public interface IMergeConfig : IConfig
     public string? TerminalBlockHash { get; set; }
 
     [ConfigItem(Description = "The terminal PoW block number used for the transition.")]
-    public long? TerminalBlockNumber { get; set; }
+    public ulong? TerminalBlockNumber { get; set; }
 
     [ConfigItem(Description = "Deprecated since v1.14.7. Use `Blocks.SecondsPerSlot` instead.", DefaultValue = "12", HiddenFromDocs = true)]
     public ulong SecondsPerSlot { get; set; }

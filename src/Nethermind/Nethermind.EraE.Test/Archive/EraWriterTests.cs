@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Era1;
+using Nethermind.Era1.Exceptions;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
@@ -88,7 +87,7 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        for (int i = 0; i < EraWriter.MaxEraSize; i++)
+        for (ulong i = 0; i < EraWriter.MaxEraSize; i++)
         {
             Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             await sut.Add(block, []);
@@ -133,7 +132,7 @@ internal class EraWriterTests
         }
 
         using E2StoreReader reader = new(tmpFile.Path);
-        reader.HasTotalDifficulty.Should().Be(!isPostMerge);
+        Assert.That(reader.HasTotalDifficulty, Is.EqualTo(!isPostMerge));
     }
 
     [TestCase(false, TestName = "pre_merge")]
@@ -152,9 +151,9 @@ internal class EraWriterTests
 
         using E2StoreReader reader = new(tmpFile.Path);
         if (isPostMerge)
-            reader.AccumulatorRootOffset.Should().Be(-1, "post-merge epoch has no AccumulatorRoot entry");
+            Assert.That(reader.AccumulatorRootOffset, Is.EqualTo(-1), "post-merge epoch has no AccumulatorRoot entry");
         else
-            reader.AccumulatorRootOffset.Should().BeGreaterThan(0);
+            Assert.That(reader.AccumulatorRootOffset, Is.GreaterThan(0));
     }
 
     [Test]
@@ -169,7 +168,7 @@ internal class EraWriterTests
         }
 
         using E2StoreReader reader = new(tmpFile.Path);
-        reader.HeaderOffset(0).Should().Be(8);
+        Assert.That(reader.HeaderOffset(0), Is.EqualTo(8));
     }
 
     [Test]

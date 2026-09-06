@@ -33,6 +33,11 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private static readonly ReceiptMessageDecoder69 ReceiptMessageDecoder = new();
 
+    /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
+    private const ulong NoBlockSeen = ulong.MaxValue;
+    // Before EIP-3529, refunds could reduce gas used by at most half.
+    private const ulong MinimumSupportedTransactionGas = GasCostOf.Transaction / 2;
+
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
     private readonly ISpecProvider _specProvider;
 
@@ -61,7 +66,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     public new static byte Version => EthVersions.Eth70;
     public override byte ProtocolVersion => Version;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -70,13 +75,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
                 ReportIn(receiptsMessage, size);
                 Handle(receiptsMessage, size);
-                break;
+                return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -98,6 +102,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         try
         {
             ulong responseReceiptsContentSize = 0;
+            bool hasNonEmptyReceiptBlock = false;
             for (int blockIndex = 0; blockIndex < hashes.Length; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -106,12 +111,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
 
                 Hash256 blockHash = hashes[blockIndex];
-                if (SyncServer.FindHeader(blockHash) is null)
+                TxReceipt[]? receipts = SyncServer.GetReceipts(blockHash);
+                if (receipts is null)
                 {
                     break;
                 }
 
-                TxReceipt[] receipts = SyncServer.GetReceipts(blockHash);
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
                 if (requestedStartIndex < 0 || requestedStartIndex > receipts.Length)
                 {
@@ -141,9 +146,20 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     continue;
                 }
 
-                if (startIndex >= receipts.Length)
+                if (startIndex == receipts.Length)
                 {
-                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
+                    ulong emptyBlockSize = GetBlockReceiptsSize(0);
+                    ulong responseSize = GetEth70ReceiptsResponseSize(
+                        responseReceiptsContentSize + emptyBlockSize,
+                        getReceiptsMessage.RequestId);
+                    if (responseSize > SoftOutgoingMessageSizeLimit && responseReceiptsContentSize > 0)
+                    {
+                        break;
+                    }
+
+                    txReceipts.Add([]);
+                    responseReceiptsContentSize += emptyBlockSize;
+                    continue;
                 }
 
                 ulong remainingBlockSize = GetBlockReceiptsSize(receipts, startIndex);
@@ -153,30 +169,32 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 {
                     txReceipts.Add(CopyReceipts(receipts, startIndex, receipts.Length - startIndex));
                     responseReceiptsContentSize += remainingBlockSize;
+                    hasNonEmptyReceiptBlock = true;
                     continue;
                 }
 
-                if (responseReceiptsContentSize > 0)
+                if (hasNonEmptyReceiptBlock)
                 {
                     break;
                 }
 
-                if (GetEth70ReceiptsResponseSize(remainingBlockSize, getReceiptsMessage.RequestId) <= HardOutgoingReceiptsMessageSizeLimit)
+                if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + remainingBlockSize, getReceiptsMessage.RequestId) <= HardOutgoingReceiptsMessageSizeLimit)
                 {
                     txReceipts.Add(CopyReceipts(receipts, startIndex, receipts.Length - startIndex));
+                    hasNonEmptyReceiptBlock = true;
                     break;
                 }
 
                 ulong blockReceiptsContentSize = 0;
                 int taken = 0;
-                long lastBlockNumber = -1;
+                ulong lastBlockNumber = NoBlockSeen;
                 RlpBehaviors behaviors = RlpBehaviors.None;
                 for (int receiptIndex = startIndex; receiptIndex < receipts.Length; receiptIndex++)
                 {
                     ulong receiptSize = GetReceiptSize(receipts[receiptIndex], ref lastBlockNumber, ref behaviors);
                     ulong nextBlockReceiptsContentSize = blockReceiptsContentSize + receiptSize;
                     ulong nextBlockSize = GetBlockReceiptsSize(nextBlockReceiptsContentSize);
-                    if (GetEth70ReceiptsResponseSize(nextBlockSize, getReceiptsMessage.RequestId) > HardOutgoingReceiptsMessageSizeLimit)
+                    if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + nextBlockSize, getReceiptsMessage.RequestId) > HardOutgoingReceiptsMessageSizeLimit)
                     {
                         break;
                     }
@@ -197,6 +215,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                 lastBlockIncomplete = startIndex + taken < receipts.Length;
                 txReceipts.Add(CopyReceipts(receipts, startIndex, taken));
+                hasNonEmptyReceiptBlock = true;
                 break;
             }
 
@@ -230,15 +249,15 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     {
         ArrayPoolList<TxReceipt[]> aggregated = new(blockHashes.Count);
         ArrayPoolList<TxReceipt>? partialReceipts = null;
-        long partialReceiptsGas = 0;
-        long partialReceiptsLogsGas = 0;
+        ulong partialReceiptsGas = 0;
+        ulong partialReceiptsLogsGas = 0;
         ulong partialReceiptsContentSize = 0;
         int blockIndex = 0;
         int firstBlockReceiptIndex = 0;
         ulong totalResponseSize = 0;
 
-        using ArrayPoolList<long> expectedGasUsed = new(blockHashes.Count);
-        using ArrayPoolList<long> blockGasLimits = new(blockHashes.Count);
+        using ArrayPoolList<ulong> expectedGasUsed = new(blockHashes.Count);
+        using ArrayPoolList<ulong> blockGasLimits = new(blockHashes.Count);
         using ArrayPoolList<Transaction[]?> blockTransactions = new(blockHashes.Count);
         using ArrayPoolList<RlpBehaviors> receiptRlpBehaviors = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
@@ -315,8 +334,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         bool isFirst = i == 0;
                         bool isLast = i == txReceipts.Length - 1;
                         TxReceipt[] blockReceipts = txReceipts[i] ?? throw new SubprotocolException("Unexpected null receipt block payload");
-                        long blockExpectedGasUsed = expectedGasUsed[blockIndex];
-                        long blockGasLimit = blockGasLimits[blockIndex];
+                        ulong blockExpectedGasUsed = expectedGasUsed[blockIndex];
+                        ulong blockGasLimit = blockGasLimits[blockIndex];
                         Transaction[]? transactions = blockTransactions[blockIndex];
                         RlpBehaviors receiptBehaviors = receiptRlpBehaviors[blockIndex];
                         bool validateGasUpperBound = validateReceiptGasUpperBoundAgainstHeader[blockIndex];
@@ -422,7 +441,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ulong GetBlockReceiptsSize(TxReceipt[] receipts, int startIndex)
     {
         ulong receiptsContentSize = 0;
-        long lastBlockNumber = -1;
+        ulong lastBlockNumber = NoBlockSeen;
         RlpBehaviors behaviors = RlpBehaviors.None;
         for (int i = startIndex; i < receipts.Length; i++)
         {
@@ -446,7 +465,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         return GetRlpSequenceSize(responseContentSize);
     }
 
-    private ulong GetReceiptSize(TxReceipt receipt, ref long lastBlockNumber, ref RlpBehaviors behaviors)
+    private ulong GetReceiptSize(TxReceipt receipt, ref ulong lastBlockNumber, ref RlpBehaviors behaviors)
     {
         if (receipt.BlockNumber != lastBlockNumber)
         {
@@ -486,27 +505,27 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         public bool LastBlockIncomplete { get; } = lastBlockIncomplete;
     }
 
-    private readonly struct ReceiptsValidationResult(long gasUsedTotal, long logsGas, ulong receiptsContentSize)
+    private readonly struct ReceiptsValidationResult(ulong gasUsedTotal, ulong logsGas, ulong receiptsContentSize)
     {
-        public long GasUsedTotal { get; } = gasUsedTotal;
+        public ulong GasUsedTotal { get; } = gasUsedTotal;
 
-        public long LogsGas { get; } = logsGas;
+        public ulong LogsGas { get; } = logsGas;
 
         public ulong ReceiptsContentSize { get; } = receiptsContentSize;
     }
 
     private ReceiptsValidationResult ValidateBlockReceipts(
         TxReceipt[] blockReceipts,
-        long expectedGasUsed,
-        long blockGasLimit,
+        ulong expectedGasUsed,
+        ulong blockGasLimit,
         Transaction[]? transactions,
         RlpBehaviors receiptBehaviors,
         bool validateReceiptGasUpperBoundAgainstHeader,
         bool validateReceiptGasEqualToHeader,
         int firstReceiptIndex,
         bool isCompleteSegment,
-        long previousGasUsed,
-        long previousLogsGas,
+        ulong previousGasUsed,
+        ulong previousLogsGas,
         ulong previousReceiptsContentSize)
     {
         if (blockReceipts is { Length: 0 })
@@ -514,11 +533,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             ValidateEmptyReceiptsSegment(firstReceiptIndex, isCompleteSegment);
             ValidateReceiptCount(firstReceiptIndex, blockReceipts.Length, transactions, isCompleteSegment);
             ValidateTotalReceiptsSizeAgainstBlockGasLimit(previousReceiptsContentSize, blockGasLimit);
+            ValidateSegmentGasAgainstHeader(previousGasUsed, previousLogsGas, expectedGasUsed, isCompleteSegment,
+                validateReceiptGasUpperBoundAgainstHeader, validateReceiptGasEqualToHeader);
             return new ReceiptsValidationResult(previousGasUsed, previousLogsGas, previousReceiptsContentSize);
         }
 
         previousGasUsed = GetPreviousGasUsedForSegment(firstReceiptIndex, previousGasUsed);
-        long logsGas = previousLogsGas;
+        ulong logsGas = previousLogsGas;
         ulong receiptsContentSize = previousReceiptsContentSize;
 
         for (int i = 0; i < blockReceipts.Length; i++)
@@ -542,15 +563,15 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private static void ValidateEmptyReceiptsSegment(int firstReceiptIndex, bool isCompleteSegment)
     {
-        if (firstReceiptIndex != 0 || !isCompleteSegment)
+        if (!isCompleteSegment)
         {
             throw new SubprotocolException("Unexpected empty receipt block payload");
         }
     }
 
-    private static long GetPreviousGasUsedForSegment(int firstReceiptIndex, long previousGasUsed)
+    private static ulong GetPreviousGasUsedForSegment(int firstReceiptIndex, ulong previousGasUsed)
     {
-        long minimalPreviousGasUsed = checked((long)firstReceiptIndex * GasCostOf.Transaction);
+        ulong minimalPreviousGasUsed = checked((ulong)firstReceiptIndex * MinimumSupportedTransactionGas);
         return Math.Max(previousGasUsed, minimalPreviousGasUsed);
     }
 
@@ -560,14 +581,14 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private static ulong GetReceiptSize(TxReceipt receipt, RlpBehaviors behaviors) =>
         (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
 
-    private static long ValidateReceiptGas(TxReceipt receipt, long previousGasUsed)
+    private static ulong ValidateReceiptGas(TxReceipt receipt, ulong previousGasUsed)
     {
-        long receiptGasUsed = GetReceiptGasUsed(receipt, previousGasUsed);
+        ulong receiptGasUsed = GetReceiptGasUsed(receipt, previousGasUsed);
         ValidateReceiptGasCoversIntrinsicCost(receiptGasUsed);
         return receipt.GasUsedTotal;
     }
 
-    private static long GetReceiptGasUsed(TxReceipt receipt, long previousGasUsed)
+    private static ulong GetReceiptGasUsed(TxReceipt receipt, ulong previousGasUsed)
     {
         if (receipt.GasUsedTotal < previousGasUsed)
         {
@@ -577,15 +598,15 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         return receipt.GasUsedTotal - previousGasUsed;
     }
 
-    private static void ValidateReceiptGasCoversIntrinsicCost(long receiptGasUsed)
+    private static void ValidateReceiptGasCoversIntrinsicCost(ulong receiptGasUsed)
     {
-        if (GasCostOf.Transaction > receiptGasUsed)
+        if (MinimumSupportedTransactionGas > receiptGasUsed)
         {
             throw new SubprotocolException("Intrinsic gas lower bound exceeds block gas used");
         }
     }
 
-    private static long AddReceiptLogsGas(long logsGas, TxReceipt receipt)
+    private static ulong AddReceiptLogsGas(ulong logsGas, TxReceipt receipt)
     {
         if (receipt.Logs is null)
         {
@@ -596,7 +617,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         {
             int topics = log.Topics?.Length ?? 0;
             int dataLength = log.Data?.Length ?? 0;
-            logsGas = checked(logsGas + GasCostOf.Log + topics * GasCostOf.LogTopic + dataLength * GasCostOf.LogData);
+            logsGas = checked(logsGas + GasCostOf.Log + (ulong)topics * GasCostOf.LogTopic + (ulong)dataLength * GasCostOf.LogData);
         }
 
         return logsGas;
@@ -647,9 +668,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    private static void ValidateTotalReceiptsSizeAgainstBlockGasLimit(ulong receiptsContentSize, long blockGasLimit)
+    private static void ValidateTotalReceiptsSizeAgainstBlockGasLimit(ulong receiptsContentSize, ulong blockGasLimit)
     {
-        if (blockGasLimit <= 0)
+        if (blockGasLimit == 0)
         {
             return;
         }
@@ -662,13 +683,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    private static ulong GetReceiptSizeLimit(long gasLimit) =>
-        gasLimit <= 0 ? 0 : (ulong)gasLimit / 8;
+    private static ulong GetReceiptSizeLimit(ulong gasLimit) => gasLimit / 8;
 
     private static void ValidateSegmentGasAgainstHeader(
-        long actualGasUsed,
-        long logsGas,
-        long expectedGasUsed,
+        ulong actualGasUsed,
+        ulong logsGas,
+        ulong expectedGasUsed,
         bool isCompleteSegment,
         bool validateReceiptGasUpperBoundAgainstHeader,
         bool validateReceiptGasEqualToHeader)
@@ -680,7 +700,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
         if (isCompleteSegment)
         {
-            long gasUpperBound = validateReceiptGasUpperBoundAgainstHeader && expectedGasUsed > 0 ? expectedGasUsed : actualGasUsed;
+            ulong gasUpperBound = validateReceiptGasUpperBoundAgainstHeader && expectedGasUsed > 0 ? expectedGasUsed : actualGasUsed;
             if (logsGas > gasUpperBound)
             {
                 throw new SubprotocolException("Logs gas exceeds block gas used");

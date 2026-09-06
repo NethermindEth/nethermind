@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -15,11 +14,11 @@ namespace Nethermind.Core.BlockAccessLists;
 /// account lookup is O(1) via hash map. Iteration order matches insertion order — the decoder
 /// inserts accounts in the order they arrive on the wire (which it has already validated as
 /// sorted by address), so enumerating <see cref="AccountChanges"/> walks accounts in sorted
-/// address order. The only mutation permitted is the prestate load.
+/// address order. Instances are immutable after construction; concurrent readers rely on this.
 /// </summary>
-public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
+public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {
-    private readonly Dictionary<Address, ReadOnlyAccountChanges> _accountChanges;
+    private readonly Dictionary<AddressAsKey, ReadOnlyAccountChanges> _accountChanges;
     private readonly ReadOnlyAccountChanges[] _orderedAccounts;
 
     [JsonIgnore]
@@ -46,15 +45,12 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public Hash256? WireHash { get; }
 
-    public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Count);
-
     /// <summary>
-    /// Span over the address-sorted accounts (same data as <see cref="AccountChanges"/>, but
-    /// skips the dictionary's enumerator for hot walks).
+    /// Address-sorted view over the BAL's accounts. <c>foreach</c> walks the underlying array
+    /// via <see cref="ReadOnlySpan{T}"/> with no enumerator allocation; <see cref="ReadOnlyAccountChangesView.AsSpan"/>
+    /// exposes the raw span for span-only call sites.
     /// </summary>
-    [JsonIgnore]
-    public ReadOnlySpan<ReadOnlyAccountChanges> AccountChangesAsSpan => _orderedAccounts;
+    public ReadOnlyAccountChangesView AccountChanges => new(_orderedAccounts);
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
@@ -66,8 +62,8 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// <summary>
     /// Constructs a read-only BAL from accounts already in sorted address order (as guaranteed
     /// by the RLP decoder). The dictionary preserves insertion order during iteration provided
-    /// no entries are removed — and this type is immutable post-construction except for prestate
-    /// loading, which only mutates per-account fields, so the sorted iteration is preserved.
+    /// no entries are removed — and this type is immutable post-construction, so the sorted
+    /// iteration is preserved.
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
         : this(orderedAccounts, itemCount, wireHash: null) { }
@@ -75,7 +71,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;
-        _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
+        _accountChanges = new Dictionary<AddressAsKey, ReadOnlyAccountChanges>(orderedAccounts.Length);
         int totalReads = 0;
         int totalChangeEvents = 0;
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
@@ -94,7 +90,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     {
         if (other is null) return false;
         if (_accountChanges.Count != other._accountChanges.Count) return false;
-        foreach (KeyValuePair<Address, ReadOnlyAccountChanges> kv in _accountChanges)
+        foreach (KeyValuePair<AddressAsKey, ReadOnlyAccountChanges> kv in _accountChanges)
         {
             if (!other._accountChanges.TryGetValue(kv.Key, out ReadOnlyAccountChanges? otherAcc)) return false;
             if (!kv.Value.Equals(otherAcc)) return false;

@@ -43,7 +43,7 @@ namespace Nethermind.EthStats.Senders
         {
             // ReSharper disable once CollectionNeverQueried.Local
             // ReSharper disable once MemberCanBePrivate.Local
-            public List<object> Emit { get; } = new();
+            public List<object> Emit { get; } = [];
 
             public EmitMessage(string type, object message)
             {

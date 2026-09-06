@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -17,7 +16,7 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 public class Eip8024Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka { IsEip8024Enabled = true });
 
@@ -64,8 +63,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void ValidOperation_Succeeds(byte[] code, int expectedReturn)
     {
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
-        new UInt256(result.ReturnValue, true).Should().Be((UInt256)expectedReturn);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedReturn));
     }
 
     private static IEnumerable<TestCaseData> MissingImmediateSuccessTestCases()
@@ -79,7 +78,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void MissingImmediate_AtEndOfCode_DecodesAsZero(byte[] code)
     {
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
     private static IEnumerable<TestCaseData> FailureTestCases()
@@ -120,12 +119,12 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void InvalidOperation_Fails(byte[] code)
     {
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Failure);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
     private static IEnumerable<TestCaseData> GasCostTestCases()
     {
-        static long Gas(int pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
+        static ulong Gas(ulong pushCount) => GasCostOf.Transaction + GasCostOf.VeryLow * pushCount + GasCostOf.VeryLow;
 
         yield return new TestCaseData(PushNValues(20).Op(Instruction.DUPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("DupN_GasCost");
         yield return new TestCaseData(PushNValues(20).Op(Instruction.SWAPN).Data(0x80).Op(Instruction.STOP).Done, Gas(20)).SetName("SwapN_GasCost");
@@ -133,10 +132,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(GasCostTestCases))]
-    public void Opcode_CostsVeryLowGas(byte[] code, long expectedGas)
+    public void Opcode_CostsVeryLowGas(byte[] code, ulong expectedGas)
     {
         TestAllTracerWithOutput result = Execute(Activation, 100000, code);
-        result.StatusCode.Should().Be(StatusCode.Success);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, expectedGas);
     }
 
@@ -147,7 +146,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         {
             byte[] code = PushNValues(32).Op(Instruction.EXCHANGE).Data(imm).Done;
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(StatusCode.Failure, $"Immediate 0x{imm:X2} should fail");
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure), $"Immediate 0x{imm:X2} should fail");
         }
     }
 
@@ -158,12 +157,12 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // JUMP skips over the invalid DUPN to land on JUMPDEST
         byte[] code = [0x60, 0x04, 0x56, 0xe6, 0x5b, 0x00];
         TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
     public class Eip8024DisabledTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
         protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka() { IsEip8024Enabled = false });
 
@@ -178,7 +177,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         public void Opcode_WhenDisabled_Fails(byte[] code)
         {
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(StatusCode.Failure);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
     }
 }

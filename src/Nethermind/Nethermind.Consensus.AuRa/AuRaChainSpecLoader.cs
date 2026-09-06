@@ -1,0 +1,57 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Text.Json;
+using Nethermind.Core;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
+
+namespace Nethermind.Consensus.AuRa;
+
+/// <summary>
+/// ChainSpec post-processor for AuRa: upgrades <c>Genesis.Header</c> to <see cref="AuRaBlockHeader"/>
+/// and stamps the step + signature parsed from <c>genesis.seal.authorityRound</c>.
+/// </summary>
+/// <remarks>
+/// A zero terminal total difficulty marks genesis as post-merge, so its header keeps the standard
+/// mixHash + nonce seal even when the chain spec contains a placeholder AuRa seal.
+/// </remarks>
+public static class AuRaChainSpecLoader
+{
+    private static readonly EthereumJsonSerializer _jsonSerializer = new();
+
+    public static void ProcessChainSpec(ChainSpec chainSpec)
+    {
+        Block? genesis = chainSpec.Genesis;
+        if (genesis is null
+            || IsPostMergeGenesis(chainSpec)
+            || chainSpec.CustomSeal?.TryGetValue("authorityRound", out JsonElement sealJson) is not true)
+        {
+            return;
+        }
+
+        AuRaGenesisSealJson? seal = _jsonSerializer.Deserialize<AuRaGenesisSealJson>(sealJson.GetRawText());
+        if (seal?.Signature is null) return;
+
+        AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(genesis.Header);
+        upgraded.AuRaStep = seal.Step;
+        upgraded.AuRaSignature = seal.Signature;
+
+        chainSpec.Genesis = genesis.WithReplacedHeader(upgraded);
+    }
+
+    private static bool IsPostMergeGenesis(ChainSpec chainSpec)
+    {
+        Block? genesis = chainSpec.Genesis;
+        if (genesis is null || chainSpec.Parameters.TerminalTotalDifficulty?.IsZero != true) return false;
+
+        genesis.Header.IsPostMerge = true;
+        return true;
+    }
+
+    private sealed class AuRaGenesisSealJson
+    {
+        public ulong Step { get; set; }
+        public byte[]? Signature { get; set; }
+    }
+}

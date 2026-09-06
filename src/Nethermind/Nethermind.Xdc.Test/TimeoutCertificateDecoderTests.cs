@@ -17,8 +17,10 @@ public class TimeoutCertificateDecoderTests
     {
         get
         {
-            yield return new TestCaseData(new TimeoutCertificate(1, [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
-            yield return new TestCaseData(new TimeoutCertificate(1, [], 0));
+            yield return new TestCaseData(new TimeoutCertificate(1, [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0))
+                .SetName("WithSignatures");
+            yield return new TestCaseData(new TimeoutCertificate(1, [], 0))
+                .SetName("EmptySignatures");
         }
     }
 
@@ -28,9 +30,9 @@ public class TimeoutCertificateDecoderTests
         TimeoutCertificateDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(tc);
-        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
-        TimeoutCertificate decoded = decoder.Decode(ref decoderContext);
+        RlpReader decoderContext = new(encoded.Bytes);
+        TimeoutCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(tc).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(tc).UsingXdcComparer());
     }
 }

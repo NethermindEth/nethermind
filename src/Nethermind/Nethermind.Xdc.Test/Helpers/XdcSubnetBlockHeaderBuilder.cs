@@ -20,7 +20,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
         return this;
     }
 
-    public new XdcSubnetBlockHeaderBuilder WithNumber(long blockNumber)
+    public new XdcSubnetBlockHeaderBuilder WithNumber(ulong blockNumber)
     {
         base.WithNumber(blockNumber);
         return this;

@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,8 +13,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -52,7 +51,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             NetworkDiagTracer.IsEnabled = true;
 
-            _disposables = new();
+            _disposables = [];
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -93,14 +92,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Metadata_correct()
         {
-            _handler.ProtocolCode.Should().Be("eth");
-            _handler.Name.Should().Be("eth65");
-            _handler.ProtocolVersion.Should().Be(65);
-            _handler.MessageIdSpaceSize.Should().Be(17);
-            _handler.IncludeInTxPool.Should().BeTrue();
-            _handler.ClientId.Should().Be(_session.Node?.ClientId);
-            _handler.HeadHash.Should().BeNull();
-            _handler.HeadNumber.Should().Be(0);
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth65"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(65));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
         }
 
         [TestCase(1)]
@@ -112,7 +111,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
@@ -132,7 +131,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
@@ -154,7 +153,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 });
             using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
-            response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
+            Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
         }
 
         [TestCase(0)]
@@ -169,16 +168,65 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();
-            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
+            int numberOfTxsInOneMsg = Math.Min(Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1), 256);
             _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
                     return true;
                 });
-            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
+            Hash256[] hashes = GenerateHashes(2048);
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
-            response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
+            Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
+        }
+
+        [Test]
+        public async Task should_serve_at_most_256_unique_pooled_transaction_hashes_per_request()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    x[1] = tx;
+                    return true;
+                });
+
+            Hash256[] uniqueHashes = GenerateHashes(300);
+            Hash256[] hashes = new Hash256[uniqueHashes.Length * 2];
+            for (int i = 0; i < uniqueHashes.Length; i++)
+            {
+                hashes[i * 2] = uniqueHashes[i];
+                hashes[i * 2 + 1] = uniqueHashes[i];
+            }
+
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
+
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+            Assert.That(response.Transactions.Count, Is.EqualTo(256));
+            _transactionPool.Received(256).TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
+        }
+
+        [Test]
+        public async Task should_find_first_available_transaction_after_soft_request_limit()
+        {
+            Hash256[] hashes = GenerateHashes(257);
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    bool found = x.ArgAt<Hash256>(0) == hashes[^1];
+                    x[1] = found ? tx : null;
+                    return found;
+                });
+
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+            Assert.That(response.Transactions, Has.Count.EqualTo(1));
+            Assert.That(response.Transactions[0], Is.SameAs(tx));
+            _transactionPool.Received(257).TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
         }
 
         [Test]
@@ -191,6 +239,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
             _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+            Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(canGossipTransactions ? 2 : 0));
+        }
+
+        [Test]
+        public void should_page_batched_retry_request_hashes_inside_handler()
+        {
+            const int txCount = 300;
+            ValueHash256[] txHashes = GenerateValueHashes(txCount);
+            _transactionPool.ClearReceivedCalls();
+
+            _handler.HandleMessages(txHashes);
+
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.Hashes.Count == 256));
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.Hashes.Count == txCount - 256));
+            _transactionPool.DidNotReceive().NotifyAboutTx(
+                Arg.Any<Hash256>(),
+                Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
@@ -198,6 +263,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
+
+        private static ValueHash256[] GenerateValueHashes(int count)
+        {
+            ValueHash256[] txHashes = new ValueHash256[count];
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                txHashes[i] = new Hash256(i.ToString("X64"));
+            }
+
+            return txHashes;
+        }
+
+        private static Hash256[] GenerateHashes(int count)
+        {
+            Hash256[] hashes = new Hash256[count];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                hashes[i] = new Hash256(i.ToString("X64"));
+            }
+
+            return hashes;
         }
 
         private void HandleIncomingStatusMessage()

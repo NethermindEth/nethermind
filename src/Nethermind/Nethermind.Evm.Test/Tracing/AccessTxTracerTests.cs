@@ -4,7 +4,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -38,7 +37,7 @@ namespace Nethermind.Evm.Test.Tracing
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
 
-            addressesAccessed.Should().BeEquivalentTo(expected);
+            Assert.That(addressesAccessed, Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -52,12 +51,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            tracer.AccessList!.Should().BeEquivalentTo(
-                new[]
+            Assert.That(tracer.AccessList!, Is.EquivalentTo(new[]
                 {
                     (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
-                });
+                }));
         }
 
         public static IEnumerable OptimizedAddressCases
@@ -124,8 +122,10 @@ namespace Nethermind.Evm.Test.Tracing
 
             AccessList list = ExecuteRevertedFrameScenario(code);
 
-            list.Select(static t => t.Address).Should().Contain(TestItem.AddressC,
-                because: "addresses accessed inside reverted frames must survive for eth_createAccessList");
+            Assert.That(
+                list.Select(static t => t.Address),
+                Has.Member(TestItem.AddressC),
+                "addresses accessed inside reverted frames must survive for eth_createAccessList");
         }
 
         [Test]
@@ -154,9 +154,13 @@ namespace Nethermind.Evm.Test.Tracing
             AccessList list = ExecuteRevertedFrameScenario(recipientCode);
 
             // AddressC slot 7 must appear despite the REVERT inside AddressC's sub-frame
-            list.Should().ContainSingle(e => e.Address == TestItem.AddressC)
-                .Which.StorageKeys.Should().Contain(new UInt256(7),
-                    because: "storage cells first accessed inside a reverted sub-frame must still be captured");
+            (Address Address, AccessList.StorageKeysEnumerable StorageKeys)[] addressCEntries =
+                list.Where(static e => e.Address == TestItem.AddressC).ToArray();
+            Assert.That(addressCEntries, Has.Length.EqualTo(1));
+            Assert.That(
+                addressCEntries[0].StorageKeys,
+                Has.Member(new UInt256(7)),
+                "storage cells first accessed inside a reverted sub-frame must still be captured");
         }
 
         [Test]
@@ -187,8 +191,8 @@ namespace Nethermind.Evm.Test.Tracing
             AccessList list = ExecuteRevertedFrameScenario(recipientCode);
 
             Address[] addresses = list.Select(static t => t.Address).ToArray();
-            addresses.Should().Contain(TestItem.AddressC, because: "committed outer CALL target must be in access list");
-            addresses.Should().Contain(TestItem.AddressE, because: "address accessed inside inner reverted frame must still be in access list");
+            Assert.That(addresses, Has.Member(TestItem.AddressC), "committed outer CALL target must be in access list");
+            Assert.That(addresses, Has.Member(TestItem.AddressE), "address accessed inside inner reverted frame must still be in access list");
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);

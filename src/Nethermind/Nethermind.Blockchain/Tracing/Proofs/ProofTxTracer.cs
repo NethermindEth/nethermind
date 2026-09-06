@@ -13,11 +13,11 @@ namespace Nethermind.Blockchain.Tracing.Proofs;
 
 public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
 {
-    public HashSet<Address> Accounts { get; } = new();
+    public HashSet<Address> Accounts { get; } = [];
 
-    public HashSet<StorageCell> Storages { get; } = new();
+    public HashSet<StorageCell> Storages { get; } = [];
 
-    public HashSet<Hash256> BlockHashes { get; } = new();
+    public HashSet<Hash256> BlockHashes { get; } = [];
 
     public byte[]? Output { get; private set; }
 

@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Shutter.Test;
 
@@ -59,7 +60,7 @@ class ShutterCryptoTests
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
-        Assert.That(msg.SequenceEqual(decryptedMessage));
+        Assert.That(msg.SequenceEqual(decryptedMessage), Is.True);
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));
@@ -161,7 +162,7 @@ class ShutterCryptoTests
         ShutterCrypto.Decrypt(ref decryptedMessage, c, decryptionKey);
         TestContext.Out.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
 
-        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
+        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)), Is.True);
     }
 
     [Test]
@@ -206,5 +207,27 @@ class ShutterCryptoTests
     {
         IEnumerable<ReadOnlyMemory<byte>> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).Select(static b => (ReadOnlyMemory<byte>)b);
         Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, txPointer, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
+    }
+
+    [Test]
+    public void Identity_preimage_converter_merkleizes_empty_data_as_zero_root()
+    {
+        Span<UInt256> chunk = stackalloc UInt256[1];
+        Merkleizer merkleizer = new(chunk);
+        IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
+
+        Assert.That(chunk[0], Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    // IndexOutOfRangeException escapes ShutterTxLoader's catch list — too-short input must surface as ShutterCryptoException.
+    public void DecodeEncryptedMessage_throws_ShutterCryptoException_on_too_short_input(
+        [Values(0, 1, 97, 128)] int length)
+    {
+        byte[] tooShort = new byte[length];
+        if (length > 0) tooShort[0] = 0x03;
+
+        Assert.That(() => ShutterCrypto.DecodeEncryptedMessage(tooShort),
+            Throws.TypeOf<ShutterCrypto.ShutterCryptoException>());
     }
 }

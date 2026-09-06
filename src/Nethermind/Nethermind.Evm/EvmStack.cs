@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,7 +21,7 @@ namespace Nethermind.Evm;
 using HalfWord = Vector128<byte>;
 
 [StructLayout(LayoutKind.Auto)]
-public ref struct EvmStack
+public ref partial struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
@@ -48,8 +49,23 @@ public ref struct EvmStack
     private readonly ITxTracer _tracer;
     private readonly ref byte _stack;
     internal readonly ref byte Code;
-    public int Head;
-    internal readonly int CodeLength;
+    /// <summary>The index of the next free stack slot.</summary>
+    /// <remarks>
+    /// Native width for the same reason as <see cref="CodeLength"/>, and more so: this is read and
+    /// written by every push and pop, and the zkEVM guest bills a 4-byte read-modify-write at roughly
+    /// ten times an aligned one. It occupies padding the struct already had, so nothing grows.
+    /// Every accessor keeps the index at this width. A cast to <see cref="uint"/> puts the narrow
+    /// access back.
+    /// </remarks>
+    public nint Head;
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    /// <remarks>
+    /// Native width rather than <see cref="int"/>: the dispatch tests the program counter against it on
+    /// every opcode, and the zkEVM guest bills a 4-byte read as an unaligned access, roughly eight times
+    /// the cost of an aligned one. Every consumer already widens it to <see cref="nint"/> to combine it
+    /// with a program counter.
+    /// </remarks>
+    internal readonly nint CodeLength;
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
@@ -59,20 +75,30 @@ public ref struct EvmStack
     public ref byte PushBytesRef()
     {
         // Workhorse method
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return ref Unsafe.NullRef<byte>();
         }
 
-        Head = (int)newOffset;
-        return ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
+        Head = newOffset;
+        return ref Unsafe.Add(ref _stack, headOffset * WordSize);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmWord CreateWordFromUInt64(ulong value)
+    private static EvmWord CreateAcceleratedWordFromUInt64(ulong value)
         => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteScalarWordFromUInt64(ref EvmWord word, ulong value)
+    {
+        ref ulong parts = ref Unsafe.As<EvmWord, ulong>(ref word);
+        parts = 0;
+        Unsafe.Add(ref parts, 1) = 0;
+        Unsafe.Add(ref parts, 2) = 0;
+        Unsafe.Add(ref parts, 3) = value;
+    }
 
     // PSHUFB/PermuteVar32x8 mask that byte-reverses a 256-bit word (big-endian <-> little-endian).
     // Declared as a property so the JIT folds it to a PC-relative rodata load at every call site.
@@ -186,51 +212,24 @@ public ref struct EvmStack
             ((ulong)Unsafe.Add(ref src, 6) << 56),
     };
 
-    public EvmExceptionType PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
-        where TTracingInst : struct, IFlag
-    {
-        ref byte bytes = ref PushBytesRef();
-        if (Unsafe.IsNullRef(ref bytes)) return EvmExceptionType.StackOverflow;
-
-        if (TTracingInst.IsActive)
-            _tracer.ReportStackPush(value);
-
-        ReadOnlySpan<byte> valueSpan = value.Span;
-        if (valueSpan.Length >= WordSize)
-        {
-            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
-            Unsafe.As<byte, EvmWord>(ref bytes) = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(valueSpan));
-        }
-        else
-        {
-            Unsafe.As<byte, EvmWord>(ref bytes) = default; // Not full entry, clear first
-            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
-        }
-
-        return EvmExceptionType.None;
-    }
-
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushRightPaddedBytes<TTracingInst>(ref byte src, uint length)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
-        if (TTracingInst.IsActive)
-            ReportStackPush(ref src, length);
-
-        ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
+        ref byte dst = ref Unsafe.Add(ref _stack, headOffset * WordSize);
 
         if (length != WordSize)
         {
-            return PushBytesPartialZeroPadded(ref dst, ref src, length);
+            return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref src, length);
         }
 
         if (Vector256.IsHardwareAccelerated)
@@ -244,11 +243,15 @@ public ref struct EvmStack
                 Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
         }
 
+        if (TTracingInst.IsActive)
+            ReportPushWord(ref dst);
+
         return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType PushBytesPartialZeroPadded(ref byte dst, ref byte src, nuint length)
+    private EvmExceptionType PushBytesPartialZeroPadded<TTracingInst>(ref byte dst, ref byte src, nuint length)
+        where TTracingInst : struct, IFlag
     {
         nuint q = length >> 3; // full 8-byte chunks: 0..3
         nuint r = length & 7;  // remainder: 0..7
@@ -296,6 +299,9 @@ public ref struct EvmStack
             Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
         }
 
+        if (TTracingInst.IsActive)
+            ReportPushWord(ref dst);
+
         return EvmExceptionType.None;
     }
 
@@ -319,28 +325,27 @@ public ref struct EvmStack
            ((ulong)Unsafe.Add(ref src, 6) << 48),
     };
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly void ReportStackPush(ref byte span, uint length)
-    {
-        ReadOnlySpan<byte> value = MemoryMarshal.CreateReadOnlySpan(ref span, (int)length);
-        ZeroPaddedSpan padded = new(value, WordSize - value.Length, PadDirection.Right);
-        _tracer.ReportStackPush(padded);
-    }
-
     /// <summary>
-    /// Reports a UInt256 value at the given stack slot to the tracer (for tracing without push).
+    /// Reports the raw 32-byte word at the given stack slot to the tracer as a stack push
+    /// (also used to trace in-place top-of-stack updates).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void ReportPushUInt256(ref byte slot) =>
+    public readonly void ReportPushWord(ref byte slot) =>
         _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref slot, WordSize));
 
     /// <summary>
     /// Reads a UInt256 value from a stack slot with big-endian to native conversion (no bounds check).
     /// Used when the slot was already validated by a previous operation.
     /// </summary>
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt256 ReadUInt256FromSlot(ref byte slot)
     {
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
+        {
+            return ReadBeWord(ref slot);
+        }
+
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
         EvmWord leBytes = beBytes.ByteSwap();
         return Unsafe.As<EvmWord, UInt256>(ref leBytes);
@@ -351,13 +356,66 @@ public ref struct EvmStack
     /// into <paramref name="value"/>, bypassing the 32-byte return-value staging buffer
     /// the JIT otherwise emits for a by-value UInt256 return.
     /// </summary>
+    /// <remarks>
+    /// The vector form needs a vector byte reversal to exist: <see cref="Vector256"/> covers AVX2
+    /// and AVX-512, AdvSimd covers ARM64, where the word is two 128-bit halves. Everywhere else
+    /// <see cref="EvmWordExtensions.ByteSwap"/> reverses the limbs of an <see cref="EvmWord"/> value
+    /// the target has no register for, so the word goes to the frame and comes back. Those targets
+    /// swap the limbs where they lie instead.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReadUInt256FromSlot(ref byte slot, out UInt256 value)
     {
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
+        {
+            value = ReadBeWord(ref slot);
+            return;
+        }
+
         Unsafe.SkipInit(out value);
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
         Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap();
+    }
+
+    /// <summary>Reads a stack slot as a memory position.</summary>
+    /// <remarks>
+    /// A position above <see cref="ulong.MaxValue"/> is unreachable, so every consumer reads a
+    /// position as <c>IsUint64</c> plus <c>u0</c> and rejects the access when the first is false.
+    /// Folding the three high limbs into a single non-zero marker keeps both of those exact while
+    /// byte-swapping one limb instead of the whole word. The word then never has to be written to
+    /// the frame as a vector and read straight back as scalars, which does not forward.
+    /// </remarks>
+    /// <param name="slot">The stack slot, big-endian.</param>
+    /// <param name="position">The decoded position.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
+    {
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        ulong unreachable = limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2);
+        ulong addressable = Bytes.Bswap64(Unsafe.Add(ref limbs, 3));
+
+        position = new UInt256(addressable, 0, 0, unreachable);
+    }
+
+    /// <summary>Pops a memory position written in big endian.</summary>
+    /// <remarks>See <see cref="ReadMemoryPositionFromSlot"/> for what the popped value preserves.</remarks>
+    /// <param name="position">The popped position.</param>
+    /// <returns><see langword="false"/> on stack underflow.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopMemoryPosition(out UInt256 position)
+    {
+        Unsafe.SkipInit(out position);
+        nint head = Head - 1;
+        if (head < 0)
+        {
+            return false;
+        }
+        Head = head;
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref _stack, head * WordSize), out position);
+        return true;
     }
 
     /// <summary>
@@ -368,6 +426,12 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteUInt256ToSlot(ref byte slot, in UInt256 value)
     {
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
+        {
+            WriteBeWord(ref Unsafe.As<byte, EvmWord>(ref slot), in value);
+            return;
+        }
+
         EvmWord leBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
         Unsafe.As<byte, EvmWord>(ref slot) = leBytes.ByteSwap();
     }
@@ -376,20 +440,20 @@ public ref struct EvmStack
     public EvmExceptionType Push10Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 10);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         // This avoids expensive vpinsrq + vinserti128 dependency chain.
@@ -405,20 +469,20 @@ public ref struct EvmStack
     public EvmExceptionType Push11Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 11);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         // This avoids expensive vpinsrq + vinserti128 dependency chain.
@@ -434,20 +498,20 @@ public ref struct EvmStack
     public EvmExceptionType Push12Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 12);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -462,20 +526,20 @@ public ref struct EvmStack
     public EvmExceptionType Push13Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 13);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -490,20 +554,20 @@ public ref struct EvmStack
     public EvmExceptionType Push14Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 14);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -518,20 +582,20 @@ public ref struct EvmStack
     public EvmExceptionType Push15Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 15);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -546,20 +610,20 @@ public ref struct EvmStack
     public EvmExceptionType Push16Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 16);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
         HalfWord src = Unsafe.ReadUnaligned<HalfWord>(ref value);
 
         if (Vector256.IsHardwareAccelerated)
@@ -580,20 +644,20 @@ public ref struct EvmStack
     public EvmExceptionType Push17Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 17);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -609,20 +673,20 @@ public ref struct EvmStack
     public EvmExceptionType Push18Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 18);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -638,20 +702,20 @@ public ref struct EvmStack
     public EvmExceptionType Push19Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 19);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -667,20 +731,20 @@ public ref struct EvmStack
     public EvmExceptionType Push20Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 20);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -696,20 +760,20 @@ public ref struct EvmStack
     public EvmExceptionType Push21Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 21);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -725,20 +789,20 @@ public ref struct EvmStack
     public EvmExceptionType Push22Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 22);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -754,20 +818,20 @@ public ref struct EvmStack
     public EvmExceptionType Push23Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 23);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -783,20 +847,20 @@ public ref struct EvmStack
     public EvmExceptionType Push24Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 24);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -812,20 +876,20 @@ public ref struct EvmStack
     public EvmExceptionType Push25Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 25);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -841,20 +905,20 @@ public ref struct EvmStack
     public EvmExceptionType Push26Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 26);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -870,20 +934,20 @@ public ref struct EvmStack
     public EvmExceptionType Push27Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 27);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -899,20 +963,20 @@ public ref struct EvmStack
     public EvmExceptionType Push28Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 28);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -928,20 +992,20 @@ public ref struct EvmStack
     public EvmExceptionType Push29Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 29);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -957,24 +1021,28 @@ public ref struct EvmStack
     public EvmExceptionType Push2Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 2);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Build the full 32-byte value in a register and emit a single vector store;
         // zero-then-overwrite would be two stores.
-        head = CreateWordFromUInt64((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48);
+        ulong word = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -983,20 +1051,20 @@ public ref struct EvmStack
     public EvmExceptionType Push30Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 30);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -1012,20 +1080,20 @@ public ref struct EvmStack
     public EvmExceptionType Push31Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 31);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Write all 4 lanes directly with scalar stores (no zeroing needed).
         ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
@@ -1041,20 +1109,20 @@ public ref struct EvmStack
     public EvmExceptionType Push32Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 32);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
         head = Unsafe.ReadUnaligned<EvmWord>(ref value);
 
         return EvmExceptionType.None;
@@ -1064,24 +1132,28 @@ public ref struct EvmStack
     public EvmExceptionType Push3Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 3);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) |
-            ((ulong)Unsafe.Add(ref value, 2) << 56));
+            ((ulong)Unsafe.Add(ref value, 2) << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1090,22 +1162,26 @@ public ref struct EvmStack
     public EvmExceptionType Push4Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 4);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        head = CreateWordFromUInt64((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32);
+        ulong word = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1114,24 +1190,28 @@ public ref struct EvmStack
     public EvmExceptionType Push5Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 5);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) |
-            ((ulong)Unsafe.Add(ref value, 4) << 56));
+            ((ulong)Unsafe.Add(ref value, 4) << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1140,24 +1220,28 @@ public ref struct EvmStack
     public EvmExceptionType Push6Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 6);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) |
-            ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48));
+            ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1166,25 +1250,29 @@ public ref struct EvmStack
     public EvmExceptionType Push7Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 7);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        head = CreateWordFromUInt64(
+        ulong word =
             ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) |
             ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) |
-            ((ulong)Unsafe.Add(ref value, 6) << 56));
+            ((ulong)Unsafe.Add(ref value, 6) << 56);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1193,22 +1281,26 @@ public ref struct EvmStack
     public EvmExceptionType Push8Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 8);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        head = CreateWordFromUInt64(Unsafe.ReadUnaligned<ulong>(ref value));
+        ulong word = Unsafe.ReadUnaligned<ulong>(ref value);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
+        else
+            WriteScalarWordFromUInt64(ref head, word);
 
         return EvmExceptionType.None;
     }
@@ -1217,20 +1309,20 @@ public ref struct EvmStack
     public EvmExceptionType Push9Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.TraceBytes(in value, 9);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
         head = default;
@@ -1245,20 +1337,20 @@ public ref struct EvmStack
     public EvmExceptionType PushByte<TTracingInst>(byte value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
         {
             _tracer.ReportStackPush(value);
         }
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         // Zero entire word with single vector store, then fill lane 3 with scalar store.
         head = default;
@@ -1290,23 +1382,23 @@ public ref struct EvmStack
     public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int pushSize)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
             ReportStackPush(ref start, used);
 
-        ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
+        ref byte dst = ref Unsafe.Add(ref _stack, headOffset * WordSize);
 
         // Truncated PUSH32 is just a right-padded partial write, so reuse the tighter helper.
         if (pushSize == WordSize)
         {
-            return PushBytesPartialZeroPadded(ref dst, ref start, (uint)used);
+            return PushBytesPartialZeroPadded<OffFlag>(ref dst, ref start, (uint)used);
         }
 
         // Zeros on both sides.
@@ -1387,32 +1479,23 @@ public ref struct EvmStack
     public EvmExceptionType PushOne<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.OneByteSpan);
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
-        // - when viewed as bytes: all zeros except byte[31] == 1
-        if (Vector256.IsHardwareAccelerated)
-        {
-            // Single 32-byte store
-            head = CreateWordFromUInt64(1UL << 56);
-        }
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(1UL << 56);
         else
-        {
-            ref HalfWord head128 = ref Unsafe.As<EvmWord, HalfWord>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, 1UL << 56).AsByte();
-        }
+            WriteScalarWordFromUInt64(ref head, 1UL << 56);
         return EvmExceptionType.None;
     }
 
@@ -1420,18 +1503,18 @@ public ref struct EvmStack
     public EvmExceptionType PushZero<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
         if (Vector256.IsHardwareAccelerated)
         {
@@ -1451,34 +1534,25 @@ public ref struct EvmStack
     public EvmExceptionType PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
-        if (BitConverter.IsLittleEndian)
-        {
-            value = BinaryPrimitives.ReverseEndianness(value);
-        }
+        value = BinaryPrimitives.ReverseEndianness(value);
         // uint size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            // Single 32-byte store
-            head = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
-        }
+        ulong word = (ulong)value << 32;
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(word);
         else
-        {
-            ref Vector128<uint> head128 = ref Unsafe.As<EvmWord, Vector128<uint>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0U, 0U, 0U, value);
-        }
+            WriteScalarWordFromUInt64(ref head, word);
         return EvmExceptionType.None;
     }
 
@@ -1486,34 +1560,24 @@ public ref struct EvmStack
     public EvmExceptionType PushUInt64<TTracingInst>(ulong value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
-        if (BitConverter.IsLittleEndian)
-        {
-            value = BinaryPrimitives.ReverseEndianness(value);
-        }
+        value = Bytes.Bswap64(value);
         // ulong size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            // Single 32-byte store
-            head = CreateWordFromUInt64(value);
-        }
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(value);
         else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<EvmWord, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, value);
-        }
+            WriteScalarWordFromUInt64(ref head, value);
         return EvmExceptionType.None;
     }
 
@@ -1524,53 +1588,20 @@ public ref struct EvmStack
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
     /// </remarks>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
-        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
+        ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
-        Head = (int)newOffset;
+        Head = newOffset;
 
-        if (Avx2.IsSupported)
-        {
-            EvmWord shuffle = ByteSwap256Mask;
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                EvmWord data = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
-                head = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-            }
-            else
-            {
-                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
-                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-                head = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, EvmWord>(ref convert), shuffle);
-            }
-        }
-        else
-        {
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
-            {
-                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
-                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
-                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
-                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
-            }
-            else
-            {
-                u3 = value.u3;
-                u2 = value.u2;
-                u1 = value.u1;
-                u0 = value.u0;
-            }
-
-            head = Vector256.Create(u3, u2, u1, u0).AsByte();
-        }
+        WriteUInt256ToSlot(ref Unsafe.As<EvmWord, byte>(ref head), in value);
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref head), WordSize));
@@ -1585,7 +1616,7 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopLimbo()
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return false;
@@ -1595,7 +1626,7 @@ public ref struct EvmStack
     }
 
     /// <summary>
-    /// Pops an Uint256 written in big endian.
+    /// Pops an UInt256 written in big endian.
     /// </summary>
     /// <remarks>
     /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
@@ -1608,51 +1639,15 @@ public ref struct EvmStack
     {
         Unsafe.SkipInit(out result);
         ref byte baseRef = ref _stack;
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return false;
         }
         Head = head;
-        ref byte bytes = ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref baseRef, head * WordSize);
 
-        if (Avx2.IsSupported)
-        {
-            EvmWord data = Unsafe.ReadUnaligned<EvmWord>(ref bytes);
-            EvmWord shuffle = ByteSwap256Mask;
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                EvmWord convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-                result = Unsafe.As<EvmWord, UInt256>(ref convert);
-            }
-            else
-            {
-                EvmWord convert = Avx2.Shuffle(data, shuffle);
-                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<EvmWord, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
-                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
-            }
-        }
-        else
-        {
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
-            {
-                // Combine read and switch endianness to movbe reg, mem
-                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
-                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
-                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
-            }
-            else
-            {
-                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
-            }
-
-            result = new UInt256(u0, u1, u2, u3);
-        }
+        ReadUInt256FromSlot(ref bytes, out result);
 
         return true;
     }
@@ -1670,15 +1665,15 @@ public ref struct EvmStack
         Unsafe.SkipInit(out a);
         Unsafe.SkipInit(out b);
 
-        int head = Head;
-        int newHead = head - 2;
+        nint head = Head;
+        nint newHead = head - 2;
         if (newHead < 0)
         {
             return false;
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, newHead * WordSize);
         // Memory layout: [b @ +0] [a @ +32]
 
         if (Avx2.IsSupported)
@@ -1710,41 +1705,7 @@ public ref struct EvmStack
         }
         else
         {
-            // Scalar path - interleave loads across both values
-            if (BitConverter.IsLittleEndian)
-            {
-                ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
-
-                ulong b2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
-                ulong a2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
-
-                ulong b1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
-                ulong a1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
-
-                ulong b0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
-                ulong a0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
-
-                b = new UInt256(b0, b1, b2, b3);
-                a = new UInt256(a0, a1, a2, a3);
-            }
-            else
-            {
-                ulong b3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                ulong a3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32));
-
-                ulong b2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
-                ulong a2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40));
-
-                ulong b1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
-                ulong a1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48));
-
-                ulong b0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
-                ulong a0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56));
-
-                b = new UInt256(b0, b1, b2, b3);
-                a = new UInt256(a0, a1, a2, a3);
-            }
+            ReadBeWords(ref bytes, out a, out b);
         }
 
         return true;
@@ -1765,15 +1726,15 @@ public ref struct EvmStack
         Unsafe.SkipInit(out b);
         Unsafe.SkipInit(out c);
 
-        int head = Head;
-        int newHead = head - 3;
+        nint head = Head;
+        nint newHead = head - 3;
         if (newHead < 0)
         {
             return false;
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, newHead * WordSize);
         // Memory layout: [c @ +0] [b @ +32] [a @ +64]
 
         if (Avx2.IsSupported)
@@ -1813,57 +1774,7 @@ public ref struct EvmStack
         }
         else
         {
-            // Scalar path - interleave loads across all three values
-            // to break dependency chains and hide load-to-use latency.
-            // Modern CPUs can have 10+ loads in flight simultaneously.
-            if (BitConverter.IsLittleEndian)
-            {
-                // Round 1: high qwords (u3) from each value
-                ulong c3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
-                ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64)));
-
-                // Round 2: u2 from each value
-                ulong c2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
-                ulong b2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
-                ulong a2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72)));
-
-                // Round 3: u1 from each value
-                ulong c1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
-                ulong b1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
-                ulong a1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80)));
-
-                // Round 4: low qwords (u0) from each value
-                ulong c0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
-                ulong b0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
-                ulong a0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88)));
-
-                c = new UInt256(c0, c1, c2, c3);
-                b = new UInt256(b0, b1, b2, b3);
-                a = new UInt256(a0, a1, a2, a3);
-            }
-            else
-            {
-                ulong c3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                ulong b3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32));
-                ulong a3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64));
-
-                ulong c2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
-                ulong b2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40));
-                ulong a2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72));
-
-                ulong c1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
-                ulong b1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48));
-                ulong a1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80));
-
-                ulong c0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
-                ulong b0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56));
-                ulong a0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88));
-
-                c = new UInt256(c0, c1, c2, c3);
-                b = new UInt256(b0, b1, b2, b3);
-                a = new UInt256(a0, a1, a2, a3);
-            }
+            ReadBeWords(ref bytes, out a, out b, out c);
         }
 
         return true;
@@ -1886,15 +1797,15 @@ public ref struct EvmStack
         Unsafe.SkipInit(out c);
         Unsafe.SkipInit(out d);
 
-        int head = Head;
-        int newHead = head - 4;
+        nint head = Head;
+        nint newHead = head - 4;
         if (newHead < 0)
         {
             return false;
         }
         Head = newHead;
 
-        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        ref byte bytes = ref Unsafe.Add(ref _stack, newHead * WordSize);
         // Memory layout: [d @ +0] [c @ +32] [b @ +64] [a @ +96]
 
         if (Avx2.IsSupported)
@@ -1940,66 +1851,7 @@ public ref struct EvmStack
         }
         else
         {
-            // Scalar path - interleave loads across all four values
-            // to maximise load unit utilisation and hide latency
-            if (BitConverter.IsLittleEndian)
-            {
-                // Round 1: high qwords (u3)
-                ulong d3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                ulong c3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
-                ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64)));
-                ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 96)));
-
-                // Round 2: u2
-                ulong d2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
-                ulong c2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
-                ulong b2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72)));
-                ulong a2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 104)));
-
-                // Round 3: u1
-                ulong d1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
-                ulong c1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
-                ulong b1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80)));
-                ulong a1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 112)));
-
-                // Round 4: low qwords (u0)
-                ulong d0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
-                ulong c0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
-                ulong b0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88)));
-                ulong a0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 120)));
-
-                d = new UInt256(d0, d1, d2, d3);
-                c = new UInt256(c0, c1, c2, c3);
-                b = new UInt256(b0, b1, b2, b3);
-                a = new UInt256(a0, a1, a2, a3);
-            }
-            else
-            {
-                ulong d3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                ulong c3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32));
-                ulong b3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64));
-                ulong a3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 96));
-
-                ulong d2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
-                ulong c2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40));
-                ulong b2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72));
-                ulong a2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 104));
-
-                ulong d1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
-                ulong c1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48));
-                ulong b1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80));
-                ulong a1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 112));
-
-                ulong d0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
-                ulong c0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56));
-                ulong b0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88));
-                ulong a0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 120));
-
-                d = new UInt256(d0, d1, d2, d3);
-                c = new UInt256(c0, c1, c2, c3);
-                b = new UInt256(b0, b1, b2, b3);
-                a = new UInt256(a0, a1, a2, a3);
-            }
+            ReadBeWords(ref bytes, out a, out b, out c, out d);
         }
 
         return true;
@@ -2008,56 +1860,67 @@ public ref struct EvmStack
     public readonly bool PeekUInt256IsZero()
     {
         ref byte baseRef = ref _stack;
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             return false;
         }
 
-        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize))) == default;
+        return IsSlotZero(ref Unsafe.Add(ref baseRef, head * WordSize));
     }
 
+    /// <summary>
+    /// The top slot, for callers that have already established <c>Head &gt;= 1</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly ref byte PeekBytesByRef()
+    internal readonly ref byte PeekBytesByRefUnchecked()
     {
-        ref byte baseRef = ref _stack;
-        int head = Head - 1;
-        if (head < 0)
-        {
-            return ref Unsafe.NullRef<byte>();
-        }
-        return ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
+        Debug.Assert(Head >= 1, "Caller must establish the depth before peeking unchecked");
+        return ref Unsafe.Add(ref _stack, (nint)(((nuint)Head - 1) * WordSize));
     }
 
     public readonly Span<byte> PeekWord256()
     {
-        int head = Head;
+        nint head = Head;
         if (head-- == 0)
         {
             ThrowEvmStackUnderflowException();
         }
 
-        return MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), WordSize);
+        return MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize), WordSize);
     }
 
     public Address? PopAddress()
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0) return null;
         Head = head;
-        return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
+        return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize + WordSize - AddressSize), AddressSize));
+    }
+
+    /// <summary>
+    /// Pops an address, reusing the cached instance when the popped bytes match the previously popped address.
+    /// </summary>
+    public Address? PopAddress(PoppedAddressCache cache)
+    {
+        nint head = Head - 1;
+        if (head < 0) return null;
+        Head = head;
+        return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, head * WordSize + WordSize - AddressSize), AddressSize));
     }
 
     public bool PopAddress(out Address address)
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             address = null;
             return false;
         }
         Head = head;
-        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
+        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize + WordSize - AddressSize), AddressSize));
         return true;
     }
 
@@ -2065,75 +1928,121 @@ public ref struct EvmStack
     public ref byte PopBytesByRef()
     {
         ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
+        nint head = Head;
         if (head == 0)
         {
             return ref Unsafe.NullRef<byte>();
         }
-        Head = (int)--head;
-        return ref Unsafe.Add(ref baseRef, (nint)(head * WordSize));
+        Head = --head;
+        return ref Unsafe.Add(ref baseRef, head * WordSize);
     }
 
     /// <summary>
-    /// Atomic pop-1 + peek-top for binary ops that push exactly one result.
-    /// Single bounds check (needs <c>Head &gt;= 2</c>). On success <c>Head</c> decrements by 1
-    /// and the returned ref addresses the new top slot so the caller can write the result
-    /// in-place without a separate push (which would retest stack overflow).
-    /// Caller checks <paramref name="isValid"/> before using the returned ref.
+    /// Pops one word for callers that have already established <c>Head &gt;= 1</c> with
+    /// <see cref="EnsureDepth"/>.
     /// </summary>
-    /// <param name="a">The popped value (was at the top of the stack).</param>
-    /// <param name="isValid">True on success.</param>
-    /// <returns>Reference to the new top slot (32 bytes). Undefined when <paramref name="isValid"/> is false.</returns>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
+    /// <returns>Reference to the popped slot, which stays readable until the next push.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte PopBytesByRefUnchecked()
+    {
+        Debug.Assert(Head >= 1, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head - 1;
+        Head = (nint)head;
+        return ref Unsafe.Add(ref _stack, (nint)(head * WordSize));
+    }
+
+    /// <summary>
+    /// Pops two words for callers that have already established <c>Head &gt;= 2</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
+    /// <returns>Reference to the second popped slot; the first sits one word above it.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop2BytesByRefUnchecked()
+    {
+        Debug.Assert(Head >= 2, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head - 2;
+        Head = (nint)head;
+        return ref Unsafe.Add(ref _stack, (nint)(head * WordSize));
+    }
+
+    /// <summary>Whether a stack slot holds zero.</summary>
+    /// <remarks>
+    /// Folding a whole word down to one bit is the case where a <see cref="EvmWord"/> value has to be
+    /// address-taken on targets that cannot hold one in a register, which spills the slot to the frame
+    /// and reads it back. Both widths test the slot where it lies instead.
+    /// <para>
+    /// There is deliberately no 128-bit middle path. Reducing a pair of <see cref="HalfWord"/>s to a
+    /// bool costs a cross-domain move that the limbs do not: on SSE it measured ISZERO at 4.856 ns
+    /// against 3.124 ns for the limbs, and on ARM64 it is the <c>umov</c> this branch removes
+    /// elsewhere.
+    /// </para>
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsSlotZero(ref byte slot)
+    {
+        if (Vector256.IsHardwareAccelerated)
+            return Unsafe.ReadUnaligned<EvmWord>(ref slot) == default;
+
+        ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
+        return (parts | Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3)) == 0UL;
+    }
+
+    /// <summary>
+    /// Pop-1 + peek-top for callers that have already established <c>Head &gt;= 2</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <remarks>
+    /// A helper that reports the depth through a flag has to merge a success and a failure path before
+    /// it returns, so the caller branches once on the depth and again on the flag. Checking the depth in
+    /// the caller lets it return straight from the failing compare, which is then the only branch on the
+    /// path, and lets the head reach the address arithmetic as a single native-width read.
+    /// </remarks>
+    /// <returns>Reference to the new top slot; the popped word sits one word above it.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop1Peek32BytesUnchecked()
+    {
+        Debug.Assert(Head >= 2, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head;
+        Head = (nint)(head - 1);
+        return ref Unsafe.Add(ref _stack, (nint)((head - 2) * WordSize));
+    }
+
+    /// <inheritdoc cref="Pop1Peek32BytesUnchecked()"/>
+    /// <param name="a">The popped value, decoded from the slot above the returned one.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [UnscopedRef]
-    public ref byte Pop1Peek32Bytes(out UInt256 a, out bool isValid)
+    internal ref byte Pop1Peek32BytesUnchecked(out UInt256 a)
     {
-        Unsafe.SkipInit(out a);
-        ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
-        if (head < 2)
-        {
-            isValid = false;
-            return ref baseRef;
-        }
-        Head = (int)(head - 1);
-        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
+        ref byte topRef = ref Pop1Peek32BytesUnchecked();
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out a);
-        isValid = true;
         return ref topRef;
     }
 
     /// <summary>
-    /// Atomic pop-2 + peek-top for ternary ops that push exactly one result.
-    /// Single bounds check (needs <c>Head &gt;= 3</c>). On success <c>Head</c> decrements by 2
-    /// and the returned ref addresses the new top slot for in-place write.
-    /// Caller checks <paramref name="isValid"/> before using the returned ref.
+    /// Pop-2 + peek-top for callers that have already established <c>Head &gt;= 3</c> with
+    /// <see cref="EnsureDepth"/>.
     /// </summary>
-    /// <param name="a">The first popped value (was at the top of the stack).</param>
-    /// <param name="b">The second popped value (was below <paramref name="a"/>).</param>
-    /// <param name="isValid">True on success.</param>
-    /// <returns>Reference to the new top slot (32 bytes). Undefined when <paramref name="isValid"/> is false.</returns>
+    /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
+    /// <param name="a">The first popped value, from the slot two words above the returned one.</param>
+    /// <param name="b">The second popped value, from the slot one word above the returned one.</param>
+    /// <returns>Reference to the new top slot.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [UnscopedRef]
-    public ref byte Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool isValid)
+    internal ref byte Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b)
     {
-        Unsafe.SkipInit(out a);
-        Unsafe.SkipInit(out b);
-        ref byte baseRef = ref _stack;
-        uint head = (uint)Head;
-        if (head < 3)
-        {
-            isValid = false;
-            return ref baseRef;
-        }
-        Head = (int)(head - 2);
-        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 3) * WordSize));
-        // Both popped slots sit above the peek slot at +WordSize and +2*WordSize.
+        Debug.Assert(Head >= 3, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)Head;
+        Head = (nint)(head - 2);
+        ref byte topRef = ref Unsafe.Add(ref _stack, (nint)((head - 3) * WordSize));
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out b);
         ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * WordSize), out a);
-        isValid = true;
         return ref topRef;
     }
 
@@ -2151,18 +2060,18 @@ public ref struct EvmStack
     }
 
     /// <summary>
-    /// Atomic pop of a UInt256 offset + a raw 32-byte word with a single bounds check.
+    /// Atomic pop of a memory position + a raw 32-byte word with a single bounds check.
     /// Callers such as MSTORE pop both in sequence; amortising avoids a redundant
     /// underflow check and resolves the mismatched throw/try-pattern on the two reads.
     /// </summary>
-    /// <param name="a">The top-of-stack value decoded as a big-endian UInt256 (offset for MSTORE).</param>
+    /// <param name="position">The top-of-stack value decoded by <see cref="ReadMemoryPositionFromSlot"/>.</param>
     /// <param name="word">A span over the second slot, 32 bytes of raw stack-native (big-endian) data.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PopUInt256AndWord256(out UInt256 a, out Span<byte> word)
+    public bool PopMemoryPositionAndWord256(out UInt256 position, out Span<byte> word)
     {
-        Unsafe.SkipInit(out a);
-        int newHead = Head - 2;
+        Unsafe.SkipInit(out position);
+        nint newHead = Head - 2;
         if (newHead < 0)
         {
             word = default;
@@ -2170,27 +2079,82 @@ public ref struct EvmStack
         }
         Head = newHead;
         ref byte baseRef = ref _stack;
-        ReadUInt256FromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out a);
-        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, (nint)((uint)newHead * WordSize)), WordSize);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, (newHead + 1) * WordSize), out position);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, newHead * WordSize), WordSize);
+        return true;
+    }
+
+    /// <summary>Pops a memory position and the value beneath it, both written in big endian.</summary>
+    /// <remarks>
+    /// Only the position is folded; the value beneath it keeps every limb because callers measure and
+    /// compare it. See <see cref="ReadMemoryPositionFromSlot"/> for what the fold preserves.
+    /// </remarks>
+    /// <param name="position">The popped position (was at top of stack).</param>
+    /// <param name="value">The popped value (was deeper).</param>
+    /// <returns><see langword="false"/> on stack underflow.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 value)
+    {
+        Unsafe.SkipInit(out position);
+        Unsafe.SkipInit(out value);
+        nint newHead = Head - 2;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+        ref byte baseRef = ref Unsafe.Add(ref _stack, newHead * WordSize);
+        ReadUInt256FromSlot(ref baseRef, out value);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, WordSize), out position);
+        return true;
+    }
+
+    /// <summary>Pops a memory position and the two values beneath it, all written in big endian.</summary>
+    /// <remarks>
+    /// Only the position is folded; a source offset and a length beneath it keep every limb because
+    /// callers add and compare them. See <see cref="ReadMemoryPositionFromSlot"/>.
+    /// </remarks>
+    /// <param name="position">The popped position (was at top of stack).</param>
+    /// <param name="b">The second popped value.</param>
+    /// <param name="c">The third popped value (was deepest).</param>
+    /// <returns><see langword="false"/> on stack underflow.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 b, out UInt256 c)
+    {
+        Unsafe.SkipInit(out position);
+        Unsafe.SkipInit(out b);
+        Unsafe.SkipInit(out c);
+        nint newHead = Head - 3;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+        ref byte baseRef = ref Unsafe.Add(ref _stack, newHead * WordSize);
+        ReadUInt256FromSlot(ref baseRef, out c);
+        ReadUInt256FromSlot(ref Unsafe.Add(ref baseRef, WordSize), out b);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, 2 * WordSize), out position);
         return true;
     }
 
     public bool PopWord256(out Span<byte> word)
     {
-        int head = Head - 1;
+        nint head = Head - 1;
         if (head < 0)
         {
             word = default;
             return false;
         }
         Head = head;
-        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), WordSize);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize), WordSize);
         return true;
     }
 
     public int PopByte()
     {
-        int head = Head;
+        nint head = Head;
         if (head == 0) goto Underflow;
 
         Head = head - 1;
@@ -2207,7 +2171,7 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryPopSmallIndex(out uint value)
     {
-        int head = Head;
+        nint head = Head;
         if (head == 0)
         {
             value = 0;
@@ -2245,7 +2209,7 @@ public ref struct EvmStack
         }
 
         // Read lower 8 bytes and extract (big-endian, so byte-swap)
-        ulong low = BinaryPrimitives.ReverseEndianness(
+        ulong low = Bytes.Bswap64(
             Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 24)));
 
         // If > uint.MaxValue, clamp to signal "large"
@@ -2258,7 +2222,7 @@ public ref struct EvmStack
     public EvmExceptionType Dup<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
-        int head = Head;
+        nint head = Head;
         if (head < depth)
         {
             return EvmExceptionType.StackUnderflow;
@@ -2266,7 +2230,7 @@ public ref struct EvmStack
 
         ref byte bytes = ref _stack;
         // Use nuint to eliminate sign extension; parallel shifts
-        nuint headOffset = (nuint)(uint)head << 5;
+        nuint headOffset = (nuint)head << 5;
         nuint depthBytes = (nuint)(uint)depth << 5;
 
         ref byte to = ref Unsafe.Add(ref bytes, headOffset);
@@ -2292,7 +2256,7 @@ public ref struct EvmStack
     public readonly EvmExceptionType Swap<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
-        int head = Head;
+        nint head = Head;
         if (head < depth)
         {
             return EvmExceptionType.StackUnderflow;
@@ -2300,7 +2264,7 @@ public ref struct EvmStack
 
         ref byte bytes = ref _stack;
 
-        nuint headOffset = (nuint)(uint)head << 5;
+        nuint headOffset = (nuint)head << 5;
         nuint depthBytes = (nuint)(uint)depth << 5;
 
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
@@ -2325,7 +2289,7 @@ public ref struct EvmStack
 
         ref byte bytes = ref _stack;
 
-        nuint headOffset = (nuint)(uint)Head * WordSize;
+        nuint headOffset = (nuint)Head * WordSize;
         ref byte first = ref Unsafe.Add(ref bytes, headOffset - (nuint)(uint)n * WordSize);
         ref byte second = ref Unsafe.Add(ref bytes, headOffset - (nuint)(uint)m * WordSize);
 

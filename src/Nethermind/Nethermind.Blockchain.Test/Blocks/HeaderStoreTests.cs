@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -26,17 +25,17 @@ public class HeaderStoreTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(102).TestObject;
 
-        store.Get(header.Hash!).Should().BeNull();
-        store.Get(header2.Hash!).Should().BeNull();
+        Assert.That(store.Get(header.Hash!), Is.Null);
+        Assert.That(store.Get(header2.Hash!), Is.Null);
 
         store.Insert(header);
-        store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
-        store.Get(header.Hash!, blockNumber: header.Number)!.Hash.Should().Be(header.Hash!);
-        store.Get(header2.Hash!).Should().BeNull();
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        Assert.That(store.Get(header.Hash!, blockNumber: header.Number)!.Hash, Is.EqualTo(header.Hash!));
+        Assert.That(store.Get(header2.Hash!), Is.Null);
 
         store.Insert(header2);
-        store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
-        store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash.Should().Be(header2.Hash!);
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        Assert.That(store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash, Is.EqualTo(header2.Hash!));
     }
 
     [Test]
@@ -48,7 +47,7 @@ public class HeaderStoreTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
 
-        store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
     }
 
     [Test]
@@ -58,7 +57,7 @@ public class HeaderStoreTests
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         store.Cache(header);
-        store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
     }
 
     [Test]
@@ -69,7 +68,7 @@ public class HeaderStoreTests
         store.Insert(header);
         store.Delete(header.Hash!);
 
-        store.Get(header.Hash!).Should().BeNull();
+        Assert.That(store.Get(header.Hash!), Is.Null);
     }
 
     [Test]
@@ -82,7 +81,7 @@ public class HeaderStoreTests
         headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
 
         store.Delete(header.Hash!);
-        store.Get(header.Hash!)!.Should().BeNull();
+        Assert.That(store.Get(header.Hash!)!, Is.Null);
     }
 
     [Test]
@@ -94,11 +93,11 @@ public class HeaderStoreTests
 
         // Cache the header (not inserted to DB)
         store.Cache(header);
-        store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
 
         // Clear the cache - header should no longer be retrievable
         (store as IClearableCache)?.ClearCache();
-        store.Get(header.Hash!).Should().BeNull();
+        Assert.That(store.Get(header.Hash!), Is.Null);
     }
 
     // Parameterized: true = iterator-capable backend (TestMemDb), false = plain MemDb fallback
@@ -119,20 +118,20 @@ public class HeaderStoreTests
         BlockHeader last = chain[^1];
         using IOwnedReadOnlyList<BlockHeader> result = store.FindReversedHeaders(last.Number, last.Hash!, chain.Length);
 
-        result.Count.Should().Be(chain.Length);
+        Assert.That(result.Count, Is.EqualTo(chain.Length));
         for (int i = 0; i < chain.Length; i++)
-            result[i].Hash.Should().Be(chain[i].Hash!);
+            Assert.That(result[i].Hash, Is.EqualTo(chain[i].Hash!));
 
         // Unknown hash → empty
         using IOwnedReadOnlyList<BlockHeader> empty = store.FindReversedHeaders(last.Number, Keccak.Zero, chain.Length);
-        empty.Count.Should().Be(0);
+        Assert.That(empty.Count, Is.EqualTo(0));
 
         // Gap: remove header at chain[4], walk from chain[7] should stop at chain[5]
         store.Delete(chain[4].Hash!);
         using IOwnedReadOnlyList<BlockHeader> partial = store.FindReversedHeaders(last.Number, last.Hash!, chain.Length);
-        partial.Count.Should().Be(3); // chain[5], chain[6], chain[7]
-        partial[0].Hash.Should().Be(chain[5].Hash!);
-        partial[^1].Hash.Should().Be(chain[7].Hash!);
+        Assert.That(partial.Count, Is.EqualTo(3)); // chain[5], chain[6], chain[7]
+        Assert.That(partial[0].Hash, Is.EqualTo(chain[5].Hash!));
+        Assert.That(partial[^1].Hash, Is.EqualTo(chain[7].Hash!));
 
         // Fork: insert an extra header at the same number as chain[3] that is NOT in the main chain
         BlockHeader fork = Build.A.BlockHeader.WithParent(chain[2]).TestObject;
@@ -141,8 +140,50 @@ public class HeaderStoreTests
         store.Insert(chain[4]);
         // Walk should still follow the main chain (chain[6].ParentHash = chain[5].Hash, etc.)
         using IOwnedReadOnlyList<BlockHeader> withFork = store.FindReversedHeaders(last.Number, last.Hash!, chain.Length);
-        withFork.Count.Should().Be(chain.Length);
-        withFork.Should().NotContain(fork);
+        Assert.That(withFork.Count, Is.EqualTo(chain.Length));
+        Assert.That(withFork, Does.Not.Contain(fork));
+    }
+
+    [Test]
+    public void TestPrefetchByNumberRangeReadsOnlyTheRequestedRange()
+    {
+        HeaderStore store = new(new TestMemDb(), new MemDb());
+
+        BlockHeader below = Build.A.BlockHeader.WithNumber(99).TestObject;
+        BlockHeader first = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader last = Build.A.BlockHeader.WithNumber(101).TestObject;
+        BlockHeader above = Build.A.BlockHeader.WithNumber(102).TestObject;
+
+        store.Insert(below);
+        store.Insert(first);
+        store.Insert(last);
+        store.Insert(above);
+
+        Assert.That(
+            store.PrefetchByNumberRange(100, 102).Keys,
+            Is.EquivalentTo(new[] { first.Hash!.ValueHash256, last.Hash!.ValueHash256 }));
+    }
+
+    [Test]
+    public void TestPrefetchByNumberRangeReturnsNothingWhenTheStoreCannotScan()
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        store.Insert(Build.A.BlockHeader.WithNumber(100).TestObject);
+
+        Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
+    }
+
+    [Test]
+    public void TestPrefetchByNumberRangeSkipsAHeaderHeldUnderALegacyHashOnlyKey()
+    {
+        IDb headerDb = new TestMemDb();
+        HeaderStore store = new(headerDb, new MemDb());
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+
+        Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
     }
 
 }

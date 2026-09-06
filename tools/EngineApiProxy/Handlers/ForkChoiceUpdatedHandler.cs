@@ -479,7 +479,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
             DateTime now = DateTime.UtcNow;
 
             // Find and remove expired entries
-            List<string> expiredKeys = new();
+            List<string> expiredKeys = [];
             foreach (KeyValuePair<string, DateTime> kvp in _lhCacheTimestamps)
             {
                 if (now - kvp.Value > _lhCacheExpiryTime)

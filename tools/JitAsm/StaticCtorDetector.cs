@@ -121,7 +121,7 @@ internal static partial class StaticCtorDetector
             }
         }
 
-        List<string> result = new(detectedTypes);
+        List<string> result = [.. detectedTypes];
         result.Sort(StringComparer.Ordinal);
         return result;
     }

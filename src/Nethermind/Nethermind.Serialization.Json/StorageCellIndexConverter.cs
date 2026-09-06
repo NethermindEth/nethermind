@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Json
             List<UInt256>? value = null;
             while (reader.TokenType != JsonTokenType.EndArray)
             {
-                value ??= new();
+                value ??= [];
                 value.Add(_converter.Read(ref reader, typeToConvert, options));
                 reader.Read();
             }

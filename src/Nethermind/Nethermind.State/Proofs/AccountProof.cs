@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.State.Proofs
 {
@@ -26,7 +27,7 @@ namespace Nethermind.State.Proofs
 
         public Hash256 CodeHash { get; set; } = Keccak.OfAnEmptyString;
 
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
 
         public Hash256 StorageRoot { get; set; } = Keccak.EmptyTreeHash;
 
@@ -75,6 +76,11 @@ namespace Nethermind.State.Proofs
     /// </summary>
     public class ProofJsonConverter : JsonConverter<AccountProof>
     {
+        private static readonly AddressConverter _addressConverter = new();
+        private static readonly UInt256Converter _uint256Converter = new();
+        private static readonly Hash256Converter _hashConverter = new();
+        private static readonly ULongConverter _ulongConverter = new();
+
         public override AccountProof Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
@@ -90,23 +96,20 @@ namespace Nethermind.State.Proofs
             writer.WritePropertyName("accountProof"u8);
             JsonSerializer.Serialize(writer, value.Proof, options);
 
-            JsonConverter<Address> addressConverter = (JsonConverter<Address>)options.GetConverter(typeof(Address));
             writer.WritePropertyName("address"u8);
-            addressConverter.Write(writer, value.Address, options);
+            _addressConverter.Write(writer, value.Address!, options);
 
-            JsonConverter<UInt256> uint256Converter = (JsonConverter<UInt256>)options.GetConverter(typeof(UInt256));
             writer.WritePropertyName("balance"u8);
-            uint256Converter.Write(writer, value.Balance, options);
+            _uint256Converter.Write(writer, value.Balance, options);
 
-            JsonConverter<Hash256> hashConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
             writer.WritePropertyName("codeHash"u8);
-            hashConverter.Write(writer, value.CodeHash, options);
+            _hashConverter.Write(writer, value.CodeHash, options);
 
             writer.WritePropertyName("nonce"u8);
-            uint256Converter.Write(writer, value.Nonce, options);
+            _ulongConverter.Write(writer, value.Nonce, options);
 
             writer.WritePropertyName("storageHash"u8);
-            hashConverter.Write(writer, value.StorageRoot, options);
+            _hashConverter.Write(writer, value.StorageRoot, options);
 
             writer.WritePropertyName("storageProof"u8);
             JsonSerializer.Serialize(writer, value.StorageProofs, options);

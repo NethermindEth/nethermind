@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 using System.Buffers.Binary;
 
@@ -13,7 +14,7 @@ public partial struct DepositRequest
     [SszVector(48)]
     public ReadOnlyMemory<byte> PublicKey { get; set; }
 
-    public SszBytes32 WithdrawalCredentials { get; set; }
+    public ValueHash256 WithdrawalCredentials { get; set; }
 
     public ulong Amount { get; set; }
 
@@ -36,7 +37,7 @@ public partial struct DepositRequest
         return new()
         {
             PublicKey = buffer[0..48],
-            WithdrawalCredentials = new SszBytes32(span[48..80]),
+            WithdrawalCredentials = new ValueHash256(span[48..80]),
             Amount = BinaryPrimitives.ReadUInt64LittleEndian(span[80..88]),
             Signature = buffer[88..184],
             Index = BinaryPrimitives.ReadUInt64LittleEndian(span[184..192])
@@ -49,7 +50,7 @@ public partial struct DepositRequest
         Span<byte> buffer = result;
 
         PublicKey.Span.CopyTo(buffer); // offset = 0
-        WithdrawalCredentials.Hash.Bytes.CopyTo(buffer[48..]); // offset = 48
+        WithdrawalCredentials.Bytes.CopyTo(buffer[48..]); // offset = 48
         BinaryPrimitives.WriteUInt64LittleEndian(buffer[80..], Amount); // offset = 48 + 32
         Signature.Span.CopyTo(buffer[88..]); // offset = 48 + 32 + 8
         BinaryPrimitives.WriteUInt64LittleEndian(buffer[184..], Index); // offset = 48 + 32 + 8 + 96

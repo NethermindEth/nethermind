@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
-
 using Nethermind.Serialization.Json;
-
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json;
@@ -22,7 +21,6 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
 
     [TestCase("\"0xa00000\"", 10485760UL)]
     [TestCase("\"0x0\"", 0UL)]
-    [TestCase("\"0x000\"", 0UL)]
     [TestCase("0", 0UL)]
     [TestCase("1", 1UL)]
     public void Can_read_value(string json, ulong expected)
@@ -68,4 +66,34 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
             Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for nibbles={nibbles}, value=0x{value:x}");
         }
     }
+
+    [TestCase("\"0x0b\"")]
+    [TestCase("\"0x00\"")]
+    [TestCase("\"0x0ff\"")]
+    public void StrictQuantity_rejects_leading_zero(string json)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new NullableULongConverter(strictQuantity: true) } };
+        Assert.That(() => JsonSerializer.Deserialize<ulong?>(json, strictOpts), Throws.InstanceOf<FormatException>());
+    }
+
+    [Test]
+    public void StrictQuantity_rejects_json_number() =>
+        Assert.That(
+            () => JsonSerializer.Deserialize<ulong?>("11", new JsonSerializerOptions { Converters = { new NullableULongConverter(strictQuantity: true) } }),
+            Throws.InstanceOf<JsonException>());
+
+    [TestCase("\"0x0\"", 0UL)]
+    [TestCase("\"0xb\"", 11UL)]
+    [TestCase("\"0xff\"", 255UL)]
+    public void StrictQuantity_accepts_valid_quantity(string json, ulong expected)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new NullableULongConverter(strictQuantity: true) } };
+        ulong? result = JsonSerializer.Deserialize<ulong?>(json, strictOpts);
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [TestCase("\"0x0000\"")]
+    [TestCase("\"0x0b\"")]
+    public void Lenient_accepts_leading_zero(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<ulong?>(json, options), Throws.Nothing);
 }

@@ -140,7 +140,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
         await using IContainer container = builder.Build();
         IList<INethermindPlugin> allPlugins = container.Resolve<IList<INethermindPlugin>>();
-        IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
+        IList<INethermindPlugin> plugins = [];
         if (logger.IsInfo) logger.Info($"Detected {PluginTypes.Count()} plugins");
         foreach (INethermindPlugin plugin in allPlugins)
         {

@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -53,8 +52,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             .Do((info =>
             {
                 ZeroPacket packet = (ZeroPacket)info[0];
-                NettyRlpStream rlpStream = new(packet.Content);
-                Rlp.ValueDecoderContext ctx = new(rlpStream.AsSpan());
+                RlpReader ctx = new(packet.Content.AsSpan());
                 byte[] bytes = ctx.DecodeByteArray();
                 reDecoded.WriteBytes(bytes);
             }));
@@ -76,7 +74,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             buffer.WriteBytes(encByte);
             await splitter.WriteAsync(encoderWrite, buffer);
 
-            reDecoded.Array.Should().BeEquivalentTo(input);
+            Assert.That(reDecoded.Array, Is.EqualTo(input));
         }
     }
 

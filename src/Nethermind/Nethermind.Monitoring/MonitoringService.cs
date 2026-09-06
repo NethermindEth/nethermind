@@ -7,7 +7,10 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using Prometheus;
 
@@ -23,10 +26,14 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly int? _exposePort;
     private readonly string _nodeName;
     private readonly string _pushGatewayUrl;
+    private readonly string _pushGatewayUsername;
+    private readonly string _pushGatewayPassword;
     private readonly int _intervalSeconds;
     private readonly CancellationTokenSource _timerCancellationSource;
 
     private Task _monitoringTimerTask = Task.CompletedTask;
+    private MetricPusher _metricPusher;
+    private HttpClient _pusherHttpClient;
     private int _isDisposed = 0;
 
     public MonitoringService(
@@ -50,6 +57,8 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
             ? throw new ArgumentNullException(nameof(nodeName))
             : nodeName;
         _pushGatewayUrl = pushGatewayUrl;
+        _pushGatewayUsername = metricsConfig.PushGatewayUsername;
+        _pushGatewayPassword = metricsConfig.PushGatewayPassword;
         _intervalSeconds = intervalSeconds <= 0
             ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
             : intervalSeconds;
@@ -81,9 +90,28 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
                     _logger.TraceError(ex.Message, ex); // keeping it at Error severity to log exception details
                 }
             };
-            MetricPusher metricPusher = new(pusherOptions);
 
-            metricPusher.Start();
+            bool hasUsername = !string.IsNullOrEmpty(_pushGatewayUsername);
+            bool hasPassword = !string.IsNullOrEmpty(_pushGatewayPassword);
+            if (hasUsername && hasPassword)
+            {
+                if (!_pushGatewayUrl.StartsWith(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_logger.IsWarn) _logger.Warn("Pushgateway basic authentication credentials are sent over an unencrypted connection: consider using an HTTPS endpoint.");
+                }
+
+                _pusherHttpClient = new HttpClient();
+                _pusherHttpClient.DefaultRequestHeaders.Authorization = CreateBasicAuthHeader(_pushGatewayUsername, _pushGatewayPassword);
+                pusherOptions.HttpClientProvider = () => _pusherHttpClient;
+            }
+            else if (hasUsername || hasPassword)
+            {
+                if (_logger.IsWarn) _logger.Warn("Pushgateway basic authentication is disabled: both the username and password must be set.");
+            }
+
+            _metricPusher = new MetricPusher(pusherOptions);
+
+            _metricPusher.Start();
         }
 
         if (_exposePort is not null)
@@ -106,6 +134,9 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         return Task.CompletedTask;
     }
+
+    internal static AuthenticationHeaderValue CreateBasicAuthHeader(string username, string password) =>
+        new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}")));
 
     public void AddMetricsUpdateAction(Action callback) => _metricsController.AddMetricsUpdateAction(callback);
 
@@ -134,5 +165,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();
+        if (_metricPusher is not null) await _metricPusher.StopAsync();
+        _pusherHttpClient?.Dispose();
     }
 }

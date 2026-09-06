@@ -17,10 +17,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
+    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
 
-    public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Values.Count);
+    /// <summary>
+    /// Insertion-ordered view over the BAL's accounts.
+    /// struct enumerator; <c>.Count</c> exposes the underlying dictionary size.
+    /// </summary>
+    public GeneratedAccountChangesView AccountChanges => new(_accountChanges);
 
     /// <summary>
     /// Address-sorted snapshot; pooled, dispose after use.
@@ -67,7 +70,7 @@ public class GeneratedBlockAccessList
         }
     }
 
-    public void Clear() => _accountChanges.Clear();
+    public void Clear() => _accountChanges.ClearAndTrim();
     public void Reset() => Clear();
 
     /// <summary>

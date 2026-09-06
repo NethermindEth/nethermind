@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -47,10 +46,13 @@ public class ReceiptsRecoveryTests
         TxReceipt[] receipts = new TxReceipt[receiptsLength];
         for (int i = 0; i < receiptsLength; i++)
         {
-            receipts[i] = Build.A.Receipt.WithBlockHash(block.Hash).TestObject;
+            receipts[i] = Build.A.Receipt
+                .WithBlockHash(block.Hash)
+                .WithTransactionHash(i < txs.Length ? txs[i].Hash : TestItem.KeccakA)
+                .TestObject;
         }
 
-        _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender).Should().Be(expected);
+        Assert.That(_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender), Is.EqualTo(expected));
     }
 
     [Test]
@@ -60,12 +62,43 @@ public class ReceiptsRecoveryTests
         Block block = Build.A.Block.WithTransactions(tx).TestObject;
         TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
 
-        tx.SenderAddress.Should().BeNull();
-        receipt.ContractAddress.Should().BeNull();
+        Assert.That(tx.SenderAddress, Is.Null);
+        Assert.That(receipt.ContractAddress, Is.Null);
 
         ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, new[] { receipt });
 
-        result.Should().Be(ReceiptsRecoveryResult.NeedReinsert);
-        receipt.ContractAddress.Should().Be(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b"));
+        Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
+        Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    public void TryRecover_should_restore_missing_transaction_hash(int missingHashIndex)
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.SignedAndResolved().TestObject,
+            Build.A.Transaction.SignedAndResolved().TestObject
+        ];
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        TxReceipt[] receipts = new TxReceipt[transactions.Length];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i] = Build.A.Receipt
+                .WithBlockHash(block.Hash)
+                .WithTransactionHash(i == missingHashIndex ? null : transactions[i].Hash)
+                .TestObject;
+        }
+
+        ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                Assert.That(receipts[i].TxHash, Is.EqualTo(transactions[i].Hash), $"receipt {i}");
+            }
+        }
     }
 }

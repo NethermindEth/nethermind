@@ -16,7 +16,7 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
     private readonly HashSet<Instruction> _ignore;
     private readonly PatternStatsAnalyzer _patternStatsAnalyzer;
 
-    private ResettableList<Instruction> _buffer = new();
+    private ResettableList<Instruction> _buffer = [];
 
     public PatternAnalyzerFileTracer(
         ResettableList<Instruction> buffer,

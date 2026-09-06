@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Contracts
 {
     public partial class Contract
     {
-        private const long DefaultConstantContractGasLimit = 50_000_000L;
+        private const ulong DefaultConstantContractGasLimit = 50_000_000UL;
 
         /// <summary>
         /// Gets constant version of the contract. Allowing to call contract methods without state modification.

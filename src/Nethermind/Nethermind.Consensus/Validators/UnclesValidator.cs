@@ -2,21 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Validators
 {
-    [Todo(Improve.Performance, "We execute the search up the tree twice - once for IsKin and once for HasAlreadyBeenIncluded")]
     public class UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager) : IUnclesValidator
     {
+        private const int RelationshipLevel = 6;
+        private const int MaxAncestorLevelsToCheckForDuplicates = 5;
+        private const int MaxAncestorsDepth = RelationshipLevel;
+
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         private readonly ILogger _logger = logManager?.GetClassLogger<UnclesValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+
+        [InlineArray(MaxAncestorsDepth)]
+        private struct AncestorsBuffer
+        {
+            private BlockHeader _element0;
+        }
 
         public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
@@ -26,10 +34,32 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
+            if (uncles.Length == 0)
+            {
+                return true;
+            }
+
             if (uncles.Length == 2 && uncles[0].Hash == uncles[1].Hash)
             {
                 _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - duplicated uncle");
                 return false;
+            }
+
+            AncestorsBuffer buffer = default;
+            Span<BlockHeader> ancestors = buffer;
+            int ancestorsCount = 0;
+
+            BlockHeader currentHeader = header;
+            while (ancestorsCount < ancestors.Length)
+            {
+                BlockHeader? parentHeader = _blockTree.FindParentHeader(currentHeader, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (parentHeader is null)
+                {
+                    break;
+                }
+
+                ancestors[ancestorsCount++] = parentHeader;
+                currentHeader = parentHeader;
             }
 
             for (int i = 0; i < uncles.Length; i++)
@@ -42,67 +72,61 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                if (!IsKin(header, uncle, 6))
+                if (!IsKin(header, uncle, RelationshipLevel, ancestors, ancestorsCount))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle just pretending to be uncle");
                     return false;
                 }
 
-                Block ancestor = _blockTree.FindBlock(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                for (int ancestorLevel = 0; ancestorLevel < 5; ancestorLevel++)
+                for (int ancestorLevel = 0; ancestorLevel < ancestorsCount && ancestorLevel < MaxAncestorLevelsToCheckForDuplicates; ancestorLevel++)
                 {
-                    if (ancestor is null)
+                    BlockHeader includedByAncestorHeader = ancestors[ancestorLevel];
+                    Block? includedByAncestor = _blockTree.FindBlock(includedByAncestorHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (includedByAncestor is null)
                     {
                         break;
                     }
 
-                    if (ancestor.Uncles.Any(o => o.Hash == uncle.Hash))
+                    foreach (BlockHeader ancestorUncle in includedByAncestor.Uncles)
                     {
-                        _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncles has already been included by an ancestor");
-                        return false;
+                        if (ancestorUncle.Hash == uncle.Hash)
+                        {
+                            _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncles has already been included by an ancestor");
+                            return false;
+                        }
                     }
-
-                    ancestor = _blockTree.FindBlock(ancestor.Header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 }
             }
 
             return true;
         }
 
-        private bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel)
+        private static bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel, ReadOnlySpan<BlockHeader> ancestors, int ancestorsCount)
         {
-            if (relationshipLevel == 0)
+            int relativeDepth = Math.Min(ancestorsCount, relationshipLevel);
+            ulong maxDepth = Math.Min((ulong)relativeDepth, header.Number);
+
+            if (uncle.Number + maxDepth < header.Number)
             {
                 return false;
             }
 
-            if (relationshipLevel > header.Number)
+            for (int depth = 0; depth < (int)maxDepth; depth++)
             {
-                return IsKin(header, uncle, (int)header.Number);
+                BlockHeader parent = ancestors[depth];
+
+                if (parent.Hash == uncle.Hash)
+                {
+                    return false;
+                }
+
+                if (parent.ParentHash == uncle.ParentHash)
+                {
+                    return true;
+                }
             }
 
-            if (uncle.Number < header.Number - relationshipLevel)
-            {
-                return false;
-            }
-
-            BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (parent is null)
-            {
-                return false;
-            }
-
-            if (parent.Hash == uncle.Hash)
-            {
-                return false;
-            }
-
-            if (parent.ParentHash == uncle.ParentHash)
-            {
-                return true;
-            }
-
-            return IsKin(parent, uncle, relationshipLevel - 1);
+            return false;
         }
     }
 }

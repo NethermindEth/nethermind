@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Xdc.RLP;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -29,8 +29,8 @@ internal class XdcBlockAndHeaderStoreTests
         blockNumDb = new MemDb();
         blockDb = new MemDb();
 
-        _headerStore = new XdcHeaderStore(headerDb, blockNumDb);
-        _blockStore = new XdcBlockStore(blockDb);
+        _headerStore = new XdcHeaderStore(headerDb, blockNumDb, new XdcHeaderDecoder());
+        _blockStore = new XdcBlockStore(blockDb, new XdcHeaderDecoder());
     }
 
     [Test]
@@ -48,7 +48,7 @@ internal class XdcBlockAndHeaderStoreTests
         _headerStore.Insert(header);
         XdcBlockHeader? retrievedHeader = _headerStore.Get(header.Hash!, false);
         // Assert
-        retrievedHeader.Should().BeEquivalentTo(header);
+        Assert.That(retrievedHeader, Is.EqualTo(header).UsingXdcComparer());
     }
 
     [Test]
@@ -63,7 +63,7 @@ internal class XdcBlockAndHeaderStoreTests
         _blockStore.Insert(block);
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
         // Assert
-        retrievedBlock.Should().BeEquivalentTo(block, options => options.Excluding(h => h.EncodedSize));
+        Assert.That(retrievedBlock, Is.EqualTo(block).UsingXdcComparer());
     }
 
     [Test]
@@ -79,18 +79,21 @@ internal class XdcBlockAndHeaderStoreTests
 
         BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
 
-        child.Should().BeOfType<XdcBlockHeader>();
+        Assert.That(child, Is.TypeOf<XdcBlockHeader>());
         XdcBlockHeader xdcChild = (XdcBlockHeader)child;
-        xdcChild.ParentHash.Should().Be(parent.Hash!);
-        xdcChild.Number.Should().Be(parent.Number + 1);
-        xdcChild.Timestamp.Should().Be(parent.Timestamp + 12);
-        xdcChild.ExtraData.Should().BeEmpty();
-        xdcChild.MixHash.Should().Be(Hash256.Zero);
-        xdcChild.RequestsHash.Should().Be(parent.RequestsHash!);
-        xdcChild.Validators.Should().BeNull();
-        xdcChild.Validator.Should().BeNull();
-        xdcChild.Penalties.Should().BeNull();
-        xdcChild.ExtraConsensusData.Should().BeNull();
+        Assert.Multiple(() =>
+        {
+            Assert.That(xdcChild.ParentHash, Is.EqualTo(parent.Hash!));
+            Assert.That(xdcChild.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(xdcChild.Timestamp, Is.EqualTo(parent.Timestamp + 12));
+            Assert.That(xdcChild.ExtraData, Is.Empty);
+            Assert.That(xdcChild.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(xdcChild.RequestsHash, Is.EqualTo(parent.RequestsHash!));
+            Assert.That(xdcChild.Validators, Is.Null);
+            Assert.That(xdcChild.Validator, Is.Null);
+            Assert.That(xdcChild.Penalties, Is.Null);
+            Assert.That(xdcChild.ExtraConsensusData, Is.Null);
+        });
     }
 
     [Test]
@@ -102,13 +105,16 @@ internal class XdcBlockAndHeaderStoreTests
 
         BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
 
-        child.Should().BeOfType<XdcSubnetBlockHeader>();
+        Assert.That(child, Is.TypeOf<XdcSubnetBlockHeader>());
         XdcSubnetBlockHeader subnetChild = (XdcSubnetBlockHeader)child;
-        subnetChild.ParentHash.Should().Be(parent.Hash);
-        subnetChild.Number.Should().Be(parent.Number + 1);
-        subnetChild.Timestamp.Should().Be(parent.Timestamp + 12);
-        subnetChild.ExtraData.Should().BeEmpty();
-        subnetChild.MixHash.Should().Be(Hash256.Zero);
-        subnetChild.NextValidators.Should().BeNull();
+        Assert.Multiple(() =>
+        {
+            Assert.That(subnetChild.ParentHash, Is.EqualTo(parent.Hash));
+            Assert.That(subnetChild.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(subnetChild.Timestamp, Is.EqualTo(parent.Timestamp + 12));
+            Assert.That(subnetChild.ExtraData, Is.Empty);
+            Assert.That(subnetChild.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(subnetChild.NextValidators, Is.Null);
+        });
     }
 }

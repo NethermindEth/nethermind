@@ -8,9 +8,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381Fp2ToG2PrecompileTests : PrecompileTests<Bls12381Fp2ToG2Precompile, Bls12381Fp2ToG2PrecompileTests>
+public class Bls12381Fp2ToG2PrecompileTests : PrecompileTests<Bls12381Fp2ToG2Precompile, Bls12381Fp2ToG2PrecompileTests>, IPrecompileTests
 {
-    public static IEnumerable<string> TestFiles()
+    static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/map_fp2_to_G2_bls.json";
         yield return "Bls/fail-map_fp2_to_G2_bls.json";

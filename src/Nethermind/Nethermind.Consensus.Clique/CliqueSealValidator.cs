@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Clique
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            long number = header.Number;
+            ulong number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash!);
             // Resolve the authorization key and check against signers
@@ -128,11 +128,11 @@ namespace Nethermind.Consensus.Clique
             return header.Author is not null;
         }
 
-        private bool IsEpochTransition(long number) => (ulong)number % _cliqueConfig.Epoch == 0;
+        private bool IsEpochTransition(ulong number) => number % _cliqueConfig.Epoch == 0;
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {
-            long number = header.Number;
+            ulong number = header.Number;
             if (parent.Timestamp + _cliqueConfig.BlockPeriod > header.Timestamp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough difference with parent");
@@ -143,7 +143,7 @@ namespace Nethermind.Consensus.Clique
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
-            if (IsEpochTransition(number))
+            if (IsEpochTransition(header.Number))
             {
                 byte[] signersBytes = new byte[snapshot.Signers.Count * Address.Size];
                 int signerIndex = 0;

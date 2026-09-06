@@ -6,6 +6,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test;
 
@@ -16,9 +17,12 @@ internal class QuorumCertificateDecoderTests
     {
         get
         {
-            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
-            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [], 0));
-            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, ulong.MaxValue, long.MaxValue), [], int.MaxValue));
+            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0))
+                .SetName("WithSignatures");
+            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [], 0))
+                .SetName("EmptySignatures");
+            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, ulong.MaxValue, long.MaxValue), [], int.MaxValue))
+                .SetName("MaxValues");
         }
     }
 
@@ -26,12 +30,26 @@ internal class QuorumCertificateDecoderTests
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(quorumCert));
-        decoder.Encode(stream, quorumCert);
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
-        QuorumCertificate decoded = decoder.Decode(ref ctx);
+        byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, quorumCert);
+        RlpReader ctx = new(bytes);
+        QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref ctx);
 
-        Assert.That(decoded, Is.EqualTo(quorumCert).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
 
+    [Test]
+    public void Encode_RlpReader_IsEquivalentAfterReencoding()
+    {
+        QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
+        QuorumCertificateDecoder decoder = new();
+        byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, quorumCert);
+        RlpReader decoderContext = new(bytes);
+        QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
+
+        Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
+    }
 }

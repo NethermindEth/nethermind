@@ -9,14 +9,20 @@ namespace Nethermind.Trie.Test;
 internal static class IFullTrieStoreExtensions
 {
     // Small utility to not having to double wrap
-    public static ICommitter BeginStateBlockCommit(this ITrieStore trieStore, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+    public static ICommitter BeginStateBlockCommit(this ITrieStore trieStore, ulong blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
         IBlockCommitter blockCommitter = trieStore.BeginBlockCommit(blockNumber);
         ICommitter stateTreeCommitter = trieStore.GetTrieStore(null).BeginCommit(root, writeFlags: writeFlags);
         return new CommitterWithBlockCommitter(blockCommitter, stateTreeCommitter);
     }
 
-    public static void CommitPatriciaTrie(this ITrieStore trieStore, long blockNumber, PatriciaTree patriciaTree)
+    public static ICommitter BeginStateBlockCommit(this ITrieStore trieStore, int blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        => BeginStateBlockCommit(trieStore, (ulong)blockNumber, root, writeFlags);
+
+    public static IBlockCommitter BeginBlockCommit(this ITrieStore trieStore, int blockNumber)
+        => trieStore.BeginBlockCommit((ulong)blockNumber);
+
+    public static void CommitPatriciaTrie(this ITrieStore trieStore, ulong blockNumber, PatriciaTree patriciaTree)
     {
         using (trieStore.BeginBlockCommit(blockNumber)) { patriciaTree.Commit(); }
     }

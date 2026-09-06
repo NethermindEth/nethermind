@@ -7,7 +7,6 @@ using System.Linq;
 using System.Numerics;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -41,8 +40,6 @@ public static class JavaScriptConverter
             : throw new ArgumentException("Not correct address", nameof(address)),
         _ => new Address(address.ToBytes())
     } ?? throw new ArgumentException("Not correct address", nameof(address));
-
-    public static ValueHash256 GetHash(this object index) => new(index.ToBytes());
 
     private static Engine CurrentEngine => Engine.CurrentEngine ?? throw new InvalidOperationException("No engine set");
 

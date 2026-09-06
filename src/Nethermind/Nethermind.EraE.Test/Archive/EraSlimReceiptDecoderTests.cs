@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -38,12 +37,10 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        receipts.Should().HaveCount(1);
-        receipts[0].PostTransactionState.Should().Be(expectedStateRoot,
-            "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].PostTransactionState, Is.EqualTo(expectedStateRoot), "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
             "the decoder must restore PostTransactionState, not StatusCode");
-        receipts[0].StatusCode.Should().Be(0,
-            "StatusCode must not be set for pre-Byzantium receipts");
+        Assert.That(receipts[0].StatusCode, Is.EqualTo(0), "StatusCode must not be set for pre-Byzantium receipts");
     }
 
     [Test]
@@ -55,9 +52,9 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        receipts.Should().HaveCount(1);
-        receipts[0].StatusCode.Should().Be(1);
-        receipts[0].PostTransactionState.Should().BeNull();
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+        Assert.That(receipts[0].PostTransactionState, Is.Null);
     }
 
     [Test]
@@ -69,9 +66,9 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        receipts.Should().HaveCount(1);
-        receipts[0].StatusCode.Should().Be(0);
-        receipts[0].PostTransactionState.Should().BeNull();
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].StatusCode, Is.EqualTo(0));
+        Assert.That(receipts[0].PostTransactionState, Is.Null);
     }
 
     [TestCase((byte)1)]
@@ -84,9 +81,9 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        receipts.Should().HaveCount(1);
-        receipts[0].TxType.Should().Be((TxType)txType);
-        receipts[0].StatusCode.Should().Be(1);
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].TxType, Is.EqualTo((TxType)txType));
+        Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
     }
 
     [Test]
@@ -98,8 +95,8 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        receipts.Should().HaveCount(1);
-        receipts[0].GasUsedTotal.Should().Be(100);
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].GasUsedTotal, Is.EqualTo(100));
     }
 
     [Test]
@@ -111,7 +108,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         Action act = () => sut.Decode(encoded.AsMemory());
 
-        act.Should().Throw<RlpException>();
+        Assert.That(act, Throws.TypeOf<RlpException>());
     }
 
     [Test]
@@ -123,7 +120,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         Action act = () => sut.Decode(encoded.AsMemory());
 
-        act.Should().Throw<RlpException>();
+        Assert.That(act, Throws.TypeOf<RlpException>());
     }
 
     // go-ethereum receipt encoding: outer_list { receipt_list { content } }

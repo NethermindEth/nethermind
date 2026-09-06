@@ -72,7 +72,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(1));
+        Assert.That(Errors.Count, Is.EqualTo(1));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("XYZ"));
@@ -98,7 +98,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(3));
+        Assert.That(Errors.Count, Is.EqualTo(3));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
@@ -123,7 +123,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(1));
+        Assert.That(Errors.Count, Is.EqualTo(1));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
@@ -159,8 +159,8 @@ public class ConfigProvider_FindIncorrectSettings_Tests
     {
         Dictionary<string, string> envVars = new()
         {
-            { "NETHERMIND_BLOOMCONFIG_INDEX", " " },
-            { "NETHERMIND_BLOOMCONFIG_MIGRATION", "" }
+            { "NETHERMIND_SYNCCONFIG_FASTSYNC", " " },
+            { "NETHERMIND_SYNCCONFIG_SNAPSYNC", "" }
         };
 
         _env.GetEnvironmentVariables().Returns(envVars);
@@ -171,7 +171,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         Assert.DoesNotThrow(configProvider.Initialize);
 
-        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
+        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "SyncConfig", "FastSync");
 
         Assert.Multiple(() =>
         {
@@ -179,7 +179,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             Assert.That(value, Is.False);
         });
 
-        (isSet, value) = envSource.GetValue(typeof(bool), "BloomConfig", "Migration");
+        (isSet, value) = envSource.GetValue(typeof(bool), "SyncConfig", "SnapSync");
 
         Assert.Multiple(() =>
         {

@@ -10,5 +10,7 @@ namespace Ethereum.Test.Base
         public IndexesJson Indexes { get; set; }
         public Hash256 Hash { get; set; }
         public Hash256 Logs { get; set; }
+        public byte[]? Txbytes { get; set; }
+        public string? ExpectException { get; set; }
     }
 }

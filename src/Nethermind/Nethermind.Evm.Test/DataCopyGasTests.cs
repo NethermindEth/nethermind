@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -21,7 +22,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.Error.Should().BeNull();
+        Assert.That(result.Error, Is.Null);
     }
 
     [Test]
@@ -36,7 +37,82 @@ public class DataCopyGasTests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        result.Error.Should().BeNull();
+        Assert.That(result.Error, Is.Null);
+    }
+
+    [Test]
+    public void CallDataCopy_zero_extends_past_input()
+    {
+        byte[] code = Prepare.EvmCode
+            .CALLDATACOPY(0, 1, 5)
+            .MLOAD(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        (_, Transaction transaction) = PrepareTx(Activation, 100_000, code, new byte[] { 1, 2, 3 }, UInt256.Zero);
+        TestAllTracerWithOutput tracer = Execute(transaction);
+
+        byte[] expected = new byte[32];
+        expected[0] = 2;
+        expected[1] = 3;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            AssertStorage(0, expected);
+        }
+    }
+
+    [Test]
+    public void CodeCopy_zero_extends_past_code()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(4)
+            .PushData((byte)0)
+            .PushData(0)
+            .Op(Instruction.CODECOPY)
+            .MLOAD(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        code[3] = (byte)(code.Length - 2);
+
+        TestAllTracerWithOutput tracer = Execute(code);
+
+        byte[] expected = new byte[32];
+        expected[0] = code[^2];
+        expected[1] = code[^1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            AssertStorage(0, expected);
+        }
+    }
+
+    [Test]
+    public void ExtCodeCopy_zero_extends_past_external_code()
+    {
+        Address target = TestItem.AddressC;
+        byte[] externalCode = new byte[] { 1, 2, 3 };
+        TestState.CreateAccount(target, UInt256.Zero);
+        TestState.InsertCode(target, externalCode, SpecProvider.GenesisSpec);
+        byte[] code = Prepare.EvmCode
+            .EXTCODECOPY(target, 0, 1, 5)
+            .MLOAD(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(code);
+
+        byte[] expected = new byte[32];
+        expected[0] = 2;
+        expected[1] = 3;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            AssertStorage(0, expected);
+        }
     }
 
     [TestCase(Instruction.CALLDATACOPY)]
@@ -48,8 +124,8 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        result.Error.Should().BeNull();
-        result.GasSpent.Should().Be(GetBaseGas(instruction));
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction)));
     }
 
     [TestCase(Instruction.CALLDATACOPY)]
@@ -58,11 +134,11 @@ public class DataCopyGasTests : VirtualMachineTestsBase
     public void Copy_ZeroLength_InsufficientGas_ReturnsOutOfGas(Instruction instruction)
     {
         byte[] code = BuildCopyCode(instruction, 0);
-        long gasLimit = GetBaseGas(instruction) - 1;
+        ulong gasLimit = GetBaseGas(instruction) - 1UL;
 
         TestAllTracerWithOutput result = Execute(Activation, gasLimit, code);
 
-        result.Error.Should().Be("OutOfGas");
+        Assert.That(result.Error, Is.EqualTo("OutOfGas"));
     }
 
     [TestCase(Instruction.CALLDATACOPY)]
@@ -74,8 +150,8 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        result.Error.Should().BeNull();
-        result.GasSpent.Should().Be(GetBaseGas(instruction) + 2 * GasCostOf.Memory);
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2UL * GasCostOf.Memory));
     }
 
     private static byte[] BuildCopyCode(Instruction instruction, int length)
@@ -91,7 +167,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         return prepare.Op(instruction).Done;
     }
 
-    private static long GetBaseGas(Instruction instruction) => instruction == Instruction.EXTCODECOPY
-        ? GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.ExtCodeEip150
-        : GasCostOf.Transaction + 3 * GasCostOf.VeryLow + GasCostOf.VeryLow;
+    private static ulong GetBaseGas(Instruction instruction) => instruction == Instruction.EXTCODECOPY
+        ? GasCostOf.Transaction + 4UL * GasCostOf.VeryLow + GasCostOf.ExtCodeEip150
+        : GasCostOf.Transaction + 3UL * GasCostOf.VeryLow + GasCostOf.VeryLow;
 }

@@ -101,6 +101,47 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
+    // Regression: an account emptied by an earlier same-block selfdestruct must read as
+    // non-existent later, else a same-block CREATE2 wrongly refunds its create-state gas.
+    [Test]
+    public void AccountExists_PreFundedAccountDrainedToZeroEarlierInBlock_ReturnsFalse()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 0))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
+    public void AccountExists_PreFundedAccountWithBalance_ReturnsTrue()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
     [Test]
     public void GetNonce_WithPriorTxChange_ReturnsUpdatedNonce()
     {
@@ -117,7 +158,7 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)3));
+            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo(3UL));
         }
     }
 
@@ -398,7 +439,7 @@ public class BlockAccessListBasedWorldStateTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(account.Balance, Is.EqualTo((UInt256)200));
-                Assert.That(account.Nonce, Is.EqualTo((UInt256)8));
+                Assert.That(account.Nonce, Is.EqualTo(8UL));
                 Assert.That(account.CodeHash, Is.EqualTo(ValueKeccak.Compute(priorCode)));
             }
         }
@@ -438,36 +479,6 @@ public class BlockAccessListBasedWorldStateTests
         {
             Assert.That(changes, Has.Count.EqualTo(1));
             Assert.That(changes[0].Value, Is.EqualTo(TestItem.AddressB));
-        }
-    }
-
-    /// <summary>
-    /// IsStorageEmpty must validate account membership in the BAL first, then delegate to the
-    /// parent reader for the actual emptiness check — the BAL only carries within-block changes
-    /// and never describes the pre-block storage shape, so the answer always comes from the
-    /// parent trie.
-    /// </summary>
-    [Test]
-    public void IsStorageEmpty_UsesParentStateAfterAccountMembershipValidation()
-    {
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .TestObject)
-            .TestObject;
-
-        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
-            blockAccessIndex: 0,
-            suggestedBal: bal,
-            genesisSetup: ws =>
-            {
-                ws.CreateAccount(TestItem.AddressA, 0);
-                ws.Set(new StorageCell(TestItem.AddressA, 1), [0x2A]);
-            });
-
-        using (scope)
-        {
-            Assert.That(bws.IsStorageEmpty(TestItem.AddressA), Is.False);
         }
     }
 

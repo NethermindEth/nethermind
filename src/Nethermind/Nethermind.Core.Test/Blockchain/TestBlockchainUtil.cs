@@ -6,13 +6,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
-using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -20,6 +19,7 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchainUtil(
     IBlockProducer blockProducer,
+    Lazy<IMainProcessingContext> mainProcessingContext,
     InvalidBlockDetector invalidBlockDetector,
     ManualTimestamper timestamper,
     IBlockTree blockTree,
@@ -35,17 +35,6 @@ public class TestBlockchainUtil(
         AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
-        Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
-            ? Task.CompletedTask
-            : WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
-
-        Task txNewHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
-            ? Task.CompletedTask
-            : Wait.ForEventCondition<Block>(cancellationToken,
-                (h) => txPool.TxPoolHeadChanged += h,
-                (h) => txPool.TxPoolHeadChanged -= h,
-                b => true);
-
         Block? invalidBlock = null;
         void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e) => invalidBlock = e.InvalidBlock;
 
@@ -54,8 +43,8 @@ public class TestBlockchainUtil(
         bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
         bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
 
-        _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
-        TaskCompletionSource tcs = new();
+        Assert.That(_previousAddBlock.IsCompleted, Is.True, "Multiple block produced at once. Please make sure this does not happen for test consistency.");
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _previousAddBlock = tcs.Task;
 
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
@@ -100,7 +89,34 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        bool shouldWaitForHead = !flags.HasFlag(AddBlockFlags.DoNotWaitForHead);
+        // Keyed to the produced block and armed before Suggest: a stale event from an earlier block must not satisfy these waits.
+        Task waitforHead = shouldWaitForHead
+            ? WaitAsync(Wait.ForEventCondition<BlockReplacementEventArgs>(cancellationToken,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
+                e => e.Block.Hash == block!.Hash), "timeout waiting for new head")
+            : Task.CompletedTask;
+
+        Task txNewHead = shouldWaitForHead
+            ? Wait.ForEventCondition<Block>(cancellationToken,
+                (h) => txPool.TxPoolHeadChanged += h,
+                (h) => txPool.TxPoolHeadChanged -= h,
+                b => b.Hash == block!.Hash)
+            : Task.CompletedTask;
+
+        Hash256? headBeforeSuggest = blockTree.Head?.Hash;
+        Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
+
+        // SuggestBlock only processes a block that becomes the new best (extends the head). A block built on a
+        // non-head parent (a fork) isn't the best, so its state is never committed. Process it explicitly the way
+        // the Engine API newPayload does — directly on its parent (IgnoreParentNotOnMainChain) without moving the
+        // head (DoNotUpdateHead), and force it past the is-better-than-head gate — so state backends that key state
+        // by block (e.g. flat) retain the fork's state and can build further blocks on top of it.
+        if (parentToBuildOn.Hash != headBeforeSuggest)
+        {
+            mainProcessingContext.Value.BlockchainProcessor.Process(block!, ProcessingOptions.EthereumMerge | ProcessingOptions.ForceProcessing, NullBlockTracer.Instance, cancellationToken);
+        }
 
         tcs.TrySetResult();
 

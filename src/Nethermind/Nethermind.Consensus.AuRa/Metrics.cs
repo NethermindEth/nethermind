@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa
     {
         [GaugeMetric]
         [Description("Current AuRa step")]
-        public static long AuRaStep { get; set; }
+        public static ulong AuRaStep { get; set; }
 
         [CounterMetric]
         [Description("Number of reported benign misbehaviour validators")]

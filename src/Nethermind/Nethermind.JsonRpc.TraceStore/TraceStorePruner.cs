@@ -17,7 +17,7 @@ public class TraceStorePruner : IDisposable
 {
     private readonly IBlockTree _blockTree;
     private readonly IDb _db;
-    private readonly int _blockToKeep;
+    private readonly ulong _blockToKeep;
     private readonly ILogger _logger;
 
     public TraceStorePruner(IBlockTree blockTree, [KeyFilter(TraceStorePlugin.DbName)] IDb db, ITraceStoreConfig traceStoreConfig, ILogManager logManager)
@@ -26,7 +26,7 @@ public class TraceStorePruner : IDisposable
     }
 
     [ConstructorWithSideEffect]
-    public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
+    public TraceStorePruner(IBlockTree blockTree, IDb db, ulong blockToKeep, ILogManager logManager)
     {
         _blockTree = blockTree;
         _db = db;
@@ -38,19 +38,15 @@ public class TraceStorePruner : IDisposable
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => Task.Run((() =>
     {
-        long levelToDelete = e.Block.Number - _blockToKeep;
-        if (levelToDelete > 0)
+        if (e.Block.Number <= _blockToKeep) return;
+        ulong levelToDelete = e.Block.Number - _blockToKeep;
+        ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
+        if (level is null) return;
+        for (int i = 0; i < level.BlockInfos.Length; i++)
         {
-            ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
-            if (level is not null)
-            {
-                for (int i = 0; i < level.BlockInfos.Length; i++)
-                {
-                    BlockInfo blockInfo = level.BlockInfos[i];
-                    if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
-                    _db.Delete(blockInfo.BlockHash);
-                }
-            }
+            BlockInfo blockInfo = level.BlockInfos[i];
+            if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
+            _db.Delete(blockInfo.BlockHash);
         }
     }));
 

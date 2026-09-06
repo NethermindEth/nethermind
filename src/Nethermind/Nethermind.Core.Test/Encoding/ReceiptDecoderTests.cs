@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -63,10 +64,10 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
 
             ReceiptStorageDecoder decoder = new();
-            Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
-            TxReceipt deserialized = decoder.DecodeComplete(ref valueContext, RlpBehaviors.Storage);
+            RlpReader reader = new(rlp.Bytes);
+            TxReceipt deserialized = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.Storage);
 
-            deserialized.Should().BeEquivalentTo(GetExpected());
+            deserialized.AssertEquivalentTo(GetExpected());
         }
 
         [Test]
@@ -88,7 +89,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
@@ -112,24 +113,27 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt);
-            Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx);
 
-            Assert.That(deserialized?.BlockHash, Is.EqualTo(null), "block hash");
-            Assert.That(deserialized?.BlockNumber, Is.EqualTo(0L), "block number");
-            Assert.That(deserialized?.Index, Is.EqualTo(0), "index");
-            Assert.That(deserialized?.ContractAddress, Is.EqualTo(null), "contract");
-            Assert.That(deserialized?.Sender, Is.EqualTo(null), "sender");
-            Assert.That(deserialized?.GasUsed, Is.EqualTo(0L), "gas used");
-            Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(1000L), "gas used total");
-            Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
-            Assert.That(deserialized?.PostTransactionState, Is.EqualTo(txReceipt.PostTransactionState), "post transaction state");
-            Assert.That(deserialized?.Recipient, Is.EqualTo(null), "recipient");
-            Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized?.BlockHash, Is.EqualTo(null), "block hash");
+                Assert.That(deserialized?.BlockNumber, Is.EqualTo(0L), "block number");
+                Assert.That(deserialized?.Index, Is.EqualTo(0), "index");
+                Assert.That(deserialized?.ContractAddress, Is.EqualTo(null), "contract");
+                Assert.That(deserialized?.Sender, Is.EqualTo(null), "sender");
+                Assert.That(deserialized?.GasUsed, Is.EqualTo(0L), "gas used");
+                Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(1000L), "gas used total");
+                Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
+                Assert.That(deserialized?.PostTransactionState, Is.EqualTo(txReceipt.PostTransactionState), "post transaction state");
+                Assert.That(deserialized?.Recipient, Is.EqualTo(null), "recipient");
+                Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            }
         }
 
         [Test]
-        public void Can_do_roundtrip_storage_rlp_stream()
+        public void Can_do_roundtrip_storage_rlp()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
@@ -146,15 +150,15 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
+            byte[] encoded = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            RlpReader ctx = new(encoded);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
 
         [Test]
-        public void Can_do_roundtrip_none_rlp_stream()
+        public void Can_do_roundtrip_none_rlp()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.Bloom = new Bloom();
@@ -164,8 +168,8 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
-            TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult, RlpBehaviors.None);
+            byte[] encoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            TxReceipt deserialized = Rlp.Decode<TxReceipt>(encoded, RlpBehaviors.None)!;
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
@@ -182,9 +186,9 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
-            Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
-            TxReceipt deserialized = decoder.Decode(ref ctx);
+            byte[] encoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            RlpReader ctx = new(encoded);
+            TxReceipt deserialized = decoder.DecodeGuardNotNull(ref ctx);
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
@@ -209,14 +213,14 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
 
         [Test]
-        public void Netty_and_rlp_array_encoding_should_be_the_same()
+        public void Array_pool_span_and_rlp_array_encoding_should_be_the_same()
         {
             TxReceipt[] receipts = new[]
             {
@@ -226,11 +230,121 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(receipts);
-            using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
+            using ArrayPoolSpan<byte> arrayPoolSpan = decoder.EncodeToArrayPoolSpan(receipts);
+            byte[] encodedBytes = ((ReadOnlySpan<byte>)arrayPoolSpan).ToArray();
+            Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
+        }
+
+        [Test]
+        public void Receipt_message_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            ReceiptMessageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void Receipt_storage_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            ReceiptStorageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void Receipt_message_decoding_rejects_null_bloom()
+        {
+            byte[] encoded = EncodeReceiptMessageWithNullBloom();
+            ReceiptMessageDecoder decoder = new();
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+            void Decode()
             {
-                byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
-                nettyBytes.Should().BeEquivalentTo(rlp.Bytes);
+                RlpReader reader = new(encoded);
+                decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts);
             }
+        }
+
+        [Test]
+        public void Receipt_message_decoding_accepts_legacy_sequence_form_bloom()
+        {
+            TxReceipt receipt = Build.A.Receipt.WithBloom(Bloom.Empty).TestObject;
+            Bloom bloom = receipt.Bloom;
+            ReceiptMessageDecoder decoder = new();
+            byte[] validRlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes;
+            byte[] legacyBloom = new byte[5 + Bloom.ByteLength];
+            legacyBloom[0] = 0xf9;
+            legacyBloom[1] = 0x01;
+            legacyBloom[2] = 0x02;
+            legacyBloom[3] = 0x81;
+            legacyBloom[4] = 0x7f;
+            bloom.Bytes.CopyTo(legacyBloom.AsSpan(5));
+            byte[] encoded = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, 2, legacyBloom);
+            RlpReader reader = new(encoded);
+
+            TxReceipt decoded = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
+
+            Assert.That(decoded.Bloom, Is.EqualTo(bloom));
+        }
+
+        [Test]
+        public void Receipt_storage_decoding_calculates_legacy_null_bloom()
+        {
+            byte[] encoded = EncodeStorageReceiptWithNullBloom();
+            ReceiptStorageDecoder decoder = new();
+            RlpReader reader = new(encoded);
+
+            TxReceipt receipt = decoder.DecodeGuardNotNull(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+            Assert.That(receipt.Bloom, Is.EqualTo(Bloom.Empty));
+        }
+
+        [Test]
+        public void Receipt_storage_struct_ref_decoding_marks_legacy_null_bloom_as_missing()
+        {
+            byte[] encoded = EncodeStorageReceiptWithNullBloom();
+            ReceiptStorageDecoder decoder = new();
+            RlpReader reader = new(encoded);
+
+            decoder.DecodeStructRef(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts,
+                out TxReceiptStructRef receipt);
+
+            Assert.That(receipt.Bloom.Bytes.Length, Is.Zero);
+        }
+
+        [Test]
+        public void Receipt_storage_decoding_omits_legacy_null_log_entry()
+        {
+            ReceiptStorageDecoder decoder = new();
+            byte[] encoded = decoder.Encode(
+                Build.A.Receipt.WithAllFieldsFilled.TestObject,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+            encoded = HeaderRlpTestHelper.ReplaceFieldEncoding(
+                encoded,
+                fieldIndex: 10,
+                [0xc1, Rlp.EmptyListByte]);
+            RlpReader reader = new(encoded);
+
+            TxReceipt receipt = decoder.DecodeGuardNotNull(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+            Assert.That(receipt.Logs, Is.Empty);
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
@@ -250,7 +364,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
@@ -263,35 +377,87 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt);
-            Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
-            TxReceipt deserialized = decoder.Decode(ref ctx);
+            byte[] encoded = decoder.EncodeNew(txReceipt);
+            RlpReader ctx = new(encoded);
+            TxReceipt deserialized = decoder.DecodeGuardNotNull(ref ctx);
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
 
         private void AssertMessageReceipt(TxReceipt txReceipt, TxReceipt deserialized)
         {
-            Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
-            Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-            Assert.That(deserialized.PostTransactionState, Is.EqualTo(txReceipt.PostTransactionState), "post transaction state");
-            Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
-            Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "type");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
+                Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
+                Assert.That(deserialized.PostTransactionState, Is.EqualTo(txReceipt.PostTransactionState), "post transaction state");
+                Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+                Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "type");
+            }
+        }
+
+        private static byte[] EncodeReceiptMessageWithNullBloom()
+        {
+            int contentLength = Rlp.LengthOf((byte)1)
+                + Rlp.LengthOf(1UL)
+                + 1
+                + Rlp.LengthOfSequence(0);
+            byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(encoded);
+            writer.StartSequence(contentLength);
+            writer.Encode((byte)1);
+            writer.Encode(1UL);
+            writer.EncodeEmptyByteArray();
+            writer.StartSequence(0);
+            return encoded;
+        }
+
+        private static byte[] EncodeStorageReceiptWithNullBloom()
+        {
+            int contentLength = Rlp.LengthOf((byte)1)
+                + Rlp.LengthOf(TestItem.KeccakA)
+                + Rlp.LengthOf(1UL)
+                + Rlp.LengthOf(0)
+                + Rlp.LengthOf(TestItem.AddressA)
+                + Rlp.LengthOf(TestItem.AddressB)
+                + Rlp.LengthOf(TestItem.AddressC)
+                + Rlp.LengthOf(1UL)
+                + Rlp.LengthOf(1UL)
+                + 1
+                + Rlp.LengthOfSequence(0);
+            byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(encoded);
+            writer.StartSequence(contentLength);
+            writer.Encode((byte)1);
+            writer.Encode(TestItem.KeccakA);
+            writer.Encode(1UL);
+            writer.Encode(0);
+            writer.Encode(TestItem.AddressA);
+            writer.Encode(TestItem.AddressB);
+            writer.Encode(TestItem.AddressC);
+            writer.Encode(1UL);
+            writer.Encode(1UL);
+            writer.EncodeEmptyByteArray();
+            writer.StartSequence(0);
+            return encoded;
         }
 
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt? deserialized)
         {
-            Assert.That(deserialized?.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
-            Assert.That(deserialized?.BlockHash, Is.EqualTo(txReceipt.BlockHash), "block hash");
-            Assert.That(deserialized?.BlockNumber, Is.EqualTo(txReceipt.BlockNumber), "block number");
-            Assert.That(deserialized?.Index, Is.EqualTo(txReceipt.Index), "index");
-            Assert.That(deserialized?.ContractAddress, Is.EqualTo(txReceipt.ContractAddress), "contract");
-            Assert.That(deserialized?.Sender, Is.EqualTo(txReceipt.Sender), "sender");
-            Assert.That(deserialized?.GasUsed, Is.EqualTo(txReceipt.GasUsed), "gas used");
-            Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-            Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
-            Assert.That(deserialized?.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
-            Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized?.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
+                Assert.That(deserialized?.BlockHash, Is.EqualTo(txReceipt.BlockHash), "block hash");
+                Assert.That(deserialized?.BlockNumber, Is.EqualTo(txReceipt.BlockNumber), "block number");
+                Assert.That(deserialized?.Index, Is.EqualTo(txReceipt.Index), "index");
+                Assert.That(deserialized?.ContractAddress, Is.EqualTo(txReceipt.ContractAddress), "contract");
+                Assert.That(deserialized?.Sender, Is.EqualTo(txReceipt.Sender), "sender");
+                Assert.That(deserialized?.GasUsed, Is.EqualTo(txReceipt.GasUsed), "gas used");
+                Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
+                Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
+                Assert.That(deserialized?.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
+                Assert.That(deserialized?.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            }
         }
 
     }

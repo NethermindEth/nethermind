@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SendBlobs.Test</RootNamespace>
+    <AssemblyName>SendBlobs.Test</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SendBlobs/SendBlobs.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+  </ItemGroup>
+
+</Project>

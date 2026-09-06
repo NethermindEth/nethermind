@@ -24,7 +24,7 @@ public class PatternStatsAnalyzerTests
 
     private PatternStatsAnalyzer _patternStatsAnalyzer;
     private PatternStatsAnalyzer _patternStatsAnalyzerIgnore;
-    private HashSet<Instruction> _ignoreSet = new() { Instruction.JUMPDEST, Instruction.JUMP };
+    private HashSet<Instruction> _ignoreSet = [Instruction.JUMPDEST, Instruction.JUMP];
 
     public static IEnumerable<TestCaseData> StatsTestCases
     {
@@ -190,7 +190,7 @@ public class PatternStatsAnalyzerTests
     public void validate_stats(Instruction[] executionOpCodes,
         (Instruction[] ngram, int count)[] expectedNGrams)
     {
-        Dictionary<ulong, ulong> counts = new();
+        Dictionary<ulong, ulong> counts = [];
 
         foreach ((Instruction[] instructions, int count) expected in expectedNGrams)
         {

@@ -4,7 +4,6 @@
 using System;
 using System.Text.Json;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -31,7 +30,7 @@ public class TaikoExtendedEthModuleTests
             .Build();
 
         Func<ITaikoExtendedEthRpcModule> act = () => container.Resolve<ITaikoExtendedEthRpcModule>();
-        act.Should().NotThrow();
+        Assert.That(act, Throws.Nothing);
     }
 
     [TestCase(true, "snap")]
@@ -43,7 +42,7 @@ public class TaikoExtendedEthModuleTests
             SnapSync = snapEnabled
         }, Substitute.For<IL1OriginStore>());
 
-        rpc.taiko_getSyncMode().Result.Data.Should().Be(result);
+        Assert.That(rpc.taiko_getSyncMode().Result.Data, Is.EqualTo(result));
     }
 
     [Test]
@@ -56,7 +55,7 @@ public class TaikoExtendedEthModuleTests
         originStore.ReadHeadL1Origin().Returns((UInt256)1);
         originStore.ReadL1Origin((UInt256)1).Returns(origin);
 
-        rpc.taiko_headL1Origin().Result.Data.Should().Be(origin);
+        Assert.That(rpc.taiko_headL1Origin().Result.Data, Is.EqualTo(origin));
     }
 
     [Test]
@@ -68,7 +67,7 @@ public class TaikoExtendedEthModuleTests
         L1Origin origin = new(0, TestItem.KeccakA, 1, Hash256.Zero, null);
         originStore.ReadL1Origin((UInt256)0).Returns(origin);
 
-        rpc.taiko_l1OriginByID(0).Result.Data.Should().Be(origin);
+        Assert.That(rpc.taiko_l1OriginByID(0).Result.Data, Is.EqualTo(origin));
     }
 
     [Test]
@@ -81,7 +80,7 @@ public class TaikoExtendedEthModuleTests
         L1Origin origin = new(0, TestItem.KeccakA, 1, Hash256.Zero, buildPayloadArgsId);
         originStore.ReadL1Origin((UInt256)0).Returns(origin);
 
-        rpc.taiko_l1OriginByID(0).Result.Data.Should().Be(origin);
+        Assert.That(rpc.taiko_l1OriginByID(0).Result.Data, Is.EqualTo(origin));
     }
 
     [Test]
@@ -99,7 +98,7 @@ public class TaikoExtendedEthModuleTests
         originStore.ReadL1Origin((UInt256)0).Returns(origin);
 
         L1Origin? result = rpc.taiko_l1OriginByID(0).Result.Data;
-        result.Should().Be(origin);
+        Assert.That(result, Is.EqualTo(origin));
 
         // Serialize the RPC result and verify hash values have even-length hex string
         EthereumJsonSerializer serializer = new();
@@ -110,10 +109,10 @@ public class TaikoExtendedEthModuleTests
         string? l2BlockHashString = jsonDoc.RootElement.GetProperty("l2BlockHash").GetString();
         string? l1BlockHashString = jsonDoc.RootElement.GetProperty("l1BlockHash").GetString();
 
-        l2BlockHashString.Should().NotBeNull();
-        l2BlockHashString!.Length.Should().Be(expectedLengthInChars);
+        Assert.That(l2BlockHashString, Is.Not.Null);
+        Assert.That(l2BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
 
-        l1BlockHashString.Should().NotBeNull();
-        l1BlockHashString!.Length.Should().Be(expectedLengthInChars);
+        Assert.That(l1BlockHashString, Is.Not.Null);
+        Assert.That(l1BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
     }
 }

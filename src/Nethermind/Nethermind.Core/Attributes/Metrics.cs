@@ -38,6 +38,13 @@ public sealed class SummaryMetricAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class HistogramMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; init; } = [];
+    public double[] Buckets { get; init; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class ExponentialPowerHistogramMetric : Attribute
 {
     public string[] LabelNames { get; init; } = [];

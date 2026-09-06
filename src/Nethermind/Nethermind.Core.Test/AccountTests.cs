@@ -12,8 +12,11 @@ public class AccountTests
     public void Test_totally_empty()
     {
         Account account = Account.TotallyEmpty;
-        Assert.That(account.IsTotallyEmpty, Is.True, "totally empty");
-        Assert.That(account.IsEmpty, Is.True, "empty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.IsTotallyEmpty, Is.True, "totally empty");
+            Assert.That(account.IsEmpty, Is.True, "empty");
+        }
     }
 
     [Test]
@@ -21,8 +24,11 @@ public class AccountTests
     {
         Account account = Account.TotallyEmpty;
         account = account.WithChangedStorageRoot(TestItem.KeccakA);
-        Assert.That(account.IsTotallyEmpty, Is.False, "totally empty");
-        Assert.That(account.IsEmpty, Is.True, "empty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.IsTotallyEmpty, Is.False, "totally empty");
+            Assert.That(account.IsEmpty, Is.True, "empty");
+        }
     }
 
     [Test]

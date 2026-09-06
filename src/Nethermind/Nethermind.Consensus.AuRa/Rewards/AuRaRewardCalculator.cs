@@ -27,18 +27,18 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             IList<IRewardContract> BuildTransitions()
             {
-                List<IRewardContract> contracts = new();
+                List<IRewardContract> contracts = [];
 
                 if (auRaParameters.BlockRewardContractTransitions is not null)
                 {
                     contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
-                    CollectionsMarshal.AsSpan(contracts).Sort(default(ActivatedAtComparer<IRewardContract, long>));
+                    CollectionsMarshal.AsSpan(contracts).Sort(default(ActivatedAtComparer<IRewardContract, ulong>));
                 }
 
                 if (auRaParameters.BlockRewardContractAddress is not null)
                 {
-                    long contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
-                    if (contractTransition > (contracts.FirstOrDefault()?.Activation ?? long.MaxValue))
+                    ulong contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
+                    if (contractTransition > (contracts.FirstOrDefault()?.Activation ?? ulong.MaxValue))
                     {
                         throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             private const ushort minDistance = 1;
             private const ushort maxDistance = 6;
 
-            public static bool TryGetUncle(long distance, out ushort kind)
+            public static bool TryGetUncle(ulong distance, out ushort kind)
             {
                 if (IsValidDistance(distance))
                 {
@@ -138,11 +138,11 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 Author => BlockRewardType.Block,
                 External => BlockRewardType.External,
                 EmptyStep => BlockRewardType.EmptyStep,
-                ushort uncle when IsValidDistance(uncle - uncleOffset) => BlockRewardType.Uncle,
+                ushort uncle when IsValidDistance((ulong)(uncle - uncleOffset)) => BlockRewardType.Uncle,
                 _ => throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind)),
             };
 
-            private static bool IsValidDistance(long distance) => distance >= minDistance && distance <= maxDistance;
+            private static bool IsValidDistance(ulong distance) => distance >= minDistance && distance <= maxDistance;
         }
     }
 }

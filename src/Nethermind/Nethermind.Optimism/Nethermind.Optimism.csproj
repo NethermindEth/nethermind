@@ -3,7 +3,12 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Optimism.Test" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />

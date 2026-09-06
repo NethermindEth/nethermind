@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
@@ -23,8 +22,8 @@ using Nethermind.Sockets;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager) : IStep
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -65,7 +64,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             JsonRpcWebSocketsModule webSocketsModule = new(
                 jsonRpcProcessor,
                 jsonRpcService,
-                api.JsonRpcLocalStats!,
+                jsonRpcLocalStats,
                 api.LogManager,
                 api.EthereumJsonSerializer,
                 jsonRpcUrlCollection,
@@ -79,10 +78,10 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         Bootstrap.Instance.JsonRpcService = jsonRpcService;
         Bootstrap.Instance.LogManager = api.LogManager;
         Bootstrap.Instance.JsonSerializer = api.EthereumJsonSerializer;
-        Bootstrap.Instance.JsonRpcLocalStats = api.JsonRpcLocalStats!;
+        Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
         Bootstrap.Instance.JsonRpcAuthentication = auth;
 
-        JsonRpcRunner? jsonRpcRunner = new(
+        JsonRpcRunner jsonRpcRunner = new(
             jsonRpcProcessor,
             jsonRpcUrlCollection,
             webSocketsManager!,
@@ -97,21 +96,21 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.SyncPeerPool,
             api.MainProcessingContext);
 
-        await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
+        try
         {
-            if (x.IsFaulted && logger.IsError)
-                logger.Error("Error during jsonRpc runner start", x.Exception);
-        }, cancellationToken);
+            await jsonRpcRunner.Start(cancellationToken);
+        }
+        catch (Exception e) when (logger.IsError)
+        {
+            if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
+        }
 
         JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, api.ConfigProvider,
-            api.LogManager, api.JsonRpcLocalStats!, api.EthereumJsonSerializer, api.FileSystem);
+            api.LogManager, jsonRpcLocalStats, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
-#pragma warning disable 4014
-        api.DisposeStack.Push(
-            new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
-        api.DisposeStack.Push(jsonIpcRunner); // do not await
-#pragma warning restore 4014
+        api.DisposeStack.Push(jsonRpcRunner);
+        api.DisposeStack.Push(jsonIpcRunner);
     }
     private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {

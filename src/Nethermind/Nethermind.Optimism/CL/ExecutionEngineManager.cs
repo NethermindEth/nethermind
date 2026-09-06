@@ -251,6 +251,6 @@ public class ExecutionEngineManager(
         }
     }
 
-    private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new();
+    private readonly TaskCompletionSource _elSyncedTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task OnELSynced => _elSyncedTaskCompletionSource.Task;
 }

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -54,7 +55,7 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
                 Value = rewardValue,
                 Author = author,
                 CallType = "reward",
-                TraceAddress = [],
+                TraceAddress = CappedArray<int>.Empty,
                 Type = "reward",
                 Result = null
             };

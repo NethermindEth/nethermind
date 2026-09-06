@@ -3,8 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
+using Nethermind.Core.RequestSizer;
 
 namespace Nethermind.Core.Test.RequestSizer;
 
@@ -29,6 +29,6 @@ public class LatencyBasedRequestSizerTests
 
         int modifiedRequestSize = await sizer.MeasureLatency((Task.FromResult));
 
-        modifiedRequestSize.Should().Be(afterRequestSize);
+        Assert.That(modifiedRequestSize, Is.EqualTo(afterRequestSize));
     }
 }

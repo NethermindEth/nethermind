@@ -5,7 +5,6 @@
 
 using System;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Runner.Logging;
 using NLog;
 using NLog.Config;
@@ -36,9 +35,9 @@ public class NLogConfiguratorTests
 
         LogManager.GetLogger("t").Info("hello world");
 
-        memory.Logs.Should().ContainSingle();
+        Assert.That(memory.Logs, Has.Count.EqualTo(1));
         using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
-        doc.RootElement.GetProperty(key).GetString().Should().Be(expectedValue);
+        Assert.That(doc.RootElement.GetProperty(key).GetString(), Is.EqualTo(expectedValue));
     }
 
     private static readonly (string Format, string Field, string[] Expected)[] LevelMappingCases =
@@ -65,7 +64,7 @@ public class NLogConfiguratorTests
             actual[i] = value.ValueKind == JsonValueKind.Number ? value.GetInt32().ToString() : value.GetString()!;
         }
 
-        actual.Should().Equal(testCase.Expected);
+        Assert.That(actual, Is.EqualTo(testCase.Expected));
     }
 
     [Test]
@@ -81,12 +80,12 @@ public class NLogConfiguratorTests
         JsonElement ts = doc.RootElement.GetProperty("timestamp");
 
         // Spec violation guard: GELF 1.1 requires timestamp as numeric seconds-since-epoch, not an ISO string.
-        ts.ValueKind.Should().Be(JsonValueKind.Number);
+        Assert.That(ts.ValueKind, Is.EqualTo(JsonValueKind.Number));
 
         double seconds = ts.GetDouble();
         double lower = (before.AddSeconds(-1) - DateTime.UnixEpoch).TotalSeconds;
         double upper = (after.AddSeconds(1) - DateTime.UnixEpoch).TotalSeconds;
-        seconds.Should().BeInRange(lower, upper);
+        Assert.That(seconds, Is.InRange(lower, upper));
     }
 
     [Test]
@@ -100,8 +99,8 @@ public class NLogConfiguratorTests
         JsonElement version = doc.RootElement.GetProperty("@version");
 
         // Spec violation guard: logstash-logback-encoder defines @version as integer 1, not "1".
-        version.ValueKind.Should().Be(JsonValueKind.Number);
-        version.GetInt32().Should().Be(1);
+        Assert.That(version.ValueKind, Is.EqualTo(JsonValueKind.Number));
+        Assert.That(version.GetInt32(), Is.EqualTo(1));
     }
 
     [TestCase("ecs", "@timestamp")]
@@ -115,10 +114,10 @@ public class NLogConfiguratorTests
 
         using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
         JsonElement ts = doc.RootElement.GetProperty(field);
-        ts.ValueKind.Should().Be(JsonValueKind.String);
+        Assert.That(ts.ValueKind, Is.EqualTo(JsonValueKind.String));
         string value = ts.GetString()!;
         // .fffffffZ -> 7 fractional digits before the Z. Don't assert exact value, only shape.
-        value.Should().MatchRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$");
+        Assert.That(value, Does.Match(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$"));
     }
 
     [TestCase("ecs")]
@@ -140,7 +139,7 @@ public class NLogConfiguratorTests
 
         using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
         string value = doc.RootElement.GetProperty(messageField).GetString()!;
-        value.Should().Be("colored");
+        Assert.That(value, Is.EqualTo("colored"));
     }
 
     [Test]
@@ -151,9 +150,9 @@ public class NLogConfiguratorTests
         LogManager.GetLogger("t").Info("plain");
 
         using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
-        doc.RootElement.TryGetProperty("error.type", out _).Should().BeFalse();
-        doc.RootElement.TryGetProperty("error.message", out _).Should().BeFalse();
-        doc.RootElement.TryGetProperty("error.stack_trace", out _).Should().BeFalse();
+        Assert.That(doc.RootElement.TryGetProperty("error.type", out _), Is.False);
+        Assert.That(doc.RootElement.TryGetProperty("error.message", out _), Is.False);
+        Assert.That(doc.RootElement.TryGetProperty("error.stack_trace", out _), Is.False);
     }
 
     [Test]
@@ -168,14 +167,14 @@ public class NLogConfiguratorTests
         Layout originalLayout = consoleTarget.Layout;
         NLogConfigurator.ConfigureConsoleFormat("plain");
 
-        consoleTarget.Layout.Should().BeSameAs(originalLayout);
+        Assert.That(consoleTarget.Layout, Is.SameAs(originalLayout));
     }
 
     [Test]
     public void Unknown_format_throws_ArgumentException()
     {
         Action act = () => NLogConfigurator.ConfigureConsoleFormat("xml");
-        act.Should().Throw<ArgumentException>().WithMessage("*xml*");
+        Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("xml"));
     }
 
     [Test]
@@ -194,8 +193,8 @@ public class NLogConfiguratorTests
 
         NLogConfigurator.ConfigureConsoleFormat("ecs");
 
-        fileTarget.Layout.Should().BeSameAs(fileLayoutBefore);
-        consoleTarget.Layout.Should().NotBeSameAs(fileLayoutBefore);
+        Assert.That(fileTarget.Layout, Is.SameAs(fileLayoutBefore));
+        Assert.That(consoleTarget.Layout, Is.Not.SameAs(fileLayoutBefore));
     }
 
     private static MemoryTarget SetUpAndConfigure(string format)

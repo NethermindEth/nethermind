@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks.Config;
@@ -20,7 +19,7 @@ public class RocksDbConfigFactoryTests
         DbConfig dbConfig = new();
         RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions);
+        Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions));
     }
 
     [Test]
@@ -31,7 +30,7 @@ public class RocksDbConfigFactoryTests
         pruningConfig.Mode = PruningMode.Full;
         RocksDbConfigFactory factory = new(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbArchiveModeRocksDbOptions);
+        Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbArchiveModeRocksDbOptions));
     }
 
     [Test]
@@ -40,7 +39,7 @@ public class RocksDbConfigFactoryTests
         DbConfig dbConfig = new();
         RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(100.GiB), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbLargeMemoryRocksDbOptions);
+        Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbLargeMemoryRocksDbOptions));
     }
 
     [Test]
@@ -52,7 +51,7 @@ public class RocksDbConfigFactoryTests
         pruningConfig.DirtyCacheMb = 10000;
         RocksDbConfigFactory factory = new(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.WriteBufferSize.Should().Be((ulong)500.MB);
+        Assert.That(config.WriteBufferSize, Is.EqualTo(500UL.MB));
     }
 
     [TestCase(1024, ExpectedResult = 819, TestName = "Caps to 80% on low limit")]
@@ -77,7 +76,7 @@ public class RocksDbConfigFactoryTests
         dbConfig.SkipCheckingSstFileSizesOnDbOpen = true;
         RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.RocksDbOptions.Should().Contain("skip_checking_sst_file_sizes_on_db_open=true;");
+        Assert.That(config.RocksDbOptions, Does.Contain("skip_checking_sst_file_sizes_on_db_open=true;"));
     }
 
     [Test]
@@ -87,6 +86,6 @@ public class RocksDbConfigFactoryTests
         dbConfig.SkipCheckingSstFileSizesOnDbOpen = false;
         RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        config.RocksDbOptions.Should().NotContain("skip_checking_sst_file_sizes_on_db_open");
+        Assert.That(config.RocksDbOptions, Does.Not.Contain("skip_checking_sst_file_sizes_on_db_open"));
     }
 }

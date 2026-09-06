@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
@@ -13,20 +14,22 @@ namespace Nethermind.Consensus
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null)
         {
-            long parentGasLimit = parentHeader.GasLimit;
-            long gasLimit = parentGasLimit;
+            ulong parentGasLimit = parentHeader.GasLimit;
+            ulong gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
-            long newBlockNumber = parentHeader.Number + 1;
+            targetGasLimit ??= _blocksConfig.TargetBlockGasLimit;
+            ulong newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
             if (targetGasLimit is not null)
             {
-                long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);
-                gasLimit = targetGasLimit.Value > parentGasLimit
-                    ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
-                    : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
+                ulong target = targetGasLimit.Value;
+                ulong div = parentGasLimit / spec.GasLimitBoundDivisor;
+                ulong maxGasLimitDifference = div.SaturatingSub(1);
+                gasLimit = target > parentGasLimit
+                    ? parentGasLimit + Math.Min(target - parentGasLimit, maxGasLimitDifference)
+                    : parentGasLimit - Math.Min(parentGasLimit - target, maxGasLimitDifference);
             }
 
             gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);

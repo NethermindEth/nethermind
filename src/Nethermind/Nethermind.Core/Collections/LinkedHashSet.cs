@@ -21,7 +21,7 @@ namespace Nethermind.Core.Collections
 
         public LinkedHashSet()
         {
-            _dict = new Dictionary<T, LinkedListNode<T>>();
+            _dict = [];
             _list = new LinkedList<T>();
         }
 
@@ -165,10 +165,9 @@ namespace Nethermind.Core.Collections
             for (int index = 0; index < ts.Length; index++)
             {
                 T t = ts[index];
-                if (set.Contains(t))
+                if (set.Remove(t))
                 {
                     Remove(t);
-                    set.Remove(t);
                 }
             }
 

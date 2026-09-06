@@ -14,7 +14,7 @@ public class ParityLikeTraceSerializer(ILogManager logManager, int maxDepth = Pa
 {
     public const int DefaultDepth = 3200;
     private static readonly byte[] _emptyBytes = { 0 };
-    private static readonly List<ParityLikeTxTrace> _emptyTraces = new();
+    private static readonly List<ParityLikeTxTrace> _emptyTraces = [];
 
     private readonly ILogger _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>() ?? default;
     private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer(maxDepth);

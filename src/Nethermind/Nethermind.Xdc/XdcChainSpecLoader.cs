@@ -6,16 +6,15 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Xdc;
 
-public static class XdcChainSpecLoader
+public class XdcChainSpecLoader
 {
-    public static void ProcessChainSpec(ChainSpec chainSpec)
+    public void ProcessChainSpec(ChainSpec chainSpec)
     {
-        if (chainSpec.Genesis is not null)
+        if (chainSpec.Genesis is { } originalGenesis)
         {
-            Block originalGenesis = chainSpec.Genesis;
-            chainSpec.Genesis = originalGenesis.WithReplacedHeader(
-                XdcBlockHeader.FromBlockHeader(originalGenesis.Header)
-            );
+            chainSpec.Genesis = originalGenesis.WithReplacedHeader(CreateGenesisHeader(originalGenesis.Header));
         }
     }
+
+    protected virtual BlockHeader CreateGenesisHeader(BlockHeader header) => XdcBlockHeader.FromBlockHeader(header);
 }

@@ -172,24 +172,24 @@ sequenceDiagram
 
     %% Step 7: Proceed a valid engine_newPayload (if any)
     CL->>P: (1) engine_newPayload (next block payload)
-    
+
     Note over P: Get data from engine_newPayload and generate PayloadAttributes based on it
     %% Based on request (1) PR generates PayloadAttributes
     alt Validation enabled
- 
+
     P->>P: (1.1) generate PayloadAttributes (based on previous block)
     Note over P: Append PayloadAttributes to FCU
-    
+
     %% Step 2: PR sends generated request (1.1) to EL
     P->>EC: (2) engine_forkchoiceUpdated (forkchoiceState + PayloadAttributes)
     EC->>P: (2) engine_forkchoiceUpdated response (PayloadID)
-       
+
     %% Step 3: getting PayloadID from EL (2), sending engine_getPayload with it
     Note over P: Validation start
     alt Validation
     P->>EC: (3) engine_getPayload (PayloadID)
     EC->>P: (3) engine_getPayload Response (execution payload)
-    
+
     %% Step 4: Sending engine_newPayload with generated (3) payload
     P->>EC: (4) engine_newPayload(generated from getPayload response)
     EC->>P: (4) -- engine_newPayload response (save in case of error)
@@ -205,7 +205,7 @@ sequenceDiagram
     CL->>P: (5) engine_forkchoiceUpdated (with PayloadAttributes null)
     P->>EC: (5) engine_forkchoiceUpdated
     EC->>P: (5) engine_forkchoiceUpdated response
-    P->>CL: (5) engine_forkchoiceUpdated response 
+    P->>CL: (5) engine_forkchoiceUpdated response
 
 ```
 
@@ -228,23 +228,23 @@ sequenceDiagram
     %% Step 1: CL sends engine_forkchoiceUpdated
     CL->>P: (1) engine_forkchoiceUpdated (with PayloadAttributes null)
     Note over P: Intercept & delay engine_forkchoiceUpdated
-    
+
     %% Step 1.1: based on request (1) PR generates PayloadAttributes
     alt Validation enabled && PayloadAttributes null (ForkChoiceUpdated flow) || PayloadAttributes not null (Lighthouse flow)
 
     P->>P: (1.1) generate or intercept PayloadAttributes (based on the current head block or existing FCU request for Lighthouse flow)
     Note over P: Append PayloadAttributes to FCU
-    
+
     %% Step 2: PR sends generated request (1.1) to EL
     P->>EC: (2) engine_forkchoiceUpdated (forkchoiceState + PayloadAttributes)
     EC->>P: (2) engine_forkchoiceUpdated response (PayloadID)
-       
+
     %% Step 3: getting PayloadID from EL (2), sending engine_getPayload with it
     Note over P: Validation start
     alt Validation
     P->>EC: (3) engine_getPayload (PayloadID)
     EC->>P: (3) engine_getPayload Response (execution payload)
-    
+
     %% Step 4: Sending engine_newPayload with generated (3) payload
     P->>EC: (4) engine_newPayload(generated from getPayload response)
     EC->>P: (4) -- engine_newPayload response (save in case of error)
@@ -255,14 +255,14 @@ sequenceDiagram
     Note over P: Release FCU
     P->>EC: (1) engine_forkchoiceUpdated (resuming)
     EC->>P: (1) engine_forkchoiceUpdated response
-    P->>CL: (1) engine_forkchoiceUpdated response 
-    
+    P->>CL: (1) engine_forkchoiceUpdated response
+
     %% Step 6: Proceed a valid engine_newPayload (if any)
     CL->>P: (5) engine_newPayload (next block payload)
     P->>EC: (5) engine_newPayload response
     EC->>P: (5) engine_newPayload response
-    P->>CL: (5) engine_newPayload response 
-   
+    P->>CL: (5) engine_newPayload response
+
     Note over P: Process any new engine_forkchoiceUpdated messages
 
 
@@ -293,7 +293,7 @@ cd ethereum-package
 git checkout feat/el-proxy
 ```
 
-3.Install kurtosis CLI https://docs.kurtosis.com/install/#ii-install-the-cli 
+3.Install kurtosis CLI https://docs.kurtosis.com/install/#ii-install-the-cli
 
 4.Update `el-proxy.yaml` with correct execution client endpoint
 
@@ -340,7 +340,7 @@ kurtosis run . --args-file .github/tests/el-proxy.yaml --enclave testnet
 
 ## Troubleshooting
 
-- Set log level to debug and check proxy logs for detailed information. Debug level can be set here https://github.com/dmitriy-b/ethereum-package/blob/4e3ca6d6b594a1e08c1b7441337256fd1cb01874/src/el-proxy/el_proxy_launcher.star#L56 
+- Set log level to debug and check proxy logs for detailed information. Debug level can be set here https://github.com/dmitriy-b/ethereum-package/blob/4e3ca6d6b594a1e08c1b7441337256fd1cb01874/src/el-proxy/el_proxy_launcher.star#L56
 - Verify connectivity to both the Consensus Client and Execution Client
 - Ensure the execution client endpoint URL is correctly formatted and accessible
 - If using auto-validation, check that block data is being fetched successfully

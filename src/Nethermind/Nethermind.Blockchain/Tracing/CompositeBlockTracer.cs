@@ -9,9 +9,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class CompositeBlockTracer : IBlockTracer, ITracerBag
+public class CompositeBlockTracer : IBlockTracer
 {
-    private readonly List<IBlockTracer> _childTracers = new();
+    private readonly List<IBlockTracer> _childTracers = [];
     private IBlockTracer? _parallelSafeTracerCache;
     private int _parallelSafeTracerCacheVersion = -1;
     private int _parallelSafeTracerNestedFingerprint;
@@ -94,12 +94,14 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
         _version++;
     }
 
-    public void AddRange(params IBlockTracer[] tracers)
+    public void AddRange(params IBlockTracer[] tracers) => AddRange((IEnumerable<IBlockTracer>)tracers);
+
+    public void AddRange(IEnumerable<IBlockTracer> tracers)
     {
-        _childTracers.AddRange(tracers);
-        for (int i = 0; i < tracers.Length; i++)
+        foreach (IBlockTracer tracer in tracers)
         {
-            IsTracingRewards |= tracers[i].IsTracingRewards;
+            _childTracers.Add(tracer);
+            IsTracingRewards |= tracer.IsTracingRewards;
         }
         _version++;
     }

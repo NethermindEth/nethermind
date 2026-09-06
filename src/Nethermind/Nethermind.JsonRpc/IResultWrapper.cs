@@ -7,9 +7,10 @@ namespace Nethermind.JsonRpc
 {
     public interface IResultWrapper
     {
-        public object Data { get; }
+        public object? Data { get; }
         public Result Result { get; }
         public int ErrorCode { get; }
         public bool IsTemporary { get; }
+        public bool HasErrorData { get; }
     }
 }

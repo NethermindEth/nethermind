@@ -6,10 +6,9 @@ using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Proofs;
 using Nethermind.Trie;
 
-namespace Nethermind.State.Trie;
+namespace Nethermind.State.Proofs;
 
 /// <summary>
 /// An abstract class that represents a Patricia trie built of a collection of <see cref="T"/>.

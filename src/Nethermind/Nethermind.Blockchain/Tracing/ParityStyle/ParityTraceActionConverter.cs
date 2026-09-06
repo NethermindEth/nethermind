@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
@@ -72,7 +73,7 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("gas"u8))
             {
                 reader.Read();
-                value.Gas = JsonSerializer.Deserialize<long>(ref reader, options);
+                value.Gas = JsonSerializer.Deserialize<ulong>(ref reader, options);
             }
             else if (reader.ValueTextEquals("value"u8))
             {
@@ -82,12 +83,12 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("input"u8))
             {
                 reader.Read();
-                value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                value.Input = JsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("init"u8))
             {
                 reader.Read();
-                value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                value.Input = JsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("result"u8))
             {
@@ -117,7 +118,7 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("traceAddress"u8))
             {
                 reader.Read();
-                value.TraceAddress = JsonSerializer.Deserialize<int[]?>(ref reader, options);
+                value.TraceAddress = JsonSerializer.Deserialize<CappedArray<int>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("includeInTrace"u8))
             {

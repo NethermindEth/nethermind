@@ -44,7 +44,7 @@ namespace Nethermind.Core.Collections
 
         [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
-            => throw new InvalidOperationException($"{nameof(JournalSet<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+            => throw new InvalidOperationException($"{nameof(JournalSet<>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public bool Add(T item)
         {
@@ -72,6 +72,11 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
+        /// <summary>
+        /// Gets the first item added to the set.
+        /// </summary>
+        /// <remarks>The caller must ensure the set is not empty.</remarks>
+        public T First => _items[0];
         public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
     }
 }

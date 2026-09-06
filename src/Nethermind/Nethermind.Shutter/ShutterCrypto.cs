@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Crypto;
-using Nethermind.Merkleization;
 using System.Text;
 using Nethermind.Core.Collections;
 using System.Runtime.CompilerServices;
@@ -70,12 +69,18 @@ public static class ShutterCrypto
 
     public static EncryptedMessage DecodeEncryptedMessage(ReadOnlySpan<byte> bytes)
     {
+        const int minLength = 1 + 96 + 32;
+        if (bytes.Length < minLength)
+        {
+            throw new ShutterCryptoException($"Encrypted Shutter message too short: expected at least {minLength} bytes, found {bytes.Length}.");
+        }
+
         if (bytes[0] != CryptoVersion)
         {
             throw new ShutterCryptoException($"Encrypted message had wrong Shutter crypto version. Expected version {CryptoVersion}, found {bytes[0]}.");
         }
 
-        ReadOnlySpan<byte> c3 = bytes[(1 + 96 + 32)..];
+        ReadOnlySpan<byte> c3 = bytes[minLength..];
 
         if (c3.Length == 0 || c3.Length % 32 != 0)
         {
@@ -315,22 +320,20 @@ public static class ShutterCrypto
 
     internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
     {
-        SlotDecryptionIdentities container = new()
+        using ArrayPoolList<IdentityPreimage> preimages = new(4);
+        foreach (ReadOnlyMemory<byte> identityPreimage in identityPreimages)
+        {
+            preimages.Add(new IdentityPreimage(identityPreimage));
+        }
+
+        SlotDecryptionIdentities.Merkleize(new SlotDecryptionIdentities
         {
             InstanceID = instanceId,
             Eon = eon,
             Slot = slot,
             TxPointer = txPointer,
-            IdentityPreimages = identityPreimages
-        };
-
-        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(5));
-        merkleizer.Feed(container.InstanceID);
-        merkleizer.Feed(container.Eon);
-        merkleizer.Feed(container.Slot);
-        merkleizer.Feed(container.TxPointer);
-        merkleizer.Feed(container.IdentityPreimages, 1024);
-        merkleizer.CalculateRoot(out UInt256 root);
+            IdentityPreimages = preimages
+        }, out UInt256 root);
 
         return new(root.ToLittleEndian());
     }
@@ -354,15 +357,6 @@ public static class ShutterCrypto
         preimage[0] = 0x4;
         bytes.CopyTo(preimage[1..]);
         return ValueKeccak.Compute(preimage);
-    }
-
-    private readonly struct SlotDecryptionIdentities
-    {
-        public ulong InstanceID { get; init; }
-        public ulong Eon { get; init; }
-        public ulong Slot { get; init; }
-        public ulong TxPointer { get; init; }
-        public IEnumerable<ReadOnlyMemory<byte>> IdentityPreimages { get; init; }
     }
 
 }

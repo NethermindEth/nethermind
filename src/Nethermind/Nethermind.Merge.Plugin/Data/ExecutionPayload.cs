@@ -3,11 +3,13 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
@@ -29,15 +31,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
-    public long BlockNumber { get; set; }
+    public ulong BlockNumber { get; set; }
 
     public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
-    public long GasLimit { get; set; }
+    public ulong GasLimit { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
@@ -58,13 +60,16 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
+    [JsonConverter(typeof(TransactionsByteArrayArrayConverter))]
     public byte[][] Transactions
     {
         get => _encodedTransactions;
         set
         {
+            ArgumentNullException.ThrowIfNull(value);
             _encodedTransactions = value;
             _transactions = null;
+            _txRootTask = null;
         }
     }
 
@@ -118,6 +123,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -151,9 +163,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
+        Task<Hash256>? txRootTask = StartTxRootComputation();
+
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
+            txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
 
@@ -178,7 +193,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -193,6 +208,29 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
+    private Task<Hash256>? _txRootTask;
+
+    private const int MinTxsForParallelDecoding = 32;
+
+    /// <summary>
+    /// Starts computing the transactions-trie root in the background, letting callers overlap it
+    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
+    /// </summary>
+    /// <remarks>
+    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
+    /// race the memoized task. Callers must invoke both sequentially per payload instance.
+    /// </remarks>
+    /// <returns>
+    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
+    /// </returns>
+    internal Task<Hash256>? StartTxRootComputation()
+    {
+        byte[][] encodedTransactions = _encodedTransactions;
+        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && Environment.ProcessorCount > 1
+            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
+            : null;
+    }
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
@@ -201,31 +239,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
-        if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
-
-        int i = 0;
-        try
-        {
-            byte[][] txData = Transactions;
-            Transaction[] transactions = new Transaction[txData.Length];
-
-            for (i = 0; i < transactions.Length; i++)
-            {
-                Rlp.ValueDecoderContext ctx = new(txData[i]);
-                transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-            }
-
-            return _transactions = transactions;
-        }
-        catch (RlpException e)
-        {
-            return $"Transaction {i} is not valid: {e.Message}";
-        }
-        catch (ArgumentException)
-        {
-            return $"Transaction {i} is not valid";
-        }
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, skipErrors: false);
+        if (res.Error is not null) return res.Error;
+        return _transactions = res.Transactions;
     }
 
     /// <summary>
@@ -272,6 +288,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         _ => 1
     };
 
-    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+    /// <inheritdoc/>
+    /// <remarks>Answers for the getPayloadV1 shape only. Not virtual: subclasses gate newPayload through
+    /// <see cref="ValidateForkOnNewPayload"/> instead.</remarks>
+    public bool ValidateFork(ISpecProvider specProvider) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+
+    /// <summary>Whether this payload may arrive on the given <c>engine_newPayload</c> version.</summary>
+    public virtual bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }

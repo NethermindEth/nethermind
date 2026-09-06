@@ -589,7 +589,7 @@ namespace Nethermind.Trie
 
                 if (node.IsLeaf || node.IsExtension)
                 {
-                    int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
                         if (node.IsExtension)
@@ -773,36 +773,34 @@ namespace Nethermind.Trie
         internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
         {
             int onlyChildIdx = -1;
-            TrieNode? onlyChildNode = null;
-            path.AppendMut(0);
-            TrieNode.ChildIterator iterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
-                path.SetLast(i);
-                TrieNode? child = iterator.GetChildWithChildPath(TrieStore, ref path, i);
-
-                if (child is not null)
+                if (!node.IsChildNull(i)) // presence check only, no resolution (useful for witness recording, stateless execution and perfs)
                 {
                     if (onlyChildIdx == -1)
                     {
                         onlyChildIdx = i;
-                        onlyChildNode = child;
                     }
                     else
                     {
                         // 63%
-                        // More than one non null child. We don't care anymore.
-                        path.TruncateOne();
+                        // 2+ non-null children, no need to collapse any node
+                        // Nothing resolved, nothing captured (for witness recording, stateless execution)
                         return node;
                     }
                 }
 
             }
-            path.TruncateOne();
 
-            if (onlyChildIdx == -1) return null; // No child at all.
+            if (onlyChildIdx == -1) return null; // No child at all
+
+            // 1 child only, let's collapse
 
             path.AppendMut(onlyChildIdx);
+            TrieNode.ChildIterator iterator = node.CreateChildIterator();
+            TrieNode? onlyChildNode = iterator.GetChildWithChildPath(TrieStore, ref path, onlyChildIdx);
+            Debug.Assert(onlyChildNode is not null, "Only child should not be null here as checked before by node.IsChildNull");
+
             onlyChildNode.ResolveNode(TrieStore, path);
             path.TruncateOne();
 
@@ -936,7 +934,7 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -957,6 +955,11 @@ namespace Nethermind.Trie
                         }
 
                         // No node match
+                        return default;
+                    }
+
+                    if (remainingKey.Length == 0)
+                    {
                         return default;
                     }
 
@@ -991,11 +994,12 @@ namespace Nethermind.Trie
 
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
+                    if (!node.TryResolveNode(TrieStore, ref path)) return;
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -1034,20 +1038,23 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
-        /// Run tree visitor
+        /// Run tree visitor.
         /// </summary>
         /// <param name="visitor">The visitor</param>
         /// <param name="rootHash">State root hash (not storage root)</param>
         /// <param name="visitingOptions">Options</param>
-        /// <param name="storageAddr">Address of storage, if it should visit storage. </param>
+        /// <param name="storageAddr">Address of storage, if it should visit storage.</param>
         /// <param name="storageRoot">Root of storage if it should visit storage. Optional for performance.</param>
+        /// <param name="diagnostics">When non-null, the resolver is wrapped with <see cref="MeteredTrieNodeResolver"/>
+        /// and per-call lookup, cache-miss, and depth counters are accumulated into this instance.</param>
         /// <typeparam name="TNodeContext"></typeparam>
         public void Accept<TNodeContext>(
             ITreeVisitor<TNodeContext> visitor,
             Hash256 rootHash,
             VisitingOptions? visitingOptions = null,
             Hash256? storageAddr = null,
-            Hash256? storageRoot = null
+            Hash256? storageRoot = null,
+            VisitingStats? diagnostics = null
         ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
@@ -1066,8 +1073,8 @@ namespace Nethermind.Trie
                 {
                     ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
                     if (bytes.IsEmpty) return Keccak.EmptyTreeHash;
-                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
-                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
+                    RlpReader valueReader = new(bytes);
+                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueReader);
                 }
 
                 rootHash = storageRoot ?? DecodeStorageRoot(rootHash, storageAddr);
@@ -1095,6 +1102,11 @@ namespace Nethermind.Trie
             if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
+            }
+
+            if (diagnostics is not null)
+            {
+                resolver = new MeteredTrieNodeResolver(resolver, diagnostics);
             }
 
             bool TryGetRootRef(out TrieNode? rootRef)

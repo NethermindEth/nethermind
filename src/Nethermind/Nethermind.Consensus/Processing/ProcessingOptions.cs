@@ -73,6 +73,11 @@ namespace Nethermind.Consensus.Processing
         TraceTransactions = Trace | ForceSameBlock,
 
         /// <summary>
+        /// Reprocesses a block sequentially after optimistic block access list execution fails.
+        /// </summary>
+        ForceSequentialBlockAccessList = 1 << 9,
+
+        /// <summary>
         /// Processing options for engine_NewPayload
         /// </summary>
         EthereumMerge = MarkAsProcessed | DoNotUpdateHead | IgnoreParentNotOnMainChain

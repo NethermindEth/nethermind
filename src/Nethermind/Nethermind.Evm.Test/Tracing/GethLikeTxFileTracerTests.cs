@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 
@@ -17,9 +16,12 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     {
         GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default);
 
-        tracer.IsTracingMemory.Should().BeTrue();
-        tracer.IsTracingOpLevelStorage.Should().BeFalse();
-        tracer.IsTracingRefunds.Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingMemory, Is.True);
+            Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(tracer.IsTracingRefunds, Is.True);
+        }
     }
 
     [Test]
@@ -27,64 +29,73 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     {
         GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
-        trace.Gas.Should().Be(24);
-        trace.ReturnValue.Length.Should().Be(0);
+        Assert.That(trace.Gas, Is.EqualTo(24));
+        Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
     }
 
     [Test]
     public void Should_return_memory_size_with_memory_disabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
-        entries[0].MemorySize.Should().Be(0);
-        entries[1].MemorySize.Should().Be(0);
-        entries[2].MemorySize.Should().Be(0);
-        entries[3].MemorySize.Should().Be(32);
-        entries[4].MemorySize.Should().Be(32);
-        entries[5].MemorySize.Should().Be(32);
-        entries[6].MemorySize.Should().Be(64);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].MemorySize, Is.EqualTo(0));
+            Assert.That(entries[1].MemorySize, Is.EqualTo(0));
+            Assert.That(entries[2].MemorySize, Is.EqualTo(0));
+            Assert.That(entries[3].MemorySize, Is.EqualTo(32));
+            Assert.That(entries[4].MemorySize, Is.EqualTo(32));
+            Assert.That(entries[5].MemorySize, Is.EqualTo(32));
+            Assert.That(entries[6].MemorySize, Is.EqualTo(64));
 
-        entries.All(e => e.Memory is null).Should().BeTrue();
+            Assert.That(entries.All(e => e.Memory is null), Is.True);
+        }
     }
 
     [Test]
     public void Should_return_memory_when_enabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
-        entries[0].Memory.Length.Should().Be(0);
-        entries[1].Memory.Length.Should().Be(0);
-        entries[2].Memory.Length.Should().Be(0);
-        entries[3].Memory.Length.Should().Be(1);
-        entries[4].Memory.Length.Should().Be(1);
-        entries[5].Memory.Length.Should().Be(1);
-        entries[6].Memory.Length.Should().Be(2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].MemoryWordCount(), Is.EqualTo(0));
+            Assert.That(entries[1].MemoryWordCount(), Is.EqualTo(0));
+            Assert.That(entries[2].MemoryWordCount(), Is.EqualTo(0));
+            Assert.That(entries[3].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[4].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[5].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[6].MemoryWordCount(), Is.EqualTo(2));
+        }
     }
 
     [Test]
     public void Should_return_stack_when_enabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
-        entries[0].Stack.Length.Should().Be(0);
-        entries[1].Stack.Length.Should().Be(1);
-        entries[2].Stack.Length.Should().Be(2);
-        entries[3].Stack.Length.Should().Be(0);
-        entries[4].Stack.Length.Should().Be(1);
-        entries[5].Stack.Length.Should().Be(2);
-        entries[6].Stack.Length.Should().Be(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].StackWordCount(), Is.EqualTo(0));
+            Assert.That(entries[1].StackWordCount(), Is.EqualTo(1));
+            Assert.That(entries[2].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[3].StackWordCount(), Is.EqualTo(0));
+            Assert.That(entries[4].StackWordCount(), Is.EqualTo(1));
+            Assert.That(entries[5].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[6].StackWordCount(), Is.EqualTo(0));
+        }
     }
 
     [Test]
     public void Should_not_return_stack_when_disabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
-        entries.All(e => e.Stack is null).Should().BeTrue();
+        Assert.That(entries.All(e => e.Stack is null), Is.True);
     }
 
     /// <summary>

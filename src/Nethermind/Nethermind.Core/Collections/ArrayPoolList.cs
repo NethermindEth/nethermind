@@ -23,18 +23,31 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public ArrayPoolList(int capacity, int count) : this(SafeArrayPool<T>.Shared, capacity, count) { }
 
-    public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
+    public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity)
+    {
+        if (enumerable is ICollection<T> collection)
+        {
+            ArrayPoolListCore<T>.AddRange(_arrayPool, ref _array, ref _capacity, ref _count, collection);
+        }
+        else
+        {
+            this.AddRange(enumerable);
+        }
+    }
 
     public ArrayPoolList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
 
-    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
+    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0, bool clearFirst = true)
     {
         _arrayPool = arrayPool;
 
         if (capacity != 0)
         {
             _array = arrayPool.Rent(capacity);
-            _array.AsSpan(0, startingCount).Clear();
+            if (clearFirst)
+            {
+                _array.AsSpan(0, startingCount).Clear();
+            }
         }
         else
         {
@@ -65,7 +78,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowObjectDisposed() => throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
+        static void ThrowObjectDisposed() => throw new ObjectDisposedException(nameof(ArrayPoolList<>));
     }
 
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
@@ -254,7 +267,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     {
         if (_capacity != 0 && !_disposed)
         {
-            Console.Error.WriteLine($"Warning: {nameof(ArrayPoolList<T>)} was not disposed. Created at: {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(ArrayPoolList<>)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif
@@ -293,7 +306,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         [DoesNotReturn]
         [StackTraceHidden]
         static void ThrowUnsupportedPool() => throw new InvalidOperationException(
-            $"{nameof(ToRef)} is only supported when {nameof(ArrayPoolList<T>)} uses {nameof(SafeArrayPool<T>)}.Shared.");
+            $"{nameof(ToRef)} is only supported when {nameof(ArrayPoolList<>)} uses {nameof(SafeArrayPool<>)}.Shared.");
     }
     public Memory<T> AsMemory()
     {

@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -40,8 +39,8 @@ namespace Nethermind.Evm.Test
         public void Overflow_gas_cost()
         {
             Prepare input = Prepare.EvmCode.FromCode("0000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010001");
-            long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, Berlin.Instance);
-            gas.Should().Be(long.MaxValue);
+            ulong gas = ModExpPrecompile.Instance.DataGasCost(input.Done, Berlin.Instance);
+            Assert.That(gas, Is.EqualTo(ulong.MaxValue));
         }
 
         [TestCase("0x00000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")]
@@ -50,8 +49,8 @@ namespace Nethermind.Evm.Test
         {
             Prepare input = Prepare.EvmCode.FromCode(inputStr);
             Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance));
-            long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
-            gas.Should().Be(200);
+            ulong gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
+            Assert.That(gas, Is.EqualTo(200UL));
         }
 
         // empty base

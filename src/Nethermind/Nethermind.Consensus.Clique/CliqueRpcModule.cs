@@ -13,51 +13,52 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Consensus.Clique
 {
     public class CliqueRpcModule(
-        ICliqueBlockProducerRunner? cliqueBlockProducer,
+        IBlockProducerRunner blockProducerRunner,
         ISnapshotManager snapshotManager,
         IBlockFinder blockTree)
         : ICliqueRpcModule
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
+        private readonly ICliqueBlockProducerRunner? _cliqueBlockProducer = blockProducerRunner as ICliqueBlockProducerRunner;
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly IBlockFinder _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public bool ProduceBlock(Hash256 parentHash)
         {
-            if (cliqueBlockProducer is null)
+            if (_cliqueBlockProducer is null)
             {
                 return false;
             }
 
-            cliqueBlockProducer?.ProduceOnTopOf(parentHash);
+            _cliqueBlockProducer?.ProduceOnTopOf(parentHash);
             return true;
         }
 
         public void CastVote(Address signer, bool vote)
         {
-            if (cliqueBlockProducer is null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            cliqueBlockProducer.CastVote(signer, vote);
+            _cliqueBlockProducer.CastVote(signer, vote);
         }
 
         public void UncastVote(Address signer)
         {
-            if (cliqueBlockProducer is null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            cliqueBlockProducer.UncastVote(signer);
+            _cliqueBlockProducer.UncastVote(signer);
         }
 
-        public Snapshot GetSnapshot(long? number = null)
+        public Snapshot GetSnapshot(ulong? number = null)
         {
             Block head = _blockTree.Head;
-            if (number is not null && head.Number != number)
+            if (number is not null && head.Number != number.Value)
             {
                 head = _blockTree.FindBlock(number.Value);
             }
@@ -76,7 +77,7 @@ namespace Nethermind.Consensus.Clique
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(static s => s.Key).ToArray();
         }
 
-        public Address[] GetSigners(long number)
+        public Address[] GetSigners(ulong number)
         {
             BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
@@ -107,9 +108,9 @@ namespace Nethermind.Consensus.Clique
         public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash) => ResultWrapper<bool>.Success(ProduceBlock(parentHash));
 
         public ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals() =>
-            ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
+            ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(_cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
 
-        public ResultWrapper<Snapshot> clique_getSnapshot(long? number) => ResultWrapper<Snapshot>.Success(GetSnapshot(number));
+        public ResultWrapper<Snapshot> clique_getSnapshot(ulong? number) => ResultWrapper<Snapshot>.Success(GetSnapshot(number));
 
         public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash) => ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
 
@@ -117,7 +118,7 @@ namespace Nethermind.Consensus.Clique
 
         public ResultWrapper<Address[]> clique_getSignersAtHash(Hash256 hash) => ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
 
-        public ResultWrapper<Address[]> clique_getSignersAtNumber(long number) => ResultWrapper<Address[]>.Success(GetSigners(number).ToArray());
+        public ResultWrapper<Address[]> clique_getSignersAtNumber(ulong number) => ResultWrapper<Address[]>.Success(GetSigners(number).ToArray());
 
         public ResultWrapper<string[]> clique_getSignersAnnotated() => ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
 

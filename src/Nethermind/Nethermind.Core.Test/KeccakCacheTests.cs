@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -29,7 +28,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < spins; i++)
             {
                 ValueHash256 actual = KeccakCache.Compute(bytes);
-                actual.Equals(expected).Should().BeTrue();
+                Assert.That(actual.Equals(expected), Is.True);
             }
         }
 
@@ -37,14 +36,14 @@ namespace Nethermind.Core.Test
         public void Empty()
         {
             ReadOnlySpan<byte> span = [];
-            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
         }
 
         [Test]
         public void Very_long()
         {
             ReadOnlySpan<byte> span = new byte[192];
-            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
         }
 
         private string[] GetBucketCollisions()
@@ -92,8 +91,11 @@ namespace Nethermind.Core.Test
             for (int i = 1; i < collisions; i++)
             {
                 byte[] input = array[i];
-                bucket.Should().Be(KeccakCache.GetBucket(input));
-                KeccakCache.Compute(input).Should().Be(values[i]);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(bucket, Is.EqualTo(KeccakCache.GetBucket(input)));
+                    Assert.That(KeccakCache.Compute(input), Is.EqualTo(values[i]));
+                }
             }
 
             Parallel.ForEach(array, (a, state, index) =>
@@ -102,7 +104,7 @@ namespace Nethermind.Core.Test
 
                 for (int i = 0; i < 100_000; i++)
                 {
-                    KeccakCache.Compute(a).Should().Be(v);
+                    Assert.That(KeccakCache.Compute(a), Is.EqualTo(v));
                 }
             });
         }
@@ -114,7 +116,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < (int)KeccakCache.Count; i++)
             {
                 BinaryPrimitives.WriteInt32LittleEndian(span, i);
-                KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+                Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
             }
         }
 
@@ -130,10 +132,13 @@ namespace Nethermind.Core.Test
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
-                actual.Should().Be(expected);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(expected));
 
-                // Second call should hit cache
-                KeccakCache.Compute(bytes).Should().Be(expected);
+                    // Second call should hit cache
+                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                }
             }
         }
 
@@ -149,10 +154,13 @@ namespace Nethermind.Core.Test
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
-                actual.Should().Be(expected);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(expected));
 
-                // Second call should hit cache
-                KeccakCache.Compute(bytes).Should().Be(expected);
+                    // Second call should hit cache
+                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                }
             }
         }
 
@@ -191,7 +199,7 @@ namespace Nethermind.Core.Test
                 int idx = i % 4;
                 byte[] input = collisions[idx];
                 ValueHash256 result = KeccakCache.Compute(input);
-                result.Should().Be(expectedValues[idx], $"iteration {i}, index {idx}");
+                Assert.That(result, Is.EqualTo(expectedValues[idx]), $"iteration {i}, index {idx}");
             });
         }
     }

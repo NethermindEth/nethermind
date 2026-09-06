@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -18,12 +17,12 @@ namespace Nethermind.KeyStore.Test;
 
 public class KeyStorePasswordProviderTests
 {
-    private static readonly List<(string Name, string Content)> _files = new()
-    {
+    private static readonly List<(string Name, string Content)> _files =
+    [
         ("TestingPasswordProviderFileF1", "PF1"),
         ("TestingPasswordProviderFileF2", "P    F2"),
         ("TestingPasswordProviderFileF3", "   P    F3    ")
-    };
+    ];
 
     private string TestDir => TestContext.CurrentContext.WorkDirectory;
 
@@ -63,7 +62,7 @@ public class KeyStorePasswordProviderTests
                 TestName = "A B both from same file",
                 UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                 Passwords = new[] { "A", "B" },
-                PasswordFiles = new List<string> { _files[0].Name },
+                PasswordFiles = [_files[0].Name],
                 ExpectedPasswords = new[] { _files[0].Content.Trim(), _files[0].Content.Trim() },
                 BlockAuthorAccount = TestItem.AddressA,
                 ExpectedBlockAuthorAccountPassword = _files[0].Content.Trim()
@@ -74,7 +73,7 @@ public class KeyStorePasswordProviderTests
                 TestName = "A B two different files",
                 UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                 Passwords = new[] { "A", "B" },
-                PasswordFiles = new List<string> { _files[0].Name, _files[1].Name },
+                PasswordFiles = [_files[0].Name, _files[1].Name],
                 ExpectedPasswords = new[] { _files[0].Content.Trim(), _files[1].Content.Trim() },
                 BlockAuthorAccount = TestItem.AddressB,
                 ExpectedBlockAuthorAccountPassword = _files[1].Content.Trim()
@@ -95,7 +94,7 @@ public class KeyStorePasswordProviderTests
                 TestName = "A B from same file but file needs to be trimmed",
                 UnlockAccounts = new[] { TestItem.AddressA },
                 Passwords = new[] { "A", "B" },
-                PasswordFiles = new List<string> { _files[2].Name },
+                PasswordFiles = [_files[2].Name],
                 ExpectedPasswords = new[] { _files[2].Content.Trim() },
                 BlockAuthorAccount = TestItem.AddressA,
                 ExpectedBlockAuthorAccountPassword = _files[2].Content.Trim()
@@ -132,7 +131,7 @@ public class KeyStorePasswordProviderTests
         KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
         SecureString blockAuthorPassword = passwordProvider.GetPassword(new Address(Bytes.FromHexString(keyStoreConfig.BlockAuthorAccount)));
         Assert.That(blockAuthorPassword.IsReadOnly(), Is.True);
-        blockAuthorPassword.Unsecure().Should().Be(test.ExpectedBlockAuthorAccountPassword, test.TestName);
+        Assert.That(blockAuthorPassword.Unsecure(), Is.EqualTo(test.ExpectedBlockAuthorAccountPassword), test.TestName);
     }
 }
 
@@ -140,7 +139,7 @@ public class KeyStorePasswordProviderTest
 {
     public string TestName { get; set; } = string.Empty;
     public string[] Passwords { get; set; } = [];
-    public List<string> PasswordFiles { get; set; } = new List<string>();
+    public List<string> PasswordFiles { get; set; } = [];
     public string[] ExpectedPasswords { get; set; } = [];
     public Address[] UnlockAccounts { get; set; } = [];
     public Address BlockAuthorAccount { get; set; }

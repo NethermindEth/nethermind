@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
@@ -22,8 +24,14 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
+        // The window is measured from the last pong received, so a session is disconnected once no pong has
+        // arrived for this many ping intervals. A ping only goes out every other tick - LastPingUtc is stamped
+        // after the tick that sent it, so the guard below fails on the next one - which makes the effective ping
+        // period two intervals. Three missed pongs therefore need a window of six intervals.
+        private const int MissedPongIntervalsBeforeDisconnect = 6;
+
         private readonly TimeSpan _pingInterval;
-        private readonly List<Task<bool>> _pingTasks = new();
+        private readonly List<Task<bool>> _pingTasks = [];
 
         private CancellationTokenSource? _cancellationTokenSource;
 
@@ -55,7 +63,7 @@ namespace Nethermind.Network
         }
 
         public void RemoveSession(ISession session) =>
-            _sessions.TryRemove(session.SessionId, out session);
+            _sessions.TryRemove(session.SessionId, out _);
 
         private async Task SendPingMessagesAsync()
         {
@@ -125,7 +133,12 @@ namespace Nethermind.Network
                 {
                     if (!session.IsClosing)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                        if (_logger.IsTrace) TraceNoPongReceived(pingTime, session);
+                        if (pingTime - session.LastPongUtc > MissedPongIntervalsBeforeDisconnect * _pingInterval)
+                        {
+                            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "no pong received");
+                        }
+
                         return false;
                     }
 
@@ -137,6 +150,10 @@ namespace Nethermind.Network
             }
 
             return true;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceNoPongReceived(DateTime pingSentAt, ISession monitoredSession) =>
+                _logger.Trace($"No pong received in response to the {pingSentAt:T} ping at {monitoredSession.Node:c} | last pong time {monitoredSession.LastPongUtc:T}");
         }
 
         private void StartPingTimer()

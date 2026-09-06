@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -12,6 +11,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
@@ -26,11 +26,11 @@ public class DisposableScopeOverridableEnvTests
     {
         using TestContext ctx = new();
 
-        ctx.ChildComponents.WorldState.Should().NotBe(ctx.WorldStateManager.GlobalWorldState);
-        ctx.ChildComponents.StateReader.Should().NotBe(ctx.WorldStateManager.GlobalStateReader);
-        ctx.ChildComponents.CodeInfoRepository.Should().BeAssignableTo<OverridableCodeInfoRepository>();
-        ctx.ChildComponents.TransactionProcessor.Should().BeAssignableTo<TestTransactionProcessor>();
-        ((TestTransactionProcessor)ctx.ChildComponents.TransactionProcessor).WorldState.Should().Be(ctx.ChildComponents.WorldState);
+        Assert.That(ctx.ChildComponents.WorldState, Is.Not.EqualTo(ctx.WorldStateManager.GlobalWorldState));
+        Assert.That(ctx.ChildComponents.StateReader, Is.Not.EqualTo(ctx.WorldStateManager.GlobalStateReader));
+        Assert.That(ctx.ChildComponents.CodeInfoRepository, Is.AssignableTo<OverridableCodeInfoRepository>());
+        Assert.That(ctx.ChildComponents.TransactionProcessor, Is.AssignableTo<TestTransactionProcessor>());
+        Assert.That(((TestTransactionProcessor)ctx.ChildComponents.TransactionProcessor).WorldState, Is.EqualTo(ctx.ChildComponents.WorldState));
     }
 
     [Test]
@@ -45,8 +45,8 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { Balance = 123 } }
             });
 
-        ctx.ChildComponents.WorldState.StateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        scope.Component.WorldState.GetBalance(TestItem.AddressA).Should().Be(123);
+        Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+        Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
     }
 
     [Test]
@@ -61,8 +61,7 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { MovePrecompileToAddress = TestItem.AddressB } }
             });
 
-        invalidOverride.Should().Throw<ArgumentException>()
-            .WithMessage($"Account {TestItem.AddressA} is not a precompile");
+        Assert.That(invalidOverride, Throws.TypeOf<ArgumentException>().With.Message.Contains($"Account {TestItem.AddressA} is not a precompile"));
 
         using Scope<Components> scope = ctx.Env.BuildAndOverride(
             Build.A.BlockHeader.TestObject,
@@ -71,7 +70,7 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { Balance = 456 } }
             });
 
-        scope.Component.WorldState.GetBalance(TestItem.AddressA).Should().Be(456);
+        Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)456));
     }
 
     private sealed class TestContext : IDisposable

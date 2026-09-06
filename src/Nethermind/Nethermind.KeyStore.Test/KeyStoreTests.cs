@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -50,6 +49,49 @@ public class KeyStoreTests
             Serializer = new EthereumJsonSerializer();
             CryptoRandom = new CryptoRandom();
             Store = new FileKeyStore(KeyStoreConfig, Serializer, new AesEncrypter(KeyStoreConfig, logger), CryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(KeyStoreConfig));
+        }
+    }
+
+    [Test]
+    public void Verify_rejects_null_json()
+    {
+        TestContext test = new();
+
+        (KeyStoreItem keyData, Result result) = test.Store.Verify("null");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(keyData, Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetKeyData_returns_failure_for_missing_key()
+    {
+        TestContext test = new();
+
+        (KeyStoreItem keyData, Result result) = test.Store.GetKeyData(Address.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(keyData, Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetKeyAddresses_returns_empty_collection_on_failure()
+    {
+        TestContext test = new();
+        test.KeyStoreConfig.KeyStoreDirectory = "\0";
+
+        (IReadOnlyCollection<Address> addresses, Result result) = test.Store.GetKeyAddresses();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(addresses, Is.Empty);
         }
     }
 
@@ -234,7 +276,7 @@ public class KeyStoreTests
         byte[] bytes = File.ReadAllBytes(file);
         test.Store.DeleteKey(key.Address);
         string bytesHex = bytes.ToHexString();
-        bytesHex.Should().NotStartWith(bomBytesHex);
-        bytesHex.Should().StartWith(validBytesHex);
+        Assert.That(bytesHex, Does.Not.StartWith(bomBytesHex));
+        Assert.That(bytesHex, Does.StartWith(validBytesHex));
     }
 }

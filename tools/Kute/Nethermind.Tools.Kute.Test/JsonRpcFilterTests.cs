@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using NUnit.Framework;
 
@@ -44,7 +43,7 @@ public class JsonRpcFilterTests
 
         foreach (string methodName in methodsNames)
         {
-            filter.ShouldSubmit(methodName).Should().BeTrue();
+            Assert.That(filter.ShouldSubmit(methodName), Is.True);
         }
     }
 
@@ -78,7 +77,7 @@ public class JsonRpcFilterTests
 
         foreach (string methodName in methodsNames)
         {
-            filter.ShouldSubmit(methodName).Should().BeFalse();
+            Assert.That(filter.ShouldSubmit(methodName), Is.False);
         }
     }
 
@@ -116,9 +115,9 @@ public class JsonRpcFilterTests
 
         for (int i = 0; i < count; i++)
         {
-            filter.ShouldSubmit(methodName).Should().BeTrue();
+            Assert.That(filter.ShouldSubmit(methodName), Is.True);
         }
-        filter.ShouldIgnore(methodName).Should().BeTrue();
+        Assert.That(filter.ShouldIgnore(methodName), Is.True);
     }
 
     private static IJsonRpcMethodFilter CreateFilter(IEnumerable<string> patterns) =>

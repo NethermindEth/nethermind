@@ -17,7 +17,7 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer();
 
         string result = serializer.Serialize(item);
-        T deserialized = serializer.Deserialize<T>(result);
+        T deserialized = serializer.Deserialize<T>(result)!;
 
         if (equalityComparer is null)
         {
@@ -35,9 +35,9 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer();
 
         string result = serializer.Serialize(dictionary);
-        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
+        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result)!;
 
-        Assert.That(deserialized, Is.EquivalentTo(dictionary));
+        Assert.That(deserialized, Is.EqualTo(dictionary));
     }
 
     protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null) => TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
@@ -50,7 +50,7 @@ public class SerializationTestBase
     {
         IJsonSerializer serializer = BuildSerializer(converters);
 
-        T deserialized = serializer.Deserialize<T>(json);
+        T deserialized = serializer.Deserialize<T>(json)!;
         string result = serializer.Serialize(deserialized);
         Assert.That(result, Is.EqualTo(json));
     }

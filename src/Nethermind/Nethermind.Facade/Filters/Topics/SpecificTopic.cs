@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public class SpecificTopic(Hash256 topic) : TopicExpression
     {

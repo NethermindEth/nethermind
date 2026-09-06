@@ -11,6 +11,7 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
     public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Amsterdam";
+        spec.IsEip2780Enabled = true;
         spec.IsEip7976Enabled = true;
         spec.IsEip7981Enabled = true;
         spec.IsEip7708Enabled = true;
@@ -21,6 +22,14 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         spec.IsEip8024Enabled = true;
         spec.IsEip8037Enabled = true;
+        spec.IsEip8038Enabled = true;
+        spec.IsEip8246Enabled = true;
+        spec.IsEip8282Enabled = true;
+        spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V5;
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V6;
+        spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V4;
+        spec.EngineApiPayloadBodiesByHashVersion = EngineApiVersions.PayloadBodiesByHash.V2;
+        spec.EngineApiPayloadBodiesByRangeVersion = EngineApiVersions.PayloadBodiesByRange.V2;
     }
 
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };

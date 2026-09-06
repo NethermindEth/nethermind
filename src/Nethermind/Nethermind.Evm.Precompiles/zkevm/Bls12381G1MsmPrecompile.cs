@@ -24,7 +24,6 @@ public partial class Bls12381G1MsmPrecompile
         return pairCount == 1 ? Mul(inputData.Span) : Msm(inputData.Span, pairCount);
     }
 
-    [SkipLocalsInit]
     private static Result<byte[]> Msm(ReadOnlySpan<byte> input, int pairCount)
     {
         int decodedLen = pairCount * (Eip2537.LenG1Trimmed + Eip2537.LenFr);
@@ -63,7 +62,6 @@ public partial class Bls12381G1MsmPrecompile
         return HandleResult(output, status);
     }
 
-    [SkipLocalsInit]
     private static Result<byte[]> Mul(ReadOnlySpan<byte> input)
     {
         Span<byte> decoded = stackalloc byte[Eip2537.LenG1Trimmed + Eip2537.LenFr];

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
@@ -8,7 +9,7 @@ namespace Nethermind.TxPool;
 
 public interface IBlobTxStorage : ITxStorage
 {
-    bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions);
-    void AddBlobTransactionsFromBlock(long blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions);
-    void DeleteBlobTransactionsFromBlock(long blockNumber);
+    bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions);
+    void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions);
+    void DeleteBlobTransactionsFromBlock(ulong blockNumber);
 }

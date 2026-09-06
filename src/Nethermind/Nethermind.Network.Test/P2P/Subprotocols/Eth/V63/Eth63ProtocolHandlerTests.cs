@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Setup()
         {
             _ctx = new();
-            _disposables = new();
+            _disposables = [];
             _ctx.Session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         }
 
@@ -180,7 +180,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         Substitute.For<IGossipPolicy>(),
                         LimboLogs.Instance);
 
-                    StatusMessage statusMessage = new();
+                    StatusMessage statusMessage = new()
+                    {
+                        BestHash = Keccak.Zero,
+                        GenesisHash = Keccak.Zero
+                    };
                     Packet statusPacket =
                         new("eth", Eth62MessageCode.Status, _statusMessageSerializer.Serialize(statusMessage));
                     _protocolHandler.HandleMessage(statusPacket);

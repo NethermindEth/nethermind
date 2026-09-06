@@ -3,7 +3,6 @@
 
 using System;
 using Autofac.Features.AttributeFilters;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -40,8 +39,8 @@ public class LocalDbContext(
 
     public void AssertFlushed()
     {
-        Db.WasFlushed.Should().BeTrue();
-        CodeDb.WasFlushed.Should().BeTrue();
+        Assert.That(Db.WasFlushed, Is.True);
+        Assert.That(CodeDb.WasFlushed, Is.True);
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)

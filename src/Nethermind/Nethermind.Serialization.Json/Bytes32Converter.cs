@@ -27,6 +27,11 @@ namespace Nethermind.Serialization.Json
             JsonSerializerOptions options)
         {
             ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            return ReadHexValue(hex);
+        }
+
+        private static byte[] ReadHexValue(ReadOnlySpan<byte> hex)
+        {
             if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == HexPrefix)
             {
                 hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(hex), 2), hex.Length - 2);
@@ -39,15 +44,15 @@ namespace Nethermind.Serialization.Json
 
             if (hex.Length < 64)
             {
-                // Use Vector512<byte> as 64-byte buffer instead of stackalloc (avoids GS cookie)
-                // Fill with '0' (0x30) using single vector broadcast + store
-                Vector512<byte> hex32Storage = Vector512.Create((byte)'0');
-                ref byte hex32Ref = ref Unsafe.As<Vector512<byte>, byte>(ref hex32Storage);
-                hex.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref hex32Ref, 64 - hex.Length), hex.Length));
-                return Bytes.FromUtf8HexString(MemoryMarshal.CreateReadOnlySpan(ref hex32Ref, 64));
+                byte[] paddedResult = new byte[32];
+                int bytesWritten = (hex.Length >> 1) + (hex.Length & 1);
+                Bytes.FromUtf8HexString(hex, paddedResult.AsSpan(32 - bytesWritten));
+                return paddedResult;
             }
 
-            return Bytes.FromUtf8HexString(hex);
+            byte[] exactResult = GC.AllocateUninitializedArray<byte>(32);
+            Bytes.FromUtf8HexString(hex, exactResult);
+            return exactResult;
         }
 
         [DoesNotReturn, StackTraceHidden]

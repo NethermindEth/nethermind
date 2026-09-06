@@ -12,9 +12,9 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class ByTotalDifficultyPeerAllocationStrategy(long? minBlocksAhead) : IPeerAllocationStrategy
+    public class ByTotalDifficultyPeerAllocationStrategy(ulong? minBlocksAhead) : IPeerAllocationStrategy
     {
-        private readonly long? _minBlocksAhead = minBlocksAhead;
+        private readonly ulong? _minBlocksAhead = minBlocksAhead;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_minBlocksAhead is not null)
                 {
-                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) + _minBlocksAhead)
+                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0UL) + _minBlocksAhead.Value)
                     {
                         // we need to be able to download some blocks ahead
                         continue;
@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.Blocks
                 return fastestPeer.Info;
             }
 
-            const int minBlocksDiff = 16;
+            const ulong minBlocksDiff = 16;
 
             averageSpeed /= peersCount;
             if (bestDiffPeer.Info.TotalDifficulty is { } bestPeerTD) // Try to compare by TD if present
@@ -118,11 +118,11 @@ namespace Nethermind.Synchronization.Blocks
             }
             else // by last block otherwise
             {
-                long bestPeerNumber = bestDiffPeer.Info.HeadNumber;
-                long localNumber = blockTree.Head?.Number ?? 0;
-                long blockDifference = bestPeerNumber > localNumber
+                ulong bestPeerNumber = bestDiffPeer.Info.HeadNumber;
+                ulong localNumber = blockTree.Head?.Number ?? 0UL;
+                ulong blockDifference = bestPeerNumber > localNumber
                     ? bestPeerNumber - localNumber
-                    : 0;
+                    : 0UL;
 
                 // at least 16 blocks
                 if (blockDifference > 0

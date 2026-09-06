@@ -7,6 +7,7 @@ ARG TARGETARCH
 
 COPY src/Nethermind src/Nethermind
 COPY tools/EngineApiProxy tools/EngineApiProxy
+COPY tools/Directory.Build.props tools/Directory.Build.props
 
 COPY Directory.*.props .
 COPY Directory.Build.targets .
@@ -27,4 +28,4 @@ EXPOSE 8551
 
 COPY --from=build /publish .
 
-ENTRYPOINT ["./EngineApiProxy"] 
+ENTRYPOINT ["./EngineApiProxy"]

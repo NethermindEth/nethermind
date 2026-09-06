@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -17,9 +18,12 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.Api;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 
@@ -34,6 +38,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
@@ -46,15 +51,31 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
+                ctx.Resolve<IPersistedSnapshotLoader>(),
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
+            {
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                return new ArenaManager(Path.Combine(basePath, "arena"), cfg, logManager);
+            })
+            .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
+            {
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                return new BlobArenaManager(
+                    Path.Combine(basePath, "blob"),
+                    cfg.ArenaFileSizeBytes);
+            })
+            .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
@@ -63,6 +84,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Sync components
             .AddSingleton<FlatSnapTrieFactory>()
+            .AddSingleton<TrieReassembler>()
+            .AddSingleton<FlatBalHealing>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
@@ -71,11 +94,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
+                .Resolve<IDbFactory>()
+                .CreateDb(new DbSettings(
+                    nameof(DbNames.PersistedSnapshotCatalog),
+                    Path.Combine("persistedSnapshot", "catalog"))))
+            .AddSingleton<SnapshotCatalog>()
+            .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
-            .AddSingleton<PreimageRocksdbPersistence>()
             .AddDatabase(DbNames.Preimage)
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
@@ -84,7 +113,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 {
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
-                    FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
+                    FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
@@ -94,9 +124,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     persistence = new PreimageRecordingPersistence(persistence, preimageDb);
                 }
 
-                return new CachedReaderPersistence(persistence, exitSource, logManager);
+                IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
+                return new CarryForwardCachingPersistence(cachedReader);
             })
             ;
+
+        if (!flatDbConfig.EnableLongFinality)
+        {
+            builder
+                .AddSingleton<ISnapshotCatalog>(NullSnapshotCatalog.Instance)
+                .AddSingleton<IPersistedSnapshotLoader>(NullPersistedSnapshotLoader.Instance)
+                .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
+        }
 
         if (flatDbConfig.ImportFromPruningTrieState)
         {
@@ -104,12 +143,56 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is Rolling but FlatDb.HistoryRetentionBlocks is 0, so the window has no " +
+                "size. Set the window size, or set FlatDb.HistoryRetention=None to retain history unbounded.", -1);
+        }
+
+        // The number alone used to select the windowed shape. Refusing here rather than inferring the mode keeps a
+        // configuration written against that behaviour from silently becoming an unbounded archive.
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionBlocks is set to {flatDbConfig.HistoryRetentionBlocks} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}; the block count is the size of a " +
+                "rolling window only. Set FlatDb.HistoryRetention=Rolling to keep the window, or unset the block count.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is SinceBlock but FlatDb.HistoryRetentionSinceBlock is 0, which is genesis and " +
+                "so the same as None. Set the first block to keep, or set FlatDb.HistoryRetention=None.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
+                "to start history there, or unset the block.", -1);
+        }
+
+        if (flatDbConfig.HistoryEnabled)
+        {
+            builder.AddModule(new FlatHistoryModule());
+        }
+        else if (flatDbConfig.IsHistoryWindowed()
+            || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
+            || flatDbConfig.HistoryVerifyEveryBlock)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
+                "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
+                "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
+        }
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
-
-        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disabled");
     }
 }

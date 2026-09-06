@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastSync
@@ -16,13 +17,19 @@ namespace Nethermind.Synchronization.FastSync
         private BlockHeader? _bestHeader;
         private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncPivot>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public long Diff => (blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
+        public ulong Diff => (blockTree.BestSuggestedHeader?.Number ?? 0UL).SaturatingSub(_bestHeader?.Number ?? 0UL);
 
         public BlockHeader? GetPivotHeader()
         {
-            if (_bestHeader is null || (blockTree.BestSuggestedHeader?.Number + syncConfig.StateMinDistanceFromHead) - _bestHeader.Number >= syncConfig.StateMaxDistanceFromHead)
+            ulong target = (blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead;
+            ulong best = _bestHeader?.Number ?? 0UL;
+            if (_bestHeader is null || (target > best && target - best >= syncConfig.StateMaxDistanceFromHead))
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
+            }
+            else if (!blockTree.IsMainChain(_bestHeader))
+            {
+                TrySetNewBestHeader("pivot reorged out");
             }
 
             return _bestHeader;
@@ -30,7 +37,8 @@ namespace Nethermind.Synchronization.FastSync
 
         public void UpdateHeaderForcefully()
         {
-            if (_bestHeader is null || (blockTree.BestSuggestedHeader?.Number + syncConfig.StateMinDistanceFromHead) > _bestHeader.Number)
+            ulong target = (blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead;
+            if (_bestHeader is null || target > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }
@@ -39,22 +47,29 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader; // Note: Best suggested header is always `syncConfig.StateMinDistanceFromHead`. behind from actual head.
-            long targetBlockNumber = (bestSuggestedHeader?.Number ?? 0);
-            targetBlockNumber = Math.Max(targetBlockNumber, 0);
+            ulong targetBlockNumber = bestSuggestedHeader?.Number ?? 0UL;
             // The new pivot must be at least one block after the sync pivot as the forward downloader does not
             // download the block at the sync pivot which may cause state not found error if state was downloaded
             // at exactly sync pivot.
-            targetBlockNumber = Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1);
+            targetBlockNumber = syncConfig.StaticSnapPivot
+                ? blockTree.SyncPivot.BlockNumber
+                : Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1UL);
 
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
-            if (bestHeader is not null)
+
+            if (bestHeader is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
-                _bestHeader = bestHeader;
+                if (syncConfig.StaticSnapPivot && _logger.IsDebug) _logger.Debug($"Snap - {msg} - Pivot header {targetBlockNumber} not yet available in the block tree; waiting for fast headers.");
+                return;
             }
+
+            if (bestHeader.Hash == _bestHeader?.Hash) return;
+
+            if (_logger.IsDebug) _logger.Debug($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
+            _bestHeader = bestHeader;
         }
 
-        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
 
         public bool CanFinalize(BlockHeader pivot) => true;
     }

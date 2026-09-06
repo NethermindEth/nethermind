@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public static byte Version => EthVersions.Eth66;
         public override byte ProtocolVersion => Version;
 
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -68,56 +68,56 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             {
                 case Eth66MessageCode.GetBlockHeaders:
                     HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
-                    break;
+                    return true;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
-                    break;
+                    return true;
                 case Eth66MessageCode.GetBlockBodies:
                     HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
-                    break;
+                    return true;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
-                    break;
+                    return true;
                 case Eth66MessageCode.GetPooledTransactions:
                     HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
-                    break;
+                    return true;
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        Handle(pooledTxMsg.EthMessage);
+                        HandlePooledTransactions(pooledTxMsg.EthMessage);
                     }
                     else
                     {
+                        IgnorePooledTransactionResponse();
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
                         ReportIn(ignored, size);
                     }
 
-                    break;
+                    return true;
                 case Eth66MessageCode.GetReceipts:
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
-                    break;
+                    return true;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
-                    break;
+                    return true;
                 case Eth66MessageCode.GetNodeData:
                     HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
-                    break;
+                    return true;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
-                    break;
+                    return true;
                 default:
-                    base.HandleMessageCore(message);
-                    break;
+                    return base.HandleMessageCore(message);
             }
         }
 
@@ -262,8 +262,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry, registerForRetry: false);
         }
+
+        public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes) =>
+            HandleMessages<GetPooledTransactionsMessage>(txHashes);
 
         private readonly struct GetBlockHeadersHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>
         {

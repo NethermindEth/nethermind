@@ -8,7 +8,7 @@ public readonly record struct RemoteEraEntry(string Filename, byte[] Sha256Hash)
 public interface IRemoteEraClient
 {
     /// <summary>Fetches and parses the remote checksum manifest into a map of epoch → entry.</summary>
-    Task<IReadOnlyDictionary<int, RemoteEraEntry>> FetchManifestAsync(CancellationToken cancellation = default);
+    Task<IReadOnlyDictionary<uint, RemoteEraEntry>> FetchManifestAsync(CancellationToken cancellation = default);
 
     /// <summary>
     /// Downloads a single erae file to <paramref name="destinationPath"/>.

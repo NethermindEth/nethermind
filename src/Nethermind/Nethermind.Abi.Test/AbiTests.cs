@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -541,7 +540,7 @@ public class AbiTests
             new Address("0x4173c8cE71a385e325357d8d79d6B7bc1c708F40")
         ];
 
-        objects.Should().BeEquivalentTo(expectedObjects);
+        Assert.That(objects, Is.EqualTo(expectedObjects).UsingPropertiesComparer());
     }
 
     [Test]
@@ -549,15 +548,15 @@ public class AbiTests
     {
         AbiArray abi = new(AbiType.UInt256);
         UInt256[] array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
-        List<UInt256> list = new() { 1, 2, 3, UInt256.MaxValue };
+        List<UInt256> list = [1, 2, 3, UInt256.MaxValue];
         using ArrayPoolList<UInt256> pool = new(4);
 
         pool.AddRange(array);
 
         byte[] encoded = abi.Encode(array, false);
 
-        abi.Encode(list, false).Should().BeEquivalentTo(encoded);
-        abi.Encode(pool, false).Should().BeEquivalentTo(encoded);
+        Assert.That(abi.Encode(list, false), Is.EqualTo(encoded));
+        Assert.That(abi.Encode(pool, false), Is.EqualTo(encoded));
     }
 
     [Test]
@@ -578,6 +577,192 @@ public class AbiTests
         data[191] = 200; // Length = 200 (oversized for available data).
 
         Assert.Throws<AbiException>(() => new AbiEncoder().Decode(AbiEncodingStyle.None, abi, data));
+    }
+
+    [TestCaseSource(nameof(DynamicBytesAllocationCases))]
+    public void Should_reject_dynamic_bytes_length_before_allocating(
+        AbiEncodingStyle encodingStyle,
+        AbiType type,
+        UInt256 declaredLength,
+        int allocationLimit)
+    {
+        AbiSignature signature = new("f", type);
+        byte[] data = DynamicValueWithMissingPayload(declaredLength);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(encodingStyle, signature, data));
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.That(allocatedBytes, Is.LessThan(allocationLimit));
+    }
+
+    [TestCaseSource(nameof(DynamicArrayAllocationCases))]
+    public void Should_reject_dynamic_array_length_before_allocating(
+        AbiEncodingStyle encodingStyle,
+        AbiType elementType,
+        UInt256 declaredLength,
+        int trailingDataLength,
+        int allocationLimit)
+    {
+        AbiSignature signature = new("f", new AbiArray(elementType));
+        byte[] data = DynamicValueWithMissingPayload(declaredLength, trailingDataLength);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(encodingStyle, signature, data));
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.That(allocatedBytes, Is.LessThan(allocationLimit));
+    }
+
+    [Test]
+    public void Should_bound_cumulative_nested_array_allocations()
+    {
+        const int outerLength = 128;
+        const int innerLength = 128;
+        AbiSignature signature = new("f", new AbiArray(new AbiArray(AbiType.UInt256)));
+        byte[] data = NestedArrayWithAliasedOffsets(outerLength, innerLength);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, signature, data));
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.That(allocatedBytes, Is.LessThan(1_000_000));
+    }
+
+    [Test]
+    public void Should_reject_fixed_array_length_before_allocating()
+    {
+        AbiFixedLengthArray type = new(AbiType.Bool, 10_000_000);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<AbiException>(() => type.Decode(new byte[32], 0, false));
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.That(allocatedBytes, Is.LessThan(1_000_000));
+    }
+
+    [Test]
+    public void Should_wrap_oversized_composite_head()
+    {
+        AbiSignature signature = new("f", new AbiFixedLengthArray(AbiType.UInt256, int.MaxValue));
+
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, signature, []));
+    }
+
+    [TestCase(AbiEncodingStyle.None)]
+    [TestCase(AbiEncodingStyle.Packed)]
+    public void Empty_tuple_roundtrips(AbiEncodingStyle encodingStyle)
+    {
+        AbiSignature signature = new("f", new AbiTuple());
+        ValueTuple value = new();
+
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, value);
+        object[] decoded = _abiEncoder.Decode(encodingStyle, signature, encoded);
+
+        Assert.That(decoded[0], Is.EqualTo(value));
+    }
+
+    [TestCase(AbiEncodingStyle.None, false, 16_384)]
+    [TestCase(AbiEncodingStyle.None, true, 2)]
+    [TestCase(AbiEncodingStyle.Packed, false, 65)]
+    [TestCase(AbiEncodingStyle.Packed, true, 2)]
+    public void Empty_tuple_array_roundtrips(AbiEncodingStyle encodingStyle, bool fixedLength, int length)
+    {
+        AbiTuple elementType = new();
+        AbiType arrayType = fixedLength ? new AbiFixedLengthArray(elementType, length) : new AbiArray(elementType);
+        ValueTuple[] value = new ValueTuple[length];
+        AbiSignature signature = new("f", arrayType);
+
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, value);
+        object[] decoded = _abiEncoder.Decode(encodingStyle, signature, encoded);
+
+        Assert.That(decoded[0], Is.EqualTo(value));
+    }
+
+    [TestCase(AbiEncodingStyle.None)]
+    [TestCase(AbiEncodingStyle.IncludeSignature)]
+    public void Should_wrap_out_of_range_decode_error(AbiEncodingStyle encodingStyle)
+    {
+        AbiSignature signature = new("f", AbiType.Bool);
+
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(encodingStyle, signature, []));
+    }
+
+    [Test]
+    public void Should_reject_dynamic_bytes_length_one_exceeding_data()
+    {
+        // Length 1 is the case that would reach `ByteArrayExtensions.Slice`'s one-byte fast path and
+        // surface as `IndexOutOfRangeException` if the bounds check were ever dropped.
+        AbiSignature signature = new("f", AbiType.DynamicBytes);
+
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, signature, DynamicValueWithMissingPayload(1)));
+    }
+
+    private static byte[] DynamicValueWithMissingPayload(UInt256 declaredLength, int trailingDataLength = 0)
+    {
+        byte[] data = new byte[64 + trailingDataLength];
+        AbiType.UInt256.Encode(32, false).CopyTo(data, 0);
+        AbiType.UInt256.Encode(declaredLength, false).CopyTo(data, 32);
+        return data;
+    }
+
+    private static byte[] NestedArrayWithAliasedOffsets(int outerLength, int innerLength)
+    {
+        int innerDataPosition = 64 + outerLength * 32;
+        byte[] data = new byte[innerDataPosition + 32 + innerLength * 32];
+        AbiType.UInt256.Encode(32, false).CopyTo(data, 0);
+        AbiType.UInt256.Encode(outerLength, false).CopyTo(data, 32);
+        byte[] innerOffset = AbiType.UInt256.Encode(outerLength * 32, false);
+        for (int i = 0; i < outerLength; i++)
+        {
+            innerOffset.CopyTo(data, 64 + i * 32);
+        }
+
+        AbiType.UInt256.Encode(innerLength, false).CopyTo(data, innerDataPosition);
+        return data;
+    }
+
+    private static IEnumerable<TestCaseData> DynamicBytesAllocationCases()
+    {
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.DynamicBytes, (UInt256)1_000_000, 1_000_000)
+            .SetName("Should_reject_dynamic_bytes_length_before_allocating_standard");
+        yield return new TestCaseData(AbiEncodingStyle.Packed, AbiType.DynamicBytes, (UInt256)1_000_000, 1_000_000)
+            .SetName("Should_reject_dynamic_bytes_length_before_allocating_packed");
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.String, (UInt256)1_000_000, 1_000_000)
+            .SetName("Should_reject_dynamic_string_length_before_allocating_standard");
+        yield return new TestCaseData(AbiEncodingStyle.Packed, AbiType.String, (UInt256)1_000_000, 1_000_000)
+            .SetName("Should_reject_dynamic_string_length_before_allocating_packed");
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.DynamicBytes, (UInt256)int.MaxValue, 1_000_000)
+            .SetName("Should_reject_dynamic_bytes_max_int_length_before_allocating");
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.DynamicBytes, UInt256.MaxValue, 1_000_000)
+            .SetName("Should_reject_dynamic_bytes_uint256_max_length_before_allocating");
+    }
+
+    private static IEnumerable<TestCaseData> DynamicArrayAllocationCases()
+    {
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.Bool, (UInt256)1_000_000, 0, 1_000_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_standard_bool");
+        yield return new TestCaseData(AbiEncodingStyle.None, new AbiFixedLengthArray(AbiType.UInt256, 2), (UInt256)10_000, 320_000, 10_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_standard_composite");
+        yield return new TestCaseData(AbiEncodingStyle.Packed, AbiType.UInt256, (UInt256)100_000, 100_000, 100_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_packed_uint256");
+        yield return new TestCaseData(AbiEncodingStyle.Packed, new AbiFixed(8, 1), (UInt256)100_000, 100_000, 100_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_packed_fixed");
+        yield return new TestCaseData(AbiEncodingStyle.Packed, new AbiUFixed(8, 1), (UInt256)100_000, 100_000, 100_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_packed_ufixed");
+        yield return new TestCaseData(AbiEncodingStyle.None, new AbiTuple(), (UInt256)16_385, 0, 1_000_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_empty_tuple");
+        yield return new TestCaseData(
+                AbiEncodingStyle.None,
+                new AbiFixedLengthArray(new AbiTuple(), 16_384),
+                (UInt256)16_384,
+                0,
+                1_000_000)
+            .SetName("Should_bound_nested_zero_width_array_allocations");
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.Bool, (UInt256)int.MaxValue, 0, 1_000_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_max_length");
+        yield return new TestCaseData(AbiEncodingStyle.None, AbiType.Bool, UInt256.MaxValue, 0, 1_000_000)
+            .SetName("Should_reject_dynamic_array_length_before_allocating_uint256_max_length");
     }
 
     private class UserOperationAbi
@@ -670,7 +855,7 @@ public class AbiTests
             new BigInteger[] { 0x456, 0x789 },
             Encoding.ASCII.GetBytes("1234567890"),
             Encoding.ASCII.GetBytes("Hello, world!"));
-        encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
+        Assert.That(encoded.ToHexString(), Is.EqualTo(expectedValue.ToHexString()));
     }
 
     [TestCase("tuple", typeof(AbiTuple), "()")]
@@ -682,17 +867,17 @@ public class AbiTests
     {
         AbiType result = JsonSerializer.Deserialize<AbiType>($"\"{typeName}\"")!;
 
-        result.Should().BeOfType(expectedType);
-        result.Name.Should().Be(expectedName);
+        Assert.That(result, Is.TypeOf(expectedType));
+        Assert.That(result.Name, Is.EqualTo(expectedName));
     }
 
     [Test]
     public void AbiTuple_Name_Reflects_Elements()
     {
         AbiTuple tuple = new(AbiType.UInt8, AbiType.UInt64);
-        tuple.Name.Should().Be("(uint8,uint64)");
+        Assert.That(tuple.Name, Is.EqualTo("(uint8,uint64)"));
 
         AbiArray tupleArray = new(tuple);
-        tupleArray.Name.Should().Be("(uint8,uint64)[]");
+        Assert.That(tupleArray.Name, Is.EqualTo("(uint8,uint64)[]"));
     }
 }

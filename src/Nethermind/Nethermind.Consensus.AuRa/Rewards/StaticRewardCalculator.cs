@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Rewards
 {
-    public class StaticRewardCalculator(IDictionary<long, UInt256>? blockRewards) : IRewardCalculator
+    public class StaticRewardCalculator(IDictionary<ulong, UInt256>? blockRewards) : IRewardCalculator
     {
         private readonly IList<BlockRewardInfo> _blockRewards = CreateBlockRewards(blockRewards);
 
@@ -19,16 +19,16 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };
         }
 
-        private static IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256>? blockRewards)
+        private static IList<BlockRewardInfo> CreateBlockRewards(IDictionary<ulong, UInt256>? blockRewards)
         {
-            List<BlockRewardInfo> blockRewardInfos = new();
+            List<BlockRewardInfo> blockRewardInfos = [];
             if (blockRewards?.Count > 0)
             {
                 if (blockRewards.First().Key > 0)
                 {
                     blockRewardInfos.Add(new BlockRewardInfo(0, 0));
                 }
-                foreach (KeyValuePair<long, UInt256> threshold in blockRewards)
+                foreach (KeyValuePair<ulong, UInt256> threshold in blockRewards)
                 {
                     blockRewardInfos.Add(new BlockRewardInfo(threshold.Key, threshold.Value));
                 }
@@ -40,12 +40,12 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return blockRewardInfos;
         }
 
-        private class BlockRewardInfo(long blockNumber, in UInt256 reward) : IActivatedAt
+        private class BlockRewardInfo(ulong blockNumber, in UInt256 reward) : IActivatedAt
         {
-            public long BlockNumber { get; } = blockNumber;
+            public ulong BlockNumber { get; } = blockNumber;
             public UInt256 Reward { get; } = reward;
 
-            long IActivatedAt<long>.Activation => BlockNumber;
+            ulong IActivatedAt<ulong>.Activation => BlockNumber;
         }
     }
 }

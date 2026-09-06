@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -28,9 +27,9 @@ public class ChainLevelInfoRepositoryTests
             repository.PersistLevel(10, level10);
         }
 
-        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<long>(2, 1, 10));
-        levels[0].Should().BeEquivalentTo(level1);
-        levels[1].Should().BeEquivalentTo(level10);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<ulong>(2, 1UL, 10UL));
+        AssertChainLevelInfo(levels[0], level1);
+        AssertChainLevelInfo(levels[1], level10);
     }
 
     [Test]
@@ -48,15 +47,30 @@ public class ChainLevelInfoRepositoryTests
 
         // Load level to populate cache
         ChainLevelInfo loaded = repository.LoadLevel(1);
-        loaded.Should().BeEquivalentTo(level1);
+        AssertChainLevelInfo(loaded, level1);
 
         // Clear DB but level should still be in cache
         db.Clear();
         loaded = repository.LoadLevel(1);
-        loaded.Should().BeEquivalentTo(level1);
+        AssertChainLevelInfo(loaded, level1);
 
         // Clear cache - level should no longer be retrievable
         (repository as IClearableCache)?.ClearCache();
-        repository.LoadLevel(1).Should().BeNull();
+        Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    private static void AssertChainLevelInfo(ChainLevelInfo actual, ChainLevelInfo expected)
+    {
+        Assert.That(actual, Is.Not.Null);
+        if (actual is null)
+        {
+            return;
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual.HasBlockOnMainChain, Is.EqualTo(expected.HasBlockOnMainChain));
+            Assert.That(actual.BlockInfos, Is.EqualTo(expected.BlockInfos));
+        });
     }
 }

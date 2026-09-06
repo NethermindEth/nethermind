@@ -16,6 +16,7 @@ public interface IBlockAccessListManager
     GeneratedBlockAccessList GeneratedBlockAccessList { get; set; }
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
+    bool BatchReadEnabled { get; }
 
     /// <summary>When set, the manager always builds the constructed GeneratedBlockAccessList
     /// even on the parallel-validation path. BAL recorder must set this before
@@ -23,8 +24,19 @@ public interface IBlockAccessListManager
     bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
+
+    /// <summary>
+    /// Blocks until the BAL read-warming task started by <see cref="PrepareForProcessing"/>
+    /// (if any) completes, then forgets it.
+    /// </summary>
+    /// <remarks>
+    /// Warming is best-effort: cancellation is expected and faults must never fail the block
+    /// — they only mean fewer pre-block cache hits.
+    /// </remarks>
+    void WaitForBalWarmup();
+
     void Setup(Block block);
-    void SpendGas(long gas);
+    void SpendGas(ulong gas);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();
@@ -47,7 +59,6 @@ public interface IBlockAccessListManager
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
-    void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress);
 }
 
 /// <summary>

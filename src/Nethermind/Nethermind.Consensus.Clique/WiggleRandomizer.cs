@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
         private readonly ISnapshotManager _snapshotManager = snapshotManager;
         private readonly int _minimumWiggle = minWiggle;
-        private long _lastWiggleAtNumber;
+        private ulong _lastWiggleAtNumber;
 
         private int _lastWiggle;
 

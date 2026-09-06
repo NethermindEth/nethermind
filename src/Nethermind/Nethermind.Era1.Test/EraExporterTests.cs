@@ -7,20 +7,21 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
 
 public class EraExporterTests
 {
-    [TestCase(1, 0, 1 - 1, 1, 1)]
-    [TestCase(3, 0, 3 - 1, 1, 3)]
-    [TestCase(16, 0, 16 - 1, 16, 1)]
-    [TestCase(16, 0, 0, 16, 1)]
-    [TestCase(32, 0, 32 - 1, 16, 2)]
-    [TestCase(32, 8, 0, 16, 2)]
-    [TestCase(48, 8, 40 - 1, 16, 2)]
-    [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, int start, int end, int size, int expectedNumberOfFiles)
+    [TestCase(1, 0UL, 1UL - 1, 1UL, 1)]
+    [TestCase(3, 0UL, 3UL - 1, 1UL, 3)]
+    [TestCase(16, 0UL, 16UL - 1, 16UL, 1)]
+    [TestCase(16, 0UL, 0UL, 16UL, 1)]
+    [TestCase(32, 0UL, 32UL - 1, 16UL, 2)]
+    [TestCase(32, 8UL, 0UL, 16UL, 2)]
+    [TestCase(48, 8UL, 40UL - 1, 16UL, 2)]
+    [TestCase(64 * 2 + 1, 0UL, 64UL * 2 + 1 - 1, 64UL, 3)]
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, ulong start, ulong end, ulong size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
@@ -56,11 +57,11 @@ public class EraExporterTests
         }
     }
 
-    [TestCase(1, 1)]
-    [TestCase(2, 2)]
-    [TestCase(2, 3)]
-    [TestCase(99, 999)]
-    public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, int to)
+    [TestCase(1, 1UL)]
+    [TestCase(2, 2UL)]
+    [TestCase(2, 3UL)]
+    [TestCase(99, 999UL)]
+    public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, ulong to)
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .Build();
@@ -68,7 +69,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, to), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -83,6 +84,6 @@ public class EraExporterTests
 
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, 1), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
     }
 }

@@ -39,7 +39,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
         private Channel<Func<Task>> SendChannel { get; } = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions { SingleReader = true });
 
-        public virtual void Dispose() => SendChannel.Writer.Complete();
+        public virtual void Dispose() => SendChannel.Writer.TryComplete();
+
+        protected JsonRpcResult CreateSubscriptionMessage<T>(T result, string methodName = SubscriptionMethodName.EthSubscription) => JsonRpcResult.Single(
+                new JsonRpcSubscriptionResponse<T>()
+                {
+                    Params = new JsonRpcSubscriptionResult<T>()
+                    {
+                        Result = result,
+                        Subscription = Id
+                    },
+                    MethodName = methodName
+                }, default);
 
         protected JsonRpcResult CreateSubscriptionMessage(object result, string methodName = SubscriptionMethodName.EthSubscription) => JsonRpcResult.Single(
                 new JsonRpcSubscriptionResponse()
@@ -56,28 +67,31 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
 
-        private void ProcessMessages() => Task.Factory.StartNew(async () =>
+        private void ProcessMessages() => _ = ProcessMessagesAsync();
+
+        private async Task ProcessMessagesAsync()
         {
-            while (await SendChannel.Reader.WaitToReadAsync())
+            try
             {
-                while (SendChannel.Reader.TryRead(out Func<Task> action))
+                while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    try
+                    while (SendChannel.Reader.TryRead(out Func<Task> action))
                     {
-                        await action();
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
+                        try
+                        {
+                            await action();
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
+                        }
                     }
                 }
             }
-        }, TaskCreationOptions.LongRunning).ContinueWith(t =>
-        {
-            if (t.IsFaulted)
+            catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", t.Exception);
+                if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", e);
             }
-        });
+        }
     }
 }

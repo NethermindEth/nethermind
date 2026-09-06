@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -21,10 +20,10 @@ public partial class DebugRpcModuleTests
         Hash256 blockHash = context.Blockchain.BlockTree.Head!.Hash!;
         ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(blockHash);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().HaveCount(2, "the block has exactly two user transactions");
-        result.Data.Should().OnlyHaveUniqueItems("each tx mutates state, producing a distinct post-tx root");
-        result.Data.Should().NotContain(Keccak.Zero);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data, Has.Count.EqualTo(2), "the block has exactly two user transactions");
+        Assert.That(result.Data, Is.Unique, "each tx mutates state, producing a distinct post-tx root");
+        Assert.That(result.Data, Does.Not.Contain(Keccak.Zero));
     }
 
     [Test]
@@ -35,8 +34,8 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(genesisHash);
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
-        result.Result.Error.Should().Contain("genesis");
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+        Assert.That(result.Result.Error, Does.Contain("genesis"));
     }
 }

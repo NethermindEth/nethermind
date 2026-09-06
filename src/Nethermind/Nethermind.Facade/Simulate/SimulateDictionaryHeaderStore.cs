@@ -18,8 +18,8 @@ namespace Nethermind.Facade.Simulate;
 /// <param name="readonlyBaseHeaderStore"></param>
 public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
 {
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
-    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = [];
+    private readonly Dictionary<Hash256AsKey, ulong> _blockNumberDict = [];
 
     public void Insert(BlockHeader header)
     {
@@ -35,7 +35,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         if (_headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {
@@ -60,18 +60,18 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         _blockNumberDict.Remove(blockHash);
     }
 
-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => _blockNumberDict[blockHash] = blockNumber;
+    public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber) => _blockNumberDict[blockHash] = blockNumber;
 
-    public long? GetBlockNumber(Hash256 blockHash) =>
-        _blockNumberDict.TryGetValue(blockHash, out long blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
+    public ulong? GetBlockNumber(Hash256 blockHash) =>
+        _blockNumberDict.TryGetValue(blockHash, out ulong blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
 
-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count)
     {
         BlockHeader? cursor = Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
 
         ArrayPoolList<BlockHeader> result = new(count) { cursor };
-        while (result.Count < count && cursor.ParentHash is not null)
+        while (result.Count < count && cursor.ParentHash is not null && cursor.Number > 0)
         {
             cursor = Get(cursor.ParentHash, shouldCache: false, blockNumber: cursor.Number - 1);
             if (cursor is null) break;
@@ -82,5 +82,5 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         return result;
     }
 
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => Get(blockHash, true, blockNumber);
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null) => Get(blockHash, true, blockNumber);
 }

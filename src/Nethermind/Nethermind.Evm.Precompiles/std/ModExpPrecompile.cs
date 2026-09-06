@@ -28,9 +28,14 @@ public unsafe partial class ModExpPrecompile
             return errorOrEmpty;
         }
 
+        ulong expOffset = 96UL + baseLength;
+        ulong modulusOffset = expOffset + expLength;
+        uint expStart = expOffset > uint.MaxValue ? uint.MaxValue : (uint)expOffset;
+        uint modulusStart = modulusOffset > uint.MaxValue ? uint.MaxValue : (uint)modulusOffset;
+
         using mpz_t modulusInt = mpz_t.Create();
 
-        ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength + (int)expLength, (int)modulusLength);
+        ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength);
 
         if (modulusDataSpan.Length > 0)
         {
@@ -45,7 +50,7 @@ public unsafe partial class ModExpPrecompile
         using mpz_t expInt = mpz_t.Create();
         using mpz_t powmResult = mpz_t.Create();
 
-        ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96, (int)baseLength);
+        ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
 
         if (baseDataSpan.Length > 0)
         {
@@ -53,7 +58,7 @@ public unsafe partial class ModExpPrecompile
                 Gmp.mpz_import(baseInt, baseLength, 1, 1, 1, nuint.Zero, (nint)baseData);
         }
 
-        ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)expLength);
+        ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
 
         if (expDataSpan.Length > 0)
         {

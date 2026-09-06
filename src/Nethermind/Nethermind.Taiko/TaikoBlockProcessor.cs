@@ -78,7 +78,9 @@ public class TaikoBlockProcessor(
             blockTracer,
             _zkGasMeterHolder,
             taikoSpec?.UnzenBlockZkGasLimit ?? ZkGasSchedule.BlockZkGasLimit,
-            taikoSpec?.UnzenTxIntrinsicZkGas ?? ZkGasSchedule.TxIntrinsicZkGas);
+            taikoSpec?.UnzenTxIntrinsicZkGas ?? ZkGasSchedule.TxIntrinsicZkGas,
+            taikoSpec?.UnzenOpcodeZkGasMultipliers ?? default,
+            taikoSpec?.UnzenPrecompileZkGasMultipliers);
 
         TxReceipt[] receipts = base.ProcessBlock(block, zkGasTracer, options, spec, token);
 

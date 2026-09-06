@@ -20,9 +20,9 @@ namespace Nethermind.Wallet
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
         private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-        private readonly Dictionary<Address, bool> _isUnlocked = new();
-        private readonly Dictionary<Address, PrivateKey> _keys = new();
-        private readonly Dictionary<Address, string> _passwords = new();
+        private readonly Dictionary<Address, bool> _isUnlocked = [];
+        private readonly Dictionary<Address, PrivateKey> _keys = [];
+        private readonly Dictionary<Address, string> _passwords = [];
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -106,8 +106,20 @@ namespace Nethermind.Wallet
                 return false;
             }
 
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            signature = new Signature(rs, v);
+            signature = WalletSigner.Sign(in message, key);
+            return true;
+        }
+
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        {
+            // Dev accounts created with AnyPassword accept any passphrase here (see CheckPassword) — dev-only behavior.
+            if (!_passwords.ContainsKey(address) || !CheckPassword(address, passphrase) || !_keys.TryGetValue(address, out PrivateKey key))
+            {
+                signature = null;
+                return false;
+            }
+
+            signature = WalletSigner.Sign(in message, key);
             return true;
         }
     }

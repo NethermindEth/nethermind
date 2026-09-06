@@ -6,7 +6,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -31,12 +30,23 @@ public class StatelessBlockProcessingEnv(
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
+    // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
+    // witness code. The first fetch of each hash still reads through the world state.
+    private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
+
+    // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
+    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
+    private const int CodeCacheCapacity = 512;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new WorldState(
-        new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager),
-        logManager
+    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+        new WorldState(
+            new TrieStoreScopeProvider(
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+            ),
+            logManager
+        )
     );
 
     private BlockProcessor GetProcessor()
@@ -47,15 +57,16 @@ public class StatelessBlockProcessingEnv(
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
-            specProvider,
-            blockhashProvider,
             logManager,
             new BlocksConfig()
             {
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
             },
-            new WithdrawalProcessorFactory(logManager)
+            new WithdrawalProcessorFactory(logManager),
+            new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
+                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
+            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -88,7 +99,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor),
+            new StatelessExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
         );
     }
@@ -99,7 +110,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new EthereumCodeInfoRepository(state),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache),
             logManager
         );
 }

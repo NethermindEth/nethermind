@@ -3,7 +3,6 @@
 
 using System.Net;
 using System.Text;
-using FluentAssertions;
 using Nethermind.EraE.Proofs;
 using NUnit.Framework;
 
@@ -35,9 +34,9 @@ public class HistoricalSummariesRpcProviderTests
 
         HistoricalSummary? result = await sut.GetHistoricalSummary(0);
 
-        result.Should().NotBeNull();
-        result!.Value.BlockSummaryRoot.ToByteArray()[0].Should().Be(0xaa);
-        result.Value.StateSummaryRoot.ToByteArray()[0].Should().Be(0x11);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Value.BlockSummaryRoot.ToByteArray()[0], Is.EqualTo(0xaa));
+        Assert.That(result.Value.StateSummaryRoot.ToByteArray()[0], Is.EqualTo(0x11));
     }
 
     [Test]
@@ -47,7 +46,7 @@ public class HistoricalSummariesRpcProviderTests
 
         HistoricalSummary? result = await sut.GetHistoricalSummary(999);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -61,7 +60,7 @@ public class HistoricalSummariesRpcProviderTests
         await sut.GetHistoricalSummariesAsync();
         await sut.GetHistoricalSummariesAsync();
 
-        handler.RequestCount.Should().Be(1);
+        Assert.That(handler.RequestCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -75,7 +74,7 @@ public class HistoricalSummariesRpcProviderTests
         await sut.GetHistoricalSummariesAsync();
         await sut.GetHistoricalSummariesAsync(forceRefresh: true);
 
-        handler.RequestCount.Should().Be(2);
+        Assert.That(handler.RequestCount, Is.EqualTo(2));
     }
 
     [Test]
@@ -85,7 +84,7 @@ public class HistoricalSummariesRpcProviderTests
 
         HistoricalSummary[] result = await sut.GetHistoricalSummariesAsync();
 
-        result.Should().BeEmpty();
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -95,7 +94,7 @@ public class HistoricalSummariesRpcProviderTests
 
         HistoricalSummary[] result = await sut.GetHistoricalSummariesAsync();
 
-        result.Should().BeEmpty();
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -119,7 +118,7 @@ public class HistoricalSummariesRpcProviderTests
 
         HistoricalSummary[] result = await sut.GetHistoricalSummariesAsync();
 
-        result.Should().HaveCount(1);
+        Assert.That(result, Has.Length.EqualTo(1));
     }
 
     private static HistoricalSummariesRpcProvider Build(string responseBody) =>

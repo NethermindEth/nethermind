@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -39,7 +38,7 @@ public class RateLimiterTests
         await Task.WhenAll(tasks);
 
         int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
-        effectivePerSec.Should().BeInRange((int)(eventPerSec * 0.2), (int)(eventPerSec * 1.5));
+        Assert.That(effectivePerSec, Is.InRange((int)(eventPerSec * 0.2), (int)(eventPerSec * 1.5)));
     }
 
     [Test]
@@ -52,7 +51,7 @@ public class RateLimiterTests
         cts.Cancel();
 
         Func<Task> act = async () => await waitTask;
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -60,6 +59,6 @@ public class RateLimiterTests
     {
         RateLimiter rateLimiter = new(1);
         await rateLimiter.WaitAsync(CancellationToken.None);
-        rateLimiter.IsThrottled().Should().BeTrue();
+        Assert.That(rateLimiter.IsThrottled(), Is.True);
     }
 }

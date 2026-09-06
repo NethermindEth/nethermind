@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -17,27 +16,27 @@ namespace Nethermind.AuRa.Test.Contract
         public void IncrementalChanges()
         {
             DataContract<int> dataContract = new(GetAll, GetFromReceipts);
-            dataContract.IncrementalChanges.Should().BeTrue();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items).Should().BeTrue();
-            items.Should().BeEquivalentTo(new[] { 1, 5 });
+            Assert.That(dataContract.IncrementalChanges, Is.True);
+            Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
+            Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
         }
 
         [Test]
         public void NonIncrementalChanges_check_found()
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsTrue);
-            dataContract.IncrementalChanges.Should().BeFalse();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items).Should().BeTrue();
-            items.Should().BeEquivalentTo(new[] { 1, 5 });
+            Assert.That(dataContract.IncrementalChanges, Is.False);
+            Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
+            Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
         }
 
         [Test]
         public void NonIncrementalChanges_check_non_found()
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsFalse);
-            dataContract.IncrementalChanges.Should().BeFalse();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items).Should().BeFalse();
-            items.Should().BeEmpty();
+            Assert.That(dataContract.IncrementalChanges, Is.False);
+            Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.False);
+            Assert.That(items, Is.Empty);
         }
 
         private static IEnumerable<int> GetAll(BlockHeader header) => new[] { 1, 5 };

@@ -8,6 +8,7 @@ namespace Nethermind.Db
         public const string Storage = "storage";
         public const string State = "state";
         public const string Flat = "flat";
+        public const string FlatHistory = "flatHistory";
         public const string Code = "code";
         public const string Blocks = "blocks";
         public const string Headers = "headers";
@@ -16,7 +17,6 @@ namespace Nethermind.Db
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
         public const string BadBlocks = "badBlocks";
-        public const string Bloom = "bloom";
         public const string Metadata = "metadata";
         public const string BlobTransactions = "blobTransactions";
         public const string DiscoveryNodes = "discoveryNodes";
@@ -24,5 +24,6 @@ namespace Nethermind.Db
         public const string PeersDb = "peers";
         public const string LogIndex = "logIndex";
         public const string Preimage = "preimage";
+        public const string PersistedSnapshotCatalog = "persistedSnapshotCatalog";
     }
 }

@@ -28,7 +28,7 @@ public class MintedRecordContract : IMintedRecordContract
     {
         XdcTransactionProcessor xdcTransactionProcessor = (XdcTransactionProcessor)transactionProcessor;
         IWorldState worldState = xdcTransactionProcessor.RewardWorldState;
-        UInt256 epochNumber = (ulong)spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / (ulong)spec.EpochLength;
+        UInt256 epochNumber = spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / spec.EpochLength;
         UInt256 blockNumber = (UInt256)header.Number;
 
         worldState.CreateAccountIfNotExists(MintedRecordAddress, UInt256.Zero);
@@ -62,8 +62,26 @@ public class MintedRecordContract : IMintedRecordContract
         WriteStorage(worldState, MintedRecordPostMintedBase + epochNumber, totalMinted);
         WriteStorage(worldState, MintedRecordPostBurnedBase + epochNumber, totalBurned);
         WriteStorage(worldState, MintedRecordPostRewardBlockBase + epochNumber, blockNumber);
-        worldState.IncrementNonce(MintedRecordAddress, UInt256.One, out _);
+        worldState.IncrementNonce(MintedRecordAddress, 1UL, out _);
     }
+
+    public bool TryGetOnsetEpoch(IWorldState worldState, out UInt256 onsetEpoch)
+    {
+        // The accounting account's nonce is bumped on every update, so a zero nonce means the upgrade never ran.
+        if (worldState.GetNonce(MintedRecordAddress) == 0)
+        {
+            onsetEpoch = UInt256.Zero;
+            return false;
+        }
+
+        onsetEpoch = ReadStorage(worldState, MintedRecordOnsetEpochSlot);
+        return true;
+    }
+
+    public MintedRecordAccounting GetEpochAccounting(IWorldState worldState, UInt256 epoch) => new(
+        ReadStorage(worldState, MintedRecordPostMintedBase + epoch),
+        ReadStorage(worldState, MintedRecordPostBurnedBase + epoch),
+        ReadStorage(worldState, MintedRecordPostRewardBlockBase + epoch));
 
     private static UInt256 ReadStorage(IWorldState worldState, UInt256 slot)
     {

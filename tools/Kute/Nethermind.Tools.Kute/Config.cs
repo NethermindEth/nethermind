@@ -98,7 +98,7 @@ public static class Config
         DefaultValueFactory = _ => [],
         CustomParser = r =>
         {
-            Dictionary<string, string> labels = new();
+            Dictionary<string, string> labels = [];
             foreach (Token token in r.Tokens)
             {
                 foreach (string pair in token.Value.Split(','))

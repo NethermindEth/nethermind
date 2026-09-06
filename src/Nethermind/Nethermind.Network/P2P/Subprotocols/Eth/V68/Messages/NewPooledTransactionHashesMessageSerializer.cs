@@ -20,13 +20,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static NewPooledTransactionHashesMessage68 Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
-            ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
-            ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeInt(), limit: SizesRlpLimit);
-            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
-            return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+            ArrayPoolList<byte>? types = null;
+            ArrayPoolList<int>? sizes = null;
+            ArrayPoolList<Hash256>? hashes = null;
+            try
+            {
+                types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
+                sizes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt(), limit: SizesRlpLimit);
+                hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+                return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+            }
+            catch
+            {
+                types?.Dispose();
+                sizes?.Dispose();
+                hashes?.Dispose();
+                throw;
+            }
         }
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
@@ -47,21 +60,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
             byteBuffer.EnsureWritable(totalSize);
 
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            rlpStream.StartSequence(totalSize);
-            rlpStream.Encode(message.Types.AsSpan());
+            writer.StartSequence(totalSize);
+            writer.Encode(message.Types.AsSpan());
 
-            rlpStream.StartSequence(sizesLength);
+            writer.StartSequence(sizesLength);
             foreach (int size in message.Sizes.AsSpan())
             {
-                rlpStream.Encode(size);
+                writer.Encode(size);
             }
 
-            rlpStream.StartSequence(hashesLength);
+            writer.StartSequence(hashesLength);
             foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                rlpStream.Encode(hash);
+                writer.Encode(hash);
             }
         }
     }
