@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
@@ -70,8 +69,6 @@ public partial class EthRpcModule(
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
-    ILogIndexConfig? logIndexConfig,
-    IReceiptConfig receiptConfig,
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
@@ -100,7 +97,6 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
-    private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -904,7 +900,7 @@ public partial class EthRpcModule(
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
 
-            return GetLogsResponse(filterLogs, timeout, verifyLogsResponse: null, out timeoutTransferred);
+            return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
         catch (ResourceNotFoundException)
         {
@@ -971,9 +967,6 @@ public partial class EthRpcModule(
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
 
-            if (EnsureBlockRangeWithinLimit(fromBlockHeader, toBlockHeader) is { } rangeError)
-                return rangeError;
-
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
@@ -982,12 +975,7 @@ public partial class EthRpcModule(
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
-            bool verifyLogIndexResponse = logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex;
-            return GetLogsResponse(
-                filterLogs,
-                timeout,
-                verifyLogIndexResponse ? (logs, token) => VerifyLogsResponse(logs, logFilter, fromBlockHeader, toBlockHeader, token) : null,
-                out timeoutTransferred);
+            return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
         catch (ResourceNotFoundException)
         {
@@ -1075,14 +1063,13 @@ public partial class EthRpcModule(
     private ResultWrapper<IEnumerable<FilterLog>> GetLogsResponse(
         IEnumerable<FilterLog> filterLogs,
         CancellationTokenSource timeout,
-        Action<IList<FilterLog>, CancellationToken>? verifyLogsResponse,
         out bool timeoutTransferred)
     {
         timeoutTransferred = false;
         bool enforceLogsLimits = JsonRpcContext.Current.Value?.IsAuthenticated != true;
         bool enforceMaxLogs = enforceLogsLimits && _rpcConfig.MaxLogsPerResponse != 0;
 
-        if (_rpcConfig.EnableLogsStreamMode && verifyLogsResponse is null)
+        if (_rpcConfig.EnableLogsStreamMode)
         {
             long? maxLogsResponseBodySize = enforceLogsLimits ? _rpcConfig.MaxLogsResponseBodySize : null;
             long? maxBatchResponseBodySize = enforceLogsLimits ? _rpcConfig.MaxBatchResponseBodySize : null;
@@ -1103,8 +1090,6 @@ public partial class EthRpcModule(
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
             }
         }
-
-        verifyLogsResponse?.Invoke(logs, timeout.Token);
 
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
     }
@@ -1250,47 +1235,4 @@ public partial class EthRpcModule(
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
-
-    private void VerifyLogsResponse(IList<FilterLog> response, LogFilter filter, BlockHeader from, BlockHeader to, CancellationToken cancellation)
-    {
-        filter.UseIndex = false;
-        IEnumerable<FilterLog>? expectedResponse = _blockchainBridge.GetLogs(filter, from, to, cancellation);
-
-        using IEnumerator<FilterLog> expectedEnum = expectedResponse.GetEnumerator();
-
-        int i = -1;
-        while (++i < response.Count | expectedEnum.MoveNext())
-        {
-            FilterLog? actual = i < response.Count ? response[i] : null;
-            FilterLog? expected = expectedEnum.Current;
-
-            if ((actual?.BlockNumber, actual?.LogIndex) != (expected?.BlockNumber, expected?.LogIndex))
-            {
-                throw new LogIndexStateException(
-                    $"Incorrect result from log index at position #{i}. " +
-                    $"Expected: block {expected?.BlockNumber}, log #{expected?.LogIndex}. " +
-                    $"Actual: block {actual?.BlockNumber}, log #{actual?.LogIndex}."
-                );
-            }
-        }
-    }
-
-    // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
-    private ResultWrapper<IEnumerable<FilterLog>>? EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
-    {
-        int maxBlockDepth = _receiptConfig.MaxBlockDepth;
-        if (logIndexConfig?.Enabled is true || maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
-            return null;
-
-        ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
-        if (rangeSize > (ulong)maxBlockDepth)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(
-                $"Block range {rangeSize} exceeds the maximum of {maxBlockDepth} blocks per logs request. " +
-                $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.",
-                ErrorCodes.InvalidParams);
-        }
-
-        return null;
-    }
 }
