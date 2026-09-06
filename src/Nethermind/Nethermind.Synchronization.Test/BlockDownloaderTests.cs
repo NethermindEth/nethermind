@@ -981,20 +981,16 @@ public partial class BlockDownloaderTests
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
             SemaphoreSlim peerSemaphore = new(1, 1);
-            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
-
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci =>
                 {
                     CancellationToken token = ci.ArgAt<CancellationToken>(3);
                     await peerSemaphore.WaitAsync(token);
+                    SyncPeerAllocation peerAllocation = new(ci.ArgAt<AllocationContexts>(1), null, () => peerSemaphore.Release());
+                    peerAllocation.AllocatePeer(peerInfo);
                     return peerAllocation;
                 });
-
-            PeerPool
-                .When((p) => p.Free(peerAllocation))
-                .Do((c) => peerSemaphore.Release());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
