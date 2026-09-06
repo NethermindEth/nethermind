@@ -331,9 +331,7 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         if (_prefetched is not null && _prefetched.TryGetValue(childPath, out byte[]? prefetched)) return prefetched;
 
-        byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, allowRebuild);
-        if (rlp is not null && rlp.Length >= Hash256.Size) _cache?.Set(ValueKeccak.Compute(rlp), rlp);
-        return rlp;
+        return ResolveRlp(childPath, parallelChildren: false, allowRebuild);
     }
 
     private void PublishSubtree(TrieNode node)

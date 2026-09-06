@@ -995,7 +995,11 @@ public class ArchiveProofTests
         ValueHash256 anchorPath = Keccak.Compute(anchor.Bytes).ValueHash256;
         for (int seed = 0; count > 0; seed++)
         {
-            if (seed == maxSeeds) Assert.Fail($"No {count} more addresses share {nibbles} nibbles with {anchor} within {maxSeeds} seeds; a wider prefix needs a wider search");
+            if (seed == maxSeeds)
+            {
+                Assert.Fail($"No {count} more addresses share {nibbles} nibbles with {anchor} within {maxSeeds} seeds; a wider prefix needs a wider search");
+                yield break;
+            }
 
             Address candidate = new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[12..]);
             ValueHash256 path = Keccak.Compute(candidate.Bytes).ValueHash256;
