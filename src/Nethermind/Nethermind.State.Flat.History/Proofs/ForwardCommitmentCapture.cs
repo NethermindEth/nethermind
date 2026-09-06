@@ -116,6 +116,7 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     public void Discard()
     {
+        _roundOverflowed = false;
         foreach (CapturedBlock captured in _buffered.Values) Recycle(captured);
         _buffered.Clear();
         _bufferedBytes = 0;

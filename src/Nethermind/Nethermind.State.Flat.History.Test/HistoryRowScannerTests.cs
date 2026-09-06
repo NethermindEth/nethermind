@@ -22,11 +22,10 @@ public class HistoryRowScannerTests
     public void Two_contracts_sharing_a_storage_prefix_and_a_slot_stream_at_full_depth_instead_of_splitting()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        const int colliding = HistoryRowScanner.MaxStreamedKeys + 4;
         ValueHash256 first = Identity(0x01);
-        ValueHash256 second = Identity(0x02);
         ValueHash256 slot = Keccak.Compute("slot").ValueHash256;
-        RecordStorage(columns, first, slot, block: 1, [0x11]);
-        RecordStorage(columns, second, slot, block: 1, [0x22]);
+        for (byte identity = 1; identity <= colliding; identity++) RecordStorage(columns, Identity(identity), slot, block: 1, [identity]);
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
         HistoryRowScanner scanner = new(Store(columns, FlatHistoryColumns.AccountHistory), Store(columns, FlatHistoryColumns.StorageHistory), Store(columns, FlatHistoryColumns.StorageClears), rowFormat);
         using StoragePartitionRows rows = new();
@@ -45,7 +44,7 @@ public class HistoryRowScannerTests
         {
             Assert.That(outcome, Is.EqualTo(ScanOutcome.Fits),
                 "a 64-nibble slot prefix has no children to split into, so a partition that still does not fit streams its keys one identity at a time instead of asking for a deeper split");
-            Assert.That(streamed, Is.EqualTo(1));
+            Assert.That(streamed, Is.EqualTo(colliding - 1), "at full depth the streamed-key cap does not apply: every colliding identity but the one that fits is streamed, because the alternative is a split that cannot exist");
             Assert.That(rows.Count, Is.EqualTo(1));
         }
     }

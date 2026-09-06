@@ -4,6 +4,7 @@
 using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.History.Walk;
@@ -15,6 +16,7 @@ public sealed class CommitmentEmitter : IDisposable
 {
     public const int DefaultMaxOpenWindowNodes = 200_000;
     public const int WalkMaxOpenWindowNodes = 50_000;
+    private const int ExactBranchCacheEntries = 1 << 18;
     public const int StorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
@@ -36,7 +38,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
-    private readonly Dictionary<NodePathKey, bool> _exactBranches = [];
+    private readonly ClockCache<NodePathKey, bool> _exactBranches = new(ExactBranchCacheEntries);
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
@@ -270,7 +272,7 @@ public sealed class CommitmentEmitter : IDisposable
         {
             isBranch = true;
             ushort presence = _children.Presence;
-            bool wasBranch = _exactBranches.TryGetValue(key, out bool previous) && previous;
+            bool wasBranch = _exactBranches.TryGet(key, out bool previous) && previous;
             ushort changed = _policy.IsFullVectorBlock(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
             int length = ParentRowCodec.EncodeBranch(_block, presence, changed, _children, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
@@ -280,7 +282,7 @@ public sealed class CommitmentEmitter : IDisposable
             WriteWhole(key, exact: true, _block, rlp);
         }
 
-        _exactBranches[key] = isBranch;
+        _exactBranches.Set(key, isBranch);
     }
 
     private void Accumulate(in NodePathKey key, ReadOnlySpan<byte> rlp, bool isEmpty)
