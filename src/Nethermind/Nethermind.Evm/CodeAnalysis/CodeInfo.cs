@@ -24,11 +24,7 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     // Empty
     private CodeInfo() { }
-    private CodeInfo(JumpDestinationAnalyzer analyzer)
-    {
-        _analyzer = analyzer;
-        _streamBuildState = StreamBuildUnavailable;
-    }
+    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
@@ -37,7 +33,6 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
-            _streamBuildState = StreamBuildUnavailable;
         }
         else
         {
@@ -50,7 +45,6 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         Precompile = precompile;
         _analyzer = null;
-        _streamBuildState = StreamBuildUnavailable;
     }
 
     public ReadOnlyMemory<byte> Code { get; }
@@ -59,55 +53,7 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    private int _streamHits;
-
-    private const int StreamBuildIdle = 0;
-    private const int StreamBuildScheduled = 1;
-    private const int StreamBuildUnavailable = 2;
-    private int _streamBuildState;
-
-    // Key into the shared InstructionStreamCache (set by the repository), so a built stream
-    // survives this instance's eviction.
     public ValueHash256 CodeHash { get; set; }
-
-    /// <summary>
-    /// Built stream from the shared cache, or <c>null</c> until built (scheduled once past
-    /// <see cref="StreamInterpreter.BuildThreshold"/>, never blocks). Held only by the shared cache, not this instance.
-    /// </summary>
-    internal InstructionStream? GetOrBuildStream()
-    {
-        if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
-            return null;
-        if (CodeHash == default)
-            return null;
-        if (InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
-            return cached;
-        if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
-            return null;
-
-        if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
-            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
-
-        return null;
-    }
-
-    private void BuildStream()
-    {
-        InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
-        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
-        {
-            InstructionStreamCache.Set(CodeHash, stream);
-        }
-        else
-        {
-            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
-        }
-    }
-
-    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
-    {
-        public void Execute() => codeInfo.BuildStream();
-    }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.

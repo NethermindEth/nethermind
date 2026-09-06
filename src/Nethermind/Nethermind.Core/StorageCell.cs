@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -29,7 +30,18 @@ namespace Nethermind.Core
                     ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in other._index))))
                 return false;
 
-            return _address.Equals(in other._address);
+            // Inline 20-byte Address comparison: avoids the Address.Equals call
+            // that the JIT refuses to inline when called from deep inline chains
+            // (e.g. SeqlockCache.TryGetValue). Address.Bytes is always exactly 20 bytes.
+            Address a = _address.Value;
+            Address b = other._address.Value;
+            if (ReferenceEquals(a, b))
+                return true;
+
+            ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
+            ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
+            return Unsafe.As<byte, Vector128<ulong>>(ref ab) == Unsafe.As<byte, Vector128<ulong>>(ref bb)
+                && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, 16));
         }
 
         public bool Equals(StorageCell other) => Equals(in other);

@@ -19,12 +19,13 @@ public static partial class EvmInstructions
     /// and pushes the resulting 256-bit hash onto the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionKeccak256<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Ensure two 256-bit words are available (memory offset and length).
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b))
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b))
             goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
