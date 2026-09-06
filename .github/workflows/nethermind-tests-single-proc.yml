@@ -1,0 +1,89 @@
+name: Nethermind tests (Single Proc)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: >-
+        {"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""}]}
+
+  # The paths behind RuntimeInformation.IsSingleProcessor run only when the runtime reports one
+  # processor, which the regular matrix never does. These projects hold every such gate, and
+  # Nethermind.Core.Test carries the test that fails the run if the pin stops reaching the runtime.
+  tests:
+    name: Run ${{ matrix.project }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Nethermind.Core.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.State.Test
+          - Nethermind.Trie.Test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
+
+      - name: ${{ matrix.project }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          # Pins Environment.ProcessorCount, and with it RuntimeInformation.IsSingleProcessor, to 1
+          # for the test host.
+          DOTNET_PROCESSOR_COUNT: 1
+        run: |
+          dotnet restore ${{ matrix.project }}.csproj
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  tests-summary:
+    name: Tests summary
+    needs: [tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          [[ "${{ needs.tests.result }}" == "success" ]]
