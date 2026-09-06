@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
+[StableApi]
 public interface ITransactionProcessor
 {
     TransactionResult Process(

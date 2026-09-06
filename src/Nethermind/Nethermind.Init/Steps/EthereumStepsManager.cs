@@ -153,7 +153,11 @@ namespace Nethermind.Init.Steps
         {
             try
             {
+                // The framework itself materializes the concrete step from the DI container; casting the
+                // resolved instance to the stable IStep contract here is intentional.
+#pragma warning disable NETH008
                 return (_ctx.Resolve(stepInfo.StepType) as IStep)!;
+#pragma warning restore NETH008
             }
             catch (Exception e)
             {
