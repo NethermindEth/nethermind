@@ -85,7 +85,7 @@ public static class PersistedSnapshotBuilder
                 NativeMemoryList<TreePath> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
                 {
-                    if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+                    if (kv.Value.IsHashOnlyPlaceholder()) continue;
                     TreePath path = kv.Key;
                     if (path.Length <= TopPathThreshold) top.Add(path);
                     else if (path.Length <= CompactPathThreshold) compact.Add(path);
@@ -106,7 +106,7 @@ public static class PersistedSnapshotBuilder
                 NativeMemoryList<(ValueHash256, TreePath)> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
                 {
-                    if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+                    if (kv.Value.IsHashOnlyPlaceholder()) continue;
                     (Hash256 addr, TreePath path) = kv.Key.Key;
                     ValueHash256 addrHash = addr.ValueHash256;
                     if (path.Length <= TopPathThreshold) top.Add((addrHash, path));
