@@ -449,6 +449,9 @@ public class FrameTransactionForRpcTests
     {
         TxReceipt receipt = BuildFrameTxReceipt();
         receipt.TxHash = Keccak.Zero;
+        receipt.BlockGasUsed = 118_920;
+        receipt.ExecutionGasUsed = 21_000;
+        receipt.StorageGasUsed = 97_920;
         EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
 
         TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
@@ -456,6 +459,9 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(roundTripped!.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.BlockGasUsed, Is.EqualTo(118_920UL));
+            Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(97_920UL));
             Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(roundTripped.FrameReceipts![0].ExecutionGasUsed, Is.EqualTo(21_000UL));
             Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
