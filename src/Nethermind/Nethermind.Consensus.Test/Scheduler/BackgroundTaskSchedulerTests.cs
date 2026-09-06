@@ -16,10 +16,7 @@ using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Consensus.Test.Scheduler;
 
-internal readonly struct TestRequest : IBackgroundTaskRequest<TestRequest>
-{
-    public static int TaskId => BackgroundTaskTypeId<TestRequest>.Id;
-}
+internal readonly struct TestRequest : IBackgroundTaskRequest<TestRequest>;
 
 public class BackgroundTaskSchedulerTests
 {

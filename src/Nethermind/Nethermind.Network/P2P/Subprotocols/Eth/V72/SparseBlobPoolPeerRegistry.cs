@@ -204,7 +204,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         if (!_backgroundTaskScheduler.TryScheduleTask(
-            new ScheduledRegistryRequest(this),
+            new CustodyUpdateRequest(this),
             static (request, cancellationToken) => request.Registry.ApplyPendingCustodyChange(cancellationToken),
             timeout: ScheduledActionTimeout))
         {
@@ -1909,7 +1909,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         if (!_backgroundTaskScheduler.TryScheduleTask(
-            new ScheduledRegistryRequest(this),
+            new MaintenanceSweepRequest(this),
             static (request, cancellationToken) => request.Registry.RunMaintenance(cancellationToken),
             timeout: ScheduledActionTimeout))
         {
@@ -2624,11 +2624,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private readonly record struct TrackedStateKey(ValueHash256 Hash, long Revision);
 
-    private readonly record struct ScheduledRegistryRequest(SparseBlobPoolPeerRegistry Registry)
-        : IBackgroundTaskRequest<ScheduledRegistryRequest>
-    {
-        public static int TaskId => BackgroundTaskTypeId<ScheduledRegistryRequest>.Id;
-    }
+    private readonly record struct CustodyUpdateRequest(SparseBlobPoolPeerRegistry Registry)
+        : IBackgroundTaskRequest<CustodyUpdateRequest>;
+
+    private readonly record struct MaintenanceSweepRequest(SparseBlobPoolPeerRegistry Registry)
+        : IBackgroundTaskRequest<MaintenanceSweepRequest>;
 
     private readonly record struct PeerCleanupAction(
         Hash256 Hash,

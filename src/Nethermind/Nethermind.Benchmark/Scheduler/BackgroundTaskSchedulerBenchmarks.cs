@@ -20,10 +20,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Benchmarks.Scheduler;
 
-internal readonly struct BenchmarkRequest : IBackgroundTaskRequest<BenchmarkRequest>
-{
-    public static int TaskId => BackgroundTaskTypeId<BenchmarkRequest>.Id;
-}
+internal readonly struct BenchmarkRequest : IBackgroundTaskRequest<BenchmarkRequest>;
 
 /// <summary>
 /// Benchmarks the throughput of the BackgroundTaskScheduler under concurrent task

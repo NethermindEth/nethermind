@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Nethermind.Consensus.Scheduler;
@@ -11,13 +12,14 @@ namespace Nethermind.Consensus.Scheduler;
 /// its queue depth is reported under.
 /// </summary>
 /// <remarks>
-/// Implement as <c>public static int TaskId =&gt; BackgroundTaskTypeId&lt;TNamed&gt;.Id;</c>. A wrapper request
-/// should point at the type it wraps, so that stats read as the underlying message name instead of the
-/// wrapper's generic type name, which is identical for every instantiation.
+/// The default reports under the implementing type's own name. A wrapper request should override with
+/// <c>BackgroundTaskTypeId&lt;TWrapped&gt;.Id</c>, since its own generic type name is identical for every
+/// instantiation. Conversely, one request type scheduled for two unrelated workloads should be split in
+/// two, so that each reports separately.
 /// </remarks>
 public interface IBackgroundTaskRequest<T> where T : IBackgroundTaskRequest<T>
 {
-    static abstract int TaskId { get; }
+    static virtual int TaskId => BackgroundTaskTypeId<T>.Id;
 }
 
 /// <summary>
@@ -42,19 +44,41 @@ public static class BackgroundTaskTypeRegistry
     private static readonly Type?[] Types = new Type?[MaxTaskTypes];
     private static int _lastId = -1;
 
-    /// <summary>Number of ids assigned so far, capped at <see cref="MaxTaskTypes"/>.</summary>
-    public static int Count => Math.Min(Volatile.Read(ref _lastId) + 1, MaxTaskTypes);
-
     internal static int Register(Type type)
     {
         int id = Interlocked.Increment(ref _lastId);
+        Debug.Assert(id < MaxTaskTypes, $"More than {MaxTaskTypes} background task types; raise {nameof(MaxTaskTypes)} or the extra ones go unreported.");
+
         if ((uint)id < MaxTaskTypes)
         {
-            Types[id] = type;
+            // Published so a concurrent GetName sees either the type or nothing, never a torn slot
+            Volatile.Write(ref Types[id], type);
         }
 
         return id;
     }
 
-    public static string GetName(int id) => ((uint)id < MaxTaskTypes ? Types[id]?.Name : null) ?? "unknown";
+    /// <summary>
+    /// Name to report <paramref name="id"/> under, or <c>null</c> if no type has claimed it.
+    /// </summary>
+    /// <remarks>
+    /// Simple names are not unique — eth/62 and eth/66 both have a <c>GetBlockHeadersMessage</c> — so a
+    /// name shared with another registered type is qualified. Only the ambiguous ones pay for it.
+    /// </remarks>
+    public static string? GetName(int id)
+    {
+        Type? type = (uint)id < MaxTaskTypes ? Volatile.Read(ref Types[id]) : null;
+        if (type is null) return null;
+
+        for (int other = 0; other < MaxTaskTypes; other++)
+        {
+            Type? candidate = Volatile.Read(ref Types[other]);
+            if (candidate is not null && candidate != type && candidate.Name == type.Name)
+            {
+                return type.FullName;
+            }
+        }
+
+        return type.Name;
+    }
 }

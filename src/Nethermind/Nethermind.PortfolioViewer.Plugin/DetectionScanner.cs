@@ -55,10 +55,7 @@ public sealed class DetectionScanner(
     private void Shrink(string key) => _active.AddOrUpdate(key, MinChunkBlocks, static (_, c) => Math.Max(c / 2, MinChunkBlocks));
 
     private readonly record struct DetectRequest(long ChainId, Address Account)
-        : IBackgroundTaskRequest<DetectRequest>
-    {
-        public static int TaskId => BackgroundTaskTypeId<DetectRequest>.Id;
-    }
+        : IBackgroundTaskRequest<DetectRequest>;
 
     private static string Key(long chainId, Address account) => chainId + ":" + account.ToString().ToLowerInvariant();
 

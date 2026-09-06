@@ -32,10 +32,7 @@ namespace Nethermind.History;
 
 public class HistoryPruner : IHistoryPruner
 {
-    private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>
-    {
-        public static int TaskId => BackgroundTaskTypeId<HistoryPrunerRequest>.Id;
-    }
+    private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>;
 
     private const int LockWaitTimeoutMs = 100;
     private const ulong SlotsPerEpoch = 32;

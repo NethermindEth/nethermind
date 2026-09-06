@@ -98,7 +98,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             if (_activeBlockProcessingBranches++ == 0)
             {
                 long depth = Volatile.Read(ref _queueCount);
-                if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth}");
+                if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth} [{FormatStats()}]");
                 // Signal that block processing is in progress so StartChannel can async-wait
                 _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 // On block processing, cancel the block process CTS so running tasks can exit quickly
@@ -246,7 +246,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
         {
             _logger.Warn(
-                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{BackgroundTaskTypeRegistry.GetName(TReq.TaskId)}]. " +
+                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{BackgroundTaskTypeRegistry.GetName(TReq.TaskId) ?? "unknown"}]. " +
                 $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
                 $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}. " +
                 $"Stats: {FormatStats()}");
@@ -279,7 +279,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             if (count > 0)
             {
                 if (builder.Length > 0) builder.Append(", ");
-                builder.Append('(').Append(BackgroundTaskTypeRegistry.GetName(id)).Append(": ").Append(count).Append(')');
+                builder.Append('(').Append(BackgroundTaskTypeRegistry.GetName(id) ?? "unknown").Append(": ").Append(count).Append(')');
             }
         }
 
@@ -311,17 +311,17 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     }
 
     /// <summary>
-    /// Snapshot of currently queued task counts, keyed by the request type's name.
+    /// Snapshot of currently queued task counts, keyed by the request type's reported name.
     /// </summary>
-    public IReadOnlyDictionary<string, int> GetStats()
+    internal IReadOnlyDictionary<string, int> GetStats()
     {
-        int count = BackgroundTaskTypeRegistry.Count;
-        Dictionary<string, int> stats = new(count);
-        for (int id = 0; id < count; id++)
+        Dictionary<string, int> stats = [];
+        for (int id = 0; id < _stats.Length; id++)
         {
-            string name = BackgroundTaskTypeRegistry.GetName(id);
-            // Distinct types can share a simple name, so buckets are merged rather than overwritten
-            stats[name] = (stats.TryGetValue(name, out int existing) ? existing : 0) + Volatile.Read(ref _stats[id]);
+            if (BackgroundTaskTypeRegistry.GetName(id) is string name)
+            {
+                stats[name] = Volatile.Read(ref _stats[id]);
+            }
         }
 
         return stats;
