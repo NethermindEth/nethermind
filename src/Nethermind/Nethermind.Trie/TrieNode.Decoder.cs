@@ -169,10 +169,10 @@ namespace Nethermind.Trie
                 // The sequence header carries the children's length and CappedArray has no offset to write
                 // it backwards into, so the length has to be known before the children can go in. Writing
                 // them into a scratch buffer and copying them in behind the header trades the measuring
-                // walk for one bounded copy. On a host with AVX-512 that walk also collects full branches
-                // for batched hashing (HashPreparedBranches), which is worth more than the walk costs.
+                // walk for one bounded copy. The walk is kept where it does something else as well:
+                // spreading the children over cores, or collecting branch pairs for batched hashing.
                 bool useParallel = UseParallel(canBeParallel, item);
-                if (Avx512F.VL.IsSupported || useParallel)
+                if (useParallel || (Avx512F.VL.IsSupported && HasBatchableChildPair(item)))
                 {
                     contentLength = valueRlpLength + (useParallel
                         ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel)
@@ -220,6 +220,25 @@ namespace Nethermind.Trie
 
                     return false;
                 }
+            }
+
+            /// <summary>Whether the measuring walk could pair up child hashes for <see cref="HashPreparedBranches" />.</summary>
+            /// <remarks>Only a dirty branch child is a candidate, and a lone candidate is hashed on its own, so
+            /// a branch without two of them gains nothing from the walk. The walk narrows the set further — a
+            /// candidate whose RLP is not a full branch drops out — so an upper bound is all this needs to be.</remarks>
+            private static bool HasBatchableChildPair(TrieNode item)
+            {
+                const int MinChildrenForBatchedHashing = 2;
+                int candidates = 0;
+                for (int i = 0; i < BranchesCount; i++)
+                {
+                    if (item._nodeData[i] is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             private static void HashPreparedBranches(TrieNode item, ushort candidateMask)
