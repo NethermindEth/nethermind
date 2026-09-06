@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Evm;
@@ -53,6 +54,7 @@ public class PrecompileLookupBenchmark
 
         _dictionary = entries.ToFrozenDictionary();
         _set = _dictionary.Keys.ToFrozenSet();
+        _realSpec = Nethermind.Specs.Forks.Prague.Instance;
         _setSpec = new SetSpec(_set);
         _maskSpec = new MaskSpec(_set, _mask);
 
@@ -198,6 +200,47 @@ public class PrecompileLookupBenchmark
         foreach (Address address in _addresses)
         {
             if (_maskSpec.IsPrecompile(address)) found++;
+        }
+
+        return found;
+    }
+
+    private IReleaseSpec _realSpec = null!;
+
+    /// <summary>What master does: probe the fork's set, hashing the whole address.</summary>
+    [Benchmark]
+    public int RealSpec_PrecompilesContains()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_realSpec.Precompiles.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>What #13183 does: reject on address shape, then probe.</summary>
+    [Benchmark]
+    public int RealSpec_ShapeGuardThenContains()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (address.CouldBePrecompile() && _realSpec.Precompiles.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>What the spec-held mask does, through the real interface dispatch.</summary>
+    [Benchmark]
+    public int RealSpec_IsPrecompile()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_realSpec.IsPrecompile(address)) found++;
         }
 
         return found;

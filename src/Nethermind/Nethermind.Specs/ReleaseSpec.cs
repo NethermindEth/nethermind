@@ -115,8 +115,48 @@ public class ReleaseSpec : IReleaseSpec
     public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
     public bool IsEip7939Enabled { get; set; }
-    private FrozenSet<AddressAsKey>? _precompiles;
-    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+    /// <summary>The fork's precompiles, with the low-numbered ones also held as a bitmask.</summary>
+    /// <param name="Addresses">Every precompile active at this fork.</param>
+    /// <param name="LowMask">Bit <c>n</c> set when precompile number <c>n</c> is active, for numbers
+    /// below 64 — which is all of them on Ethereum bar RIP-7212 at 0x100.</param>
+    /// <remarks>One object so that a single reference publish carries both. Held as two fields, a thread
+    /// racing the lazy initialisation could see the set already assigned and the mask still empty, and
+    /// would then miss every precompile.</remarks>
+    private sealed record PrecompileIndex(FrozenSet<AddressAsKey> Addresses, ulong LowMask);
+
+    private PrecompileIndex? _precompiles;
+
+    private PrecompileIndex Precompiled => _precompiles ??= BuildPrecompileIndex();
+
+    private PrecompileIndex BuildPrecompileIndex()
+    {
+        FrozenSet<AddressAsKey> addresses = BuildPrecompilesCache();
+        ulong lowMask = 0;
+        foreach (AddressAsKey key in addresses)
+        {
+            int index = ((Address)key).PrecompileIndexOrNegative();
+            if ((uint)index < 64) lowMask |= 1UL << index;
+        }
+
+        return new PrecompileIndex(addresses, lowMask);
+    }
+
+    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => Precompiled.Addresses;
+
+    /// <inheritdoc cref="IReleaseSpec.IsPrecompile" />
+    /// <remarks>The precompile's number is its address, so membership is a bit test rather than hashing
+    /// and probing twenty bytes. Numbers above the mask fall back to the set, which is what keeps this
+    /// correct for a chain registering one far away — Taiko's sit at 0x10001 and 0x10002.</remarks>
+    public bool IsPrecompile(Address address)
+    {
+        PrecompileIndex precompiles = Precompiled;
+        int index = address.PrecompileIndexOrNegative();
+        return (uint)index < 64
+            ? (precompiles.LowMask & (1UL << index)) != 0
+            // A tail that overflows int also comes back negative, so the shape test is what rules out an
+            // ordinary address here rather than the index being negative.
+            : address.CouldBePrecompile() && precompiles.Addresses.Contains(address);
+    }
     private SpecGasCosts? _gasCosts;
     public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;

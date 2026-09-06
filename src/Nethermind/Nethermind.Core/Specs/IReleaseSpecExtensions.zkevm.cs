@@ -170,22 +170,5 @@ public static partial class IReleaseSpecExtensions
                 return _useShanghaiDDosProtection;
             }
         }
-
-        /// <summary>
-        /// Determines whether the specified address is a precompiled contract for this release specification.
-        /// </summary>
-        /// <param name="address">The address to check for precompile status.</param>
-        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
-        public bool IsPrecompile(Address address)
-        {
-            if (!ReferenceEquals(_precompileMaskSpec, spec))
-                BuildPrecompileMask(spec);
-
-            int idx = address.PrecompileIndexOrNegative();
-
-            return (uint)idx < 64
-                ? (_precompileMaskLow & (1UL << idx)) != 0
-                : idx == 0x100 && _precompileMaskP256;
-        }
     }
 }

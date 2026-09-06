@@ -25,15 +25,5 @@ public static partial class IReleaseSpecExtensions
         public bool UseNetGasMeteringWithAStipendFix => spec.UseIstanbulNetGasMetering;
         public bool Use63Over64Rule => spec.UseShanghaiDDosProtection;
 
-        /// <summary>
-        /// Determines whether the specified address is a precompiled contract for this release specification.
-        /// </summary>
-        /// <param name="address">The address to check for precompile status.</param>
-        /// <returns><c>true</c> if the address is a precompiled contract; otherwise, <c>false</c>.</returns>
-        /// <remarks>Almost every call target is an ordinary contract, and rejecting one on its shape is
-        /// two loads against hashing and probing twenty bytes. Only an address that could name a
-        /// precompile at all — sixteen leading zero bytes — reaches the set.</remarks>
-        public bool IsPrecompile(Address address)
-            => address.CouldBePrecompile() && spec.Precompiles.Contains(address);
     }
 }
