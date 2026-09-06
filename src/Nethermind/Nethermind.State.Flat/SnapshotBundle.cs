@@ -170,8 +170,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node)
-                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
+        else if (_transientResource.TryGetStateNode(path, hash, out node) && !TrieNodeCache.IsPlaceholder(node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -220,12 +219,7 @@ public sealed class SnapshotBundle : IDisposable
             : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
     }
 
-    private static TrieNode CreateWarmerUnknownNode(Hash256 hash)
-    {
-        TrieNode node = new(NodeType.Unknown, hash);
-        node.MarkWarmerOwned();
-        return node;
-    }
+    private static TrieNode CreateWarmerUnknownNode(Hash256 hash) => new(NodeType.Unknown, hash);
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
     // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
@@ -301,8 +295,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
+        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && !TrieNodeCache.IsPlaceholder(node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }

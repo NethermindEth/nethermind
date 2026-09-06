@@ -23,6 +23,7 @@ internal sealed class FlatTrieWarmupSession :
     private readonly PatriciaTree _stateTree;
     private readonly ILogManager _logManager;
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer?> _storageWarmers = [];
+    private volatile int _hintSequenceId;
     private bool _isDisposed;
 
     public FlatTrieWarmupSession(
@@ -46,12 +47,14 @@ internal sealed class FlatTrieWarmupSession :
 
     public void HintWarmAccount(in ValueAddress address)
     {
+        int sequenceId = _hintSequenceId;
         if (Volatile.Read(ref _isDisposed) || !_transientResource.ShouldPrewarm(in address, null)) return;
-        _trieWarmer.PushAddressJob(this, address.ToAddress(), sequenceId: 0);
+        _trieWarmer.PushAddressJob(this, address.ToAddress(), sequenceId);
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
+        int sequenceId = _hintSequenceId;
         if (Volatile.Read(ref _isDisposed) || !_transientResource.ShouldPrewarm(in address, index)) return;
 
         Address accountAddress = address.ToAddress();
@@ -64,13 +67,13 @@ internal sealed class FlatTrieWarmupSession :
         }, this);
         if (storageWarmer is not null)
         {
-            _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, sequenceId: 0);
+            _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, sequenceId);
         }
     }
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (Volatile.Read(ref _isDisposed)) return false;
+        if (_hintSequenceId != sequenceId) return false;
         _stateTree.WarmUpPath(address.ToAccountPath.Bytes);
         return true;
     }
@@ -107,12 +110,7 @@ internal sealed class FlatTrieWarmupSession :
         return ValidateNode(node, address, in path, hash);
     }
 
-    private static TrieNode CreateUnknownNode(Hash256 hash)
-    {
-        TrieNode node = new(NodeType.Unknown, hash);
-        node.MarkWarmerOwned();
-        return node;
-    }
+    private static TrieNode CreateUnknownNode(Hash256 hash) => new(NodeType.Unknown, hash);
 
     private static TrieNode ValidateNode(TrieNode node, Hash256? address, in TreePath path, Hash256 hash) =>
         node.Keccak != hash
@@ -123,6 +121,7 @@ internal sealed class FlatTrieWarmupSession :
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
 
+        Interlocked.Increment(ref _hintSequenceId);
         try
         {
             _transientResource.ReleaseLease();
@@ -167,7 +166,7 @@ internal sealed class FlatTrieWarmupSession :
 
         public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
         {
-            if (Volatile.Read(ref session._isDisposed)) return false;
+            if (session._hintSequenceId != sequenceId) return false;
 
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, ref key);
