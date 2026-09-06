@@ -280,7 +280,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeNetMeteredSStoreGas<Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec)
         where Eip8038 : struct, IFlag =>
-        UpdateGas(ref gas, Eip8038.IsActive ? GasCostOf.Free : spec.GasCosts.NetMeteredSStoreCost);
+        Eip8038.IsActive || UpdateGas(ref gas, spec.GasCosts.NetMeteredSStoreCost);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
