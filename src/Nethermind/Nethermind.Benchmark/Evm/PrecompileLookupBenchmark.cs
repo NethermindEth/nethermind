@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
@@ -110,6 +111,38 @@ public class PrecompileLookupBenchmark
         foreach (Address address in _addresses)
         {
             if (address.CouldBePrecompile() && _set.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    // A per-thread memo of the mask built for one precompile set. Thread-static rather than a plain
+    // static because the host processes blocks concurrently and specs differ between them, so a shared
+    // slot would be a race; per-thread, the reference compare below is the whole synchronisation.
+    [ThreadStatic] private static FrozenSet<AddressAsKey>? t_source;
+    [ThreadStatic] private static ulong t_mask;
+
+    /// <summary>The mask, but paid for the way the host would have to pay for it.</summary>
+    /// <remarks>Measures what <c>Membership_IndexAndMask</c> leaves out: the spec's set has to be fetched
+    /// and compared against what the memo was built from, because a mask is only valid for one fork.</remarks>
+    [Benchmark]
+    public int Membership_ThreadStaticMemoThenMask()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            FrozenSet<AddressAsKey> precompiles = _set;
+            if (!ReferenceEquals(t_source, precompiles))
+            {
+                t_mask = _mask;
+                t_source = precompiles;
+            }
+
+            int index = address.PrecompileIndexOrNegative();
+            bool isPrecompile = (uint)index < 64
+                ? (t_mask & (1UL << index)) != 0
+                : index >= 0 && precompiles.Contains(address);
+            if (isPrecompile) found++;
         }
 
         return found;

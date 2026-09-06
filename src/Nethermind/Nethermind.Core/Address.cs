@@ -314,13 +314,16 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int PrecompileIndexOrNegative()
         {
-            if (!CouldBePrecompile())
+            // The shape test is repeated rather than calling CouldBePrecompile so that the base ref is
+            // loaded once: this is the zkVM guest's precompile path, measured to an exact step count.
+            ref byte b = ref Unsafe.AsRef(in FirstByte);
+            if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
             {
                 return -1;
             }
 
             // bytes 16..19, big-endian
-            uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref Unsafe.AsRef(in FirstByte), 16));
+            uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
             return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
         }
     }
