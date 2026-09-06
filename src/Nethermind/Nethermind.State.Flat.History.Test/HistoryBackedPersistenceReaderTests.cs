@@ -274,14 +274,11 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
 
-    private static byte[] AccountKeyOf(Address address) =>
-        address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
-
     private HistoryBackedPersistenceReader Reader(ulong block, ulong sliceFloor = 0, HistoryScopeGate? scopeGate = null, Hash256? stateRoot = null)
     {
         FlatDbConfig config = new() { HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        availability.PublishScope(AccountKeyOf(SlicedAddress), sliceFloor);
+        availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), sliceFloor);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot ?? Keccak.EmptyTreeHash), scopeGate ?? new HistoryScopeGate(), restrictToSlices: true);
     }

@@ -66,7 +66,7 @@ public class SliceScopeTests
     {
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         availability.PublishGlobalFloor(100);
-        availability.PublishScope(ScopeKeyOf(SlicedAddress), floor: 0);
+        availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), floor: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -82,9 +82,9 @@ public class SliceScopeTests
     {
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         availability.PublishGlobalFloor(generalFloor);
-        availability.PublishScope(ScopeKeyOf(SlicedAddress), scopeFloor);
+        availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), scopeFloor);
 
-        ScopeFloor resolved = availability.ResolveScope(ScopeKeyOf(SlicedAddress));
+        ScopeFloor resolved = availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress));
         Assert.That(resolved.IsGeneral, Is.False);
         Assert.That(resolved.Floor, Is.EqualTo(scopeFloor));
     }
@@ -94,9 +94,9 @@ public class SliceScopeTests
     {
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         availability.PublishGlobalFloor(100);
-        availability.PublishScope(ScopeKeyOf(SlicedAddress), floor: 0);
+        availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), floor: 0);
 
-        ScopeFloor resolved = availability.ResolveScope(ScopeKeyOf(NonSlicedAddress));
+        ScopeFloor resolved = availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(NonSlicedAddress));
         Assert.That(resolved.IsGeneral, Is.True);
         Assert.That(resolved.Floor, Is.EqualTo(100UL));
     }
@@ -105,11 +105,11 @@ public class SliceScopeTests
     public void ResolveScope_AfterPublishOnTheSameInstance_ObservesTheNewScopeImmediately()
     {
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        Assert.That(availability.ResolveScope(ScopeKeyOf(SlicedAddress)).IsGeneral, Is.True, "precondition: no scope published yet");
+        Assert.That(availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress)).IsGeneral, Is.True, "precondition: no scope published yet");
 
-        availability.PublishScope(ScopeKeyOf(SlicedAddress), floor: 0);
+        availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), floor: 0);
 
-        Assert.That(availability.ResolveScope(ScopeKeyOf(SlicedAddress)).IsGeneral, Is.False, "a publish must invalidate the cache the earlier ResolveScope call primed");
+        Assert.That(availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress)).IsGeneral, Is.False, "a publish must invalidate the cache the earlier ResolveScope call primed");
     }
 
     [Test]
@@ -180,13 +180,13 @@ public class SliceScopeTests
 
         (HistoryAvailability availability, _, HistoryWindowPruner pruner) = CreateWriterAndPruner(retentionBlocks: 8, sliceAddresses: SlicedAddress.ToString());
         pruner.ReconcileSliceScopes();
-        Assert.That(availability.ResolveScope(ScopeKeyOf(SlicedAddress)).IsGeneral, Is.False, "precondition: the scope exists after the first reconcile");
+        Assert.That(availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress)).IsGeneral, Is.False, "precondition: the scope exists after the first reconcile");
         pruner.Dispose();
 
         (HistoryAvailability sameAvailabilityViaNewInstance, _, HistoryWindowPruner secondPruner) = CreateWriterAndPruner(retentionBlocks: 8, sliceAddresses: null);
         secondPruner.ReconcileSliceScopes();
 
-        Assert.That(sameAvailabilityViaNewInstance.ResolveScope(ScopeKeyOf(SlicedAddress)).IsGeneral, Is.True, "removing the address from the allow-list must delete its scope record");
+        Assert.That(sameAvailabilityViaNewInstance.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress)).IsGeneral, Is.True, "removing the address from the allow-list must delete its scope record");
 
         secondPruner.RunOnePass(CancellationToken.None);
 
@@ -204,13 +204,13 @@ public class SliceScopeTests
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
         (HistoryAvailability availability, _, HistoryWindowPruner pruner) = CreateWriterAndPruner(retentionBlocks: 8, sliceAddresses: SlicedAddress.ToString());
         pruner.ReconcileSliceScopes();
-        Assert.That(availability.TryRaiseScopeFloor(ScopeKeyOf(SlicedAddress), 999), Is.True, "precondition: simulate the pruner having advanced this scope's floor since creation");
+        Assert.That(availability.TryRaiseScopeFloor(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), 999), Is.True, "precondition: simulate the pruner having advanced this scope's floor since creation");
         pruner.Dispose();
 
         (HistoryAvailability sameAvailabilityViaNewInstance, _, HistoryWindowPruner secondPruner) = CreateWriterAndPruner(retentionBlocks: 8, sliceAddresses: SlicedAddress.ToString());
         secondPruner.ReconcileSliceScopes();
 
-        Assert.That(sameAvailabilityViaNewInstance.ResolveScope(ScopeKeyOf(SlicedAddress)).Floor, Is.EqualTo(999UL), "reconciling an already-configured address on restart must never reset its floor");
+        Assert.That(sameAvailabilityViaNewInstance.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress)).Floor, Is.EqualTo(999UL), "reconciling an already-configured address on restart must never reset its floor");
 
         secondPruner.Dispose();
     }
@@ -245,7 +245,7 @@ public class SliceScopeTests
 
         pruner.ReconcileSliceScopes();
 
-        Assert.That(availability.TryGetScopeFloor(ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
+        Assert.That(availability.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
         Assert.That(sliceFloor, Is.EqualTo(12UL),
             "nothing was captured below the since-block floor, so a restricted read below it must fail closed on the scope floor too");
     }
@@ -266,7 +266,7 @@ public class SliceScopeTests
         Span<byte> buffer = stackalloc byte[256];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(availability.TryGetScopeFloor(ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
+            Assert.That(availability.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
             Assert.That(sliceFloor, Is.EqualTo(14UL), "watermark 20 - slice retention 6");
             Assert.That(accountHistory.TryGetValueBeforeNextChange(4, AccountKeyOf(SlicedAddress), buffer, out ulong foundAt), Is.GreaterThanOrEqualTo(0));
             Assert.That(foundAt, Is.EqualTo(18UL),
@@ -403,9 +403,6 @@ public class SliceScopeTests
     }
 
     private static byte[] AccountKeyOf(Address address) => address.ToAccountPath.Bytes.ToArray();
-
-    private static byte[] ScopeKeyOf(Address address) =>
-        address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
     private static byte[] StorageKeyOf(Address address, in UInt256 slot)
     {

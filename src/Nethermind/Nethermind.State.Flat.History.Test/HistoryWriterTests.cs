@@ -849,7 +849,7 @@ public class HistoryWriterTests
     {
         (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 1);
         HistoryAvailability scopes = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        scopes.PublishScope(ScopeKeyOf(AddrA), 1);
+        scopes.PublishScope(HistoryColumnsWriter.ScopeKeyOf(AddrA), 1);
         writer.SeedGenesis([], StateAt(0).StateRoot);
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
         writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -858,7 +858,7 @@ public class HistoryWriterTests
 
         writer.SeedPivot(10, StateAt(10).StateRoot);
 
-        Assert.That(scopes.TryGetScopeFloor(ScopeKeyOf(AddrA), out ulong sliceFloor), Is.True);
+        Assert.That(scopes.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(AddrA), out ulong sliceFloor), Is.True);
         Assert.That(sliceFloor, Is.EqualTo(10UL),
             "a restricted read below the pivot would resolve through the live state the sync replaced, so the slice must fail closed there too");
     }
@@ -1562,8 +1562,6 @@ public class HistoryWriterTests
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return (writer, reader);
     }
-
-    private static byte[] ScopeKeyOf(Address address) => address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
     private bool HasMarker(ulong block)
     {

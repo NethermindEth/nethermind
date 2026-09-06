@@ -420,15 +420,15 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _history.SyncWal();
     }
 
-    /// <summary>
-    /// Seeds a windowed node's floor at a snap-sync pivot: publishes watermark = floor = pivot with no rows needed
-    /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). A since-block
-    /// floor already standing above the pivot stays: the state starts at the pivot, the history at the configured
-    /// block. Every slice floor rises with the general one: a row below the pivot resolves through live state the
-    /// sync replaced, so nothing below it may stay readable. Receipt bodies still retained in memory for blocks the
-    /// pivot passes over are not derivable afterwards. No-op on v2, which has no fallback to lean on. Call at the
-    /// sync-completion seam before any block processes on top.
-    /// </summary>
+    /// <summary>Seeds a windowed node's floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
+    /// <remarks>
+    /// No rows are needed under v3: the persisted flat column holds exactly the pivot's state and the fallback answers.
+    /// A since-block floor already standing above the pivot stays - the state starts at the pivot, the history at the
+    /// configured block. Every slice floor rises with the general one: a row below the pivot resolves through live
+    /// state the sync replaced, so nothing below it may stay readable. Receipt bodies still retained in memory for
+    /// blocks the pivot passes over are not derivable afterwards. No-op on v2, which has no fallback to lean on. Call
+    /// at the sync-completion seam before any block processes on top.
+    /// </remarks>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
         if (!_enabled || !_isV3) return;
