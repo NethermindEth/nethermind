@@ -105,7 +105,7 @@ public class PrecompileLookupBenchmark
         return found;
     }
 
-    /// <summary>Reject on address shape first, and only then consult the set — what the host now does.</summary>
+    /// <summary>Reject on address shape first, and only then consult the set.</summary>
     /// <remarks>Needs no per-spec state and no bound on the precompile number, so it works for a chain
     /// whose plugin registers one far above the low run.</remarks>
     [Benchmark]
@@ -222,7 +222,7 @@ public class PrecompileLookupBenchmark
         return found;
     }
 
-    /// <summary>What #13183 does: reject on address shape, then probe.</summary>
+    /// <summary>The shape guard in front of the fork's real set, without the mask.</summary>
     [Benchmark]
     public int RealSpec_ShapeGuardThenContains()
     {
@@ -235,7 +235,8 @@ public class PrecompileLookupBenchmark
         return found;
     }
 
-    /// <summary>What the spec-held mask does, through the real interface dispatch.</summary>
+    /// <summary>The spec-held mask through the real interface dispatch — the shipped path, so this arm
+    /// cannot drift from it.</summary>
     [Benchmark]
     public int RealSpec_IsPrecompile()
     {

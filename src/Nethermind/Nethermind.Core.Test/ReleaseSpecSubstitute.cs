@@ -18,6 +18,7 @@ public static class ReleaseSpecSubstitute
         sub.GasCosts.Returns(_ => new SpecGasCosts(sub));
         // A substitute intercepts IsPrecompile rather than running the interface's default body, so route
         // it back through Precompiles: a test that arranges the set still gets the membership it arranged.
+        // The read goes through the substitute, so a Received() assertion on Precompiles counts it too.
         sub.IsPrecompile(Arg.Any<Address>()).Returns(call =>
         {
             Address address = (Address)call[0];
