@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -213,6 +214,25 @@ public class RecoveryTests
             SyncPeerAllocation alloc = new(peers[0], allocationContexts);
             return alloc;
         });
+    }
+
+    [Test]
+    public async Task cannot_recover_code_when_no_peer_can_be_allocated()
+    {
+        // Peer allocation runs on an unbounded budget, so CodeRecovery has to bound the wait itself,
+        // otherwise the code db read that blocks on it never returns.
+        _syncPeerPool.InitializedPeers.Returns([]);
+        _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(c => NeverAllocates((CancellationToken)c[3]));
+
+        byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256).WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(response, Is.Null);
+
+        static async Task<SyncPeerAllocation> NeverAllocates(CancellationToken token)
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return SyncPeerAllocation.FailedAllocation;
+        }
     }
 
     private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
