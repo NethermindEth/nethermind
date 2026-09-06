@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Nethermind.RocksDbBindings.Native;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -170,7 +171,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             _testIngestFailureHook?.Invoke();
             _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
         }
-        catch (RocksDbSharpException x)
+        catch (RocksDbException x)
         {
             _mainDb.HandleFatalDbError(x, scheduleRepairMarker: false);
             throw;
@@ -353,35 +354,31 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             {
                 ColumnFamilyOptions writerOptions = _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name)
                     ?? throw new InvalidOperationException($"No column family options registered for column {_columnDb.Name} of {_columnDb._mainDb.Name}");
-                IntPtr writer = Native.Instance.rocksdb_sstfilewriter_create(_envOptions.Handle, writerOptions.Handle);
-                try
+                using SstFileWriter writer = new(_envOptions, writerOptions);
+                rocksdb_sstfilewriter_t* writerHandle = (rocksdb_sstfilewriter_t*)writer.Handle;
+                writer.Open(file);
+                for (int i = 0; i < _count; i++)
                 {
-                    Native.Instance.rocksdb_sstfilewriter_open(writer, file);
-                    for (int i = 0; i < _count; i++)
+                    ref Entry e = ref _index[i];
+                    // Equal keys sort by ascending Seq; only the last of each run (the latest write) is emitted.
+                    if (i + 1 < _count && IsSameKey(in e, in _index[i + 1])) continue;
+                    // Safety: Reserve wrote KeyLen (+ ValLen for puts) contiguous bytes at [Offset, Offset + length)
+                    // inside _slabs[Slab], so data, data + KeyLen and data + KeyLen + ValLen all stay within the pinned
+                    // slab; the native put/delete therefore cannot read or write past the slab's bounds.
+                    fixed (byte* slabPtr = &MemoryMarshal.GetArrayDataReference(_slabs[e.Slab]))
                     {
-                        ref Entry e = ref _index[i];
-                        // Equal keys sort by ascending Seq; only the last of each run (the latest write) is emitted.
-                        if (i + 1 < _count && IsSameKey(in e, in _index[i + 1])) continue;
-                        // Safety: Reserve wrote KeyLen (+ ValLen for puts) contiguous bytes at [Offset, Offset + length)
-                        // inside _slabs[Slab], so data, data + KeyLen and data + KeyLen + ValLen all stay within the pinned
-                        // slab; the native put/delete therefore cannot read or write past the slab's bounds.
-                        fixed (byte* slabPtr = &MemoryMarshal.GetArrayDataReference(_slabs[e.Slab]))
-                        {
-                            byte* data = slabPtr + e.Offset;
-                            if (e.ValLen < 0) Native.Instance.rocksdb_sstfilewriter_delete(writer, data, (UIntPtr)e.KeyLen);
-                            else Native.Instance.rocksdb_sstfilewriter_put(writer, data, (UIntPtr)e.KeyLen, data + e.KeyLen, (UIntPtr)e.ValLen);
-                        }
+                        byte* data = slabPtr + e.Offset;
+                        sbyte* err = null;
+                        if (e.ValLen < 0) RocksDbNative.rocksdb_sstfilewriter_delete(writerHandle, (sbyte*)data, (UIntPtr)e.KeyLen, &err);
+                        else RocksDbNative.rocksdb_sstfilewriter_put(writerHandle, (sbyte*)data, (UIntPtr)e.KeyLen, (sbyte*)(data + e.KeyLen), (UIntPtr)e.ValLen, &err);
+                        if (err is not null) throw new RocksDbNativeException((IntPtr)err);
                     }
-                    Native.Instance.rocksdb_sstfilewriter_finish(writer);
                 }
-                finally
-                {
-                    Native.Instance.rocksdb_sstfilewriter_destroy(writer);
-                }
+                writer.Finish();
             }
             catch (Exception writerError)
             {
-                if (writerError is RocksDbSharpException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx, scheduleRepairMarker: false);
+                if (writerError is RocksDbException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx, scheduleRepairMarker: false);
                 try
                 {
                     if (File.Exists(file)) File.Delete(file);

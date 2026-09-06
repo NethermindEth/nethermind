@@ -14,12 +14,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.RocksDbBindings;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
-using RocksDbSharp;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -624,14 +624,14 @@ public class SstIngestionTests
         }
 
         ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
-        accountColumn._testIngestFailureHook = () => throw new RocksDbSharpException("Corruption: injected external SST corruption");
+        accountColumn._testIngestFailureHook = () => throw new RocksDbException("Corruption: injected external SST corruption");
 
         Assert.That(() =>
         {
             using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
             batch.SetAccount(Addr, new Account(200));
             batch.SetStorage(Addr, Slot1, Slot(0x11));
-        }, Throws.InstanceOf<RocksDbSharpException>());
+        }, Throws.InstanceOf<RocksDbException>());
 
         accountColumn._testIngestFailureHook = null;
         Assert.That(observable.FatalShutdownCount, Is.EqualTo(1));
