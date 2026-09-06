@@ -142,7 +142,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
+        protected bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
             // No parent-relative block-number check at genesis (parent is null only when ValidateParent already accepted genesis).
             if (parent is null) return true;
@@ -157,7 +157,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual bool ValidateGasUsed(BlockHeader header, ref string? error)
+        protected bool ValidateGasUsed(BlockHeader header, ref string? error)
         {
             if (header.GasUsed > header.GasLimit)
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Consensus.Validators
 
         // Ethereum protocol hard-caps block gas limit at 2^63-1 to prevent overflow and ensure
         // compatibility with signed 64-bit systems.
-        protected virtual bool ValidateFieldLimit(BlockHeader header, ref string? error)
+        protected bool ValidateFieldLimit(BlockHeader header, ref string? error)
         {
             if (header.GasLimit > 0x7FFFFFFFFFFFFFFF)
             {
@@ -183,7 +183,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
+        protected bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
         {
             if (parent is null)
             {
@@ -382,7 +382,7 @@ namespace Nethermind.Consensus.Validators
         protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
             BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
 
-        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.BlockLevelAccessListsEnabled)
             {
@@ -405,7 +405,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        protected bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip7843Enabled)
             {
