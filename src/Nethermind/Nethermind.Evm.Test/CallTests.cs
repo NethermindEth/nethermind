@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -205,7 +206,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Child_output_copy_preserves_memory_beyond_returned_bytes(
             [Values] bool revert, [Values(0, 31, 1023, 1024)] int outputOffset,
-            [Values(0, 1, 8, 64)] int requestedLength, [Values] bool traced)
+            [Values(0, 1, 8, 64)] int requestedLength, [Values] bool traced, [Values] bool repeatCall)
         {
             Address target = TestItem.AddressC;
             Prepare childBuilder = Prepare.EvmCode
@@ -217,10 +218,17 @@ namespace Nethermind.Evm.Test
             TestState.InsertCode(target, childCode, SpecProvider.GenesisSpec);
 
             byte[] dirtyWord = Enumerable.Repeat((byte)0xff, EvmPooledMemory.WordSize).ToArray();
-            byte[] parentCode = Prepare.EvmCode
+            Prepare parentBuilder = Prepare.EvmCode
                 .MSTORE((UInt256)outputOffset, dirtyWord)
                 .CALL(50_000, target, 0, 0, 0, (UInt256)outputOffset, (UInt256)requestedLength)
-                .Op(Instruction.POP)
+                .Op(Instruction.POP);
+            if (repeatCall)
+            {
+                parentBuilder.CALL(50_000, target, 0, 0, 0, (UInt256)outputOffset, (UInt256)requestedLength)
+                    .Op(Instruction.POP);
+            }
+
+            byte[] parentCode = parentBuilder
                 .Op(Instruction.RETURNDATASIZE)
                 .MSTORE((UInt256)(outputOffset + 11))
                 .RETURNDATACOPY((UInt256)(outputOffset + 8), 0, 3)
@@ -247,6 +255,8 @@ namespace Nethermind.Evm.Test
         private sealed class OutputCopyTracer(bool traced) : TestAllTracerWithOutput
         {
             public override bool IsTracingInstructions => traced;
+            public List<byte[]> StackPushes { get; } = [];
+            public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => StackPushes.Add(stackItem.ToArray());
         }
 
         [Test]
@@ -283,7 +293,7 @@ namespace Nethermind.Evm.Test
             if (hasValue) parent.PushData(0);
             byte[] code = parent.PushData(TestItem.AddressC).PushData(50_000).Op(instruction)
                 .PushData(0).Op(Instruction.MSTORE).RETURN(0, 32).Done;
-            AssertSuccessfulOutput(code, ((UInt256)(revert ? 0 : 1)).ToBigEndian(), traced);
+            AssertSuccessfulOutput(code, ((UInt256)(revert ? 0 : 1)).ToBigEndian(), traced, [(byte)(revert ? 0 : 1)]);
         }
 
         [Test]
@@ -306,17 +316,20 @@ namespace Nethermind.Evm.Test
                     : ContractAddress.From(Recipient, 0);
                 address.Bytes.CopyTo(expected.AsSpan(12));
             }
-            AssertSuccessfulOutput(code, expected, traced);
+            AssertSuccessfulOutput(code, expected, traced, revert ? [0] : expected[12..]);
         }
 
-        private void AssertSuccessfulOutput(byte[] code, byte[] expected, bool traced)
+        private void AssertSuccessfulOutput(byte[] code, byte[] expected, bool traced, byte[]? expectedResumePush = null)
         {
-            TestAllTracerWithOutput tracer = new OutputCopyTracer(traced);
+            OutputCopyTracer tracer = new(traced);
             Execute(tracer, code);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tracer.Error, Is.Null);
                 Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+                // The resumed result precedes the three arguments pushed for MSTORE and RETURN.
+                if (traced && expectedResumePush is not null)
+                    Assert.That(tracer.StackPushes[^4], Is.EqualTo(expectedResumePush));
             }
         }
 
