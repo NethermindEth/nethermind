@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -773,8 +772,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             private Comparer() { }
 
-            public bool Equals(UInt256 x, UInt256 y)
-                => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
+            public bool Equals(UInt256 x, UInt256 y) => x.Equals(in y);
 
             public int GetHashCode([DisallowNull] UInt256 obj)
                 => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();

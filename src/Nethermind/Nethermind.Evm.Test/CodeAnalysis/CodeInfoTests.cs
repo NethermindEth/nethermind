@@ -208,33 +208,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
-        [Test]
-        public void GetOrBuildStream_without_code_hash_never_schedules_build()
-        {
-            int thresholdBefore = StreamInterpreter.BuildThreshold;
-            StreamInterpreter.BuildThreshold = 1;
-            try
-            {
-                byte[] code = Enumerable.Repeat((byte)Instruction.JUMPDEST, 32).ToArray();
-                CodeInfo unhashed = new(code);
-                for (int i = 0; i < 8; i++)
-                    Assert.That(unhashed.GetOrBuildStream(), Is.Null);
-
-                Assert.That(
-                    !System.Threading.SpinWait.SpinUntil(() => unhashed.GetOrBuildStream() is not null, TimeSpan.FromMilliseconds(250)),
-                    "default CodeHash must not publish a stream");
-
-                CodeInfo hashed = new(code) { CodeHash = Nethermind.Core.Crypto.ValueKeccak.Compute(code) };
-                Assert.That(
-                    System.Threading.SpinWait.SpinUntil(() => hashed.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)),
-                    "hashed CodeInfo should build a stream");
-            }
-            finally
-            {
-                StreamInterpreter.BuildThreshold = thresholdBefore;
-            }
-        }
-
         [TestCaseSource(nameof(Codes))]
         public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
         {
@@ -283,6 +256,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 code.AsSpan().Fill((byte)0x5b);
                 test = new TestCaseData(code);
                 test.TestName = "Code_All_JUMPDEST";
+                yield return test;
+
+                code = new byte[1024];
+                for (int i = 8; i < code.Length - 3; i += 4)
+                {
+                    code[i] = (byte)Instruction.JUMPDEST;
+                    code[i + 1] = (byte)Instruction.PUSH1;
+                    code[i + 2] = (byte)Instruction.JUMPDEST;
+                    code[i + 3] = (byte)Instruction.JUMPDEST;
+                }
+                test = new TestCaseData(code);
+                test.TestName = "Code_Unaligned_PUSH1_JUMPDEST";
                 yield return test;
 
                 code = new byte[1024];

@@ -25,8 +25,8 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in StorageCell other)
         {
-            if (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) !=
-                Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)))
+            if (Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in _index)) !=
+                Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in other._index)))
                 return false;
 
             // Inline 20-byte Address comparison: avoids the Address.Equals call
@@ -39,7 +39,7 @@ namespace Nethermind.Core
 
             ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
             ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
-            return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
+            return Unsafe.As<byte, Vector128<ulong>>(ref ab) == Unsafe.As<byte, Vector128<ulong>>(ref bb)
                 && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, 16));
         }
 
