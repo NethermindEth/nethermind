@@ -343,10 +343,10 @@ namespace Nethermind.Trie
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        ReadOnlySpan<byte> nodeRlp = state.item.FullRlp.AsSpan();
                         object? data = state.item._nodeData[i];
                         if (data is null)
                         {
+                            ReadOnlySpan<byte> nodeRlp = state.item.FullRlp.AsSpan();
                             int cursor = state.item.SeekChildPosition(nodeRlp, i);
                             state.local += RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
                         }
