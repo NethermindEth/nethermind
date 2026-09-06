@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 #
 # Cross-client sweep, one node per client pinned to the same SNAPSHOT_BLOCK: ISOLATED
-# (each scenario alone) and MIXED (all together). A node that fails to start is skipped.
+# (each scenario alone) and MIXED (all together). A node that fails to start has its cells skipped,
+# but the incomplete matrix still fails the sweep.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
@@ -100,32 +101,105 @@ if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
 fi
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
 
-# Sweep mode resolves ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — and varies only
-# the image, so a geth/reth entry would reach start-node.sh with a DB_SOURCE that does not exist. That
-# is only a per-client `::warning::`, so the sweep would report a two-thirds-empty matrix as success —
-# and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Refuse it up front.
-# (Cross-client comparison lives in single-node mode, which resolves a path per client.) The single-node
-# workflow rejects the same two axes, but it reads the top-level inputs that sweep mode supersedes, so
-# the sweep has to check its own. Widening this means teaching it a per-client snapshot path.
-for entry in $CLIENTS; do
-  if [[ "${entry%%@*}" != "nethermind" ]]; then
-    echo "::error::sweep mode resolves one Nethermind snapshot set, so client '${entry%%@*}' cannot run here"
-    echo "::error::use benchmark_tool=jsonbench (single-node) with client/reference_client for cross-client work"
+# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
+# passes the resolved one. Each client type has its own block-tagged set there, mirroring the
+# single-node path's `<root>/<client>-<block>`; `ctype@image` variants share their type's set, so
+# within one client type the image is the only variable.
+SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
+NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
+
+snap_path() {
+  case "$1" in
+    nethermind) printf '%s' "${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}" ;;
+    *)          printf '%s' "${SNAPSHOT_ROOT}/$1-${SNAPSHOT_BLOCK}" ;;
+  esac
+}
+
+# Each entry is whitespace-delimited. A `+` segment contains semicolon-delimited flags; commas
+# remain part of a flag value (for example, `--JsonRpc.EnabledModules=Eth,Debug`). Validate every
+# entry before any node starts so a malformed arm cannot leave a one-arm matrix looking successful.
+if [[ "$CLIENTS" == *$'\n'* || "$CLIENTS" == *$'\r'* ]]; then
+  echo "::error::clients must be a single line of whitespace-delimited entries"; exit 1
+fi
+read -r -a SWEEP_ENTRIES <<< "$CLIENTS"
+if [[ "${#SWEEP_ENTRIES[@]}" -eq 0 ]]; then
+  echo "::error::clients must contain at least one entry"; exit 1
+fi
+declare -a SWEEP_SPECS=()
+declare -a SWEEP_FLAG_SPECS=()
+declare -A SWEEP_CTYPES=()
+for entry in "${SWEEP_ENTRIES[@]}"; do
+  spec="${entry%%+*}"
+  arm_flag_spec=""
+  [[ "$entry" == *+* ]] && arm_flag_spec="${entry#*+}"
+  ctype="${spec%%@*}"
+  if [[ -z "$spec" || -z "$ctype" ]]; then
+    echo "::error::malformed sweep client entry '${entry}'"; exit 1
+  fi
+  if [[ "$spec" == *@* && -z "${spec#*@}" ]]; then
+    echo "::error::sweep client entry '${entry}' has an empty image"; exit 1
+  fi
+  if [[ "$arm_flag_spec" == *';'* ]]; then
+    if [[ "$arm_flag_spec" == ';'* || "$arm_flag_spec" == *';' || "$arm_flag_spec" == *';;'* ]]; then
+      echo "::error::malformed flag list in '${entry}' — use one non-empty flag per ';'"; exit 1
+    fi
+  fi
+  if [[ -n "$arm_flag_spec" ]]; then
+    IFS=';' read -r -a parsed_arm_flags <<< "$arm_flag_spec"
+    for arm_flag in "${parsed_arm_flags[@]}"; do
+      if [[ ! "$arm_flag" =~ ^--[^[:space:]\;]+$ ]]; then
+        echo "::error::malformed arm flag '${arm_flag}' in '${entry}' — flags must start with '--' and contain no whitespace or ';'"; exit 1
+      fi
+    done
+  elif [[ "$entry" == *+* ]]; then
+    echo "::error::empty arm flag list in '${entry}'"; exit 1
+  fi
+  SWEEP_SPECS+=("$spec")
+  SWEEP_FLAG_SPECS+=("$arm_flag_spec")
+  SWEEP_CTYPES["$ctype"]=1
+done
+# A client whose snapshot set is absent reaches start-node.sh with a DB_SOURCE that does not exist,
+# and that is only a per-client `::warning::` — the sweep would report a two-thirds-empty matrix as
+# success, and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Check
+# every requested type up front instead, and only the state_layout axis the request actually uses
+# (a reth-only sweep resolves no Nethermind path, so the flat pin does not apply to it).
+SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || { echo "::error::cannot canonicalize SCRATCH_ROOT"; exit 1; }
+assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
+for ctype in "${!SWEEP_CTYPES[@]}"; do
+  case "$ctype" in
+    nethermind|geth|reth) ;;
+    *) echo "::error::unknown sweep client type '${ctype}' (expected nethermind | geth | reth)"; exit 1 ;;
+  esac
+  if [[ ! -d "$(snap_path "$ctype")" ]]; then
+    echo "::error::no ${ctype} snapshot set at $(snap_path "$ctype") — this box cannot serve that client"
+    echo "::error::snapshot sets present under ${SNAPSHOT_ROOT}:"
+    ls -1d "${SNAPSHOT_ROOT}"/*-"${SNAPSHOT_BLOCK}" 2>/dev/null | sed 's|^|::error::  |' || true
     exit 1
   fi
+  snap_real="$(realpath -e -- "$(snap_path "$ctype")")" || {
+    echo "::error::cannot canonicalize ${ctype} snapshot at $(snap_path "$ctype")"; exit 1
+  }
+  [[ "$snap_real" != "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT must not equal the ${ctype} snapshot"; exit 1; }
+  case "$snap_real/" in
+    "$SCRATCH_ROOT"/*) echo "::error::SCRATCH_ROOT must not contain the ${ctype} snapshot"; exit 1 ;;
+  esac
+  case "$SCRATCH_ROOT/" in
+    "$snap_real"/*) echo "::error::SCRATCH_ROOT must not be inside the ${ctype} snapshot"; exit 1 ;;
+  esac
 done
-if [[ "$STATE_LAYOUT" != "flat" ]]; then
-  echo "::error::sweep mode resolves a flat snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
+if [[ ! -d "$SCRATCH_ROOT" ]] && ! mkdir -p -- "$SCRATCH_ROOT" 2>/dev/null && ! as_root mkdir -p -- "$SCRATCH_ROOT"; then
+  echo "::error::failed to create SCRATCH_ROOT '$SCRATCH_ROOT'"; exit 1
 fi
-
-# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
-# passes the resolved one. `ctype@image` variants share that set, so the image is the only variable.
-SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
-SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
-NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
-# One isolation mode for every node, so storage counters stay comparable: overlayfs adds a layer and
-# changes readahead and page-cache behaviour, so disk-read-per-request would otherwise measure a
-# harness difference as much as a code one. DB_ISOLATION_ALL forces a specific mode; `copy` is the
+[[ -d "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT '$SCRATCH_ROOT' is not a directory"; exit 1; }
+SCRATCH_ROOT="$(realpath -e -- "$SCRATCH_ROOT")" || { echo "::error::cannot canonicalize SCRATCH_ROOT"; exit 1; }
+if [[ -n "${SWEEP_CTYPES[nethermind]:-}" && "$STATE_LAYOUT" != "flat" ]]; then
+  echo "::error::sweep mode resolves a flat Nethermind snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
+fi
+# One isolation mode per client type, so storage counters stay comparable between the images of one
+# type: overlayfs adds a layer and changes readahead and page-cache behaviour, so
+# disk-read-per-request would otherwise measure a harness difference as much as a code one. Across
+# types they can differ (reth cannot use overlay at all, below) — never read a cross-type disk-read
+# delta as a code difference. DB_ISOLATION_ALL forces one mode on every node; `copy` is the
 # overlay-free choice that still leaves the snapshot intact.
 #
 # `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
@@ -140,7 +214,17 @@ if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION"
   echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
   exit 1
 fi
-DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
+# reth's DB is a single large mdbx.dat, and its startup write forces overlayfs to copy the whole file
+# up before the node opens (~200 s on the mainnet set, and the copy has to fit on the box), so reth
+# runs `direct` — a read-write bind mount of its own set. That set is reth-only; the refusal above
+# exists because the *Nethermind* sets are shared with expb.
+db_isolation_for() {
+  if [[ -n "$DB_ISOLATION_ALL" ]]; then printf '%s' "$DB_ISOLATION_ALL"; return; fi
+  case "$1" in
+    reth) printf 'direct' ;;
+    *)    printf 'overlay' ;;
+  esac
+}
 
 # One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
@@ -255,6 +339,7 @@ declare -a LABELS=()
 declare -a CORPORA=()
 declare -a PARITY_ROWS=()
 node_issue=0
+start_fail=0  # requested arm failed to start; an incomplete matrix must fail the sweep
 cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
@@ -296,36 +381,97 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
 fi
 
-# Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
+# Each entry is `ctype[@image][+flag;flag;...]` (e.g. nethermind@nethermindeth/nethermind:master) for
 # same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
 # Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
 # distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
 # and the sweep would silently report fewer results than it ran.
+#
+# The `+` segment appends node flags for that arm alone, which is what makes a flag itself A/B-able:
+# the same image can appear twice with different flags, and the flags are part of the label so the
+# two arms neither collide nor need reading from the config to tell apart. `{ARM_SCRATCH}` in a flag
+# expands to an empty per-arm directory (wiped here, not inherited from an earlier arm or dispatch) —
+# a flag pointing a node's storage there measures every arm against the same starting state instead
+# of the state its predecessor left behind. Semicolons separate flags; commas are preserved in values.
+# Image tags cannot contain `+`, so the split is unambiguous.
 log_system_provenance
 
 declare -A LABEL_SEEN=()
-for entry in $CLIENTS; do
-  ctype="${entry%%@*}"
-  if [[ "$entry" == *@* ]]; then
-    img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+for arm_index in "${!SWEEP_ENTRIES[@]}"; do
+  entry="${SWEEP_ENTRIES[$arm_index]}"
+  spec="${SWEEP_SPECS[$arm_index]}"
+  arm_flag_spec="${SWEEP_FLAG_SPECS[$arm_index]}"
+  arm_flags=""
+  if [[ -n "$arm_flag_spec" ]]; then
+    IFS=';' read -r -a parsed_arm_flags <<< "$arm_flag_spec"
+    arm_flags="${parsed_arm_flags[*]}"
+  fi
+  ctype="${spec%%@*}"
+  if [[ "$spec" == *@* ]]; then
+    img="${spec#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
   else
     img="$NM_IMAGE"; label="$ctype"
   fi
+  arm_scratch_dir=""
+  if [[ -n "$arm_flag_spec" ]]; then
+    # Keep a readable prefix, but derive uniqueness from the complete unexpanded specification.
+    # A prefix alone made flags sharing their first 24 characters collide and become _rN repeats.
+    arm_flag_hash="$(printf '%s' "$arm_flag_spec" | sha256sum | cut -c1-12)"
+    arm_flag_prefix="$(printf '%s' "$arm_flag_spec" | tr -c 'a-zA-Z0-9' '_' | cut -c1-24)"
+    label="${label}_${arm_flag_prefix}_${arm_flag_hash}"
+  fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
+  if [[ "$arm_flag_spec" == *"{ARM_SCRATCH}"* ]]; then
+    arm_root="$SCRATCH_ROOT/arm"
+    if [[ -L "$arm_root" ]]; then
+      echo "::error::per-arm scratch root '$arm_root' must not be a symlink"; exit 1
+    fi
+    if [[ ! -d "$arm_root" ]] && ! as_root mkdir -p -- "$arm_root"; then
+      echo "::error::failed to create per-arm scratch root '$arm_root'"; exit 1
+    fi
+    [[ -d "$arm_root" && ! -L "$arm_root" ]] || {
+      echo "::error::per-arm scratch root '$arm_root' is not a directory"; exit 1
+    }
+    arm_root="$(realpath -e -- "$arm_root")" || {
+      echo "::error::cannot canonicalize per-arm scratch root"; exit 1
+    }
+    [[ "$arm_root/" == "$SCRATCH_ROOT/"* ]] || {
+      echo "::error::per-arm scratch root must be inside SCRATCH_ROOT"; exit 1
+    }
+    arm_scratch_dir="$arm_root/$label"
+    assert_sane_dir "$arm_scratch_dir" "ARM_SCRATCH_DIR"
+    assert_no_mounts_under "$arm_scratch_dir"
+    if ! as_root rm -rf -- "$arm_scratch_dir"; then
+      echo "::error::failed to wipe per-arm scratch directory '$arm_scratch_dir'"; exit 1
+    fi
+    if ! as_root mkdir -p -- "$arm_scratch_dir"; then
+      echo "::error::failed to recreate per-arm scratch directory '$arm_scratch_dir'"; exit 1
+    fi
+    if ! as_root chmod 0777 -- "$arm_scratch_dir"; then
+      echo "::error::failed to make per-arm scratch directory '$arm_scratch_dir' writable"; exit 1
+    fi
+    if [[ ! -d "$arm_scratch_dir" || -L "$arm_scratch_dir" || ! -w "$arm_scratch_dir" ]]; then
+      echo "::error::per-arm scratch path '$arm_scratch_dir' is not a writable, non-symlink directory after recreation"; exit 1
+    fi
+    arm_flags="${arm_flags//\{ARM_SCRATCH\}/$arm_scratch_dir}"
+  fi
+  [[ -n "$arm_flags" ]] && echo "arm flags: $arm_flags"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${SNAPSHOT_PATH}, head=${SNAPSHOT_BLOCK})"
+  snap="$(snap_path "$ctype")"; iso="$(db_isolation_for "$ctype")"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${snap}, isolation=${iso}, head=${SNAPSHOT_BLOCK})"
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
-       DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
+       DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
-       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+       ADDITIONAL_FLAGS="$arm_flags" ARM_SCRATCH_DIR="$arm_scratch_dir" \
+       HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
-    echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
+    echo "::warning::${label} failed to start — skipping its cells"; start_fail=$((start_fail + 1)); echo "::endgroup::"; continue
   fi
   LABELS+=("$label")
 
@@ -614,6 +760,12 @@ if [[ "${#LABELS[@]}" -ge 2 ]]; then
   done
 fi
 fail=0
+if [[ "${#LABELS[@]}" -eq 0 ]]; then
+  echo "::error::no sweep arms started successfully — refusing to report an empty matrix as success"; fail=1
+fi
+if [[ "$start_fail" -gt 0 ]]; then
+  echo "::error::${start_fail} sweep arm(s) failed to start — the matrix is incomplete, failing"; fail=1
+fi
 if [[ "$node_issue" -eq 1 ]]; then
   echo "::error::node health issue (Exception / invalid block / missing shutdown marker) in a sweep node log — failing"; fail=1
 fi
