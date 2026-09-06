@@ -149,15 +149,6 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
-        public RlpReader RlpReader
-        {
-            get
-            {
-                CappedArray<byte> rlp = ReadRlp();
-                return new RlpReader(rlp);
-            }
-        }
-
         public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
         public INodeData? NodeData => _nodeData;
 
