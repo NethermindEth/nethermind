@@ -991,16 +991,27 @@ public class ArchiveProofTests
 
     private static IEnumerable<Address> AddressesSharingPrefix(Address anchor, int nibbles, int count)
     {
+        const int maxSeeds = 1 << 22;
         ValueHash256 anchorPath = Keccak.Compute(anchor.Bytes).ValueHash256;
         for (int seed = 0; count > 0; seed++)
         {
+            if (seed == maxSeeds) Assert.Fail($"No {count} more addresses share {nibbles} nibbles with {anchor} within {maxSeeds} seeds; a wider prefix needs a wider search");
+
             Address candidate = new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[12..]);
             ValueHash256 path = Keccak.Compute(candidate.Bytes).ValueHash256;
-            if (!path.Bytes[..(nibbles / 2)].SequenceEqual(anchorPath.Bytes[..(nibbles / 2)])) continue;
+            if (!SharesNibbles(path, anchorPath, nibbles)) continue;
 
             count--;
             yield return candidate;
         }
+    }
+
+    private static bool SharesNibbles(in ValueHash256 left, in ValueHash256 right, int nibbles)
+    {
+        int wholeBytes = nibbles / 2;
+        if (!left.Bytes[..wholeBytes].SequenceEqual(right.Bytes[..wholeBytes])) return false;
+
+        return (nibbles & 1) == 0 || (left.Bytes[wholeBytes] & 0xF0) == (right.Bytes[wholeBytes] & 0xF0);
     }
 
     private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)

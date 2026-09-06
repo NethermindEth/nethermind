@@ -197,11 +197,11 @@ internal sealed class HistoricalTrieNodeBuilder
         if (parallelChildren)
         {
             TreePath parent = path;
-            RunFanOut(index => children[index] = ResolveRlp(parent.Append(index), parallelChildren: false, allowRebuild));
+            RunFanOut(index => children[index] = ResolveComposedChild(parent.Append(index), allowRebuild));
         }
         else
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index] = ResolveRlp(path.Append(index), parallelChildren: false, allowRebuild);
+            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index] = ResolveComposedChild(path.Append(index), allowRebuild);
         }
 
         if (!allowRebuild)
@@ -325,6 +325,15 @@ internal sealed class HistoricalTrieNodeBuilder
         List<TrieLeaf> leaves = new(total);
         foreach (List<TrieLeaf> part in parts) leaves.AddRange(part);
         return leaves;
+    }
+
+    private byte[]? ResolveComposedChild(in TreePath childPath, bool allowRebuild)
+    {
+        if (_prefetched is not null && _prefetched.TryGetValue(childPath, out byte[]? prefetched)) return prefetched;
+
+        byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, allowRebuild);
+        if (rlp is not null && rlp.Length >= Hash256.Size) _cache?.Set(ValueKeccak.Compute(rlp), rlp);
+        return rlp;
     }
 
     private void PublishSubtree(TrieNode node)
