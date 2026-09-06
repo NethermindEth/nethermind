@@ -53,9 +53,8 @@ public class ReceiptMessageDecoder69Tests
         }
     }
 
-    [TestCase("length")]
-    [TestCase("encode")]
-    public void Encoding_throws_on_null_logs(string operation)
+    [Test]
+    public void Encoding_throws_on_null_logs([Values("length", "encode")] string operation)
     {
         TxReceipt receipt = new() { Logs = null };
         ReceiptMessageDecoder69 decoder = new();

@@ -94,10 +94,8 @@ public class IPResolverTests
         }
     }
 
-    [TestCase("192.0.2.1")]
-    [TestCase("::")]
-    [TestCase("::ffff:198.51.100.2")]
-    public async Task Invalid_ipv6_override_is_ignored(string externalIpV6)
+    [Test]
+    public async Task Invalid_ipv6_override_is_ignored([Values("192.0.2.1", "::", "::ffff:198.51.100.2")] string externalIpV6)
     {
         INetworkConfig networkConfig = new NetworkConfig
         {

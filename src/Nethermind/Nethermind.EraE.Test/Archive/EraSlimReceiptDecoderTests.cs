@@ -71,10 +71,8 @@ internal class EraSlimReceiptDecoderTests
         Assert.That(receipts[0].PostTransactionState, Is.Null);
     }
 
-    [TestCase((byte)1)]
-    [TestCase((byte)2)]
-    [TestCase((byte)3)]
-    public void Decode_GethFormat_TypedReceipt_SetsTxType(byte txType)
+    [Test]
+    public void Decode_GethFormat_TypedReceipt_SetsTxType([Values((byte)1, (byte)2, (byte)3)] byte txType)
     {
         byte[] encoded = WrapAsGethReceipt([txType, 0x01, 0x80, 0xc0]);
 

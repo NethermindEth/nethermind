@@ -55,10 +55,8 @@ public class ProofRpcModuleCallTests
         Assert.That(lastHeader.Hash, Is.EqualTo(head.Hash!), "the executed-against block header must be included");
     }
 
-    [TestCase("number")]
-    [TestCase("hash")]
-    [TestCase("latest")]
-    public async Task Proof_call_accepts_block_number_hash_and_latest(string mode)
+    [Test]
+    public async Task Proof_call_accepts_block_number_hash_and_latest([Values("number", "hash", "latest")] string mode)
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         await CreateTransferTx(blockchain);

@@ -827,9 +827,8 @@ namespace Nethermind.Trie.Test.Pruning
             }
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void ReadOnly_store_returns_copies(bool pruning)
+        [Test]
+        public void ReadOnly_store_returns_copies([Values] bool pruning)
         {
             TrieNode node = new(NodeType.Branch);
             for (int i = 0; i < 16; i++)

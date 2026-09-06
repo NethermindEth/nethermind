@@ -85,9 +85,8 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void AddressNotAvailableSendFailureIsTraceOnly(bool traceEnabled)
+        [Test]
+        public void AddressNotAvailableSendFailureIsTraceOnly([Values] bool traceEnabled)
         {
             TestLogger logger = new() { IsDebug = true, IsTrace = traceEnabled };
             IChannel channel = Substitute.For<IChannel>();
@@ -231,9 +230,8 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
-        [TestCase(0)]
-        [TestCase(1280 + 1)]
-        public async Task SkipsMessagesOfInvalidSize(int size)
+        [Test]
+        public async Task SkipsMessagesOfInvalidSize([Values(0, 1280 + 1)] int size)
         {
             byte[] data = [1, 2, 3];
             byte[] invalidData = Enumerable.Repeat((byte)1, size).ToArray();

@@ -39,11 +39,8 @@ namespace Nethermind.Core.Test
             Assert.That(address2, Is.SameAs(address1));
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(32)]
-        [TestCase(63)]
-        public void Cannot_be_initialized_with_array_of_length_different_than_64(int length)
+        [Test]
+        public void Cannot_be_initialized_with_array_of_length_different_than_64([Values(0, 1, 32, 63)] int length)
         {
             byte[] bytes = new byte[length];
             // ReSharper disable once ObjectCreationAsStatement

@@ -111,9 +111,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        [TestCase("account")]
-        [TestCase("account-list")]
-        public void Deserialize_throws_on_null_required_hash(string fieldName)
+        [Test]
+        public void Deserialize_throws_on_null_required_hash([Values("account", "account-list")] string fieldName)
         {
             byte[] serialized = EncodeMessageWithNullHash(fieldName);
             GetStorageRangesMessageSerializer serializer = new();

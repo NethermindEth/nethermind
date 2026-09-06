@@ -17,10 +17,8 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcStateSyncAllocationStrategyTests
 {
-    [TestCase(XdcProtocolVersions.Legacy)]
-    [TestCase(XdcProtocolVersions.Xdc164)]
-    [TestCase(XdcProtocolVersions.Xdc165)]
-    public void Every_xdc_version_is_eligible_for_state_sync(byte version) =>
+    [Test]
+    public void Every_xdc_version_is_eligible_for_state_sync([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc164, XdcProtocolVersions.Xdc165)] byte version) =>
         Assert.That(Filter(version), Is.True);
 
     [Test]

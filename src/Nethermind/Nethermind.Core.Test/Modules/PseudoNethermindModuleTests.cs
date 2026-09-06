@@ -23,9 +23,8 @@ public class PseudoNethermindModuleTests
     // Regeneration re-executes a block, so it must stay unreachable from everything that is not a read-only query:
     // peer-facing serving, and consensus components that read receipts while processing (AuRa validator contract,
     // Shutter). Those resolve the unkeyed registration, which must therefore never become the regenerating one.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Default_receipt_finder_is_never_the_regenerating_one(bool deriveFromState)
+    [Test]
+    public void Default_receipt_finder_is_never_the_regenerating_one([Values] bool deriveFromState)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(

@@ -64,9 +64,8 @@ namespace Nethermind.Consensus.Test
                 Is.EqualTo(Calc(Prague.Instance, parentGasLimit, configTarget)));
         }
 
-        [TestCase(0UL)]
-        [TestCase(1UL)]
-        public void DoesNot_go_below_minimum(ulong targetGasLimit)
+        [Test]
+        public void DoesNot_go_below_minimum([Values(0UL, 1UL)] ulong targetGasLimit)
         {
             const int londonBlock = 5;
 

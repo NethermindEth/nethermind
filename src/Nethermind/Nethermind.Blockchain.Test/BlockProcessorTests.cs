@@ -323,17 +323,8 @@ public class BlockProcessorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(20)]
-    [TestCase(63)]
-    [TestCase(64)]
-    [TestCase(65)]
-    [TestCase(127)]
-    [TestCase(128)]
-    [TestCase(129)]
-    [TestCase(130)]
-    [TestCase(1000)]
-    [TestCase(2000)]
-    public async Task Process_long_running_branch(int blocksAmount)
+    [Test]
+    public async Task Process_long_running_branch([Values(20, 63, 64, 65, 127, 128, 129, 130, 1000, 2000)] int blocksAmount)
     {
         Address address = TestItem.Addresses[0];
         TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
@@ -411,10 +402,9 @@ public class BlockProcessorTests
         Assert.That(exception!.InnerException, Is.SameAs(failure));
     }
 
-    [TestCase(2)]
-    [TestCase(3)]
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event(int transactionCount)
+    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
     {
         TokenCapturingPreWarmer preWarmer = new();
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
@@ -874,9 +864,8 @@ public class BlockProcessorTests
             .SetName("account presence mismatch (same count, different address)");
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks([Values(1, 2)] int txCount) =>
         WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
 
     [Test]
@@ -1085,9 +1074,8 @@ public class BlockProcessorTests
         Assert.That(thrown!.InnerException, Is.SameAs(workerException));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions(bool isBlockProcessingThread)
+    [Test]
+    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions([Values] bool isBlockProcessingThread)
     {
         Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
 

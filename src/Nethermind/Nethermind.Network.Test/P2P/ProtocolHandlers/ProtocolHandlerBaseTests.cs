@@ -100,9 +100,8 @@ public class ProtocolHandlerBaseTests
         session.Received().InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, Arg.Any<string>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Operation_canceled_behavior_depends_on_session_closing(bool sessionIsClosing)
+    [Test]
+    public async Task Operation_canceled_behavior_depends_on_session_closing([Values] bool sessionIsClosing)
     {
         ISession session = Substitute.For<ISession>();
         session.IsClosing.Returns(sessionIsClosing);
@@ -159,9 +158,8 @@ public class ProtocolHandlerBaseTests
         Assert.That(allocated, Is.Zero);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Rlp_deserialization_exceptions_are_not_logged_at_debug(bool limitExceeded)
+    [Test]
+    public void Rlp_deserialization_exceptions_are_not_logged_at_debug([Values] bool limitExceeded)
     {
         Exception exception = limitExceeded ? new RlpLimitException("limit") : new RlpException("invalid");
         IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();

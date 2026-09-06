@@ -173,9 +173,8 @@ public class StorageLayerTests
 
     // Both pools (non-small and small) share the same reserve / cancel / re-add lifecycle, so the
     // cancelled-write reuse must hold for each independently.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ArenaManager_CancelWrite_AllowsReuse(bool small)
+    [Test]
+    public void ArenaManager_CancelWrite_AllowsReuse([Values] bool small)
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
@@ -220,9 +219,8 @@ public class StorageLayerTests
     // not tear the file down mid-write (the completed reservation would point at a deleted file)
     // nor re-add the dead arena's id to the mutable pool on the writer's Complete/Cancel (the
     // next pool scan then threw KeyNotFoundException, wedging the persisted compactor).
-    [TestCase(true)]
-    [TestCase(false)]
-    public void ArenaManager_ArenaFullyDeadWhileWriterActive_SurvivesUntilWriterFinishes(bool completeSecondWrite)
+    [Test]
+    public void ArenaManager_ArenaFullyDeadWhileWriterActive_SurvivesUntilWriterFinishes([Values] bool completeSecondWrite)
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, new FlatDbConfig

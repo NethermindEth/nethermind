@@ -162,11 +162,8 @@ public class StorageProviderTests(bool useFlat)
     private static int GetCollectionCapacity(object collection) =>
         (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(collection)!;
 
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Same_address_same_index_different_values_restore(int snapshot)
+    [Test]
+    public void Same_address_same_index_different_values_restore([Values(-1, 0, 1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -224,11 +221,8 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
     }
 
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Same_address_different_index(int snapshot)
+    [Test]
+    public void Same_address_different_index([Values(-1, 0, 1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -455,11 +449,8 @@ public class StorageProviderTests(bool useFlat)
     /// Transient storage can be updated and restored
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Tload_same_address_same_index_different_values_restore(int snapshot)
+    [Test]
+    public void Tload_same_address_same_index_different_values_restore([Values(-1, 0, 1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -517,11 +508,8 @@ public class StorageProviderTests(bool useFlat)
     /// Transient state does not impact persistent state
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Transient_state_restores_independent_of_persistent_state(int snapshot)
+    [Test]
+    public void Transient_state_restores_independent_of_persistent_state([Values(-1, 0, 1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -562,11 +550,8 @@ public class StorageProviderTests(bool useFlat)
     /// Persistent state does not impact transient state
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Persistent_state_restores_independent_of_transient_state(int snapshot)
+    [Test]
+    public void Persistent_state_restores_independent_of_transient_state([Values(-1, 0, 1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -748,9 +733,8 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Clearing_unaccessed_empty_storage_is_a_noop(bool accountExists)
+    [Test]
+    public void Clearing_unaccessed_empty_storage_is_a_noop([Values] bool accountExists)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -1171,9 +1155,8 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Clear_after_same_block_account_deletion_clears_backing_storage(bool recreateAsBalanceOnly)
+    [Test]
+    public void Clear_after_same_block_account_deletion_clears_backing_storage([Values] bool recreateAsBalanceOnly)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
@@ -1244,9 +1227,8 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(2)]
-    [TestCase(1000)]
-    public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
+    [Test]
+    public void Set_empty_value_for_storage_cell_without_read_clears_data([Values(2, 1000)] int numItems)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
@@ -1310,9 +1292,8 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
+    [Test]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator([Values] bool populator)
     {
         PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();

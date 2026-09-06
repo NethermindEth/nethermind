@@ -177,9 +177,8 @@ namespace Nethermind.Db.Test
         public void SharedCacheRejectsZeroCapacity() =>
             Assert.That(() => new HyperClockCacheWrapper(0), Throws.TypeOf<InvalidConfigurationException>());
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void UseSharedCacheIfNoCacheIsSpecified(bool explicitCache)
+        [Test]
+        public void UseSharedCacheIfNoCacheIsSpecified([Values] bool explicitCache)
         {
             if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
             long sharedCacheSize = 10.KiB;
@@ -840,10 +839,8 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
-        [TestCase(1)]
-        [TestCase(1024)]
-        [TestCase(8192)]
-        public void Smoke_test_value_sizes(int valueSize)
+        [Test]
+        public void Smoke_test_value_sizes([Values(1, 1024, 8192)] int valueSize)
         {
             byte[] value = new byte[valueSize];
             new Random(valueSize).NextBytes(value);
@@ -867,9 +864,8 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase(0)]
-        [TestCase(3)]
-        public void C_style_get_rejects_undersized_output_without_modifying_it(int outputSize)
+        [Test]
+        public void C_style_get_rejects_undersized_output_without_modifying_it([Values(0, 3)] int outputSize)
         {
             byte[] key = [1, 2, 3];
             _db[key] = [4, 5, 6, 7];

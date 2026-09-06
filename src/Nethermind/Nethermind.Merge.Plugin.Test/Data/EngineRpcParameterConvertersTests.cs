@@ -36,10 +36,8 @@ public class EngineRpcParameterConvertersTests
         Assert.That(hashes, Has.Length.EqualTo(GetBlobsV4Limits.MaxBlobVersionedHashes + 1));
     }
 
-    [TestCase(Hash256.Size - 1)]
-    [TestCase(Hash256.Size + 1)]
-    [TestCase(1_024)]
-    public void Blob_hash_converter_rejects_non_hash_width_before_conversion(int byteLength)
+    [Test]
+    public void Blob_hash_converter_rejects_non_hash_width_before_conversion([Values(Hash256.Size - 1, Hash256.Size + 1, 1_024)] int byteLength)
     {
         string json = BuildHashArray(1, byteLength);
         JsonSerializerOptions options = CreateOptions(new BlobVersionedHashesV4Converter());
@@ -49,10 +47,8 @@ public class EngineRpcParameterConvertersTests
             Throws.TypeOf<JsonException>());
     }
 
-    [TestCase(BlobCellMask.FixedByteLength - 1)]
-    [TestCase(BlobCellMask.FixedByteLength + 1)]
-    [TestCase(1_024)]
-    public void Blob_cell_mask_converter_rejects_non_protocol_width(int byteLength)
+    [Test]
+    public void Blob_cell_mask_converter_rejects_non_protocol_width([Values(BlobCellMask.FixedByteLength - 1, BlobCellMask.FixedByteLength + 1, 1_024)] int byteLength)
     {
         string json = BuildHexString(byteLength);
         JsonSerializerOptions options = CreateOptions(new BlobCellBitArrayConverter());

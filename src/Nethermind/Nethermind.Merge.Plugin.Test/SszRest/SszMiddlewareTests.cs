@@ -996,10 +996,8 @@ public class SszMiddlewareTests
         await _engineModule.Received(1).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
     }
 
-    [TestCase("application/json")]
-    [TestCase("*/*")]
-    [TestCase("text/html, application/json;q=0.9, */*;q=0.8")]
-    public async Task Capabilities_returns_200_json_regardless_of_Accept_header(string accept)
+    [Test]
+    public async Task Capabilities_returns_200_json_regardless_of_Accept_header([Values("application/json", "*/*", "text/html, application/json;q=0.9, */*;q=0.8")] string accept)
     {
         DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v1/capabilities", AuthenticatedPort);
         ctx.Request.Headers.Accept = accept;
@@ -1013,9 +1011,8 @@ public class SszMiddlewareTests
         Assert.That(body, Does.Contain("supported_forks"));
     }
 
-    [TestCase("application/json")]
-    [TestCase("*/*")]
-    public async Task Identity_returns_200_json_regardless_of_Accept_header(string accept)
+    [Test]
+    public async Task Identity_returns_200_json_regardless_of_Accept_header([Values("application/json", "*/*")] string accept)
     {
         ClientVersionV1[] response = [new ClientVersionV1()];
         _engineModule.engine_getClientVersionV1(default)
@@ -1061,9 +1058,8 @@ public class SszMiddlewareTests
         }
     }
 
-    [TestCase("/engine/v1/capabilities/")]
-    [TestCase("/engine/v1/identity/")]
-    public async Task Trailing_slash_on_unscoped_endpoint_returns_404(string path)
+    [Test]
+    public async Task Trailing_slash_on_unscoped_endpoint_returns_404([Values("/engine/v1/capabilities/", "/engine/v1/identity/")] string path)
     {
         DefaultHttpContext ctx = MakeBaseContext("GET", path, AuthenticatedPort);
         ctx.Request.Headers.Accept = "application/json";

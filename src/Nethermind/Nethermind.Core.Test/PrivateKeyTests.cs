@@ -17,12 +17,8 @@ public class PrivateKeyTests
     [OneTimeSetUp]
     public void SetUp() => Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(16)]
-    [TestCase(31)]
-    [TestCase(33)]
-    public void Cannot_be_initialized_with_array_of_length_different_than_32(int length)
+    [Test]
+    public void Cannot_be_initialized_with_array_of_length_different_than_32([Values(0, 1, 16, 31, 33)] int length)
     {
         byte[] bytes = new byte[length];
         // ReSharper disable once ObjectCreationAsStatement

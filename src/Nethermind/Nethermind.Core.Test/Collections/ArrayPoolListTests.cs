@@ -104,9 +104,8 @@ public class ArrayPoolListTests
         Assert.That(list, Is.EqualTo(expected));
     }
 
-    [TestCase(10)]
-    [TestCase(-1)]
-    public void Insert_should_throw(int index)
+    [Test]
+    public void Insert_should_throw([Values(10, -1)] int index)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -177,9 +176,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Get_should_throw(int item)
+    [Test]
+    public void Get_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -197,9 +195,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Set_should_throw(int item)
+    [Test]
+    public void Set_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -299,9 +296,8 @@ public class ArrayPoolListTests
         Assert.That(action, Throws.TypeOf<InvalidCastException>());
     }
 
-    [TestCase("null")]
-    [TestCase(null)]
-    public void Should_not_throw_on_invalid_type_lookup(object? value)
+    [Test]
+    public void Should_not_throw_on_invalid_type_lookup([Values("null", null)] object? value)
     {
         using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
@@ -461,9 +457,8 @@ public class ArrayPoolUtilitiesTests
     public void Get_power_of_two_capacity_returns_safe_capacity(int minimumLength, int expectedCapacity)
         => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
 
-    [TestCase(0)]
-    [TestCase(-1)]
-    public void Get_power_of_two_capacity_requires_positive_length(int minimumLength)
+    [Test]
+    public void Get_power_of_two_capacity_requires_positive_length([Values(0, -1)] int minimumLength)
         => Assert.That(
             () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
             Throws.TypeOf<ArgumentOutOfRangeException>());

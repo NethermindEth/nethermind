@@ -174,13 +174,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(0UL));
     }
 
-    [TestCase(1024)]
-    [TestCase(4096)]
-    [TestCase(32 * 1024)]
-    [TestCase(70 * 1024)]
-    [TestCase(2 * 1024 * 1024)]
-    [TestCase(4 * 1024 * 1024)]
-    public void Pooled_buffer_is_zeroed_on_reuse(int size)
+    [Test]
+    public void Pooled_buffer_is_zeroed_on_reuse([Values(1024, 4096, 32 * 1024, 70 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024)] int size)
     {
         EvmPooledMemory dirty = new();
         UInt256 zero = UInt256.Zero;
@@ -523,9 +518,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(1)]
-    [TestCase(16)]
-    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail(int wordCount)
+    [Test]
+    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail([Values(1, 16)] int wordCount)
     {
         using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         const int reservationSize = 4 * 1024;
@@ -578,13 +572,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(false, 512)]
-    [TestCase(false, 4 * 1024)]
-    [TestCase(true, 512)]
-    [TestCase(true, 4 * 1024)]
+    [Test]
     public void Read_within_initialized_prefix_does_not_materialize_larger_logical_expansion(
-        bool afterGas,
-        int reservationSize)
+        [Values] bool afterGas,
+        [Values(512, 4 * 1024)] int reservationSize)
     {
         VmState<EthereumGasPolicy> owner = new();
         ref EvmPooledMemory memory = ref owner.Memory;
@@ -826,11 +817,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }
 
-    [TestCase(32)]
-    [TestCase(64)]
-    [TestCase(1024)]
-    [TestCase(4096)]
-    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions(int step)
+    [Test]
+    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions([Values(32, 64, 1024, 4096)] int step)
     {
         EvmPooledMemory memory = new();
         byte[] word = TestItem.KeccakA.BytesToArray();
@@ -923,9 +911,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void CopyAfterGas_sizes_storage_for_destination_not_logically_zero_source(bool allocateDestinationFirst)
+    [Test]
+    public void CopyAfterGas_sizes_storage_for_destination_not_logically_zero_source([Values] bool allocateDestinationFirst)
     {
         using ThreadCacheReservation _ = new();
         byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);

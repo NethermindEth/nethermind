@@ -222,10 +222,8 @@ public class SyncPeerPoolTests
         Assert.That(peer.DisconnectRequested, Is.EqualTo(isDisconnectRequested));
     }
 
-    [TestCase(0)]
-    [TestCase(10)]
-    [TestCase(24)]
-    public async Task Will_not_disconnect_any_priority_peer_if_their_amount_is_lower_than_max(byte number)
+    [Test]
+    public async Task Will_not_disconnect_any_priority_peer_if_their_amount_is_lower_than_max([Values(0, 10, 24)] byte number)
     {
         const int peersMaxCount = 25;
         const int priorityPeersMaxCount = 25;
@@ -265,9 +263,8 @@ public class SyncPeerPoolTests
     }
 
     // Neither static nor trusted peers are dropped by worst-peer eviction; only plain peers are.
-    [TestCase((byte)0)]
-    [TestCase((byte)24)]
-    public async Task Will_not_disconnect_static_or_trusted_peer(byte number)
+    [Test]
+    public async Task Will_not_disconnect_static_or_trusted_peer([Values((byte)0, (byte)24)] byte number)
     {
         const int peersMaxCount = 25;
         await using Context ctx = new();

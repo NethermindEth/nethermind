@@ -89,10 +89,9 @@ public class StartupTests
         AssertJsonResponse(response, root => Assert.That(root.GetProperty("id").GetString(), Is.EqualTo(injId)));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
+    [Test]
     [NonParallelizable]
-    public async Task ProcessJsonRpcRequest_ProcessesAndCountsBytes(bool setContentLength)
+    public async Task ProcessJsonRpcRequest_ProcessesAndCountsBytes([Values] bool setContentLength)
     {
         string request = CreateJsonRpcRequest();
 

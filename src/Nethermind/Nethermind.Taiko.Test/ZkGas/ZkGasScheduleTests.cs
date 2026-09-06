@@ -117,18 +117,16 @@ public class ZkGasScheduleTests
         Assert.That(resolved[Address.FromNumber(0x10001)], Is.EqualTo((ushort)200));
     }
 
-    [TestCase("not-an-address")]
-    [TestCase("0xZZZZ")]
-    public void BuildPrecompileTable_rejects_malformed_address(string addressHex)
+    [Test]
+    public void BuildPrecompileTable_rejects_malformed_address([Values("not-an-address", "0xZZZZ")] string addressHex)
     {
         Dictionary<string, long> entries = new() { [addressHex] = 1 };
         Assert.That(() => ZkGasSchedule.BuildPrecompileTable(entries),
             Throws.TypeOf<InvalidConfigurationException>());
     }
 
-    [TestCase(-1L)]
-    [TestCase(65536L)]
-    public void BuildPrecompileTable_rejects_out_of_range_multiplier(long multiplier)
+    [Test]
+    public void BuildPrecompileTable_rejects_out_of_range_multiplier([Values(-1L, 65536L)] long multiplier)
     {
         Dictionary<string, long> entries =
             new() { ["0x0000000000000000000000000000000000000001"] = multiplier };

@@ -156,15 +156,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(32)]
-        [TestCase(4096)]
-        [TestCase(100000)]
-        [TestCase(102400)]
-        [TestCase(222222)]
-        public async Task should_send_single_requested_PooledTransaction_even_if_exceed_MaxPacketSize(int dataSize)
+        [Test]
+        public async Task should_send_single_requested_PooledTransaction_even_if_exceed_MaxPacketSize([Values(0, 1, 2, 32, 4096, 100000, 102400, 222222)] int dataSize)
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();

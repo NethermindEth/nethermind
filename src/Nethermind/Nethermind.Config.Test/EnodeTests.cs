@@ -101,12 +101,8 @@ namespace Nethermind.Config.Test
             }
         }
 
-        [TestCase("/junk")]
-        [TestCase("#?discport=30304")]
-        [TestCase("?discport=-1")]
-        [TestCase("?discport=65536")]
-        [TestCase("?discport=+30304")]
-        public void rejects_malformed_enode_suffix(string suffix)
+        [Test]
+        public void rejects_malformed_enode_suffix([Values("/junk", "#?discport=30304", "?discport=-1", "?discport=65536", "?discport=+30304")] string suffix)
         {
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 

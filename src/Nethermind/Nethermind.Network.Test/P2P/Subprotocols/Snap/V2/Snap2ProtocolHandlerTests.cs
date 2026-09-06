@@ -112,9 +112,8 @@ public class Snap2ProtocolHandlerTests
 
     // The interface call is the one BalFetcher makes. It must reach the handler and not ISnapSyncPeer's
     // default implementation, which is mapped at Snap1ProtocolHandler and answers with an empty list.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetBlockAccessLists_sends_a_request_when_called_through_the_interface(bool viaInterface)
+    [Test]
+    public void GetBlockAccessLists_sends_a_request_when_called_through_the_interface([Values] bool viaInterface)
     {
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));

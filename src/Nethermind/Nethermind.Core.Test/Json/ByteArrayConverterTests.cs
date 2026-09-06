@@ -108,10 +108,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
-    [TestCase("true")]
-    [TestCase("123")]
-    [TestCase("{}")]
-    public void NonStringTokens_ShouldThrowInvalidOperation(string literal)
+    [Test]
+    public void NonStringTokens_ShouldThrowInvalidOperation([Values("true", "123", "{}")] string literal)
     {
         ReadOnlySequence<byte> seq = JsonForLiteral(literal);
         (_, Exception? err) = InvokeRaw(seq);
@@ -119,9 +117,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(err, Is.TypeOf<InvalidOperationException>());
     }
 
-    [TestCase("0x")]
-    [TestCase("0X")]
-    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation(string hex)
+    [Test]
+    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation([Values("0x", "0X")] string hex)
     {
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
         // We accept either null or empty — but it must be consistent across segmentations.
@@ -231,11 +228,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [TestCase(126)]
-    [TestCase(127)]
-    [TestCase(1022)]
-    [TestCase(1023)]
-    public void Write_OutputAroundInlineThresholds_IsByteIdentical(int length)
+    [Test]
+    public void Write_OutputAroundInlineThresholds_IsByteIdentical([Values(126, 127, 1022, 1023)] int length)
     {
         byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
@@ -264,9 +258,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [TestCase(127)]
-    [TestCase(1022)]
-    public void WriteAsPropertyName_MediumOutput_IsByteIdentical(int length)
+    [Test]
+    public void WriteAsPropertyName_MediumOutput_IsByteIdentical([Values(127, 1022)] int length)
     {
         byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);

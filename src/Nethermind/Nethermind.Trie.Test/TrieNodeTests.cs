@@ -326,12 +326,8 @@ public class TrieNodeTests
         Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
     }
 
-    [TestCase(0x0001)]
-    [TestCase(0x0003)]
-    [TestCase(0x0007)]
-    [TestCase(0x5555)]
-    [TestCase(0xffff)]
-    public void Resolves_full_branch_children_to_their_individual_hashes(int branchMask)
+    [Test]
+    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
     {
         if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
         {
@@ -956,9 +952,8 @@ public class TrieNodeTests
         Assert.That(trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild), Is.EqualTo(false));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
+    [Test]
+    public void Extension_child_as_keccak_call_recursively([Values] bool skipPersisted)
     {
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
         TrieNode trieNode = new(NodeType.Extension);

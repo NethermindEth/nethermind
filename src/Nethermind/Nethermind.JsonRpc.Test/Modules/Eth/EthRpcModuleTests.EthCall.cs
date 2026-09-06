@@ -812,9 +812,8 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified\"},\"id\":67}"));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Eth_call_no_blobs_in_blob_tx(bool isNull)
+    [Test]
+    public async Task Eth_call_no_blobs_in_blob_tx([Values] bool isNull)
     {
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction

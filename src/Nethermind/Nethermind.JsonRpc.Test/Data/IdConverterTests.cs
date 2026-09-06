@@ -65,9 +65,8 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(converter.CanConvert(type), Is.EqualTo(true));
         }
 
-        [TestCase(typeof(object))]
-        [TestCase(typeof(IdConverterTests))]
-        public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
+        [Test]
+        public void It_supports_all_silly_types_and_we_can_live_with_it([Values(typeof(object), typeof(IdConverterTests))] Type type)
         {
             IdConverter converter = new();
             Assert.That(converter.CanConvert(type), Is.EqualTo(true));

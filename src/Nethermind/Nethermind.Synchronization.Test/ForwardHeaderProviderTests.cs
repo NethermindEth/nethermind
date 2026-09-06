@@ -147,9 +147,8 @@ public partial class ForwardHeaderProviderTests
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
-    [TestCase(33UL)]
-    [TestCase(65UL)]
-    public async Task Peer_only_advertise_some_header(ulong headNumber)
+    [Test]
+    public async Task Peer_only_advertise_some_header([Values(33UL, 65UL)] ulong headNumber)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();

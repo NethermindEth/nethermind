@@ -88,9 +88,8 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(1)]
-    [TestCase(TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)]
-    public void Test_CanSaveToStorage(int estimatedEntries)
+    [Test]
+    public void Test_CanSaveToStorage([Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries)
     {
         using Context ctx = new(useFlat);
 
@@ -232,9 +231,8 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(10)]
-    [TestCase(1500)]
-    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    [Test]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads([Values(10, 1500)] int slotCount)
     {
         using Context ctx = new(useFlat);
 
@@ -1189,9 +1187,8 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Test_MainScope_RegisteredForConsumerScopeLifetime(bool isPrewarmer)
+    [Test]
+    public void Test_MainScope_RegisteredForConsumerScopeLifetime([Values] bool isPrewarmer)
     {
         using Context ctx = new(useFlat);
 
