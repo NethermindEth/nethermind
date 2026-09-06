@@ -294,7 +294,26 @@ namespace Nethermind.Core.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(() => KeccakHash.ComputeHash(input, output), Throws.InstanceOf<ArgumentOutOfRangeException>());
-                Assert.That(() => KeccakHash.Create(outputLength), Throws.InstanceOf<ArgumentException>());
+                Assert.That(() => KeccakHash.Create(outputLength), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // UpdateFinalTo squeezes from that same single block, so it is bounded by the sponge's rate
+        // rather than by MAX_HASH_SIZE. 66 is the widest hash and so carries the narrowest rate, 68.
+        [Test]
+        public void Incremental_output_wider_than_the_rate_is_rejected()
+        {
+            byte[] input = new byte[300];
+
+            KeccakHash atRate = KeccakHash.Create(66);
+            atRate.Update(input);
+            KeccakHash overRate = KeccakHash.Create(66);
+            overRate.Update(input);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => atRate.UpdateFinalTo(new byte[68]), Throws.Nothing);
+                Assert.That(() => overRate.UpdateFinalTo(new byte[69]), Throws.InstanceOf<ArgumentOutOfRangeException>());
             }
         }
 

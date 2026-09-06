@@ -128,7 +128,7 @@ public sealed partial class KeccakHash
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
         if ((uint)(output.Length - 1) >= MAX_HASH_SIZE)
-            ThrowInvalidHashSize(nameof(output), output.Length);
+            ThrowInvalidHashSize($"{nameof(output)}.{nameof(output.Length)}", output.Length);
 
         int inputLength = input.Length;
         // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
@@ -317,6 +317,9 @@ public sealed partial class KeccakHash
         if (_hash is not null)
             ThrowHashingComplete();
 
+        if (output.Length > _roundSize)
+            ThrowOutputWiderThanRate(output.Length, _roundSize);
+
         ulong[] state = _state;
 
         if (state.Length == 0)
@@ -407,7 +410,9 @@ public sealed partial class KeccakHash
 
     private static partial void KeccakF(Span<ulong> st);
 
-    // Callers bound hashSize to [1, MAX_HASH_SIZE], so the rate is always at least hashSize bytes.
+    // Callers bound hashSize to [1, MAX_HASH_SIZE], so the rate is always at least hashSize bytes, and
+    // never below 68 — which is what lets ComputeHash write its 20- and 32-byte inputs, and their
+    // terminator, without comparing against it.
     private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
 
     private byte[] GenerateHash()
@@ -557,6 +562,10 @@ public sealed partial class KeccakHash
     [DoesNotReturn]
     private static void ThrowInvalidHashSize(string paramName, int size) => throw new ArgumentOutOfRangeException(
         paramName, size, $"Keccak hash size must be between 1 and {MAX_HASH_SIZE}.");
+
+    [DoesNotReturn]
+    private static void ThrowOutputWiderThanRate(int length, int roundSize) => throw new ArgumentOutOfRangeException(
+        "output.Length", length, $"A single squeeze cannot serve more than the {roundSize}-byte rate.");
 
     [InlineArray(STATE_LANES)]
     private struct KeccakState
