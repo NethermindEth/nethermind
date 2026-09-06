@@ -11,6 +11,9 @@ ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9
 # ziskemu ROMs the whole .text, so even unreachable F/D/C/A instructions reject
 # the guest - fail at build time instead.
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
+# Nothing in the guest reads a stack trace (the throw hook prints type and message), so the
+# method-name table is 0.2 MB of dead read-only data.
+TRIM_FLAGS ?= --no-stacktrace-data
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back
 # and favouring speed is close to free. Must land together with the TrieNode seqlock
 # collapse: -Ot over the seqlock builds a guest whose output success flag is 0. The
@@ -64,6 +67,7 @@ build: dotnet-build
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		$(OPT_FLAGS) \
+		$(TRIM_FLAGS) \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
