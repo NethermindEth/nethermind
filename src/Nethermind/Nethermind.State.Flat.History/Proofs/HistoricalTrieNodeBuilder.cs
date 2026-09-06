@@ -55,18 +55,29 @@ internal sealed class HistoricalTrieNodeBuilder
 
     public ParallelOptions FanOutOptions => _fanOutOptions;
 
-    public void CollectPrefetch(in ValueHash256 fullPath, ICollection<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work)
+    public void CollectPrefetch(in ValueHash256 fullPath, ICollection<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, int fromDepth = 0)
     {
         _prefetched ??= new ConcurrentDictionary<TreePath, byte[]>();
         int depth = 0;
         while (depth < CommitmentDepthPolicy.MaxTrieDepth && (_scope.HasCommitmentRows(depth) || _scope.IsComposed(depth))) depth++;
-        for (int length = 0; length < depth; length++)
+        for (int length = fromDepth; length < depth; length++)
         {
+            if (_scope.IsComposed(length)) continue;
+
             TreePath prefix = new(fullPath, CommitmentDepthPolicy.MaxTrieDepth);
             prefix.TruncateMut(length);
             work.Add((this, prefix));
         }
     }
+
+    public void PrefetchOne(in TreePath path)
+    {
+        _prefetched ??= new ConcurrentDictionary<TreePath, byte[]>();
+        byte[]? rlp = ResolveRlp(path, parallelChildren: false, allowRebuild: false);
+        if (rlp is not null) _prefetched[path] = rlp;
+    }
+
+    public bool IsCached(in ValueHash256 hash) => _cache is not null && _cache.TryGet(hash, out byte[]? cached) && cached is not null;
 
     public static void Prefetch(IReadOnlyList<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, ParallelOptions options)
     {
@@ -91,7 +102,7 @@ internal sealed class HistoricalTrieNodeBuilder
 
         if (_scope.MayHaveExactRows(path.Length))
         {
-            using CommitmentStore.RowChain exact = _scope.OpenRows(path, exact: true, _block, _budget);
+            using CommitmentStore.RowChain exact = _scope.OpenRows(path, exact: true, _block, _budget, bounded: !allowRebuild && path.Length > 0);
             if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue))
             {
                 if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(exact.CurrentValue));
@@ -112,7 +123,7 @@ internal sealed class HistoricalTrieNodeBuilder
     private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren, bool allowRebuild)
     {
         ulong anchor = _scope.Policy.WindowAtOrBelow(_block);
-        using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, anchor + 1, _budget);
+        using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, anchor + 1, _budget, bounded: !allowRebuild && path.Length > 0);
         if (!chain.MoveNext()) return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
         if (!ParentRowCodec.IsValid(chain.CurrentValue)) return RebuildRlp(path, parallelChildren);
         if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(chain.CurrentValue));

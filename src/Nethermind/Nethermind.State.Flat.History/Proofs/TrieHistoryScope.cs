@@ -46,11 +46,11 @@ internal abstract class TrieHistoryScope(
 
     protected virtual bool SurvivesTo(in ValueHash256 triePath, ulong writtenAtBlock, ulong block) => true;
 
-    public CommitmentStore.RowChain OpenRows(in TreePath path, bool exact, ulong suffix, ResolutionBudget? budget = null)
+    public CommitmentStore.RowChain OpenRows(in TreePath path, bool exact, ulong suffix, ResolutionBudget? budget = null, bool bounded = false)
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = WriteCommitmentPrefix(prefix, path, exact);
-        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget, MinEpoch, ProbeStartEpoch);
+        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget, MinEpoch, ProbeStartEpoch, bounded);
     }
 
     public void EnumerateLeaves(in TreePath prefix, ulong block, ResolutionBudget budget, List<TrieLeaf> leaves)

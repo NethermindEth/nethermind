@@ -59,7 +59,7 @@ public sealed class ArchiveProofSource(
     {
         ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows);
         ulong minEpoch = metadata.DroppedThroughEpoch;
-        ArchiveProofTrieStore store = visitor is AccountProofCollector collector
+        ArchiveProofTrieStore store = visitor is AccountProofCollector collector && !_nodeCache.TryGet(stateId.StateRoot, out _)
             ? CreatePrefetchedStore(collector, stateId.BlockNumber, budget, minEpoch)
             : CreateAccountStore(stateId.BlockNumber, budget, minEpoch);
         PatriciaTree tree = new(store, logManager);
@@ -75,12 +75,25 @@ public sealed class ArchiveProofSource(
 
         HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work = [];
         accounts.CollectPrefetch(identity, work);
-        foreach (ValueHash256 slot in collector.HashedStorageKeys) storage.CollectPrefetch(slot, work);
         HistoricalTrieNodeBuilder.Prefetch([.. work], accounts.FanOutOptions);
 
+        IReadOnlyList<ValueHash256> slots = collector.HashedStorageKeys;
         return new ArchiveProofTrieStore(
             accounts,
-            accountPath => accountPath == identity ? storageStore : new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null));
+            accountPath =>
+            {
+                if (accountPath != identity) return new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null);
+
+                if (slots.Count > 0)
+                {
+                    storage.PrefetchOne(TreePath.Empty);
+                    HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> deeper = [];
+                    foreach (ValueHash256 slot in slots) storage.CollectPrefetch(slot, deeper, fromDepth: 1);
+                    HistoricalTrieNodeBuilder.Prefetch([.. deeper], storage.FanOutOptions);
+                }
+
+                return storageStore;
+            });
     }
 
     private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget, ulong minEpoch) =>

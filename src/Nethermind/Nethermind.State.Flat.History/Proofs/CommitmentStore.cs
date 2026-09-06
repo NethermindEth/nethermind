@@ -110,7 +110,7 @@ internal sealed class CommitmentStore
         _column.PutSpan(key, [(byte)depth]);
     }
 
-    public RowChain OpenAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix, ResolutionBudget? budget = null, ulong minEpoch = 0, ulong? startEpoch = null)
+    public RowChain OpenAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix, ResolutionBudget? budget = null, ulong minEpoch = 0, ulong? startEpoch = null, bool bounded = false)
     {
         ulong epoch = EpochOf(prefix, suffix);
         if (startEpoch is { } hint && hint < epoch)
@@ -119,7 +119,7 @@ internal sealed class CommitmentStore
             suffix = ulong.MaxValue;
         }
 
-        return new RowChain(_sorted, prefix, TierOf(prefix), suffix, budget, epoch, Math.Min(minEpoch, epoch));
+        return new RowChain(_sorted, prefix, TierOf(prefix), suffix, budget, epoch, bounded ? epoch : Math.Min(minEpoch, epoch));
     }
 
     public RowChain OpenScratchAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix) => new(_sorted, prefix, CommitmentKeyLayout.FineTier, suffix, budget: null, epoch: null, minEpoch: 0);
