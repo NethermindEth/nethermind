@@ -20,7 +20,8 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
     GethTraceOptions options,
     Utf8JsonWriter writer,
     PipeWriter? pipeWriter,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken,
+    long destroyRefund = 0)
     : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>(options.TxHash), IDisposable
 {
     private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
@@ -29,7 +30,7 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
     {
         if (_reusableTxTracer is null)
         {
-            _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, options, writer, pipeWriter, cancellationToken);
+            _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, options, writer, pipeWriter, cancellationToken, destroyRefund: destroyRefund);
         }
         else
         {
