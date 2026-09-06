@@ -180,9 +180,6 @@ public static partial class EvmInstructions
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            // Prefetch the cache line at the jump destination
-            // since hardware prefetcher can't predict jumps.
-            PrefetchCodeAtDestination(ref stack, programCounter);
             vm.OpCodeCount++;
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
