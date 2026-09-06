@@ -102,7 +102,6 @@ public partial class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePr
     /// since Berlin, so a guest built for later forks can never reach it.
     /// </remarks>
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
-        return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
 
     private static UInt256 MultComplexity(in UInt256 adjustedExponentLength)
     {
