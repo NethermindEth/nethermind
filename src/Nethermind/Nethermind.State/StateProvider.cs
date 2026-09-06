@@ -554,7 +554,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             if (isTracing) TraceNoChanges();
 
-            codeFlushTask.GetAwaiter().GetResult();
+            AwaitCodeFlush(codeFlushTask);
             return;
         }
 
@@ -583,7 +583,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
 
-        codeFlushTask.GetAwaiter().GetResult();
+        AwaitCodeFlush(codeFlushTask);
+
+        // The guest persists the batch inline, so its task is always the completed one and there is
+        // nothing to await; leaving the awaiter out keeps the task machinery out of the image.
+        static void AwaitCodeFlush(Task codeFlushTask)
+        {
+#if !ZK_EVM
+            codeFlushTask.GetAwaiter().GetResult();
+#endif
+        }
 
         Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
         {

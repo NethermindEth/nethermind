@@ -71,6 +71,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private void CancelHintBal()
         {
+            // A single processor never starts the warm-up task, so there is nothing to drain.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return;
+
             _hintBalCts?.Cancel();
             try { _hintBalTask?.GetAwaiter().GetResult(); }
             catch (OperationCanceledException) { }
@@ -105,7 +108,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             CancelHintBal();
 
             // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
-            if (sink is null) return Task.CompletedTask;
+            // Warming reads on the one processor that will run the block only contends with it.
+            if (sink is null || Core.Cpu.RuntimeInformation.IsSingleProcessor) return Task.CompletedTask;
 
             int accountCount = bal.AccountChanges.Count;
             if (accountCount == 0) return Task.CompletedTask;
@@ -217,6 +221,12 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
+#if ZK_EVM
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            {
+                storage.Value.Commit();
+            }
+#else
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
             // may make it worst. Always check on mainnet.
             using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
@@ -238,6 +248,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             }
 
             Task.WaitAll(commitTask.AsSpan());
+#endif
             _backingStateTree.Commit();
             _storages.Clear();
         }

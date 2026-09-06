@@ -51,6 +51,13 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateOrWaitForJumpDestinationBitmap()
     {
+#if ZK_EVM
+        // Nothing analyzes in the background on the single-threaded guest, so there is no completion
+        // event to allocate, signal or wait on.
+        long[] bitmap = CreateJumpDestinationBitmap();
+        Volatile.Write(ref _analysisComplete, bitmap);
+        return bitmap;
+#else
         object? previous = Volatile.Read(ref _analysisComplete);
         if (previous is null)
         {
@@ -66,6 +73,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
 
         // Must be the bitmap, and lost check->create benign data race
         return (long[])previous;
+#endif
     }
 
     private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
