@@ -191,7 +191,7 @@ public static partial class EvmInstructions
         EvmExceptionType result;
         if (!TTracingInst.IsActive || remainingCode >= Size)
         {
-            // Optimized push for exactly two bytes.
+            // The untraced prelude already checked capacity; only traced execution needs the push's depth check.
             result = stack.Push2Bytes<TTracingInst, TTracingInst>(ref start);
         }
         else if (remainingCode == Op1.Count)
