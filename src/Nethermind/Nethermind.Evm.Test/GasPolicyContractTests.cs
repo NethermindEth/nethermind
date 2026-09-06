@@ -18,25 +18,22 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
     {
         TGasPolicy gas = TGasPolicy.FromULong(value);
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(value));
-        Assert.That(TGasPolicy.IsOutOfGas(in gas), Is.False);
     }
 
-    [Test]
-    public void Consume_reduces_remaining_when_affordable()
+    [TestCase(0UL, 0UL, true, 0UL)]
+    [TestCase(0UL, 1UL, false, 0UL)]
+    [TestCase(100UL, 100UL, true, 0UL)]
+    [TestCase(100UL, 101UL, false, 0UL)]
+    [TestCase(1000UL, 100UL, true, 900UL)]
+    public void UpdateGas_reports_affordability(ulong available, ulong cost, bool expectedSuccess, ulong expectedRemaining)
     {
-        TGasPolicy gas = TGasPolicy.FromULong(1000);
-        TGasPolicy.Consume(ref gas, 100);
-        Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(900UL));
-        Assert.That(TGasPolicy.IsOutOfGas(in gas), Is.False);
-    }
-
-    [Test]
-    public void Consume_floors_at_zero_and_flags_out_of_gas_when_unaffordable()
-    {
-        TGasPolicy gas = TGasPolicy.FromULong(100);
-        TGasPolicy.Consume(ref gas, 101);
-        Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(0UL));
-        Assert.That(TGasPolicy.IsOutOfGas(in gas), Is.True);
+        TGasPolicy gas = TGasPolicy.FromULong(available);
+        bool success = TGasPolicy.UpdateGas(ref gas, cost);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.EqualTo(expectedSuccess));
+            Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(expectedRemaining));
+        }
     }
 
     [Test]
@@ -45,7 +42,6 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
         TGasPolicy gas = TGasPolicy.FromULong(100);
         Assert.That(TGasPolicy.TryConsume(ref gas, 101), Is.False);
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(100UL));
-        Assert.That(TGasPolicy.IsOutOfGas(in gas), Is.False);
     }
 
     [Test]
@@ -54,24 +50,6 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
         TGasPolicy gas = TGasPolicy.FromULong(100);
         Assert.That(TGasPolicy.TryConsume(ref gas, 40), Is.True);
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(60UL));
-    }
-
-    [Test]
-    public void UpdateGas_flags_out_of_gas_when_unaffordable()
-    {
-        TGasPolicy gas = TGasPolicy.FromULong(100);
-        Assert.That(TGasPolicy.UpdateGas(ref gas, 101), Is.False);
-        Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(0UL));
-        Assert.That(TGasPolicy.IsOutOfGas(in gas), Is.True);
-    }
-
-    [Test]
-    public void SetOutOfGas_zeros_remaining_and_flags()
-    {
-        TGasPolicy gas = TGasPolicy.FromULong(1000);
-        TGasPolicy.SetOutOfGas(ref gas);
-        Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(0UL));
-        Assert.That(TGasPolicy.IsOutOfGas(in gas), Is.True);
     }
 
     [TestCase(10UL, 20UL)]

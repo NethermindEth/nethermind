@@ -226,18 +226,24 @@ namespace Nethermind.Evm.Test
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
 
-        [Test]
-        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost(bool eip8038Enabled)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
                 .TestObject;
-            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+            OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8038Enabled = eip8038Enabled };
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
 
             // Recipient touch: COLD + TX_VALUE (transfer log folded into TX_VALUE); authorization: state-independent base.
-            ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
-            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientExecution + Eip8038Constants.PerAuthBaseExecution));
-            Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
+            ulong recipientExecution = (eip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess) + GasCostOf.TxValueCostEip2780;
+            ulong authorizationExecution = eip8038Enabled ? Eip8038Constants.PerAuthBaseExecution : GasCostOf.PerAuthBaseExecution;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientExecution + authorizationExecution));
+                Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
+            }
         }
 
         [Test]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -93,8 +94,7 @@ public static partial class EvmInstructions
     {
         vm.MetricsCounters.IncrementCalls();
 
-        // Clear previous return data.
-        vm.ReturnData = null;
+        Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
 
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
@@ -145,26 +145,26 @@ public static partial class EvmInstructions
             // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
             // static gas check before any target access, so an OOG here must not touch the BAL.
             bool valueOutOfGas = TSpec.IsEip2780Enabled
-                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas)
-                : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+                ? !TGasPolicy.TryConsumeCallValueTransferEip2780(ref gas)
+                : !TGasPolicy.TryConsumeCallValueTransfer(ref gas);
             if (valueOutOfGas) goto OutOfGas;
         }
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.ConsumeCallBaseGas(ref gas, spec) ||
+        if (!TGasPolicy.TryConsumeCallBaseGas(ref gas, spec) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.IsTracingAccess, codeSource)) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
         if (TSpec.UseHotAndColdStorage &&
             delegated is not null &&
-            !TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, delegated))
+            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
@@ -178,7 +178,7 @@ public static partial class EvmInstructions
                 true => hasValueTransfer && state.IsDeadAccount(target),
             });
 
-        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
+        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
 
@@ -200,7 +200,7 @@ public static partial class EvmInstructions
         // Add call stipend if value is being transferred.
         if (hasValueTransfer)
         {
-            if (vm.TxTracer.IsTracingRefunds)
+            if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
@@ -210,11 +210,11 @@ public static partial class EvmInstructions
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            EvmExceptionType pushResult = stack.PushZero<TTracingInst>();
+            vm.ReturnDataBuffer = default;
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             // Optionally report memory changes for refund tracing.
-            if (vm.TxTracer.IsTracingRefunds)
+            if (vm.IsTracingRefunds)
             {
                 // Specific to Parity tracing: inspect 32 bytes from data offset.
                 ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
@@ -241,7 +241,7 @@ public static partial class EvmInstructions
         }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
@@ -262,7 +262,6 @@ public static partial class EvmInstructions
                 state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
             vm.MetricsCounters.IncrementEmptyCalls();
-            vm.ReturnData = null;
             return EvmExceptionType.None;
         }
 

@@ -271,6 +271,17 @@ public class VmState<TGasPolicy> : IDisposable
         stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
     }
 
+    internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        Debug.Assert(IsContinuation && !_isDisposed && DataStack is not null,
+            "A resumed frame retains its initialized stack until disposal.");
+        ref byte dataStack = ref As32AlignedRef(DataStack);
+        stack = TTracingInst.IsActive
+            ? new(DataStackHead, txTracer, ref dataStack, codeSpan)
+            : new(DataStackHead, ref dataStack, codeSpan);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static byte[] AllocateStacks() => StackPool.RentStacks();
 

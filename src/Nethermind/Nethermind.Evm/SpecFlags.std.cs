@@ -24,6 +24,8 @@ internal static partial class SpecFlags
 
     public static bool Eip158(IReleaseSpec spec) => spec.ClearEmptyAccountWhenTouched;
 
+    public static bool Eip160(IReleaseSpec spec) => spec.UseExpDDosProtection;
+
     public static bool Eip2200(IReleaseSpec spec) => spec.UseNetGasMeteringWithAStipendFix;
 
     public static bool Eip2929(IReleaseSpec spec) => spec.UseHotAndColdStorage;

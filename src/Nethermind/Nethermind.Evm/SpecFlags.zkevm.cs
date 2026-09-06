@@ -24,6 +24,9 @@ internal static partial class SpecFlags
     public const bool ConstEip158 = true;
 
     /// <inheritdoc cref="ConstEip150"/>
+    public const bool ConstEip160 = true;
+
+    /// <inheritdoc cref="ConstEip150"/>
     public const bool ConstEip2200 = true;
 
     /// <inheritdoc cref="ConstEip150"/>
@@ -41,6 +44,8 @@ internal static partial class SpecFlags
     public static bool Eip150(IReleaseSpec spec) => ConstEip150;
 
     public static bool Eip158(IReleaseSpec spec) => ConstEip158;
+
+    public static bool Eip160(IReleaseSpec spec) => ConstEip160;
 
     public static bool Eip2200(IReleaseSpec spec) => ConstEip2200;
 
@@ -82,6 +87,7 @@ internal static partial class SpecFlags
 
         Check(spec.Use63Over64Rule, ConstEip150, "EIP-150");
         Check(spec.ClearEmptyAccountWhenTouched, ConstEip158, "EIP-158");
+        Check(spec.UseExpDDosProtection, ConstEip160, "EIP-160");
         Check(spec.UseNetGasMeteringWithAStipendFix, ConstEip2200, "EIP-2200");
         Check(spec.UseHotAndColdStorage, ConstEip2929, "EIP-2929");
         Check(spec.IsEip3860Enabled, ConstEip3860, "EIP-3860");

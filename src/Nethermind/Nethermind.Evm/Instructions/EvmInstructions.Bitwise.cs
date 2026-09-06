@@ -79,29 +79,31 @@ public static partial class EvmInstructions
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
-        TGasPolicy.Consume<TOpBitwise>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpBitwise>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return BitwiseCore<TOpBitwise>(ref stack);
+        return BitwiseCore<TOpBitwise, OnFlag>(ref stack);
     }
 
     /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>.</summary>
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least 2 stack items.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
+    internal static EvmExceptionType BitwiseCore<TOpBitwise, TCheckDepth>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
+        where TCheckDepth : struct, IFlag
     {
         if (!Vector256.IsHardwareAccelerated && typeof(TOpBitwise) == typeof(OpBitwiseEq))
-            return EqualsInSlot(ref stack);
+            return EqualsInSlot<TCheckDepth>(ref stack);
 
         if (!Vector128.IsHardwareAccelerated &&
             (typeof(TOpBitwise) == typeof(OpBitwiseAnd) ||
              typeof(TOpBitwise) == typeof(OpBitwiseOr) ||
              typeof(TOpBitwise) == typeof(OpBitwiseXor)))
-            return BitwiseScalar<TOpBitwise>(ref stack);
+            return BitwiseScalar<TOpBitwise, TCheckDepth>(ref stack);
 
         // One depth check, then one address computation: the popped slot sits one word above the
         // slot the result overwrites.
-        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         EvmWord aVec = ReadUnaligned<EvmWord>(ref Add(ref topRef, EvmStack.WordSize));
@@ -123,9 +125,10 @@ public static partial class EvmInstructions
     /// same way. Comparing the slots removes that round trip.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType EqualsInSlot(ref EvmStack stack)
+    private static EvmExceptionType EqualsInSlot<TCheckDepth>(ref EvmStack stack)
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2))
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2))
             return EvmExceptionType.StackUnderflow;
 
         ref byte bBytes = ref stack.Pop1Peek32BytesUnchecked();
@@ -155,10 +158,11 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType BitwiseScalar<TOpBitwise>(ref EvmStack stack)
+    private static EvmExceptionType BitwiseScalar<TOpBitwise, TCheckDepth>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2))
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2))
             return EvmExceptionType.StackUnderflow;
 
         ref byte bBytes = ref stack.Pop1Peek32BytesUnchecked();

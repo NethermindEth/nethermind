@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -19,7 +18,11 @@ public ref partial struct EvmStack
         ulong u1 = Bytes.Bswap64(value.u1);
         ulong u0 = Bytes.Bswap64(value.u0);
 
-        head = Vector256.Create(u3, u2, u1, u0).AsByte();
+        ref byte destination = ref Unsafe.As<EvmWord, byte>(ref head);
+        Unsafe.WriteUnaligned(ref destination, u3);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, sizeof(ulong)), u2);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 2 * sizeof(ulong)), u1);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 3 * sizeof(ulong)), u0);
     }
 
     /// <summary>Reads one big-endian 32-byte stack word into a <see cref="UInt256"/>.</summary>

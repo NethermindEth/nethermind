@@ -227,6 +227,14 @@ public ref partial struct EvmStack
 
         ref byte dst = ref Unsafe.Add(ref _stack, headOffset * WordSize);
 
+        return WriteRightPaddedBytes<TTracingInst>(ref dst, ref src, length);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType WriteRightPaddedBytes<TTracingInst>(ref byte dst, ref byte src, uint length)
+        where TTracingInst : struct, IFlag
+    {
         if (length != WordSize)
         {
             return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref src, length);
@@ -390,7 +398,7 @@ public ref partial struct EvmStack
     /// <param name="position">The decoded position.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
+    internal static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
     {
         ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
         ulong unreachable = limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2);
@@ -437,12 +445,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push10Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push10Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -466,12 +475,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push11Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push11Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -495,12 +505,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push12Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push12Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -523,12 +534,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push13Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push13Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -551,12 +563,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push14Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push14Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -579,12 +592,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push15Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push15Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -607,12 +621,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push16Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push16Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -641,12 +656,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push17Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push17Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -670,12 +686,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push18Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push18Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -699,12 +716,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push19Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push19Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -728,12 +746,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push20Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push20Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -757,12 +776,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push21Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push21Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -786,12 +806,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push22Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push22Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -815,12 +836,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push23Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push23Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -844,12 +866,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push24Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push24Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -873,12 +896,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push25Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push25Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -902,12 +926,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push26Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push26Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -931,12 +956,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push27Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push27Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -960,12 +986,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push28Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push28Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -989,12 +1016,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push29Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push29Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1018,12 +1046,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push2Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push2Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1048,12 +1077,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push30Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push30Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1077,12 +1107,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push31Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push31Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1106,12 +1137,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push32Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push32Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1129,12 +1161,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push3Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push3Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1159,12 +1192,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push4Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push4Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1187,12 +1221,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push5Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push5Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1217,12 +1252,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push6Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push6Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1247,12 +1283,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push7Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push7Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1278,12 +1315,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push8Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push8Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1306,12 +1344,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push9Bytes<TTracingInst>(ref byte value)
+    public EvmExceptionType Push9Bytes<TTracingInst, TCheckDepth>(ref byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1334,12 +1373,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushByte<TTracingInst>(byte value)
+    public EvmExceptionType PushByte<TTracingInst, TCheckDepth>(byte value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1363,12 +1403,13 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushAddress<TTracingInst>(Address address)
         where TTracingInst : struct, IFlag
-        => Push20Bytes<TTracingInst>(ref MemoryMarshal.GetReference(address.Bytes));
+        => Push20Bytes<TTracingInst, OnFlag>(ref MemoryMarshal.GetReference(address.Bytes));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Push32Bytes<TTracingInst>(in ValueHash256 hash)
+    public EvmExceptionType Push32Bytes<TTracingInst, TCheckDepth>(in ValueHash256 hash)
         where TTracingInst : struct, IFlag
-        => Push32Bytes<TTracingInst>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in hash)));
+        where TCheckDepth : struct, IFlag
+        => Push32Bytes<TTracingInst, TCheckDepth>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in hash)));
 
     /// <summary>
     /// Fallback writer for truncated PUSH{n} where fewer than <paramref name="pushSize"/> immediate
@@ -1379,26 +1420,24 @@ public ref partial struct EvmStack
     /// <param name="used">Number of immediate bytes available in code (0 <= used <= pushSize).</param>
     /// <param name="pushSize">The PUSH opcode's declared immediate length (2..32).</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int pushSize)
+    public EvmExceptionType PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref byte start, int used, int pushSize)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
         Head = newOffset;
-
-        if (TTracingInst.IsActive)
-            ReportStackPush(ref start, used);
 
         ref byte dst = ref Unsafe.Add(ref _stack, headOffset * WordSize);
 
         // Truncated PUSH32 is just a right-padded partial write, so reuse the tighter helper.
         if (pushSize == WordSize)
         {
-            return PushBytesPartialZeroPadded<OffFlag>(ref dst, ref start, (uint)used);
+            return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref start, (uint)used);
         }
 
         // Zeros on both sides.
@@ -1414,21 +1453,15 @@ public ref partial struct EvmStack
 
         // When no immediate bytes are available (truncated PUSH at end of code), the
         // zero-filled word is already correct.
-        if (used == 0)
+        if (used != 0)
         {
-            return EvmExceptionType.None;
+            // Positions [WordSize - pushSize + used, WordSize) stay zero as the spec requires.
+            CopyUpTo32(ref Unsafe.Add(ref dst, WordSize - pushSize), ref start, (uint)used);
         }
 
-        // Copy `used` bytes to the high end of the `pushSize`-byte tail. Positions
-        // [WordSize - pushSize + used, WordSize) stay zero as the spec requires.
-        dst = ref Unsafe.Add(ref dst, WordSize - pushSize);
-        CopyUpTo32(ref dst, ref start, (uint)used);
+        if (TTracingInst.IsActive) ReportPushWord(ref dst);
         return EvmExceptionType.None;
     }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly void ReportStackPush(ref byte start, int used)
-        => _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref start, used));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CopyUpTo32(ref byte dest, ref byte source, uint len)
@@ -1500,12 +1533,13 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushZero<TTracingInst>()
+    public EvmExceptionType PushZero<TTracingInst, TCheckDepth>()
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1531,13 +1565,14 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushUInt32<TTracingInst>(uint value)
+    public EvmExceptionType PushUInt32<TTracingInst, TCheckDepth>(uint value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1557,13 +1592,14 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushUInt64<TTracingInst>(ulong value)
+    public EvmExceptionType PushUInt64<TTracingInst, TCheckDepth>(ulong value)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -1591,11 +1627,18 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
+        => PushUInt256<TTracingInst, OnFlag>(in value);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType PushUInt256<TTracingInst, TCheckDepth>(in UInt256 value)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint headOffset = Head;
         nint newOffset = headOffset + 1;
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        if (newOffset >= MaxStackSize)
+        if (TCheckDepth.IsActive && newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -2029,21 +2072,16 @@ public ref partial struct EvmStack
     /// <see cref="EnsureDepth"/>.
     /// </summary>
     /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
-    /// <param name="a">The first popped value, from the slot two words above the returned one.</param>
-    /// <param name="b">The second popped value, from the slot one word above the returned one.</param>
     /// <returns>Reference to the new top slot.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [UnscopedRef]
-    internal ref byte Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b)
+    internal ref byte Pop2Peek32BytesUnchecked()
     {
         Debug.Assert(Head >= 3, "Caller must establish the depth before popping unchecked");
         nuint head = (nuint)Head;
         Head = (nint)(head - 2);
-        ref byte topRef = ref Unsafe.Add(ref _stack, (nint)((head - 3) * WordSize));
-        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out b);
-        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * WordSize), out a);
-        return ref topRef;
+        return ref Unsafe.Add(ref _stack, (nint)((head - 3) * WordSize));
     }
 
     /// <summary>
@@ -2217,13 +2255,15 @@ public ref partial struct EvmStack
         return true;
     }
 
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must verify <paramref name="depth"/> items and room for one more.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType Dup<TTracingInst>(int depth)
+    public EvmExceptionType Dup<TTracingInst, TCheckDepth>(int depth)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint head = Head;
-        if (head < depth)
+        if (TCheckDepth.IsActive && head < depth)
         {
             return EvmExceptionType.StackUnderflow;
         }
@@ -2236,7 +2276,8 @@ public ref partial struct EvmStack
         ref byte to = ref Unsafe.Add(ref bytes, headOffset);
         ref byte from = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
 
-        if (++head >= MaxStackSize)
+        head++;
+        if (TCheckDepth.IsActive && head >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
@@ -2251,13 +2292,15 @@ public ref partial struct EvmStack
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least <paramref name="depth"/> stack items.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly EvmExceptionType Swap<TTracingInst>(int depth)
+    public readonly EvmExceptionType Swap<TTracingInst, TCheckDepth>(int depth)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         nint head = Head;
-        if (head < depth)
+        if (TCheckDepth.IsActive && head < depth)
         {
             return EvmExceptionType.StackUnderflow;
         }

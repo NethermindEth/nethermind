@@ -25,12 +25,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static long _txCount;
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// Every 10,000 transactions, until 500,000 have run. A captured function pointer keeps pointing at the
-    /// code it was taken from, so a table built during warm-up dispatches through tier-0 entry stubs for the
-    /// life of the process; rebuilding it occasionally re-captures whatever the JIT has promoted since. The
-    /// cadence stops once tiering has settled, and a rebuild is only a table of pointers.
-    /// </remarks>
     private partial bool ShouldRefreshOpcodes()
     {
         if (_txCount >= OpcodeRefreshLimit || Interlocked.Increment(ref _txCount) % OpcodeRefreshInterval != 0)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,19 +13,30 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 {
     private ExecutionHandlers? _executionHandlers;
 
-    private ExecutionHandlers GetExecutionHandlers() =>
-        _executionHandlers ??= GetOpcodeTable().GetExecutionHandlers(Spec);
+    /// <remarks>Keeping this call boundary reduces guest execution cost.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ExecutionHandlers GetExecutionHandlers()
+    {
+        Debug.Assert(_executionHandlers is not null, "PrepareOpcodes resolves frame handlers before execution.");
+#if DEBUG
+        Debug.Assert(ReferenceEquals(_executionHandlers.Spec, Spec), "Frame handlers must belong to the current block spec.");
+#endif
+        return _executionHandlers!;
+    }
 
     /// <summary>Frame operations selected once for the same spec as the opcode tables.</summary>
     private sealed class ExecutionHandlers(IReleaseSpec spec)
     {
+#if DEBUG
+        public readonly IReleaseSpec Spec = spec;
+#endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> InitializeFrame =
-            spec.ClearEmptyAccountWhenTouched ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
+            SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
             spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, CallResult> RunPrecompile =
-            spec.ClearEmptyAccountWhenTouched ? &RunPrecompileCore<OnFlag> : &RunPrecompileCore<OffFlag>;
+            SpecFlags.Eip158(spec) ? &RunPrecompileCore<OnFlag> : &RunPrecompileCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, bool, void> CreditStateGasRefund =
             spec.IsEip8037Enabled ? &CreditStateGasRefundCore<OnFlag> : &CreditStateGasRefundCore<OffFlag>;
     }
