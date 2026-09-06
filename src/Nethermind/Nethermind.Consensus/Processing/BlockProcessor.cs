@@ -54,7 +54,6 @@ public partial class BlockProcessor(
     private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
         new(
             beaconBlockRootHandler,
-            blockHashStore,
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>

@@ -53,7 +53,7 @@ public class StatelessBlockProcessingEnv(
     {
         using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
-        BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
+        BlockhashProvider blockhashProvider = new(statelessBlockTree, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
