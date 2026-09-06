@@ -23,7 +23,9 @@ namespace Nethermind.Trie
             }
         }
 
-        /// <inheritdoc cref="Nibbles.PackNibbles" />
+        /// <summary>Packs <c>2 * count</c> nibble bytes, high nibble first, into <paramref name="count"/> bytes.</summary>
+        /// <remarks>Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes, each in
+        /// <c>0..15</c>, and that <paramref name="bytes"/> has room for <paramref name="count"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
         {

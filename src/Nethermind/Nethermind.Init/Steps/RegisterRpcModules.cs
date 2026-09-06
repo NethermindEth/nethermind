@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -52,11 +51,6 @@ public class RegisterRpcModules(
         ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
         RpcLimits.Init(jsonRpcConfig.RequestQueueLimit, jsonRpcConfig.MaxConcurrentSharedRequests);
-
-        if (jsonRpcConfig.StreamInterpreterEnabled is { } streamInterpreterEnabled)
-        {
-            StreamInterpreter.Enabled = streamInterpreterEnabled;
-        }
 
         // Register the standard subscription types in the dictionary
         subscriptionFactory.RegisterStandardSubscriptions(

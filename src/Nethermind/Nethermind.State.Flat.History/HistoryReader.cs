@@ -69,7 +69,8 @@ public sealed class HistoryReader
     /// non-canonical hash.</summary>
     public bool IsAvailable(in StateId state) => _availability.Matches(state.BlockNumber, state.StateRoot);
 
-    /// <summary>Covered by the watermark but pruned below the floor - distinct from never captured.</summary>
+    /// <summary>Covered by the watermark but below the floor - pruned under Rolling, never captured under SinceBlock;
+    /// distinct from never covered.</summary>
     public bool IsPrunedBelowFloor(ulong block) => _availability.IsCovered(block) && _availability.IsBelowGlobalFloor(block);
 
     /// <summary>Covered and root-matching, independent of the general floor, for a per-slice bundle to

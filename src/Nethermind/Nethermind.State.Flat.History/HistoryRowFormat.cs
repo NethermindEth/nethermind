@@ -14,7 +14,7 @@ public sealed class HistoryRowFormat
     /// <see cref="FlatLayout.Flat"/>.</exception>
     public static HistoryRowFormat Resolve(HistoryAvailability availability, IFlatDbConfig config)
     {
-        HistoryRowFormat format = new(availability.ResolveFormatVersion(config.HistoryRetentionBlocks > 0));
+        HistoryRowFormat format = new(availability.ResolveFormatVersion(config.IsHistoryWindowed()));
 
         if (format.IsV3 && config.Layout != FlatLayout.Flat)
         {
@@ -24,7 +24,7 @@ public sealed class HistoryRowFormat
                 $"through to the live flat Account column, and that column is keyed by the raw address under the preimage layouts and " +
                 $"holds no accounts at all under {nameof(FlatLayout.FlatInTrie)} - so every account unchanged since the queried block " +
                 $"would read as absent instead of failing. Set FlatDb.Layout={nameof(FlatLayout.Flat)}, or run unwindowed " +
-                "(HistoryRetentionBlocks=0, no HistorySliceAddresses) on a database that has never been stamped windowed.", -1);
+                "(HistoryRetention=None, no HistorySliceAddresses) on a database that has never been stamped windowed.", -1);
         }
 
         return format;

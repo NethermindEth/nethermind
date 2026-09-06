@@ -54,7 +54,7 @@ dotnet run --project tools/JitAsm -c Release -- [options]
 | `-a, --assembly <path>` | Path to the assembly containing the method (required) |
 | `-t, --type <name>` | Fully qualified type name (optional, searches all types if not specified) |
 | `-m, --method <name>` | Method name to disassemble (required) |
-| `--type-params <types>` | Method generic type parameters (comma-separated) |
+| `--type-params <types>` | Method generic type parameters (comma-separated; an argument may itself be generic, e.g. `Math2Opcode<OpAdd,OffFlag>`) |
 | `--class-type-params <types>` | Class generic type parameters (comma-separated, for generic containing types) |
 | `--fullopts` | Use single-pass FullOpts compilation (`TieredCompilation=0`) instead of Tier-1 + PGO |
 | `--no-annotate` | Disable per-instruction annotations (throughput, latency, uops, ports). Annotations are **on by default** |
@@ -154,6 +154,19 @@ Use comma-separated type names (no spaces after commas):
 
 ```bash
 dotnet run --project tools/JitAsm -c Release -- -a src/Nethermind/artifacts/bin/Nethermind.Evm/release/Nethermind.Evm.dll -m SomeGenericMethod --type-params System.Int32,System.String
+```
+
+### Generic Type Arguments
+
+A type parameter may itself be generic. Write its arguments in angle or square brackets; commas
+inside them do not split the list, and the arity suffix can be left off.
+
+A type nested in a generic type inherits that type's parameters. Write only the arguments the
+source writes -- the declaring type's are filled in from `--class-type-params`.
+
+```bash
+# VirtualMachine<EthereumGasPolicy>.ExecuteOpcode<Math2Opcode<OpAdd, OffFlag>, OffFlag, OffFlag, OnFlag>
+dotnet run --project tools/JitAsm -c Release -- -a src/Nethermind/artifacts/bin/Nethermind.Evm/release/Nethermind.Evm.dll -t 'Nethermind.Evm.VirtualMachine`1' --class-type-params Nethermind.Evm.GasPolicy.EthereumGasPolicy -m ExecuteOpcode --type-params 'Math2Opcode<Nethermind.Evm.EvmInstructions+OpAdd,Nethermind.Core.OffFlag>,Nethermind.Core.OffFlag,Nethermind.Core.OffFlag,Nethermind.Core.OnFlag' --fullopts
 ```
 
 ### EVM Instruction Example

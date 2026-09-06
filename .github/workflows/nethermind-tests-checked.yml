@@ -137,9 +137,21 @@ jobs:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
           dotnet restore ${{ matrix.project }}.csproj
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}-${{ matrix.variant.label }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
@@ -192,9 +204,21 @@ jobs:
           TEST_SKIP_HEAVY: 1
         run: |
           dotnet restore ${{ matrix.test.project }}.csproj
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-hang-dump
+          path: src/Nethermind/${{ matrix.test.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # The pyspec fixtures under the build variants now run through the reusable nethtest
   # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards. Matches the

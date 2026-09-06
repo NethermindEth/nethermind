@@ -29,10 +29,11 @@ public static class HexPrefix
             pathIndex = 1;
         }
 
+        // The count comes from the validated output length, which is what bounds PackNibbles' raw-ref writes.
         Nibbles.PackNibbles(
             ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(path), pathIndex),
             ref Unsafe.Add(ref MemoryMarshal.GetReference(output), 1),
-            (pathLength - pathIndex) / 2);
+            output.Length - 1);
     }
 
     public static byte[] ToBytes(byte[] path, bool isLeaf)

@@ -40,6 +40,7 @@ public class SeedFlatHistoryGenesis(
         // constructor allocations) must follow the backend the policy actually selected.
         if (!activationPolicy.ShouldTurnOnFlatDb()) return Task.CompletedTask;
 
+        // Keyed on the watermark, not on the block-0 marker: a since-block writer removes that marker once it moves on.
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
 
         // On a genuinely fresh DB the genesis header does not exist yet — this step is ordered before
