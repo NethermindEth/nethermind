@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -197,6 +197,8 @@ public class OpcodeChainBenchmarks
                     (byte)(Chain == "StorageRead" ? Instruction.SLOAD : Chain == "TransientRead" ? Instruction.TLOAD : Instruction.BALANCE),
                     (byte)Instruction.POP], 3),
                 "StorageWrite" => ([(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE], 3),
+                "SelfBalanceRead" => ([(byte)Instruction.SELFBALANCE, (byte)Instruction.POP], 2),
+                "ExtCodeSizeRead" => ([(byte)Instruction.DUP1, (byte)Instruction.EXTCODESIZE, (byte)Instruction.POP], 3),
                 "ExpOne" or "ExpCompute" => ([(byte)Instruction.PUSH1, 7,
                     (byte)Instruction.PUSH1, Chain == "ExpOne" ? (byte)1 : (byte)3, (byte)Instruction.EXP, (byte)Instruction.POP], 4),
                 "Bitwise" => ([(byte)Instruction.DUP1, (byte)Instruction.AND], 2),
