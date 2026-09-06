@@ -424,7 +424,7 @@ public sealed class HistoryAvailability
     }
 
     /// <summary>Removes the per-block marker of <paramref name="block"/> from <paramref name="batch"/>.</summary>
-    public static void UnmarkBlock(IWriteBatch batch, ulong block)
+    internal static void UnmarkBlock(IWriteBatch batch, ulong block)
     {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);

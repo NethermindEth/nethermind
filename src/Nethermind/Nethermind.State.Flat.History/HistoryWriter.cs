@@ -226,20 +226,26 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// head with its marker, as durably as a capture: the first real walk connects at the previous persist like any
     /// other (capturing the few blocks between that marker and the floor too; they sit unreadable below it), and
     /// readers below the floor already fail closed. Only the latest marker is kept: nothing connects at an older one
-    /// and nothing prunes below a since-block floor. Genesis stays, the seed step keys on it.</summary>
+    /// and nothing prunes below a since-block floor.</summary>
     private void AdvanceWatermarkWithoutRows(in StateId persistedHead, bool hasWatermark, ulong watermark)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
         {
-            IWriteBatch availableBlocks = new HistoryColumnBatches(batch).AvailableBlocks;
-            if (hasWatermark && watermark > 0) HistoryAvailability.UnmarkBlock(availableBlocks, watermark);
-            HistoryAvailability.MarkBlock(availableBlocks, persistedHead.BlockNumber, persistedHead.StateRoot, _formatVersion);
+            HistoryAvailability.MarkBlock(new HistoryColumnBatches(batch).AvailableBlocks, persistedHead.BlockNumber, persistedHead.StateRoot, _formatVersion);
         }
 
         _availability.PublishWatermark(persistedHead.BlockNumber, _formatVersion);
         _history.SyncWal();
         _formatStamped = true;
         Metrics.FlatHistoryWatermark = (long)persistedHead.BlockNumber;
+
+        // Only once the new marker and watermark are durable: losing this leaves an orphan marker, whereas losing
+        // the marker the watermark names would fail the crossing walk's connect.
+        if (hasWatermark)
+        {
+            using IColumnsWriteBatch<FlatHistoryColumns> cleanup = _history.StartWriteBatch();
+            HistoryAvailability.UnmarkBlock(new HistoryColumnBatches(cleanup).AvailableBlocks, watermark);
+        }
     }
 
     /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap
@@ -252,10 +258,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         if (_availability.TryGetGlobalFloor(out ulong floor))
         {
-            if (_captureFromBlock < floor && _logger.IsWarn) _logger.Warn(
+            if (_captureFromBlock < floor && _logger.IsInfo) _logger.Info(
                 $"Flat history starts at block {floor}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the floor " +
-                $"was published there (a sync pivot, or an earlier setting) and never moves. Set FlatDb.HistoryRetentionSinceBlock " +
-                $"to {floor} to match it, or resync the flatHistory database to start lower.");
+                "was published there (a sync pivot, or an earlier setting) and never moves; resync the flatHistory database " +
+                "to start lower.");
 
             if (_captureFromBlock > floor)
             {

@@ -238,6 +238,19 @@ public class SliceScopeTests
     }
 
     [Test]
+    public void ReconcileSliceScopes_OnASinceBlockDatabase_SeedsTheSliceAtTheSinceBlockFloor()
+    {
+        (HistoryAvailability availability, _, HistoryWindowPruner pruner) =
+            CreateWriterAndPruner(retentionBlocks: 0, sliceAddresses: $"{SlicedAddress}", sinceBlock: 12);
+
+        pruner.ReconcileSliceScopes();
+
+        Assert.That(availability.TryGetScopeFloor(ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
+        Assert.That(sliceFloor, Is.EqualTo(12UL),
+            "nothing was captured below the since-block floor, so a restricted read below it must fail closed on the scope floor too");
+    }
+
+    [Test]
     public void RunOnePass_ForABoundedSlice_AdvancesItsFloorWithTheWatermarkAndPrunesBelowIt()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, SlicedAddress, block: 5, new Account(1, 100));
@@ -363,13 +376,14 @@ public class SliceScopeTests
     }
 
     private (HistoryAvailability Availability, HistoryWriter Writer, HistoryWindowPruner Pruner) CreateWriterAndPruner(
-        ulong retentionBlocks, string? sliceAddresses, HistoryScopeGate? gate = null, int passBudgetSeconds = 30)
+        ulong retentionBlocks, string? sliceAddresses, HistoryScopeGate? gate = null, int passBudgetSeconds = 30, ulong sinceBlock = 0)
     {
         FlatDbConfig config = new()
         {
             HistoryEnabled = true,
-            HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+            HistoryRetention = sinceBlock > 0 ? HistoryRetentionMode.SinceBlock : retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
             HistoryRetentionBlocks = retentionBlocks,
+            HistoryRetentionSinceBlock = sinceBlock,
             HistoryPruneIntervalBlocks = 1,
             HistoryPrunePassBudgetSeconds = passBudgetSeconds,
             HistorySliceAddresses = sliceAddresses,

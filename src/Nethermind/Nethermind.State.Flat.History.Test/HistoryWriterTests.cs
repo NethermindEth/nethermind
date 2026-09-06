@@ -819,7 +819,7 @@ public class HistoryWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(HasMarker(0), Is.True, "the genesis marker stays, the seed step keys its idempotency on it");
+            Assert.That(HasMarker(0), Is.False, "the seed step keys on the watermark, not on this marker");
             Assert.That(HasMarker(1), Is.False, "nothing connects at a marker below the watermark, and nothing would prune it later");
             Assert.That(HasMarker(2), Is.True, "the first real walk connects here");
         }
