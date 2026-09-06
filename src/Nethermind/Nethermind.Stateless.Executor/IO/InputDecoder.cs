@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
@@ -20,6 +21,11 @@ internal static class InputDecoder
     /// <summary>The schema id of an Amsterdam block.</summary>
     internal const ushort AmsterdamSchemaId = ((ushort)ProtocolFork.Amsterdam << 8) | Revision1;
 
+    /// <summary>Decodes a stateless input into the payload the run executes.</summary>
+    /// <remarks>
+    /// Also installs the run's hash seed, as soon as the payload's own commitment is available and
+    /// before anything downstream is keyed by a hash - see <see cref="SpanExtensions.SeedHashes(in ValueHash256)"/>.
+    /// </remarks>
     internal static StatelessPayload Decode(ReadOnlySpan<byte> data)
     {
         ushort schemaId = BinaryPrimitives.ReadUInt16BigEndian(data);
@@ -39,6 +45,11 @@ internal static class InputDecoder
     {
         StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
+        Hash256 newPayloadRequestRoot = new(root.ToLittleEndian());
+
+        // The earliest point the root exists, and everything below it - the spec provider, the block, the
+        // witness, execution itself - reaches a hash-keyed container. SSZ decoding above keys nothing.
+        SpanExtensions.SeedHashes(newPayloadRequestRoot.ValueHash256);
 
         TExecutionPayload executionPayload = input.NewPayloadRequest.ExecutionPayload;
         ForkActivation activation = new(executionPayload.BlockNumber, executionPayload.Timestamp);
@@ -53,7 +64,7 @@ internal static class InputDecoder
             SchemaId: schemaId,
             PublicKeys: input.PublicKeys,
             VersionedHashes: input.NewPayloadRequest.VersionedHashes,
-            NewPayloadRequestRoot: new Hash256(root.ToLittleEndian()),
+            NewPayloadRequestRoot: newPayloadRequestRoot,
             SpecProvider: specProvider
         );
     }

@@ -69,7 +69,7 @@ public class AccountChangesAtIndex(Address address)
 
     public UInt256 GetOrCapturePreTxStorage(UInt256 key, in UInt256 captureValue)
     {
-        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8);
+        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8, GenericEqualityComparer.GetOptimized<UInt256>());
         ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
         if (!exists) slot = captureValue;
         return slot;

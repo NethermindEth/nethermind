@@ -47,11 +47,12 @@ namespace Nethermind.Core.Extensions
         /// to the same value, because the tail read of the shorter key is the zero-extension of the
         /// longer one's and the unused lane contributes nothing.
         /// <para>
-        /// This placement does not by itself make the mixer hard to collide.
-        /// <see cref="InstanceRandom"/> is fixed for the run in the guest, so the seeded multipliers
-        /// are public constants and remain odd and invertible: the same closed-form derivation
-        /// applies to them. What it buys is the width separation above, which fixes a present bug,
-        /// and a mixer that a per-run seed would actually harden instead of cancelling.
+        /// This placement does not by itself make the mixer hard to collide: the multipliers remain odd
+        /// and invertible, so the same closed-form derivation applies to them, and anyone who knows the
+        /// run's seed can still construct a colliding set. What it buys is the width separation above,
+        /// which fixes a present bug, and a seed that reaches the key difference at all - applied after
+        /// the lanes are combined it would cancel, leaving one offline collision set good against every
+        /// run.
         /// </para>
         /// </remarks>
         private static ulong SeededLane(ulong lane, int width) =>
@@ -61,12 +62,13 @@ namespace Nethermind.Core.Extensions
         // constant with a five-instruction sequence at every use, and an array element - unlike a
         // static readonly primitive - cannot be folded back into one.
         // Nullable rather than initialised: any initializer here, even `null!`, gives the type a class
-        // constructor. Null until SeedHashes runs, which StatelessExecutor does before it decodes.
+        // constructor. Null until SeedHashes runs, which the input decoder does as soon as it has the
+        // payload root and before it builds anything keyed by a hash.
         private static ulong[]? AddrLanes;
 
         private static ulong[]? WordLanes;
 
-        /// <inheritdoc cref="SpanExtensions.SeedHashes" />
+        /// <inheritdoc cref="SpanExtensions.SeedHashes(uint)" />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static partial void SeedHashes(uint instanceRandom)
         {
@@ -75,13 +77,14 @@ namespace Nethermind.Core.Extensions
             WordLanes = [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
         }
 
-        /// <summary>Asserts that <see cref="SeedHashes"/> has run, in debug builds only.</summary>
+        /// <summary>Asserts that <see cref="SeedHashes(uint)"/> has run, in a Debug build only.</summary>
         /// <remarks>
         /// Hashing before the seed is installed does not fail the way an uninitialised reference usually
         /// does: <see cref="MemoryMarshal.GetArrayDataReference{T}(T[])"/> carries no null check, so a
         /// null lane array traps on an unmapped address instead of throwing, and the short-input path
-        /// never touches the arrays at all - it hashes with seed zero and silently succeeds. The release
-        /// guest pays nothing for this; the ZkEvm test suites are where it has to catch the ordering bug.
+        /// never touches the arrays at all - it hashes with seed zero and silently succeeds. Naming that
+        /// invariant where it is relied on costs the release guest nothing, but it is a local aid rather
+        /// than a CI gate: CI dispatches every ZkEvm suite in Release, where the call sites are stripped.
         /// </remarks>
         [Conditional("DEBUG")]
         private static void AssertSeeded() =>

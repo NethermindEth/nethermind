@@ -19,9 +19,7 @@ namespace Nethermind.Core.Extensions
     public static partial class SpanExtensions
     {
         private const ulong ShortInputDomain = 0xD6E8FEB86659FD93UL;
-
-        /// <summary>The hash seed a stateless run installs when the payload does not carry one.</summary>
-        public const uint DefaultHashSeed = 2098026241U;
+        private const ulong SeedFoldMultiplier = 0x9E3779B97F4A7C15UL;
 
         /// <summary>Installs the seed the hash mixers derive their lane multipliers from.</summary>
         /// <param name="instanceRandom">The per-run seed.</param>
@@ -33,6 +31,32 @@ namespace Nethermind.Core.Extensions
         /// load. Call once, before anything hashes a key.
         /// </remarks>
         public static partial void SeedHashes(uint instanceRandom);
+
+        /// <summary>Installs the per-run seed a stateless payload commits to.</summary>
+        /// <param name="newPayloadRequestRoot">The SSZ root of the <c>NewPayloadRequest</c> being executed.</param>
+        /// <remarks>
+        /// EIP-8025 requires a guest that holds state in hash maps to mix <c>new_payload_request_root</c>
+        /// into its hash function. A guest has no entropy source, so with a compile-time seed every guest
+        /// of a given version buckets a given key identically for ever: a colliding key set can be found
+        /// offline against the published binary and replayed against every prover, turning constant-time
+        /// lookups linear. The root is computed before execution and differs per payload, so a set found
+        /// for one payload does not carry to the next. Folding its four words is enough to fill the
+        /// mixers' 32-bit seed because a merkle root is already pseudorandom.
+        /// </remarks>
+        public static void SeedHashes(in Crypto.ValueHash256 newPayloadRequestRoot)
+        {
+            ref byte root = ref Unsafe.As<Crypto.ValueHash256, byte>(ref Unsafe.AsRef(in newPayloadRequestRoot));
+
+            // Multiply between the words rather than folding them with a plain XOR, which cancels: any
+            // root whose four words repeat would fold to the same seed as any other such root, zero
+            // included.
+            ulong folded = Unsafe.ReadUnaligned<ulong>(ref root);
+            folded = (folded ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref root, 8))) * SeedFoldMultiplier;
+            folded = (folded ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref root, 16))) * SeedFoldMultiplier;
+            folded = (folded ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref root, 24))) * SeedFoldMultiplier;
+
+            SeedHashes((uint)(folded ^ (folded >> 32)));
+        }
 
         internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;
 
