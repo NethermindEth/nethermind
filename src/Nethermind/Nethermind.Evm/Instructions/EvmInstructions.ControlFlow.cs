@@ -269,7 +269,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;

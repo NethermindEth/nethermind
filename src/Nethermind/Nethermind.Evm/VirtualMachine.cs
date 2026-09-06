@@ -130,12 +130,12 @@ public partial class VirtualMachine<TGasPolicy>(
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
-    // Both are fixed per execution, so they are cached once in ExecuteTransaction rather than dispatched
-    // through the tracer each time: IsTracingActions is read at several hot CALL/precompile sites, and
-    // IsCancelable picks both the dispatch table and the generic instantiation that runs on it, which have
-    // to agree.
+    // Tracer capabilities are fixed for one execution. IsCancelable also selects both
+    // the dispatch table and its matching loop specialization.
     private bool _isTracingActionsCached;
     private bool _isCancelableCached;
+    internal bool IsTracingAccess { get; private set; }
+    internal bool IsTracingOpLevelStorage { get; private set; }
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -187,6 +187,8 @@ public partial class VirtualMachine<TGasPolicy>(
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
         _isCancelableCached = txTracer.IsCancelable;
+        IsTracingAccess = txTracer.IsTracingAccess;
+        IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
 

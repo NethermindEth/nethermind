@@ -167,13 +167,13 @@ public static partial class EvmInstructions
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
+                vm.IsTracingAccess, codeSource)) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
         if (TSpec.UseHotAndColdStorage(spec) &&
             delegated is not null &&
-            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, delegated))
+            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.

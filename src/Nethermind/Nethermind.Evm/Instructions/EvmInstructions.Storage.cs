@@ -53,7 +53,7 @@ public static partial class EvmInstructions
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
         // If storage tracing is enabled, record the operation.
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        if (vm.IsTracingOpLevelStorage)
         {
 
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
@@ -104,7 +104,7 @@ public static partial class EvmInstructions
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        if (vm.IsTracingOpLevelStorage)
         {
 
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
@@ -370,7 +370,7 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -416,7 +416,7 @@ public static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        if (vm.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -487,7 +487,7 @@ public static partial class EvmInstructions
 
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
@@ -594,7 +594,7 @@ public static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        if (vm.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -652,7 +652,7 @@ public static partial class EvmInstructions
         StorageCell storageCell = new(executingAccount, in result);
 
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
         // Retrieve the persistent storage value and push it onto the stack. Zero slots come back
@@ -663,7 +663,7 @@ public static partial class EvmInstructions
             : stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        if (vm.IsTracingOpLevelStorage)
         {
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
