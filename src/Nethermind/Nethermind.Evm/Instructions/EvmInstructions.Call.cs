@@ -219,7 +219,7 @@ public static partial class EvmInstructions
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             // Optionally report memory changes for refund tracing.

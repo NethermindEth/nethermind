@@ -136,7 +136,7 @@ public static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
@@ -148,7 +148,7 @@ public static partial class EvmInstructions
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
@@ -156,7 +156,7 @@ public static partial class EvmInstructions
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
@@ -209,7 +209,7 @@ public static partial class EvmInstructions
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetCreateStateCost());
             }
 
-            vm.ReturnDataBuffer = Array.Empty<byte>();
+            vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 

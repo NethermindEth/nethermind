@@ -115,7 +115,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
+    private ReadOnlyMemory<byte> _returnDataBuffer;
     protected VmState<TGasPolicy> _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -214,7 +214,7 @@ public partial class VirtualMachine<TGasPolicy>(
             // For non-continuation frames, clear any previously stored return data.
             if (!_currentState.IsContinuation)
             {
-                ReturnDataBuffer = Array.Empty<byte>();
+                ReturnDataBuffer = default;
             }
 
             Exception? failure;
@@ -420,7 +420,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes.ToArray();
         _previousCallOutputDestination = UInt256.Zero;
-        ReturnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = default;
         previousCallOutputLength = 0;
     }
 
@@ -690,7 +690,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
-        ReturnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = default;
         previousCallOutputLength = 0;
 
         PopAndRestoreParentState();
@@ -876,7 +876,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
-        ReturnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = default;
         previousCallOutputLength = 0;
 
         PopAndRestoreParentState();
