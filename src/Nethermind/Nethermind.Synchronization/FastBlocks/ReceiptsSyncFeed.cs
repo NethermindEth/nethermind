@@ -338,7 +338,7 @@ namespace Nethermind.Synchronization.FastBlocks
             // The batch is re-pended and retried, so warn once per batch rather than once per block.
             if (_logger.IsWarn)
             {
-                if (missingHeaders.Count > 0) _logger.Warn($"Could not find headers for {missingHeaders}");
+                if (missingHeaders.Count > 0) _logger.Warn($"Could not find headers of {missingHeaders}");
                 if (missingBlocks.Count > 0) _logger.Warn($"Could not find {missingBlocks}");
             }
 
