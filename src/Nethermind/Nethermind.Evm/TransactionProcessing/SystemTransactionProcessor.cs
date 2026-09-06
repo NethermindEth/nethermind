@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using System;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -112,6 +113,8 @@ public class SystemTransactionProcessor<TGasPolicy>(
                 : TransactionResult.GasLimitBelowIntrinsicGas;
         }
 
+        Debug.Assert(TGasPolicy.GetStateReservoir(intrinsicGas.Standard) == 0,
+            "System transactions other than SystemCall bypass minimum-gas validation and must have no intrinsic state reservoir.");
         return base.CalculateAvailableGas(tx, spec, in intrinsicGas, out gasAvailable);
     }
 
