@@ -532,8 +532,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpMath : struct, EvmInstructions.IOpMath3Param
         where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpMath>(ref gas);
+        public static int StackInputs => 3;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody
+                ? EvmInstructions.Math3ParamCore<TOpMath, TTracingInst>(ref stack)
+                : EvmInstructions.InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas, vm);
     }
 
     private readonly struct Math1Opcode<TOpMath, TTracingInst> : IOpcodeBody

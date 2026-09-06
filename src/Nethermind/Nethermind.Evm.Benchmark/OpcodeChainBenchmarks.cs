@@ -38,7 +38,7 @@ public class OpcodeChainBenchmarks
     private CodeInfo _code = null!;
     private byte[] _input = new byte[96];
 
-    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("Arithmetic", "AddMod", "MulMod", "AddModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -66,6 +66,9 @@ public class OpcodeChainBenchmarks
         UInt256 expected = Chain switch
         {
             "Arithmetic" => (UInt256)(BodyOpcodeCount / 2 + 1),
+            "AddMod" => (UInt256)((BodyOpcodeCount / 4 + 1) % 251),
+            "MulMod" => (UInt256)(ulong)System.Numerics.BigInteger.ModPow(3, BodyOpcodeCount / 4, 251),
+            "AddModZero" => UInt256.Zero,
             "Predicate" => UInt256.MaxValue,
             "JumpTaken" => UInt256.Zero,
             "Byte" or "Shift" or "Sar" => UInt256.Zero,
@@ -126,6 +129,9 @@ public class OpcodeChainBenchmarks
             (byte[] Sequence, int Opcodes) body = Chain switch
             {
                 "Arithmetic" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.ADD], 2),
+                "AddMod" or "MulMod" or "AddModZero" => ([(byte)Instruction.PUSH1, Chain == "AddModZero" ? (byte)0 : (byte)251,
+                    (byte)Instruction.SWAP1, (byte)Instruction.PUSH1, Chain == "MulMod" ? (byte)3 : (byte)1,
+                    (byte)(Chain == "MulMod" ? Instruction.MULMOD : Instruction.ADDMOD)], 4),
                 "Bitwise" => ([(byte)Instruction.DUP1, (byte)Instruction.AND], 2),
                 "Predicate" => ([(byte)Instruction.ISZERO, (byte)Instruction.NOT], 2),
                 "Stack" => ([(byte)Instruction.DUP1, (byte)Instruction.SWAP1, (byte)Instruction.POP], 3),
@@ -135,6 +141,8 @@ public class OpcodeChainBenchmarks
                 "Clz" => ([(byte)Instruction.CLZ], 1),
                 "Environment" => ([(byte)Instruction.PC, (byte)Instruction.POP,
                     (byte)Instruction.GAS, (byte)Instruction.POP, (byte)Instruction.CODESIZE, (byte)Instruction.POP], 6),
+                "SmallValue" => ([(byte)Instruction.CALLDATASIZE, (byte)Instruction.DUP1, (byte)Instruction.AND, (byte)Instruction.POP,
+                    (byte)Instruction.GAS, (byte)Instruction.DUP1, (byte)Instruction.AND, (byte)Instruction.POP], 8),
                 "CallData" or "CallDataPartial" or "CallDataMissing" => ([(byte)Instruction.PUSH1,
                     Chain == "CallData" ? (byte)4 : Chain == "CallDataPartial" ? (byte)80 : (byte)96,
                     (byte)Instruction.CALLDATALOAD, (byte)Instruction.POP], 3),

@@ -305,6 +305,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         (Instruction Opcode, int Depth, ulong Cost)[] operations =
         [
             (Instruction.ADD, 2, 3), (Instruction.MUL, 2, 5), (Instruction.SUB, 2, 3),
+            (Instruction.ADDMOD, 3, 8), (Instruction.MULMOD, 3, 8),
             (Instruction.DIV, 2, 5), (Instruction.SDIV, 2, 5), (Instruction.MOD, 2, 5),
             (Instruction.SMOD, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
@@ -439,7 +440,24 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         AssertStackValue([(byte)opcode], expected.ToBigEndian(), traced);
     }
 
-    private void AssertStackValue(byte[] prefix, byte[] expected, bool traced)
+    [Test]
+    public void Modular_arithmetic_preserves_full_width_operands(
+        [Values(Instruction.ADDMOD, Instruction.MULMOD)] Instruction opcode,
+        [Values(0, 1, 251, -1)] int modulusValue, [Values] bool traced)
+    {
+        BigInteger a = (BigInteger.One << 256) - 1;
+        BigInteger b = a - 1;
+        BigInteger modulus = modulusValue == -1 ? a - 2 : modulusValue;
+        BigInteger expected = modulus.IsZero ? BigInteger.Zero
+            : (opcode == Instruction.ADDMOD ? a + b : a * b) % modulus;
+        byte[] code = [(byte)Instruction.PUSH32, .. ((UInt256)modulus).ToBigEndian(),
+            (byte)Instruction.PUSH32, .. ((UInt256)b).ToBigEndian(),
+            (byte)Instruction.PUSH32, .. ((UInt256)a).ToBigEndian(), (byte)opcode];
+
+        AssertStackValue(code, ((UInt256)expected).ToBigEndian(), traced, 9);
+    }
+
+    private void AssertStackValue(byte[] prefix, byte[] expected, bool traced, int expectedOpcodeCount = 6)
     {
         byte[] code = [.. prefix, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE,
             (byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 0, (byte)Instruction.RETURN];
@@ -451,7 +469,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
-            Assert.That(Machine.OpCodeCount, Is.EqualTo(6));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpcodeCount));
         }
     }
 
