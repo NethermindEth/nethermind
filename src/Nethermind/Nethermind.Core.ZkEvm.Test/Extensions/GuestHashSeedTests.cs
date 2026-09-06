@@ -59,21 +59,21 @@ public class GuestHashSeedTests
     /// <remarks>
     /// <see cref="UInt256"/> comes from a package whose guest build seeds its own hash from a
     /// compile-time constant, so the storage-slot maps keyed by it are covered only as long as
-    /// <see cref="GenericEqualityComparer{T}"/> keeps routing them through the mixer instead. That the
-    /// mixer then follows the payload root is the test above; this one cannot show it directly, because
-    /// a ZK build on a host with AES takes the AES path, which the guest's riscv64 target never has.
+    /// <see cref="UInt256Comparer"/> is what they are given. That the mixer behind it then follows the
+    /// payload root is the test above; this one cannot show that directly, because a ZK build on a host
+    /// with AES takes the AES path, which the guest's riscv64 target never has.
     /// </remarks>
     [Test]
     public void Guest_slot_comparer_hashes_through_the_mixer()
     {
         UInt256 slot = new(0xAB, 0xCD, 0xEF, 0x01);
-        int hash = GenericEqualityComparer<UInt256>.Default.GetHashCode(slot);
 
         Assert.Multiple(() =>
         {
-            Assert.That(hash, Is.EqualTo(unchecked((int)SpanExtensions.FastHash64For32Bytes(
-                ref Unsafe.As<UInt256, byte>(ref slot)))));
-            Assert.That(hash, Is.Not.EqualTo(slot.GetHashCode()));
+            Assert.That(UInt256Comparer.GetOptimized(), Is.SameAs(UInt256Comparer.Instance),
+                "the guest's slot-keyed containers must be given the seeded comparer, not the default");
+            Assert.That(UInt256Comparer.Instance.GetHashCode(slot), Is.Not.EqualTo(slot.GetHashCode()),
+                "the seeded comparer must not fall back to the package's own constant-seeded hash");
         });
     }
 

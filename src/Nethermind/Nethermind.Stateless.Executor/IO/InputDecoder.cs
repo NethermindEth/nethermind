@@ -51,6 +51,10 @@ internal static class InputDecoder
         // witness, execution itself - reaches a hash-keyed container. SSZ decoding above keys nothing.
         SpanExtensions.SeedHashes(newPayloadRequestRoot.ValueHash256);
 
+        // UInt256.SeedHashes(seed) belongs here too: Nethermind.Numerics.Int256 seeds its guest build's
+        // GetHashCode from a constant of its own and cannot yet be told otherwise - NethermindEth/int256#119
+        // adds the entry point. Until it ships, slot-keyed containers hash through UInt256Comparer instead.
+
         TExecutionPayload executionPayload = input.NewPayloadRequest.ExecutionPayload;
         ForkActivation activation = new(executionPayload.BlockNumber, executionPayload.Timestamp);
         ISpecProvider specProvider = StatelessSpecProvider.Create(input.ChainId, protocolFork, activation);
