@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
@@ -134,12 +136,25 @@ public class ReleaseSpec : IReleaseSpec
         ulong lowMask = 0;
         foreach (AddressAsKey key in addresses)
         {
-            int index = ((Address)key).PrecompileIndexOrNegative();
+            Address address = key;
+            if (!address.CouldBePrecompile()) ThrowUnreachablePrecompile(address);
+
+            int index = address.PrecompileIndexOrNegative();
             if ((uint)index < 64) lowMask |= 1UL << index;
         }
 
         return new PrecompileIndex(addresses, lowMask);
     }
+
+    /// <summary>Rejects a registration <see cref="IsPrecompile"/> could never find.</summary>
+    /// <remarks>Membership rejects on address shape before consulting the set, so a precompile with a
+    /// non-zero byte above its number is unreachable: the call would resolve as an ordinary empty account,
+    /// with no exception anywhere and a consensus divergence to show for it. Failing when the set is built
+    /// turns that into a startup failure on the chain that registered it.</remarks>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnreachablePrecompile(Address address) =>
+        throw new InvalidOperationException(
+            $"Precompile {address} has a non-zero byte above its trailing number, so IsPrecompile can never find it; a precompile number must fit 32 bits.");
 
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => Precompiled.Addresses;
 

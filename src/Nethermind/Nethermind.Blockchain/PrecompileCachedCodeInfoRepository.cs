@@ -19,10 +19,11 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     private readonly IWorldState _worldState;
     private readonly ICodeInfoRepository _baseCodeInfoRepository;
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile;
-    /// <inheritdoc cref="CodeInfoRepository.BuildPrecompileArray" />
+    /// <summary>The cached precompiles indexed by precompile number, as the base repository holds them.</summary>
     /// <remarks>This decorator answers precompile calls before the base repository sees them, so it needs
-    /// the same index the base one holds — without it the dictionary probe survives on the processing
-    /// path, which is the one place it was worth removing.</remarks>
+    /// an index of its own — without one the dictionary probe survives on the processing path, which is
+    /// the one place it was worth removing. Built from <see cref="_cachedPrecompile"/> rather than from
+    /// the provider, so an indexed hit returns the cache-wrapped <see cref="CodeInfo"/>.</remarks>
     private readonly CodeInfo?[] _cachedPrecompileArray;
 
     public PrecompileCachedCodeInfoRepository(

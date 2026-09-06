@@ -58,6 +58,16 @@ public class ReleaseSpecTests
     }
 
     [Test]
+    public void Precompile_membership_could_never_find_is_rejected_when_the_set_is_built()
+    {
+        // A test covers only the registrations that exist when it is written; this is what catches the
+        // rest, turning a silent consensus divergence into a failure on the chain that registered it.
+        IReleaseSpec spec = new SpecWithPrecompileAt(Address.FromNumber((UInt256)uint.MaxValue + 1));
+
+        Assert.That(() => spec.Precompiles, Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
     public void Shape_guard_reaches_the_whole_thirty_two_bit_range()
     {
         // The number lives in the last four bytes, so 0x1_0000_0000 needs a fifth and reads as an ordinary
