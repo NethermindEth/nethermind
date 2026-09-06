@@ -31,7 +31,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas drawn from this frame's execution gas pool.</summary>
     public long StateGasSpill;
-    /// <summary>Spill consumed by state refunds and excluded from block execution gas.</summary>
+    /// <summary>State gas spill repaid to execution gas and excluded from net spill accounting.</summary>
     public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
@@ -164,6 +164,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RepayStateGasSpill(ref EthereumGasPolicy gas)
+    {
+        long repayment = Math.Min(gas.StateReservoir, GetUnrefundedStateGasSpill(in gas));
+        if (repayment <= 0)
+        {
+            return;
+        }
+
+        gas.Value += (ulong)repayment;
+        gas.StateReservoir -= repayment;
+        gas.StateGasSpillRefunded += repayment;
+    }
+
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
     // state gas usage.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -233,9 +248,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        AccountAccessKind kind = AccountAccessKind.Default)
+        AccountAccessKind kind = AccountAccessKind.Default) =>
+        ConsumeAccountAccessGasCore<ColdAccountGasCost, DynamicStorageMode>(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ConsumeAccountAccessGasCore<TColdCost, TMode>(ref EthereumGasPolicy gas,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
+        Address address,
+        AccountAccessKind kind)
+        where TColdCost : struct, ISpecGasCost
+        where TMode : struct, IStorageMode
     {
-        if (!spec.UseHotAndColdStorage) return true;
+        if (!TMode.UseHotAndColdStorage(spec)) return true;
         if (isTracingAccess)
         {
             // Ensure that tracing simulates access-list behavior.
@@ -245,10 +271,22 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
-            true => UpdateGas(ref gas, ColdAccountAccessCost(spec)),
+            true => UpdateGas(ref gas, TColdCost.GasCost(spec)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
+    }
+
+    private readonly struct ColdAccountGasCost : ISpecGasCost
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong GasCost(IReleaseSpec spec) => ColdAccountAccessCost(spec);
+    }
+
+    private readonly struct ColdAccountGasCost<Eip8038> : ISpecGasCost where Eip8038 : struct, IFlag
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong GasCost(IReleaseSpec spec) => Eip8038.IsActive ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -260,14 +298,97 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
-        IReleaseSpec spec)
+        IReleaseSpec spec) =>
+        ConsumeStorageAccessGasCore<DynamicStorageMode>(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeNetMeteredSStoreGas<Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec)
+        where Eip8038 : struct, IFlag =>
+        UpdateGas(ref gas, Eip8038.IsActive ? GasCostOf.Free : spec.GasCosts.NetMeteredSStoreCost);
+
+    private readonly struct StorageMode<Eip2929, Eip8038> : IStorageMode
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag
     {
-        if (!spec.UseHotAndColdStorage)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool UseHotAndColdStorage(IReleaseSpec spec) => Eip2929.IsActive;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsEip8038Enabled(IReleaseSpec spec) => Eip8038.IsActive;
+    }
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeStorageAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas,
+        ref readonly StackAccessTracker accessTracker, bool isTracingAccess,
+        in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        ConsumeStorageAccessGasCore<StorageMode<Eip2929, Eip8038>>(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeAccountAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker, bool isTracingAccess, Address address,
+        AccountAccessKind kind = AccountAccessKind.Default)
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        ConsumeAccountAccessGasCore<ColdAccountGasCost<Eip8038>, StorageMode<Eip2929, Eip8038>>(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeCreateGas<Eip8037, TOpCreate, Eip3860, Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec, ulong initCodeWords)
+        where Eip8037 : struct, IFlag
+        where TOpCreate : struct, EvmInstructions.IOpCreate
+        where Eip3860 : struct, IFlag
+        where Eip8038 : struct, IFlag
+    {
+        ulong baseCost = Eip8038.IsActive ? Eip8038Constants.CreateAccess
+            : Eip8037.IsActive ? GasCostOf.CreateExecution : GasCostOf.Create;
+        ulong initCodeWordCost = Eip3860.IsActive ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        return UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+    }
+
+    private interface IStorageMode
+    {
+        static abstract bool IsEip8038Enabled(IReleaseSpec spec);
+        static abstract bool UseHotAndColdStorage(IReleaseSpec spec);
+    }
+
+    private readonly struct DynamicStorageMode : IStorageMode
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool UseHotAndColdStorage(IReleaseSpec spec) => spec.UseHotAndColdStorage;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsEip8038Enabled(IReleaseSpec spec) => spec.IsEip8038Enabled;
+    }
+
+    private readonly struct StorageMode<Eip8038> : IStorageMode where Eip8038 : struct, IFlag
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool UseHotAndColdStorage(IReleaseSpec spec) => spec.UseHotAndColdStorage;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsEip8038Enabled(IReleaseSpec spec) => Eip8038.IsActive;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ConsumeStorageAccessGasCore<TMode>(ref EthereumGasPolicy gas,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
+        in StorageCell storageCell,
+        StorageAccessType storageAccessType,
+        IReleaseSpec spec)
+        where TMode : struct, IStorageMode
+    {
+        if (!TMode.UseHotAndColdStorage(spec))
             return true;
         if (isTracingAccess)
         {
             bool isCold = accessTracker.IsCold(in storageCell);
-            bool gasAvailable = storageAccessType != StorageAccessType.SLOAD && !spec.IsEip8038Enabled
+            bool gasAvailable = storageAccessType != StorageAccessType.SLOAD && !TMode.IsEip8038Enabled(spec)
                 || UpdateGas(ref gas, GasCostOf.WarmStateRead);
 
             if (gasAvailable && isCold)
@@ -278,7 +399,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         if (accessTracker.IsCold(in storageCell))
         {
-            if (!UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad))
+            if (!UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad))
                 return false;
 
             accessTracker.WarmUp(in storageCell);
@@ -286,7 +407,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         // EIP-8038 charges the warm-access cost on SSTORE too; the net-metered charge is dropped.
-        if (storageAccessType == StorageAccessType.SLOAD || spec.IsEip8038Enabled)
+        if (storageAccessType == StorageAccessType.SLOAD || TMode.IsEip8038Enabled(spec))
             return UpdateGas(ref gas, GasCostOf.WarmStateRead);
         return true;
     }
@@ -331,13 +452,28 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref EthereumGasPolicy gas, IReleaseSpec spec)
         where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag =>
+        ConsumeStorageWriteCore<TEip8037, TIsSlotCreation, DynamicStorageMode>(ref gas, spec);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeStorageWrite<Eip8037, TIsSlotCreation, Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec)
+        where Eip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        ConsumeStorageWriteCore<Eip8037, TIsSlotCreation, StorageMode<Eip8038>>(ref gas, spec);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ConsumeStorageWriteCore<TEip8037, TIsSlotCreation, TMode>(ref EthereumGasPolicy gas, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag
+        where TMode : struct, IStorageMode
     {
         // EIP-8038: STORAGE_WRITE is charged on the first change to a slot (fresh or reset).
         if (!TIsSlotCreation.IsActive)
-            return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
+            return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
 
-        ulong executionWriteCost = spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution;
+        ulong executionWriteCost = TMode.IsEip8038Enabled(spec) ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution;
         return TEip8037.IsActive switch
         {
             // EIP-8037: charge the execution component first so an OOG halt does not
@@ -352,10 +488,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong refund) => gas.Value += refund;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryReserveChildGas(ref EthereumGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
+    public static bool TryReserveChildGas(ref EthereumGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas) =>
+        TryReserveChildGasCore(ref gas, in requestedGas, spec.Use63Over64Rule, out childGas);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryReserveChildGas<Eip150>(ref EthereumGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
+        where Eip150 : struct, IFlag =>
+        TryReserveChildGasCore(ref gas, in requestedGas, Eip150.IsActive, out childGas);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryReserveChildGasCore(ref EthereumGasPolicy gas, in UInt256 requestedGas, bool use63Over64Rule, out ulong childGas)
     {
         ulong gasAvailable = GetRemainingGas(in gas);
-        if (spec.Use63Over64Rule)
+        if (use63Over64Rule)
         {
             ulong cap = gasAvailable - gasAvailable / 64;
             childGas = requestedGas.IsUint64 && requestedGas.u0 <= cap ? requestedGas.u0 : cap;
@@ -375,10 +521,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryReserveChildGas(ref EthereumGasPolicy gas, IReleaseSpec spec, out ulong childGas)
+    public static bool TryReserveChildGas(ref EthereumGasPolicy gas, IReleaseSpec spec, out ulong childGas) =>
+        TryReserveChildGasCore(ref gas, spec.Use63Over64Rule, out childGas);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryReserveChildGas<Eip150>(ref EthereumGasPolicy gas, IReleaseSpec spec, out ulong childGas)
+        where Eip150 : struct, IFlag =>
+        TryReserveChildGasCore(ref gas, Eip150.IsActive, out childGas);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryReserveChildGasCore(ref EthereumGasPolicy gas, bool use63Over64Rule, out ulong childGas)
     {
         ulong gasAvailable = GetRemainingGas(in gas);
-        childGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
+        childGas = use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
         return TryReserveChildGas(ref gas, childGas);
     }
 
@@ -529,12 +685,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ConsumeDataCopyGas(ref EthereumGasPolicy gas, IReleaseSpec spec, bool isExternalCode, ulong words)
         => Consume(ref gas, (isExternalCode ? spec.GasCosts.ExtCodeCost : GasCostOf.VeryLow) + GasCostOf.Memory * words);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void OnBeforeInstructionTrace(in EthereumGasPolicy gas, int pc, Instruction instruction, int depth) { }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void OnAfterInstructionTrace(in EthereumGasPolicy gas) { }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>

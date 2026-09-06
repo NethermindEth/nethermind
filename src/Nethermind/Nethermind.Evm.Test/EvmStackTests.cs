@@ -60,7 +60,7 @@ public class EvmStackTests
         EvmExceptionType result = InvokePush(op, ref stack);
 
         Assert.That(result, Is.EqualTo(EvmExceptionType.StackOverflow));
-        Assert.That(stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
+        Assert.That((int)stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
     }
 
     [TestCase(PopUInt256_1, 0)]
@@ -79,7 +79,7 @@ public class EvmStackTests
         bool result = InvokePopBool(op, ref stack);
 
         Assert.That(result, Is.False);
-        Assert.That(stack.Head, Is.EqualTo(preFilled));
+        Assert.That((int)stack.Head, Is.EqualTo(preFilled));
     }
 
     [TestCase(Dup)]
@@ -103,7 +103,7 @@ public class EvmStackTests
         };
 
         Assert.That(result, Is.EqualTo(EvmExceptionType.StackUnderflow));
-        Assert.That(stack.Head, Is.EqualTo(1));
+        Assert.That((int)stack.Head, Is.EqualTo(1));
     }
 
     [Test]
@@ -117,7 +117,7 @@ public class EvmStackTests
         int result = stack.PopByte();
 
         Assert.That(result, Is.EqualTo(-1));
-        Assert.That(stack.Head, Is.EqualTo(0));
+        Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
     [Test]
@@ -129,7 +129,7 @@ public class EvmStackTests
         Address? result = stack.PopAddress();
 
         Assert.That(result, Is.Null);
-        Assert.That(stack.Head, Is.EqualTo(0));
+        Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
     [TestCase(0)]
@@ -198,7 +198,7 @@ public class EvmStackTests
         Assert.That(stack.PopUInt256(out UInt256 popped), Is.True);
 
         Assert.That(popped, Is.EqualTo(value));
-        Assert.That(stack.Head, Is.EqualTo(0));
+        Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
     [Test]
@@ -221,7 +221,7 @@ public class EvmStackTests
             Assert.That(a, Is.EqualTo(z));
             Assert.That(b, Is.EqualTo(y));
             Assert.That(c, Is.EqualTo(x));
-            Assert.That(stack.Head, Is.EqualTo(0));
+            Assert.That((int)stack.Head, Is.EqualTo(0));
         }
     }
 
