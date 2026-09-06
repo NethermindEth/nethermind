@@ -318,7 +318,7 @@ public static class Metrics
     public static long BalHealingBalsApplied { get; set; }
 
     [GaugeMetric]
-    [Description("Lowest block still answerable from flat history (the retention floor); 0 when no window is configured or none has been pruned yet")]
+    [Description("Lowest block still answerable from flat history (the retention floor); 0 when none has been published")]
     public static long FlatHistoryFloor { get; set; }
 
     [DetailedMetric]

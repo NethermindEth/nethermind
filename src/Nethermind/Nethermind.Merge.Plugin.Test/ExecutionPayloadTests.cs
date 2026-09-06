@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Cpu;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -94,7 +95,8 @@ public class ExecutionPayloadTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootTask, Is.Not.Null);
+            // A single processor computes the root inline instead of starting the task.
+            Assert.That(rootTask, RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
     }

@@ -41,7 +41,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
             {
                 throw StateUnavailable(new StateUnavailableException(
                     $"Historical state for block {block.BlockNumber} is unavailable" +
-                    (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (pruned below the flat history retention floor)." : ".")));
+                    (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (below the flat history retention floor)." : ".")));
             }
         }
         catch

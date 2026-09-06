@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -35,17 +34,7 @@ public static class WitnessExtensions
 
     extension(Witness witness)
     {
-        public INodeStorage CreateNodeStorage()
-        {
-            IKeyValueStore db = MemDb.WithCapacity(witness.State.Count);
-            foreach (byte[] stateElement in witness.State)
-            {
-                ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                db.Set(hash, stateElement);
-            }
-
-            return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
-        }
+        public INodeStorage CreateNodeStorage() => WitnessNodeStorage.Create(witness.State);
 
         public IKeyValueStoreWithBatching CreateCodeDb()
         {

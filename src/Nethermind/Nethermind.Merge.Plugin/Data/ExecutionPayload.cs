@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -163,7 +164,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        Task<Hash256>? txRootTask = StartTxRootComputation();
+        // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
+        // and carries no task machinery for it.
+        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
@@ -226,7 +229,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     internal Task<Hash256>? StartTxRootComputation()
     {
         byte[][] encodedTransactions = _encodedTransactions;
-        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && Environment.ProcessorCount > 1
+        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
             ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
             : null;
     }
