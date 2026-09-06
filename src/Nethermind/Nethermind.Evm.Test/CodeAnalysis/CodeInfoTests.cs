@@ -211,7 +211,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCaseSource(nameof(Codes))]
         public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
         {
-            for (int i = 1; i < codeInput.Length; i++)
+            for (int i = 1; i <= codeInput.Length; i++)
             {
                 ReadOnlySpan<byte> code = codeInput.AsSpan(0, i);
 
@@ -233,12 +233,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 test.TestName = "Code_All_0x00";
                 yield return test;
 
-                // Runs of plain one-byte instructions either side of the width the scalar scan steps over
-                // in one go, so a run that ends just short of, exactly on, or just past that boundary each
-                // get covered - including where the run is cut off by the end of the code.
-                foreach (int run in (int[])[1, 6, 7, 8, 9, 15, 16, 17])
+                // Runs of plain one-byte instructions bracketing each width a scan steps over in one go: the
+                // 8-byte scalar word, the 16-byte Vector128 block, the 32-byte PUSH32 payload and the 64-byte
+                // Vector512 chunk. The per-prefix loop also cuts every run off at the end of the code.
+                int[] runLengths = [1, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65];
+                byte[] markers = [(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, (byte)Instruction.PUSH32];
+                foreach (int run in runLengths)
                 {
-                    foreach (byte marker in (byte[])[(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, (byte)Instruction.PUSH32])
+                    foreach (byte marker in markers)
                     {
                         code = new byte[1024];
                         for (int i = run; i < code.Length; i += run + 1)
@@ -270,12 +272,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 test.TestName = "Code_Unaligned_PUSH1_JUMPDEST";
                 yield return test;
 
-                code = new byte[1024];
-
                 for (int start = 0; start <= 1; start++)
                 {
                     for (int push = 0x60; push <= 0x7f; push++)
                     {
+                        code = new byte[1024];
                         for (int i = 0; i < code.Length; i++)
                         {
                             code[i] = (i + start) % 2 == 0 ? (byte)push : (byte)0x5b;
