@@ -193,6 +193,43 @@ public class MetricsTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void Load_CarryForwardDetailedMetrics()
+    {
+        bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
+        try
+        {
+            MetricsConfig metricsConfig = new()
+            {
+                Enabled = true,
+                EnableDetailedMetric = true
+            };
+            MetricsController metricsController = new(metricsConfig);
+            metricsController.RegisterMetrics(typeof(Db.Metrics));
+            metricsController.RegisterMetrics(typeof(Nethermind.State.Flat.Metrics));
+            metricsController.UpdateAllMetrics();
+
+            Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+            string typeName = nameof(Nethermind.State.Flat.Metrics);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Db.Metrics.DetailedMetricsEnabled, Is.True);
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountHits)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountMisses)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotHits)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotMisses)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountCount)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotCount)}"));
+            }
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
+    }
+
+    [Test]
     public void Register_and_update_metrics_should_not_throw_exception()
     {
         MetricsConfig metricsConfig = new()
