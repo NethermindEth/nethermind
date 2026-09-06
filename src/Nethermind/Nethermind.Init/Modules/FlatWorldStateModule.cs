@@ -46,6 +46,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
+                ctx.Resolve<GcPacer>(),
                 ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<ISnapshotCompactor>(),
@@ -57,6 +58,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
+            .AddSingleton<GcPacer>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
