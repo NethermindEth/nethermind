@@ -403,6 +403,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         in UInt256 position,
         ulong length, ref EvmPooledMemory memory)
     {
+        ulong size = memory.Size;
+        if (length <= size && position.IsUint64 && position.u0 <= size - length)
+            return true;
+
         ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0)
             return !outOfGas;

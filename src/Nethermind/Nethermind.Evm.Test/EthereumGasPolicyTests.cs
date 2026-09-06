@@ -15,6 +15,29 @@ namespace Nethermind.Evm.Test;
 
 public class EthereumGasPolicyTests
 {
+    [Test]
+    public void Memory_cost_preserves_preexpanded_range_and_full_width_validation(
+        [Values(0UL, 1UL, 31UL, 32UL, 33UL, ulong.MaxValue)] ulong offset,
+        [Values(0UL, 1UL, 32UL, 64UL)] ulong length, [Values] bool highLimb,
+        [Values] bool wideLength)
+    {
+        EvmPooledMemory memory = new();
+        memory.CalculateMemoryCost(UInt256.Zero, 64, out _);
+        UInt256 position = new(offset, highLimb ? 1UL : 0UL, 0, 0);
+        UInt256 uint256Length = length;
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(0);
+
+        bool success = wideLength
+            ? EthereumGasPolicy.UpdateMemoryCost(ref gas, in position, in uint256Length, ref memory)
+            : EthereumGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref memory);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.EqualTo(length == 0 || (!highLimb && offset <= 64 && length <= 64 - offset)));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.Zero);
+        }
+    }
+
     [Test, Combinatorial]
     public void Specialized_account_access_matches_dynamic_policy_without_reading_fork_flags(
         [Values] bool eip8038,
