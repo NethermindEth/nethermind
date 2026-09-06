@@ -259,6 +259,48 @@ namespace Nethermind.Evm.Test
             AssertSuccessfulOutput(parentCode, data.AsSpan(0, inputLength).ToArray(), traced);
         }
 
+        [Test]
+        public void Resumed_call_pushes_status_after_a_full_stack(
+            [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction instruction,
+            [Values] bool revert, [Values] bool traced)
+        {
+            byte[] childCode = Prepare.EvmCode.PushData(0).PushData(0)
+                .Op(revert ? Instruction.REVERT : Instruction.RETURN).Done;
+            TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+            TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+            bool hasValue = instruction is Instruction.CALL or Instruction.CALLCODE;
+            Prepare parent = Prepare.EvmCode;
+            for (int i = 0; i < 1024 - (hasValue ? 7 : 6); i++) parent.Op(Instruction.PUSH0);
+            parent.PushData(0).PushData(0).PushData(0).PushData(0);
+            if (hasValue) parent.PushData(0);
+            byte[] code = parent.PushData(TestItem.AddressC).PushData(50_000).Op(instruction)
+                .PushData(0).Op(Instruction.MSTORE).RETURN(0, 32).Done;
+            AssertSuccessfulOutput(code, ((UInt256)(revert ? 0 : 1)).ToBigEndian(), traced);
+        }
+
+        [Test]
+        public void Resumed_create_pushes_result_after_a_full_stack(
+            [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction instruction,
+            [Values] bool revert, [Values] bool traced)
+        {
+            byte[] initCode = Prepare.EvmCode.PushData(0).PushData(0)
+                .Op(revert ? Instruction.REVERT : Instruction.RETURN).Done;
+            Prepare parent = Prepare.EvmCode.StoreDataInMemory(0, initCode);
+            for (int i = 0; i < (instruction == Instruction.CREATE2 ? 1020 : 1021); i++) parent.Op(Instruction.PUSH0);
+            if (instruction == Instruction.CREATE2) parent.Op(Instruction.PUSH0);
+            byte[] code = parent.PushData(initCode.Length).PushData(0).PushData(0).Op(instruction)
+                .PushData(0).Op(Instruction.MSTORE).RETURN(0, 32).Done;
+            byte[] expected = new byte[32];
+            if (!revert)
+            {
+                Address address = instruction == Instruction.CREATE2
+                    ? ContractAddress.From(Recipient, new byte[32], initCode)
+                    : ContractAddress.From(Recipient, 0);
+                address.Bytes.CopyTo(expected.AsSpan(12));
+            }
+            AssertSuccessfulOutput(code, expected, traced);
+        }
+
         private void AssertSuccessfulOutput(byte[] code, byte[] expected, bool traced)
         {
             TestAllTracerWithOutput tracer = new OutputCopyTracer(traced);
