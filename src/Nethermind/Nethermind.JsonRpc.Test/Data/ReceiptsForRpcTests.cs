@@ -103,7 +103,13 @@ namespace Nethermind.JsonRpc.Test.Data
 
             TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
 
-            Assert.That(roundTripped!.Logs, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(roundTripped!.Logs, Is.Empty);
+                Assert.That(roundTripped.BlockGasUsed, Is.EqualTo(10));
+                Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(11));
+                Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(12));
+            }
         }
 
         [Test]
