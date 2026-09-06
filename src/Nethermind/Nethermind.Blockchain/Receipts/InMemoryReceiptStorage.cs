@@ -85,6 +85,8 @@ namespace Nethermind.Blockchain.Receipts
 
         public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
 
+        public TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash) => Get(blockHash, recover: false);
+
         public bool HasBlock(ulong blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);
 

@@ -87,11 +87,11 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
 
         if (eip155Enabled) // we use eip155 check just as a proxy on 658
         {
-            Assert.That(tracer.TxReceipts![0].PostTransactionState, Is.Null);
+            Assert.That(tracer.TxReceipts![0]!.PostTransactionState, Is.Null);
         }
         else
         {
-            Assert.That(tracer.TxReceipts![0].PostTransactionState, Is.Not.Null);
+            Assert.That(tracer.TxReceipts![0]!.PostTransactionState, Is.Not.Null);
         }
     }
 

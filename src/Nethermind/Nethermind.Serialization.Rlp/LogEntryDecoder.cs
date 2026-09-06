@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
             int logEntryLength = decoderContext.ReadSequenceLength();
             decoderContext.GuardLimit(logEntryLength, RlpLimit);
             int logEntryCheck = decoderContext.Position + logEntryLength;
-            Address? address = decoderContext.DecodeAddressOrNull();
+            Address address = decoderContext.DecodeAddress();
             int topicsLength = decoderContext.ReadSequenceLength();
             int topicsCheck = decoderContext.Position + topicsLength;
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
@@ -114,13 +114,13 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
-                item = new LogEntryStructRef();
+                item = default;
                 return;
             }
 
             int logEntryLength = decoderContext.ReadSequenceLength();
             int logEntryCheck = decoderContext.Position + logEntryLength;
-            decoderContext.DecodeAddressStructRef(out AddressStructRef address);
+            decoderContext.DecodeAddressStructRefNonNull(out AddressStructRef address);
             (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
             int sequenceLength = prefixLength + contentLength;
             ReadOnlySpan<byte> topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);

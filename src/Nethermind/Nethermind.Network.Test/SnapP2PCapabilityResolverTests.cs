@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -20,14 +24,22 @@ public class SnapP2PCapabilityResolverTests
 {
     private const ulong Pivot = 1000;
 
+    private static Lazy<IBalHealing> AvailableBalHealing()
+    {
+        IBalHealing healing = Substitute.For<IBalHealing>();
+        healing.IsAvailable.Returns(true);
+        return new Lazy<IBalHealing>(healing);
+    }
+
     private static readonly Capability Snap1 = new(Protocol.Snap, SnapVersions.Snap1);
     private static readonly Capability Snap2 = new(Protocol.Snap, SnapVersions.Snap2);
 
     private static SnapP2PCapabilityResolver CreateResolver(
         out ISyncModeSelector syncModeSelector,
-        bool snapServing = false, bool snapSync = false, bool balEnabled = true, params ulong[] bestFullStates)
+        bool snapServing = false, bool snapSync = false, bool balEnabled = true,
+        bool balHealing = true, bool balPivot = true, bool healDecided = true, params ulong[] bestFullStates)
     {
-        ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
+        ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync, BalHealing = balHealing };
         syncModeSelector = Substitute.For<ISyncModeSelector>();
         ISyncProgressResolver progressResolver = Substitute.For<ISyncProgressResolver>();
         progressResolver.SyncPivot.Returns((Pivot, Keccak.Zero));
@@ -37,7 +49,16 @@ public class SnapP2PCapabilityResolverTests
         }
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = balEnabled });
-        return new SnapP2PCapabilityResolver(syncConfig, syncModeSelector, progressResolver, specProvider, LimboLogs.Instance);
+
+        StateHealingStrategy healingStrategy = new(syncConfig, AvailableBalHealing(), LimboLogs.Instance);
+        if (healDecided)
+        {
+            healingStrategy.SetPivot(Build.A.BlockHeader.WithNumber(Pivot)
+                .WithBlockAccessListHash(balPivot ? TestItem.KeccakA : null).TestObject);
+        }
+
+        return new SnapP2PCapabilityResolver(
+            syncConfig, syncModeSelector, progressResolver, specProvider, healingStrategy, LimboLogs.Instance);
     }
 
     private static void PublishSyncProgress(ISyncModeSelector syncModeSelector) =>
@@ -73,13 +94,67 @@ public class SnapP2PCapabilityResolverTests
         Assert.That(Resolve(resolver).Contains(Snap2), Is.EqualTo(expected));
     }
 
-    [Test]
-    public void Resolve_syncing_withholds_snap2_without_bal_heal_substitute()
+    [TestCase(true, true, true, TestName = "BAL heal available")]
+    [TestCase(false, true, false, TestName = "No BALs at the pivot")]
+    [TestCase(true, false, false, TestName = "BAL healing unavailable")]
+    public void Resolve_syncing_advertises_snap2_only_with_a_bal_heal_substitute(bool balPivot, bool balHealing, bool expected)
     {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(out ISyncModeSelector syncModeSelector, snapSync: true);
+        using SnapP2PCapabilityResolver resolver = CreateResolver(
+            out ISyncModeSelector syncModeSelector, snapSync: true, balPivot: balPivot, balHealing: balHealing);
+        PublishSyncProgress(syncModeSelector);
+
+        Assert.That(Resolve(resolver).Contains(Snap2), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Resolve_syncing_still_advertises_snap1_when_bal_healing_is_unavailable()
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(
+            out ISyncModeSelector syncModeSelector, snapSync: true, balHealing: false);
+        PublishSyncProgress(syncModeSelector);
+
+        HashSet<Capability> capabilities = Resolve(resolver);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capabilities.Contains(Snap1), Is.True);
+            Assert.That(capabilities.Contains(Snap2), Is.False);
+        }
+    }
+
+    [Test]
+    public void Resolve_syncing_withholds_snap2_until_the_heal_path_is_decided()
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(
+            out ISyncModeSelector syncModeSelector, snapSync: true, healDecided: false);
         PublishSyncProgress(syncModeSelector);
 
         Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
+    }
+
+    [Test]
+    public void Adds_snap2_and_raises_Changed_once_the_heal_path_is_decided()
+    {
+        ISyncConfig syncConfig = new SyncConfig { SnapSync = true };
+        StateHealingStrategy healingStrategy = new(syncConfig, AvailableBalHealing(), LimboLogs.Instance);
+
+        ISyncProgressResolver progressResolver = Substitute.For<ISyncProgressResolver>();
+        progressResolver.SyncPivot.Returns((Pivot, Keccak.Zero));
+
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, Substitute.For<ISyncModeSelector>(),
+            progressResolver, new TestSpecProvider(new ReleaseSpec()), healingStrategy, LimboLogs.Instance);
+
+        int fired = 0;
+        resolver.Changed += () => fired++;
+
+        Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
+
+        healingStrategy.SetPivot(Build.A.BlockHeader.WithNumber(Pivot).WithBlockAccessListHash(TestItem.KeccakA).TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fired, Is.EqualTo(1));
+            Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
+        }
     }
 
     [Test]

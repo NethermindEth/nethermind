@@ -26,7 +26,7 @@ public class ChainLevelDecoderTests
 
         Rlp rlp = Rlp.Encode(chainLevelInfo);
 
-        ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo decoded = (valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -42,7 +42,7 @@ public class ChainLevelDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
-        ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo? decoded = Rlp.Decode<ChainLevelInfo>(rlp);
         Assert.That(decoded, Is.Null);
     }
 }

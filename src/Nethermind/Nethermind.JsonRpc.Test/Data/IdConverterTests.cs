@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Data
             using MemoryStream stream = new();
             using (Utf8JsonWriter writer = new(stream))
             {
-                converter.Write(writer, 1, null!);
+                converter.Write(writer, 1, JsonSerializerOptions.Default);
                 writer.Flush();
             }
 
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             IdConverter converter = new();
             Assert.Throws<NotSupportedException>(
-                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, null));
+                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, JsonSerializerOptions.Default));
         }
 
         [TestCase(typeof(int))]

@@ -21,7 +21,7 @@ public static partial class EvmInstructions
 {
     /// <summary>TXTRACE (0xb7): enumerate the transaction's state diff and events by index.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxTrace<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxTrace<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -119,7 +119,7 @@ public static partial class EvmInstructions
 
     /// <summary>TXDIFF (0xb8): keyed access to a single account's diff, warm/cold priced per EIP-2929.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxDiff<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxDiff<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -217,7 +217,7 @@ public static partial class EvmInstructions
     /// <summary>EVENTDATACOPY (0xb9): copy a log's non-indexed data into memory. Gas is CALLDATACOPY-shaped,
     /// but an out-of-range read halts rather than zero-padding.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEventDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEventDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

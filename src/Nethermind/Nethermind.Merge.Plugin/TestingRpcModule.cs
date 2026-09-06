@@ -230,7 +230,8 @@ public class TestingRpcModule(
     private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
     {
         foreach (byte[] txRlp in txRlps)
-            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping);
+            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping)
+                ?? throw new RlpException("Transaction decoding returned null.");
     }
 
     private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)

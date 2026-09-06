@@ -28,6 +28,15 @@ public class L1OriginStoreTests
     }
 
     [Test]
+    public void Null_origin_roundtrips()
+    {
+        Rlp encoded = _decoder.Encode((L1Origin?)null);
+        RlpReader reader = new(encoded.Bytes);
+
+        Assert.That(_decoder.Decode(ref reader), Is.Null);
+    }
+
+    [Test]
     public void Can_write_and_read_l1_origin()
     {
         UInt256 blockId = 123;

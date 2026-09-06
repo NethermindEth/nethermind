@@ -61,6 +61,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         if (elidedBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+            if (transaction is null)
+            {
+                return false;
+            }
+
             transaction.SenderAddress = sender;
             return true;
         }
@@ -380,14 +385,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
     }
 
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
         byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
 
         if (bytes is not null)
         {
             RlpReader ctx = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
             return true;
         }
 
@@ -402,11 +407,16 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         byte[]? txBytes,
         Address sender,
         in UInt256 timestamp,
-        out Transaction? transaction)
+        [NotNullWhen(true)] out Transaction? transaction)
     {
         if (txBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            if (transaction is null)
+            {
+                return false;
+            }
+
             transaction.SenderAddress = sender;
             transaction.Timestamp = timestamp;
             return true;

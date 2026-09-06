@@ -46,7 +46,7 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
 
-    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
+    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref nint, EvmExceptionType>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
     private byte[] _stackBuffer = null!;
     private int _stackOffset;
@@ -263,7 +263,7 @@ public unsafe class EvmOpcodesBenchmark
             for (int i = 0; i < runs; i++)
             {
                 EthereumGasPolicy gas = _gas;
-                int pc = 0;
+                nint pc = 0;
                 result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
                 DisposeNestedReturnFrame();
             }
@@ -284,7 +284,7 @@ public unsafe class EvmOpcodesBenchmark
             PreparePerRunLocationSetup(runIndex);
 
             EthereumGasPolicy gas = _gas;
-            int pc = 0;
+            nint pc = 0;
             result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
             DisposeNestedReturnFrame();
         }
@@ -306,7 +306,7 @@ public unsafe class EvmOpcodesBenchmark
                 stack.Head = depth - (i * 2);
 
                 EthereumGasPolicy gas = _gas;
-                int pc = 0;
+                nint pc = 0;
                 result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
                 DisposeNestedReturnFrame();
             }
@@ -663,7 +663,7 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         EthereumGasPolicy gas = _gas;
-        int pc = 0;
+        nint pc = 0;
         _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
         DisposeNestedReturnFrame();
 

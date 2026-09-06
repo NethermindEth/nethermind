@@ -17,7 +17,7 @@ public static unsafe partial class EvmInstructions
 {
     /// <summary>APPROVE (0xaa): terminate the frame successfully and record the approval scope for the outer loop.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionApprove<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionApprove<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
@@ -85,7 +85,7 @@ public static unsafe partial class EvmInstructions
     /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D, 0x0E, 0x10 and 0x11.</typeparam>
     /// <typeparam name="TEip8272">Whether the fork defines the recent-root reference count at index 0x0F.</typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TEip8250 : struct, IFlag
@@ -129,7 +129,7 @@ public static unsafe partial class EvmInstructions
     /// <remarks>Reads the signed envelope, not the predeploy's storage, and it was checked against the
     /// pre-state before any frame ran, so the opcode is legal in every frame mode including <c>VERIFY</c>.</remarks>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -152,7 +152,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>FRAMEDATALOAD (0xb1): load a 32-byte word from another frame's data.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionFrameDataLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionFrameDataLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -179,7 +179,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>FRAMEDATACOPY (0xb2): copy another frame's data into memory (CALLDATACOPY semantics).</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionFrameDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionFrameDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -196,7 +196,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>FRAMEPARAM (0xb3): read a frame-scoped field.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionFrameParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionFrameParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -254,7 +254,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -288,7 +288,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>SIGDATACOPY (0xb5): copy an ARBITRARY signature's raw bytes into memory (CALLDATACOPY semantics).</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSigDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionSigDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

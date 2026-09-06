@@ -12,7 +12,7 @@ public class BitArrayConverter : JsonConverter<BitArray>
 {
     public override BitArray Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[] bytes = ByteArrayConverter.ConvertData(ref reader);
+        byte[]? bytes = ByteArrayConverter.ConvertData(ref reader);
         return bytes is null ? throw new JsonException("Expected a hex-encoded bit array.") : new BitArray(bytes);
     }
 

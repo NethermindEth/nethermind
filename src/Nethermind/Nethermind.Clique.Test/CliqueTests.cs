@@ -135,8 +135,14 @@ public class CliqueTests
         ulong gasLimit = 4700000;
         ulong timestamp = 1492009146UL;
         byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
-        BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-        header.Bloom = Bloom.Empty;
+        BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+        {
+            Bloom = Bloom.Empty,
+            StateRoot = Keccak.EmptyTreeHash,
+            TxRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            MixHash = Keccak.Zero
+        };
         Block genesis = new(header);
         genesis.Header.Hash = new Hash256("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
 

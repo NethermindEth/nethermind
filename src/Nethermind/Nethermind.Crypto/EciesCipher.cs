@@ -22,7 +22,7 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
     private readonly PrivateKeyGenerator _keyGenerator = new(cryptoRandom);
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
-    public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
+    public (bool Success, byte[]? PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
         if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
         {
@@ -37,7 +37,7 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
         return (true, plaintext);
     }
 
-    public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[] macData)
+    public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[]? macData = null)
     {
         byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
         PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
@@ -60,7 +60,7 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
         return outputArray;
     }
 
-    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
+    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[]? macData)
     {
         EthereumIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
         return iesEngine.ProcessBlock(ciphertextBody, macData);

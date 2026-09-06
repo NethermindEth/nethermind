@@ -69,7 +69,13 @@ namespace Nethermind.Serialization.Rlp
 
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                LogEntry? logEntry = LogEntryDecoder.Instance.Decode(
+                    ref decoderContext,
+                    RlpBehaviors.AllowExtraBytes);
+                if (logEntry is not null)
+                {
+                    logEntries.Add(logEntry);
+                }
             }
 
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
@@ -155,7 +161,7 @@ namespace Nethermind.Serialization.Rlp
 
                 writer.StartSequence(logsLength);
 
-                LogEntry[] logs = item.Logs;
+                LogEntry[] logs = GetLogs(item);
                 for (int i = 0; i < logs.Length; i++)
                 {
                     LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
@@ -176,7 +182,7 @@ namespace Nethermind.Serialization.Rlp
 
                 writer.StartSequence(logsLength);
 
-                LogEntry[] logs = item.Logs;
+                LogEntry[] logs = GetLogs(item);
                 for (int i = 0; i < logs.Length; i++)
                 {
                     LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
@@ -206,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
                 using ArrayPoolListRef<LogEntry> frameLogs = new(4);
                 while (decoderContext.Position < logsEnd)
                 {
-                    frameLogs.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                    frameLogs.Add(LogEntryDecoder.Instance.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowExtraBytes));
                 }
 
                 frameReceipts.Add(new TxFrameReceipt(status, executionGasUsed, stateGasUsed, frameLogs.ToArray()));
@@ -320,19 +326,28 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (int i = 0; i < item.Logs.Length; i++)
+            LogEntry[] logs = GetLogs(item);
+            for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(item.Logs[i]);
+                logsLength += Rlp.LengthOf(logs[i]);
             }
 
             return logsLength;
         }
 
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
+            if (item is null)
+            {
+                return Rlp.OfEmptyList.Length;
+            }
+
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
@@ -388,7 +403,11 @@ namespace Nethermind.Serialization.Rlp
                 item.GasUsed = decoderContext.DecodeULong();
             }
             item.GasUsedTotal = decoderContext.DecodeULong();
-            decoderContext.DecodeBloomStructRef(out item.Bloom);
+            decoderContext.DecodeBloomStructRef(out item.Bloom, out bool bloomWasMissing);
+            if (bloomWasMissing)
+            {
+                item.Bloom = default;
+            }
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();
@@ -427,7 +446,7 @@ namespace Nethermind.Serialization.Rlp
         public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviour,
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
-        public Hash256[] DecodeTopics(RlpReader reader) => HashDecoder.DecodeArray(ref reader);
+        public Hash256[] DecodeTopics(RlpReader reader) => HashDecoder.DecodeNonNullArray(ref reader);
 
         public bool CanDecodeBloom => true;
     }

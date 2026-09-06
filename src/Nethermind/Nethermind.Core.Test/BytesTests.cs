@@ -792,13 +792,32 @@ namespace Nethermind.Core.Test
         }
 #endif
 
-        [Test]
-        public void FastHash_ShortPaddingIncludesLength()
+        /// <remarks>
+        /// Covers the widths that have their own paths, not just a pair that shares one. 20 against 32
+        /// is the case that matters: both are dominant key widths with dedicated handling, and a
+        /// shorter key's tail read is the zero-extension of the longer one's, so a mixer whose
+        /// constants do not vary with width maps the two forms to the same value.
+        /// </remarks>
+        [TestCase(8, 9)]
+        [TestCase(20, 21)]
+        [TestCase(20, 32)]
+        [TestCase(31, 32)]
+        [TestCase(32, 33)]
+        [TestCase(32, 64)]
+        [TestCase(64, 65)]
+        public void FastHash_ShortPaddingIncludesLength(int length, int paddedLength)
         {
-            byte[] input = [1, 2, 3, 4, 5, 6, 7, 8];
-            byte[] extended = [1, 2, 3, 4, 5, 6, 7, 8, 0];
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                input[i] = (byte)(i + 1);
+            }
 
-            Assert.That(input.FastHash(), Is.Not.EqualTo(extended.FastHash()));
+            byte[] padded = new byte[paddedLength];
+            input.CopyTo(padded, 0);
+
+            Assert.That(input.FastHash(), Is.Not.EqualTo(padded.FastHash()),
+                $"{length} bytes and the same bytes zero-padded to {paddedLength}");
         }
 
         private const int HashDistributionSampleCount = 4096;

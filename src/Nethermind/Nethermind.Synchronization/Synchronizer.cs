@@ -504,6 +504,8 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>()
+            .AddSingleton<BalFetcher>()
+            .AddSingleton<StateHealingStrategy>()
             .AddSingleton<IStateSyncRunner, StateSyncRunner>();
 
         serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch>(

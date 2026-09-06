@@ -21,9 +21,9 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
 {
     protected override BlockHeader DecodeSealAndCreateHeader(
         ref RlpReader decoderContext,
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         in UInt256 difficulty,
         ulong number,
         ulong gasLimit,
@@ -38,6 +38,12 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
 
         ulong step = decoderContext.DecodeULong();
         byte[] signature = decoderContext.DecodeByteArray();
+        // Third-party chain specs may persist non-standard genesis seals; live headers require full signatures.
+        if (signature.Length == 0 || (number != 0 && signature.Length != Signature.Size))
+        {
+            throw new RlpException("Invalid AuRa signature RLP.");
+        }
+
         return new AuRaBlockHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData)
         {
             AuRaStep = step,

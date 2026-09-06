@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -70,7 +71,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         }
 
         static void EncodeShardBlobNetworkWrapper(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors) =>
-            ShardBlobNetworkWrapperRlp.Encode(ref writer, (ShardBlobNetworkWrapper)transaction.NetworkWrapper!, rlpBehaviors);
+            ShardBlobNetworkWrapperRlp.Encode(ref writer, GetNetworkWrapper(transaction), rlpBehaviors);
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
@@ -84,8 +85,8 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.EncodePayload(transaction, ref writer, rlpBehaviors);
-        writer.Encode(transaction.MaxFeePerBlobGas!.Value);
-        writer.Encode(transaction.BlobVersionedHashes!);
+        writer.Encode(GetMaxFeePerBlobGas(transaction));
+        EncodeBlobVersionedHashes(ref writer, GetBlobVersionedHashes(transaction));
     }
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
@@ -110,11 +111,56 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
         static int GetShardBlobNetworkWrapperLength(Transaction transaction, int txContentLength, RlpBehaviors rlpBehaviors) =>
             Rlp.LengthOfSequence(txContentLength)
-            + ShardBlobNetworkWrapperRlp.GetFieldsLength((ShardBlobNetworkWrapper)transaction.NetworkWrapper!, rlpBehaviors);
+            + ShardBlobNetworkWrapperRlp.GetFieldsLength(GetNetworkWrapper(transaction), rlpBehaviors);
     }
 
     protected override int GetPayloadLength(Transaction transaction) =>
         base.GetPayloadLength(transaction)
-        + Rlp.LengthOf(transaction.MaxFeePerBlobGas)
-        + Rlp.LengthOf(transaction.BlobVersionedHashes);
+        + Rlp.LengthOf(GetMaxFeePerBlobGas(transaction))
+        + GetBlobVersionedHashesLength(GetBlobVersionedHashes(transaction));
+
+    private static UInt256 GetMaxFeePerBlobGas(Transaction transaction) =>
+        transaction.MaxFeePerBlobGas
+        ?? throw new RlpException($"{nameof(Transaction.MaxFeePerBlobGas)} is required for blob transaction RLP.");
+
+    private static byte[]?[] GetBlobVersionedHashes(Transaction transaction) =>
+        transaction.BlobVersionedHashes
+        ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} is required for blob transaction RLP.");
+
+    private static ShardBlobNetworkWrapper GetNetworkWrapper(Transaction transaction) =>
+        transaction.NetworkWrapper as ShardBlobNetworkWrapper
+        ?? throw new RlpException($"{nameof(Transaction.NetworkWrapper)} must be {nameof(ShardBlobNetworkWrapper)} for mempool blob transaction RLP.");
+
+    private static int GetBlobVersionedHashesLength(byte[]?[] blobVersionedHashes)
+    {
+        int contentLength = 0;
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            byte[] hash = blobVersionedHashes[i]
+                ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} contains a null versioned hash.");
+            contentLength += Rlp.LengthOf(hash);
+        }
+
+        return Rlp.LengthOfSequence(contentLength);
+    }
+
+    private static void EncodeBlobVersionedHashes<TWriter>(ref TWriter writer, byte[]?[] blobVersionedHashes)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        int contentLength = 0;
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            byte[] hash = blobVersionedHashes[i]
+                ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} contains a null versioned hash.");
+            contentLength += Rlp.LengthOf(hash);
+        }
+
+        writer.StartSequence(contentLength);
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            byte[] hash = blobVersionedHashes[i]
+                ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} contains a null versioned hash.");
+            writer.Encode(hash);
+        }
+    }
 }

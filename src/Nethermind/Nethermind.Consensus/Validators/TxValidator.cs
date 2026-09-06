@@ -255,7 +255,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return FrameTxValidation.FrameGasOverflow;
         }
 
-        if ((releaseSpec.IsEip8037Enabled || releaseSpec.IsEip8141Enabled) && executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
+        if (executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
         {
             return FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap);
         }

@@ -192,7 +192,7 @@ public class FrameTransactionForRpcTests
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":"0x0000000000000000000000000000000000000000000000000000000000000001","slot":"0x1","root":null}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceRoot_IsRejected")]
     public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
     {
-        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json)!;
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
 
@@ -366,7 +366,7 @@ public class FrameTransactionForRpcTests
             }
             """;
 
-        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
         Transaction tx = rpc.ToTransaction().Data!;
@@ -420,7 +420,7 @@ public class FrameTransactionForRpcTests
         if (throughJson)
         {
             EthereumJsonSerializer serializer = new();
-            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc));
+            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc))!;
         }
 
         TxReceipt roundTripped = receiptForRpc.ToReceipt();
@@ -449,6 +449,9 @@ public class FrameTransactionForRpcTests
     {
         TxReceipt receipt = BuildFrameTxReceipt();
         receipt.TxHash = Keccak.Zero;
+        receipt.BlockGasUsed = 118_920;
+        receipt.ExecutionGasUsed = 21_000;
+        receipt.StorageGasUsed = 97_920;
         EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
 
         TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
@@ -456,6 +459,9 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(roundTripped!.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.BlockGasUsed, Is.EqualTo(118_920UL));
+            Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(97_920UL));
             Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(roundTripped.FrameReceipts![0].ExecutionGasUsed, Is.EqualTo(21_000UL));
             Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
@@ -523,7 +529,7 @@ public class FrameTransactionForRpcTests
     [Test]
     public void ReceiptForRpc_RejectsANullLogEntry()
     {
-        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""");
+        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""")!;
 
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }

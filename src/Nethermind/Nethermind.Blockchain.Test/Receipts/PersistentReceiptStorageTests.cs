@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -42,6 +43,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private PersistentReceiptStorage _storage = null!;
     private ReceiptArrayStorageDecoder _decoder = null!;
     private IStateHistoryCaptureStatus _captureStatus = null!;
+    private ILogManager _logManager = null!;
+    private InterfaceLogger _logger = null!;
 
     [SetUp]
     public void SetUp()
@@ -53,6 +56,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
+        _logger = Substitute.For<InterfaceLogger>();
+        _logger.IsWarn.Returns(true);
+        ILogger logger = new(_logger);
+        _logManager = Substitute.For<ILogManager>();
+        _logManager.GetClassLogger<PersistentReceiptStorage>().Returns(logger);
         CreateStorage();
     }
 
@@ -333,6 +341,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _blockStore,
             _receiptConfig,
             _decoder,
+            logManager: _logManager,
             historyCaptureStatus: captureStatus
         )
         { MigratedBlockNumber = 0 };
@@ -341,7 +350,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_for_missing_tx()
     {
-        Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
+        Hash256? blockHash = _storage.FindBlockHash(Keccak.Zero);
         Assert.That(blockHash, Is.Null);
     }
 
@@ -363,6 +372,63 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_returns_empty_on_empty_span() =>
         Assert.That(_storage.Get(Keccak.Zero), Is.EqualTo(Array.Empty<TxReceipt>()));
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Migration_read_preserves_legacy_missing_receipts()
+    {
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        TxReceipt[] legacyReceipts = [receipts[0], null!];
+        using ArrayPoolSpan<byte> encoded = _decoder.EncodeToArrayPoolSpan(legacyReceipts, RlpBehaviors.Storage);
+        Hash256 blockHash = block.Hash ?? throw new AssertionException("Test block hash is missing.");
+        byte[] encodedBytes = ((ReadOnlySpan<byte>)encoded).ToArray();
+        Span<byte> encodedSpan = encodedBytes;
+        Assert.That(_decoder.DecodeAllowingMissing(in encodedSpan), Has.Length.EqualTo(2));
+
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockHash.Bytes] = encodedBytes;
+        _storage.ClearCache();
+        Assert.That(_storage.Get(blockHash), Has.Length.EqualTo(1));
+
+        TxReceipt?[] migrationReceipts = ((IReceiptMigrationStore)_storage)
+            .GetForMigration(block.Number, blockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(migrationReceipts, Has.Length.EqualTo(2));
+            Assert.That(migrationReceipts[0], Is.Not.Null);
+            Assert.That(migrationReceipts[1], Is.Null);
+        }
+    }
+
+    [TestCase(true, 1)]
+    [TestCase(false, 0)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Get_logs_legacy_receipt_count_mismatch_only_on_recovering_reads(bool recover, int expectedWarnings)
+    {
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(
+                Build.A.Transaction.SignedAndResolved().TestObject,
+                Build.A.Transaction.SignedAndResolved().TestObject,
+                Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject;
+        PrepareBlock(block);
+        TxReceipt[] legacyReceipts =
+        [
+            Build.A.Receipt.WithCalculatedBloom().TestObject,
+            null!,
+            Build.A.Receipt.WithCalculatedBloom().TestObject
+        ];
+        byte[] encoded = _decoder.EncodeAsBytes(legacyReceipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = encoded;
+
+        TxReceipt[] receipts = _storage.Get(block, recover);
+
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        _logger.Received(expectedWarnings).Warn(Arg.Is<string>(message =>
+            message.Contains(block.ToString(Block.Format.FullHashAndNumber)) &&
+            message.Contains("decoded 1 for 3 transactions")));
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block()
@@ -547,7 +613,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
         _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
-        Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
+        Hash256? findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
         if (ensureCanonical)
         {
             Assert.That(findBlockHash, Is.EqualTo(anotherBlock.Hash!));

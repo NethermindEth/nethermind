@@ -431,12 +431,32 @@ namespace Nethermind.Blockchain.Receipts
 
                     if (recover)
                     {
+                        if (receipts.Length != block.Transactions.Length && _logger.IsWarn)
+                        {
+                            _logger.Warn($"Stored receipt count for block {block.ToString(Block.Format.FullHashAndNumber)} does not match its transactions: decoded {receipts.Length} for {block.Transactions.Length} transactions.");
+                        }
+
                         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: recoverSender);
                         _receiptsCache.Set(blockHash, receipts);
                     }
 
                     return receipts;
                 }
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)
+        {
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            try
+            {
+                return receiptsData.IsNullOrEmpty()
+                    ? []
+                    : _storageDecoder.DecodeAllowingMissing(in receiptsData);
             }
             finally
             {

@@ -18,7 +18,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private partial EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable, TShift, TPush0>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ref int programCounter)
+        ref nint programCounter)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where TShift : struct, IFlag
@@ -29,17 +29,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
         // Hoisted: reading through the ref parameter would reload from the frame every opcode.
-        int pc = programCounter;
+        nint pc = programCounter;
         // Pinned pointer drops the per-dispatch bounds check (opcode is a byte, always in range).
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] opcodeArray = _opcodeMethods;
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
-            uint codeLength = (uint)stack.CodeLength;
+            nuint codeLength = (nuint)stack.CodeLength;
             // Hoisted: a no-op OnBeforeInstructionTrace would otherwise chase VmState.Env per instruction.
             int callDepth = VmState.Env.CallDepth;
-            while ((uint)pc < codeLength)
+            while ((nuint)pc < codeLength)
             {
 #if DEBUG
                 debugger?.TryWait(ref _currentState, ref pc, ref gas, ref stack.Head);
@@ -50,16 +50,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
-                TGasPolicy.OnBeforeInstructionTrace(in gas, pc, instruction, callDepth);
+                TGasPolicy.OnBeforeInstructionTrace(in gas, (int)pc, instruction, callDepth);
 
                 if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), pc, in stack);
+                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
 
                 pc++;
                 opCodeCount++;
 
                 // Temp by ref: ref pc handed to the handlers would address-take it and spill it every opcode.
-                int opPc = pc;
+                nint opPc = pc;
                 // The switch pays off only on the cancelable (eth_call) path, where hot contracts stay in
                 // I-cache; block processing's diverse mix regresses against the table. TCancelable folds.
                 if (TCancelable.IsActive)
