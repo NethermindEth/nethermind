@@ -149,13 +149,16 @@ public class ReleaseSpec : IReleaseSpec
     /// correct for a chain registering one far away — Taiko's sit at 0x10001 and 0x10002.</remarks>
     public bool IsPrecompile(Address address)
     {
+        // The shape test is the guard, not the sign of the index: a tail that overflows int also comes
+        // back negative. Testing it first means an ordinary call target — almost all of them — is rejected
+        // on two loads without touching the index or the lazily built set.
+        if (!address.CouldBePrecompile()) return false;
+
         PrecompileIndex precompiles = Precompiled;
         int index = address.PrecompileIndexOrNegative();
         return (uint)index < 64
             ? (precompiles.LowMask & (1UL << index)) != 0
-            // A tail that overflows int also comes back negative, so the shape test is what rules out an
-            // ordinary address here rather than the index being negative.
-            : address.CouldBePrecompile() && precompiles.Addresses.Contains(address);
+            : precompiles.Addresses.Contains(address);
     }
     private SpecGasCosts? _gasCosts;
     public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);

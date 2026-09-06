@@ -34,7 +34,9 @@ public class CodeInfoRepositoryTests
     /// <remarks>Ethereum's stop at 0x100 (RIP-7212), which is what the index array is sized against, but a
     /// plugin may register anywhere: Taiko's L1Sload and L1StaticCall sit at 0x10001 and 0x10002, and at
     /// 0x8000_0000 the number no longer fits an <see cref="int"/>, so it comes back negative. Indexing by
-    /// precompile number is only sound if all of those are still found, both as members and by lookup.</remarks>
+    /// precompile number is only sound if all of those are still resolved. The membership half of the same
+    /// contract is covered against the real spec in <c>ReleaseSpecTests</c>; the substitute here answers
+    /// <c>IsPrecompile</c> from its own arrangement, so it could not tell us anything about it.</remarks>
     private static readonly long[] PrecompileNumbers = [1, 2, 9, 0x11, 0x100, 0x101, 0x10001, 0x10002, 0x8000_0000];
 
     [TestCaseSource(nameof(PrecompileNumbers))]
@@ -55,11 +57,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository repository = new(Substitute.For<IWorldState>(), provider);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.IsPrecompile(address), Is.True);
-            Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
-        });
+        Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
     }
 
     [Test]

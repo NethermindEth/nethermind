@@ -1,51 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Core.Specs;
 
 public static partial class IReleaseSpecExtensions
 {
     private static IReleaseSpec GetNoEip158Spec(IReleaseSpec spec) => new NoEip158Spec(spec);
-
-    // Precompile membership as a bitmask instead of a FrozenSet hash+probe.
-    // The set is fork-fixed, so it is built once per spec; a single slot suffices
-    // because the zkVM guest validates one block (one spec).
-    private static IReleaseSpec? _precompileMaskSpec;
-    private static ulong _precompileMaskLow;
-    private static bool _precompileMaskP256;
-
-    private static void BuildPrecompileMask(IReleaseSpec spec)
-    {
-        ulong low = 0UL;
-        bool p256 = false;
-
-        foreach (AddressAsKey p in spec.Precompiles)
-        {
-            int idx = ((Address)p).PrecompileIndexOrNegative();
-
-            if ((uint)idx < 64)
-            {
-                low |= 1UL << idx;
-            }
-            else if (idx == 0x100)
-            {
-                p256 = true;
-            }
-            // An out-of-range index is a new precompile the mask cannot hold; IsPrecompile would then
-            // wrongly return false and the guest would skip it, mis-validating the block.
-            else
-            {
-                throw new InvalidOperationException(
-                    $"Precompile index 0x{idx:x} is outside the precompile-mask range [0,64) or 0x100; extend BuildPrecompileMask and IsPrecompile.");
-            }
-        }
-
-        _precompileMaskLow = low;
-        _precompileMaskP256 = p256;
-        _precompileMaskSpec = spec;
-    }
 
     // Each `spec.IsEipXxxEnabled` is an IReleaseSpec interface dispatch, and the getters below are read
     // per-opcode / per-storage-access. The spec is fork-fixed and monomorphic per block, so resolve the

@@ -8,9 +8,13 @@ namespace Nethermind.Core.Test;
 
 public static class ReleaseSpecSubstitute
 {
-    public static IReleaseSpec Create()
+    public static IReleaseSpec Create() => Configure(Substitute.For<IReleaseSpec>());
+
+    /// <summary>Arranges the members a bare <see cref="IReleaseSpec"/> substitute cannot answer itself.</summary>
+    /// <remarks>Chain-specific substitutes route through this rather than repeating the arrangement, so a
+    /// member that has to be taught to a substitute is taught to all of them at once.</remarks>
+    public static T Configure<T>(T sub) where T : class, IReleaseSpec
     {
-        IReleaseSpec sub = Substitute.For<IReleaseSpec>();
         sub.GasCosts.Returns(_ => new SpecGasCosts(sub));
         // A substitute intercepts IsPrecompile rather than running the interface's default body, so route
         // it back through Precompiles: a test that arranges the set still gets the membership it arranged.
