@@ -40,7 +40,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-frames-devnet@v0.1.0
+        default: tests-frames-devnet@v0.3.0
         type: string
       filter:
         description: Regex filter for test names
@@ -96,7 +96,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-frames-devnet@v0.1.0
+        default: tests-frames-devnet@v0.3.0
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -136,7 +136,7 @@ env:
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, where the FOCIL archive
   # means Amsterdam plus EIP-7805; nothing inside a fixture separates the two, so the lane names the
   # fork it means through the runner's --forkAlias.
-  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v0.1.0' }}
+  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v0.3.0' }}
   # Minimum cases the pinned release ships across the frame lanes. Asserted so a scope resolving to
   # nothing fails rather than reporting a clean run of no tests.
   FRAME_MIN_CASES: '214'
