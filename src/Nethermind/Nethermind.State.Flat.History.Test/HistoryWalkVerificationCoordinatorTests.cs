@@ -100,7 +100,7 @@ public class HistoryWalkVerificationCoordinatorTests
     public void WhenAskedToVerifyAWindowedDatabase_RefusesAtConstruction() =>
         Assert.That(
             () => CreateCoordinator(
-                new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 100, HistoryVerifyEveryBlock = true }, new FakeHeaders()),
+                new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100, HistoryVerifyEveryBlock = true }, new FakeHeaders()),
             Throws.InstanceOf<InvalidConfigurationException>(),
             "asking for a verification the windowed mode cannot deliver must fail loudly at startup, exactly when the operator asked for it");
 }
