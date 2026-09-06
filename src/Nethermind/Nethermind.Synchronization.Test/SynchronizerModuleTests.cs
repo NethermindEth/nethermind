@@ -1,12 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -96,5 +102,75 @@ public class SynchronizerModuleTests
         // Container teardown disposes twice (dispose tracking); the second run must not wait on
         // the feed tasks again - with a stuck feed it would pay the full termination timeout twice.
         _ = fullSyncFeed.Received(1).FeedTask;
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Synchronizer_dispose_waits_for_state_sync_runner(CancellationToken cancellationToken)
+    {
+        // Start launches the state sync runner fire-and-forget; container teardown disposes the
+        // databases right after DisposeAsync returns, so DisposeAsync must join that task the same way
+        // it joins the feed tasks. The runner is gated to model in-flight snap/state sync work.
+        TaskCompletionSource runnerGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IStateSyncRunner stateSyncRunner = Substitute.For<IStateSyncRunner>();
+        stateSyncRunner.Run(Arg.Any<CancellationToken>()).Returns(runnerGate.Task);
+
+        TestSyncConfig syncConfig = new() { FastSync = true };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
+        ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
+        BlockDownloader blockDownloader = new(
+            blockTree,
+            Substitute.For<IBlockValidator>(),
+            Substitute.For<ISyncReport>(),
+            Substitute.For<IReceiptStorage>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<IBetterPeerStrategy>(),
+            Substitute.For<IFullStateFinder>(),
+            Substitute.For<IForwardHeaderProvider>(),
+            peerPool,
+            Substitute.For<IReceiptsRecovery>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            syncConfig,
+            LimboLogs.Instance);
+
+        SyncFeedComponent<T> Component<T>()
+        {
+            ISyncFeed<T> feed = Substitute.For<ISyncFeed<T>>();
+            ISyncDownloader<T> downloader = Substitute.For<ISyncDownloader<T>>();
+            SyncDispatcher<T> dispatcher = new(syncConfig, feed, downloader, peerPool, Substitute.For<IPeerAllocationStrategyFactory<T>>(), LimboLogs.Instance);
+            return new SyncFeedComponent<T>(feed, dispatcher, downloader, new Lazy<BlockDownloader>(() => blockDownloader), Substitute.For<ILifetimeScope>());
+        }
+
+        Synchronizer synchronizer = new(
+            Substitute.For<ISyncModeSelector>(),
+            Substitute.For<ISyncReport>(),
+            syncConfig,
+            blockTree,
+            Substitute.For<ISyncPivotResolver>(),
+            LimboLogs.Instance,
+            Substitute.For<INodeStatsManager>(),
+            Component<BlocksRequest>(),
+            Component<BlocksRequest>(),
+            stateSyncRunner,
+            Component<HeadersSyncBatch>(),
+            Component<BodiesSyncBatch>(),
+            Component<ReceiptsSyncBatch>(),
+            Component<BlockAccessListsSyncBatch>(),
+            null!,
+            null!,
+            Substitute.For<IProcessExitSource>());
+
+        synchronizer.Start();
+        _ = stateSyncRunner.Received(1).Run(Arg.Any<CancellationToken>());
+
+        Task disposeTask = synchronizer.DisposeAsync().AsTask();
+
+        // Production invariant: DisposeAsync must remain blocked while the state sync runner is running.
+        // WaitAsync throws TimeoutException iff disposeTask is still running after the window.
+        Func<Task> waitForDisposeToEscape = () => disposeTask.WaitAsync(TimeSpan.FromMilliseconds(200));
+        Assert.That(async () => await waitForDisposeToEscape(), Throws.TypeOf<TimeoutException>(), "DisposeAsync must wait for the state sync runner");
+
+        runnerGate.SetResult();
+        await disposeTask.WaitAsync(cancellationToken);
     }
 }

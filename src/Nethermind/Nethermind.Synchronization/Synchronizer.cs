@@ -57,6 +57,8 @@ namespace Nethermind.Synchronization
 
         private CancellationTokenSource? _syncCancellation = new();
 
+        private Task _stateSyncTask = Task.CompletedTask;
+
         private bool _disposed;
 
         /* sync events are used mainly for managing sync peers reputation */
@@ -174,9 +176,8 @@ namespace Nethermind.Synchronization
             });
         }
 
-        private void StartSnapAndStateSyncComponents()
-        {
-            Task _ = stateSyncRunner.Run(_syncCancellation!.Token).ContinueWith(t =>
+        private void StartSnapAndStateSyncComponents() =>
+            _stateSyncTask = stateSyncRunner.Run(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -187,7 +188,6 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info("State sync task completed.");
                 }
             });
-        }
 
         private void StartFastBlocksComponents()
         {
@@ -280,18 +280,22 @@ namespace Nethermind.Synchronization
 
             using CancellationTokenSource timeoutCts = new();
             Task timeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
+            // The state sync runner is joined here too: the databases are disposed right after this
+            // returns, so its dispatcher must have drained its in-flight workers by then.
             Task feedsTask = Task.WhenAll(
                 fullSyncComponent.Feed.FeedTask,
                 fastSyncComponent.Feed.FeedTask,
                 fastHeaderComponent.Feed.FeedTask,
                 oldBodiesComponent.Feed.FeedTask,
                 oldReceiptsComponent.Feed.FeedTask,
-                oldBlockAccessListsComponent.Feed.FeedTask);
+                oldBlockAccessListsComponent.Feed.FeedTask,
+                _stateSyncTask);
             Task completedFirst = await Task.WhenAny(timeout, feedsTask);
 
             if (completedFirst == timeout)
             {
                 if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+                if (!_stateSyncTask.IsCompleted && _logger.IsWarn) _logger.Warn($"State sync did not stop within {FeedsTerminationTimeout}ms, databases are disposed under in-flight sync work");
             }
             else
             {

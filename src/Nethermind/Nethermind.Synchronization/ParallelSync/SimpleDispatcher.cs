@@ -41,44 +41,51 @@ public class SimpleDispatcher<T>(
             : syncConfig.MaxProcessingThreads;
         SemaphoreSlim semaphore = new(maxThreads, maxThreads);
 
-        while (!token.IsCancellationRequested)
+        try
         {
-            long prepareTime = Stopwatch.GetTimestamp();
-            T? request = await feed.PrepareRequest(token);
-            Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(
-                Stopwatch.GetElapsedTime(prepareTime).TotalMicroseconds, new StringLabel(_feedName));
-
-            if (request is null)
-                break;
-
-            SyncPeerAllocation allocation = await peerPool.Allocate(
-                strategyFactory.Create(request), contexts, _allocateTimeoutMs, token);
-            PeerInfo? peer = allocation.Current;
-
-            if (peer is null)
+            while (!token.IsCancellationRequested)
             {
-                HandleResponse(request, null);
-                continue;
+                long prepareTime = Stopwatch.GetTimestamp();
+                T? request = await feed.PrepareRequest(token);
+                Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(
+                    Stopwatch.GetElapsedTime(prepareTime).TotalMicroseconds, new StringLabel(_feedName));
+
+                if (request is null)
+                    break;
+
+                SyncPeerAllocation allocation = await peerPool.Allocate(
+                    strategyFactory.Create(request), contexts, _allocateTimeoutMs, token);
+                PeerInfo? peer = allocation.Current;
+
+                if (peer is null)
+                {
+                    HandleResponse(request, null);
+                    continue;
+                }
+
+                await semaphore.WaitAsync(token);
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await DoDispatch(request, peer, allocation, token);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
             }
-
-            await semaphore.WaitAsync(token);
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await DoDispatch(request, peer, allocation, token);
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
         }
-
-        // Wait for in-flight tasks to complete. Drain with CancellationToken.None so that
-        // peer allocations are always freed in DoDispatch even when the caller cancels.
-        for (int i = 0; i < maxThreads; i++)
-            await semaphore.WaitAsync(CancellationToken.None);
+        finally
+        {
+            // Wait for in-flight tasks to complete, also when the loop exits by cancellation: the caller
+            // tears down the databases right after this returns, and a worker still inside HandleResponse
+            // would then write to a disposed RocksDB. Drain with CancellationToken.None so that peer
+            // allocations are always freed in DoDispatch even when the caller cancels.
+            for (int i = 0; i < maxThreads; i++)
+                await semaphore.WaitAsync(CancellationToken.None);
+        }
     }
 
     private async Task DoDispatch(
