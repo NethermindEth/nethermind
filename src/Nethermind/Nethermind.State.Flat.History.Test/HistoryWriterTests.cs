@@ -840,8 +840,27 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(writer.LastCapturedBlock, Is.EqualTo(10UL), "the sync must complete; a refusal here cannot be retried");
-            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "the rows already captured sit below the new floor and fail closed");
+            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "the rows already captured now sit below the floor");
         }
+    }
+
+    [Test]
+    public void Seed_pivot_raises_every_slice_floor_with_the_general_floor()
+    {
+        (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 1);
+        HistoryAvailability scopes = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        scopes.PublishScope(ScopeKeyOf(AddrA), 1);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        writer.SeedPivot(10, StateAt(10).StateRoot);
+
+        Assert.That(scopes.TryGetScopeFloor(ScopeKeyOf(AddrA), out ulong sliceFloor), Is.True);
+        Assert.That(sliceFloor, Is.EqualTo(10UL),
+            "a restricted read below the pivot would resolve through the live state the sync replaced, so the slice must fail closed there too");
     }
 
     [Test]
@@ -1543,6 +1562,8 @@ public class HistoryWriterTests
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return (writer, reader);
     }
+
+    private static byte[] ScopeKeyOf(Address address) => address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
     private bool HasMarker(ulong block)
     {

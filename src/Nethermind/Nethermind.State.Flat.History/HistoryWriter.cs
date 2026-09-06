@@ -248,7 +248,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             using IColumnsWriteBatch<FlatHistoryColumns> cleanup = _history.StartWriteBatch();
             HistoryAvailability.UnmarkBlock(new HistoryColumnBatches(cleanup).AvailableBlocks, watermark);
         }
-        catch (Exception e)
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
@@ -424,8 +424,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// Seeds a windowed node's floor at a snap-sync pivot: publishes watermark = floor = pivot with no rows needed
     /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). A since-block
     /// floor already standing above the pivot stays: the state starts at the pivot, the history at the configured
-    /// block. No-op on v2, which has no fallback to lean on. Call at the sync-completion seam before any block
-    /// processes on top.
+    /// block. Every slice floor rises with the general one: a row below the pivot resolves through live state the
+    /// sync replaced, so nothing below it may stay readable. Receipt bodies still retained in memory for blocks the
+    /// pivot passes over are not derivable afterwards. No-op on v2, which has no fallback to lean on. Call at the
+    /// sync-completion seam before any block processes on top.
     /// </summary>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
@@ -465,7 +467,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(pivotBlock, _formatVersion);
-        if (!hasFloor || pivotBlock >= currentFloor) _availability.PublishGlobalFloor(pivotBlock);
+        if (!hasFloor || pivotBlock >= currentFloor)
+        {
+            // Slices first, so no read ever sees a general floor above a slice floor.
+            foreach (ScopeFloor scope in _availability.GetScopesArray())
+            {
+                _availability.TryRaiseScopeFloor(scope.Key, pivotBlock);
+            }
+
+            _availability.PublishGlobalFloor(pivotBlock);
+        }
+
         _history.SyncWal();
 
         if (_captureFromBlock > 0 && pivotBlock > _captureFromBlock && _logger.IsInfo) _logger.Info(
