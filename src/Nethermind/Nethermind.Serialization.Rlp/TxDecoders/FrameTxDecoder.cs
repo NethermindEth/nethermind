@@ -116,12 +116,14 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             }
 
             transaction.RecentRootReferences = decoderContext.DecodeNonNullArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
-            transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
         }
         catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             ThrowTruncatedReferences(e);
         }
+
+        transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
+    }
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
