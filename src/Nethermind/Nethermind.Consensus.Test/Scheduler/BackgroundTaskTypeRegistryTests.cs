@@ -26,9 +26,14 @@ public class BackgroundTaskTypeRegistryTests
         }
     }
 
+    /// <remarks>
+    /// Both the in-range slot no type has claimed, which is the branch the stats renderers rely on,
+    /// and the out-of-range id that <see cref="BackgroundTaskTypeRegistry.MaxTaskTypes"/> guards.
+    /// </remarks>
     [Test]
-    public void Unclaimed_id_has_no_name() =>
-        Assert.That(BackgroundTaskTypeRegistry.GetName(BackgroundTaskTypeRegistry.MaxTaskTypes), Is.Null);
+    public void Unclaimed_id_has_no_name(
+        [Values(BackgroundTaskTypeRegistry.MaxTaskTypes - 1, BackgroundTaskTypeRegistry.MaxTaskTypes)] int id) =>
+        Assert.That(BackgroundTaskTypeRegistry.GetName(id), Is.Null);
 }
 
 internal readonly struct CollidingRequest : IBackgroundTaskRequest<CollidingRequest>;

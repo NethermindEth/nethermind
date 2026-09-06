@@ -63,11 +63,13 @@ public static class BackgroundTaskTypeRegistry
             for (int other = 0; other < MaxTaskTypes; other++)
             {
                 // Simple names are not unique — eth/62 and eth/66 both declare a GetBlockHeadersMessage —
-                // so a collision qualifies both this type and the one it collides with
-                if (Types[other] is Type candidate && candidate.Name == name)
+                // so a collision qualifies both this type and the one it collides with. One match is
+                // enough: any further type of that name was already qualified when it registered.
+                if (Types[other] is Type candidate && candidate.Name == type.Name)
                 {
                     name = type.FullName!;
                     Volatile.Write(ref Names[other], candidate.FullName);
+                    break;
                 }
             }
 

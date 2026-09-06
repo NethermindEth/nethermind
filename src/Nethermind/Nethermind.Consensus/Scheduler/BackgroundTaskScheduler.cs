@@ -280,10 +280,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         for (int id = 0; id < _stats.Length; id++)
         {
             int count = Volatile.Read(ref _stats[id]);
-            if (count > 0)
+            if (count > 0 && BackgroundTaskTypeRegistry.GetName(id) is string name)
             {
                 if (builder.Length > 0) builder.Append(", ");
-                builder.Append('(').Append(BackgroundTaskTypeRegistry.GetName(id) ?? "unknown").Append(": ").Append(count).Append(')');
+                builder.Append('(').Append(name).Append(": ").Append(count).Append(')');
             }
         }
 
