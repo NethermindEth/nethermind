@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
                     {
-                        return args.Set(TxAction.Skip, "Invalid nonce sequence");
+                        return args.Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
                     }
                 }
                 else
@@ -132,6 +132,30 @@ namespace Nethermind.Consensus.Processing
 
                 OnAddingTransaction(args);
                 return args;
+            }
+
+            /// <summary>Explains a keyed-nonce skip by naming the first key whose sequence disagrees with the candidate's.</summary>
+            /// <remarks>Cold path only, reached once the candidate is already being skipped. Any single key of the set can be
+            /// the one an earlier transaction in this block consumed, so a set-wide value would name a key that is current.</remarks>
+            private static string KeyedNonceSkipReason(IReadOnlyStateProvider stateProvider, Transaction currentTx)
+            {
+                UInt256[] nonceKeys = currentTx.NonceKeys!;
+                if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+                {
+                    return "Invalid nonce sequence - malformed key set";
+                }
+
+                foreach (ref readonly UInt256 nonceKey in nonceKeys.AsSpan())
+                {
+                    ulong current = KeyedNonceManager.CurrentNonceSeq(stateProvider, currentTx.SenderAddress!, in nonceKey);
+                    if (current != currentTx.Nonce)
+                    {
+                        return $"Invalid nonce sequence - key {nonceKey} expected {current}";
+                    }
+                }
+
+                // Well-formed and every key at nonce_seq leaves exhaustion as the only reason the set was rejected.
+                return $"Invalid nonce sequence - exhausted at {currentTx.Nonce}";
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)

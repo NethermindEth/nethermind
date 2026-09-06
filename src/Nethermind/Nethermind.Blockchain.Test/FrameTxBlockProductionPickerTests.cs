@@ -170,23 +170,24 @@ public class FrameTxBlockProductionPickerTests
 
     /// <summary>Overlapping key sets do not compete in the pool, so both are current at head and both are offered;
     /// only the picker reading the block's evolving state stops the second.</summary>
-    [Test]
-    public void A_keyed_candidate_is_skipped_once_this_block_consumed_one_of_its_keys()
+    [TestCase(1ul, TestName = "A keyed candidate is skipped once this block consumed the first key of its set")]
+    [TestCase(2ul, TestName = "A keyed candidate is skipped once this block consumed a later key of its set")]
+    public void A_keyed_candidate_is_skipped_once_this_block_consumed_one_of_its_keys(ulong consumedKey)
     {
         BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(KeyedNonceSpec);
         using KeyedNonceStateScope scope = KeyedNonceState();
         Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
         HashSet<Transaction> inBlock = [];
 
-        Transaction first = FrameTx(nonce: 0, [UInt256.One], executionGasLimit: 100_000, stateGasLimit: 0);
+        Transaction first = FrameTx(nonce: 0, [(UInt256)consumedKey], executionGasLimit: 100_000, stateGasLimit: 0);
         BlockProcessor.AddingTxEventArgs firstArgs = picker.CanAddTransaction(
             block, first, inBlock, scope.State, block.GasUsed, 0);
         Assert.That(firstArgs.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
 
         inBlock.Add(first);
-        KeyedNonceManager.ConsumeNonceSet(scope.State, TestItem.AddressA, [UInt256.One], nonceSeq: 0);
+        KeyedNonceManager.ConsumeNonceSet(scope.State, TestItem.AddressA, [(UInt256)consumedKey], nonceSeq: 0);
 
-        // Shares key 1 with the transaction already in the block, so its set can no longer be consumed.
+        // Shares a key with the transaction already in the block, so its set can no longer be consumed.
         Transaction second = FrameTx(nonce: 0, [UInt256.One, (UInt256)2], executionGasLimit: 100_000, stateGasLimit: 0);
         BlockProcessor.AddingTxEventArgs secondArgs = picker.CanAddTransaction(
             block, second, inBlock, scope.State, block.GasUsed, 0);
@@ -194,7 +195,8 @@ public class FrameTxBlockProductionPickerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(secondArgs.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-            Assert.That(secondArgs.Reason, Is.EqualTo("Invalid nonce sequence"));
+            // Names the key that actually disagrees: when it is the later one, the set's first key is still current.
+            Assert.That(secondArgs.Reason, Is.EqualTo($"Invalid nonce sequence - key {consumedKey} expected 1"));
         }
     }
 
