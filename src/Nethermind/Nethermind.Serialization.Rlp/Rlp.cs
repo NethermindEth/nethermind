@@ -53,7 +53,11 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp() => RegisterDecoders(typeof(Rlp).Assembly);
+        static Rlp()
+        {
+            RegisterDecoders(typeof(Rlp).Assembly);
+            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        }
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -278,12 +282,26 @@ namespace Nethermind.Serialization.Rlp
                 return OfZero;
             }
 
-            return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long)value);
+            // A negative value is its four-byte two's complement, which is what the BigInteger path
+            // produced after padding with 0xff.
+            if (value >= 0) return Encode((long)value);
+
+            byte[] bytes = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(bytes, value);
+            return Encode(bytes);
+        }
+
+        // The eight-byte two's complement, which is what the BigInteger path produced after padding.
+        private static Rlp EncodeNegative(long value)
+        {
+            byte[] bytes = new byte[sizeof(long)];
+            BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+            return Encode(bytes);
         }
 
         public static Rlp Encode(long value) => value switch
         {
-            < 0 => Encode(new BigInteger(value), 8),
+            < 0 => EncodeNegative(value),
             0L => OfZero,
             < 0x80 => new((byte)value),
             < 0x100 => new([129, (byte)value]),
