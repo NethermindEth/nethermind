@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("StorageRead", "TransientRead", "BalanceRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -193,6 +193,9 @@ public class OpcodeChainBenchmarks
                 "AddMod" or "MulMod" or "AddModZero" or "MulModZero" => ([(byte)Instruction.PUSH1, Chain is "AddModZero" or "MulModZero" ? (byte)0 : (byte)251,
                     (byte)Instruction.SWAP1, (byte)Instruction.PUSH1, Chain is "MulMod" or "MulModZero" ? (byte)3 : (byte)1,
                     (byte)(Chain is "MulMod" or "MulModZero" ? Instruction.MULMOD : Instruction.ADDMOD)], 4),
+                "StorageRead" or "TransientRead" or "BalanceRead" => ([(byte)Instruction.DUP1,
+                    (byte)(Chain == "StorageRead" ? Instruction.SLOAD : Chain == "TransientRead" ? Instruction.TLOAD : Instruction.BALANCE),
+                    (byte)Instruction.POP], 3),
                 "Bitwise" => ([(byte)Instruction.DUP1, (byte)Instruction.AND], 2),
                 "Predicate" => ([(byte)Instruction.ISZERO, (byte)Instruction.NOT], 2),
                 "Stack" => ([(byte)Instruction.DUP1, (byte)Instruction.SWAP1, (byte)Instruction.POP], 3),
