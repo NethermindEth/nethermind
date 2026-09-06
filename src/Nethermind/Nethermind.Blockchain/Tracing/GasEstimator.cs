@@ -109,10 +109,11 @@ public class GasEstimator(
         if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
             return EstimationResult.Failure(FrameTxValidation.MissingFrames);
 
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas)
+            || !FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out _))
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
-        return maxGas > Math.Min(header.GasLimit, spec.GetTxGasLimitCap())
+        return executionReservation > Eip7825Constants.DefaultTxGasLimitCap || maxGas > header.GasLimit
             ? EstimationResult.Failure(CannotEstimateGasExceeded)
             : EstimationResult.Success(maxGas);
     }
