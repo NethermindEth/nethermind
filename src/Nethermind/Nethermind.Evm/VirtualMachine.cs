@@ -1260,7 +1260,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // Initialize the internal stacks for the current call frame.
         EvmStack stack;
-        if (TTracingInst.IsActive)
+        if (vmState.IsContinuation)
+        {
+            vmState.RestoreStack<TTracingInst>(_txTracer, codeSpan, out stack);
+        }
+        else if (TTracingInst.IsActive)
         {
             vmState.InitializeStacks(_txTracer, codeSpan, out stack);
         }
