@@ -9,15 +9,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
 
-/// <summary>Differential tests for the guest scan in <c>JumpDestinationAnalyzer.zkevm.cs</c>.</summary>
+/// <summary>Differential tests for <see cref="JumpDestinationAnalyzer"/>'s scalar scan.</summary>
 /// <remarks>
-/// That body is stripped from every normal build (<c>Directory.Build.targets</c> drops
-/// <c>*.zkevm.cs</c> unless <c>EnableZkEvm</c>), so nothing in <c>Nethermind.Evm.Test</c> can reach
-/// it. The bitmap feeds <see cref="JumpDestinationAnalyzer.ValidateJump"/>, so a wrong bit is wrong
-/// execution rather than a slowdown. The biased moving-reference walk is compared against the
-/// obvious scalar reference over the shapes where the two forms could diverge: PUSH data truncated
-/// by the end of the code, the 64-bit bitmap segment boundary the flags are flushed on, and the
-/// opcodes the <c>JUMPDEST</c> bias reshuffled.
+/// The scan is word-at-a-time SWAR, and it is what a guest build runs: everywhere else
+/// <c>CreateJumpDestinationBitmap</c> finds <c>Vector512</c> or <c>Vector128</c> accelerated and takes
+/// one of those instead, so the scalar form is never reached through the real entry point. The bitmap
+/// feeds <see cref="JumpDestinationAnalyzer.ValidateJump"/>, so a wrong bit is wrong execution rather
+/// than a slowdown. It is compared against the obvious byte-at-a-time reference over the shapes where a
+/// word-wise walk could diverge from it: PUSH data truncated by the end of the code, the 64-bit bitmap
+/// segment boundary the flags are flushed on, every opcode value, and random bytecode.
 /// </remarks>
 public class GuestJumpDestinationTests
 {
@@ -25,8 +25,6 @@ public class GuestJumpDestinationTests
     private const byte PUSH1 = (byte)Instruction.PUSH1;
     private const byte PUSH32 = (byte)Instruction.PUSH32;
     private const int BitsPerSegment = 64;
-    /// <summary>Furthest the scan can step past the end of the code: PUSH32 as its final byte.</summary>
-    private const int MaxOvershoot = 32;
 
     private static IEnumerable<TestCaseData> Shapes()
     {
@@ -58,10 +56,10 @@ public class GuestJumpDestinationTests
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
 
     /// <remarks>
-    /// The bias makes every byte outside <c>[JUMPDEST, PUSH32]</c> wrap to a large unsigned value
-    /// rather than compare below zero, so the rejection arm is only sound across the whole byte
-    /// range - which this walks. The trailing JUMPDESTs are enough that even a PUSH32 immediate
-    /// stays inside the code, so the bytes an opcode masks are visible rather than truncated.
+    /// The scan classifies a byte by unsigned range checks against <c>[JUMPDEST, PUSH32]</c>, so it is
+    /// only sound across the whole byte range - which this walks. The trailing JUMPDESTs are enough that
+    /// even a PUSH32 immediate stays inside the code, so the bytes an opcode masks are visible rather
+    /// than truncated.
     /// </remarks>
     [Test]
     public void Scan_matches_the_reference_for_every_opcode_value([Range(0, 255)] int op)
@@ -117,20 +115,11 @@ public class GuestJumpDestinationTests
         return code;
     }
 
-    /// <remarks>
-    /// The scan is handed a slice of an oversized buffer, not <paramref name="code"/> itself: a
-    /// truncated PUSH at the tail moves its byref up to <see cref="MaxOvershoot"/> bytes past the end,
-    /// which is sound on the guest but not here, where a compacting GC can observe it. The slack keeps
-    /// the overshoot inside the same object; the scan never reads past the slice, so the bitmap is
-    /// unaffected.
-    /// </remarks>
     private static void AssertMatchesReference(byte[] code)
     {
         long[] expected = Reference(code);
-        byte[] padded = new byte[code.Length + MaxOvershoot];
-        code.CopyTo(padded, 0);
         long[] actual = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(
-            JumpDestinationAnalyzer.CreateBitmap(code.Length), padded.AsSpan(0, code.Length));
+            JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
     }
