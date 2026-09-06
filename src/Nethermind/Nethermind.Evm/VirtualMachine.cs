@@ -134,10 +134,9 @@ public partial class VirtualMachine<TGasPolicy>(
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
-    // Both are fixed per execution, so they are cached once in ExecuteTransaction rather than dispatched
-    // through the tracer each time: IsTracingActions is read at several hot CALL/precompile sites, and
-    // IsCancelable picks both the dispatch table and the generic instantiation that runs on it, which have
-    // to agree.
+    // These values are fixed per execution, so they are cached once in ExecuteTransaction: IsTracingActions
+    // is read at several hot CALL/precompile sites, IsCancelable picks both the dispatch table and the generic
+    // instantiation that runs on it, and implicit-STOP detection otherwise walks the tracer graph at frame exit.
     private bool _isTracingActionsCached;
     private bool _isCancelableCached;
     private bool _hasImplicitStopTracerCached;
