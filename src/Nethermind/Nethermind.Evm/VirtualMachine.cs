@@ -1364,14 +1364,12 @@ public partial class VirtualMachine<TGasPolicy>(
         return CallResult.Empty();
 
     DataReturn:
-        return ReturnData switch
-        {
-            byte[] data => new CallResult(data, null),
-            _ => new CallResult(ReturnDataBuffer, null),
-        };
+        Debug.Assert(ReturnData is byte[], "RETURN stages a byte array before stopping dispatch.");
+        return new CallResult(Unsafe.As<byte[]>(ReturnData), null);
 
     Revert:
-        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
+        Debug.Assert(ReturnData is byte[], "REVERT stages a byte array before stopping dispatch.");
+        return new CallResult(Unsafe.As<byte[]>(ReturnData), null, shouldRevert: true, exceptionType);
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
