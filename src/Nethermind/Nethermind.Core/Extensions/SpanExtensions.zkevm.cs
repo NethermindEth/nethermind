@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -23,7 +24,7 @@ namespace Nethermind.Core.Extensions
         // Assigned by SeedHashes, never initialised inline: a static initializer anywhere in this type
         // gives it a class constructor, and then every mixer call pays a class-initialisation check, a
         // fence and a two-level static load. The consts below carry no storage and cost nothing.
-        public static uint InstanceRandom;
+        internal static uint InstanceRandom;
 
         // Distinct odd multipliers so a lane's contribution depends on its position: a plain XOR fold
         // would collide for inputs that differ only by swapping two lanes.
@@ -47,7 +48,7 @@ namespace Nethermind.Core.Extensions
         /// longer one's and the unused lane contributes nothing.
         /// <para>
         /// This placement does not by itself make the mixer hard to collide.
-        /// <see cref="InstanceRandom"/> is a fixed literal in the guest, so the seeded multipliers
+        /// <see cref="InstanceRandom"/> is fixed for the run in the guest, so the seeded multipliers
         /// are public constants and remain odd and invertible: the same closed-form derivation
         /// applies to them. What it buys is the width separation above, which fixes a present bug,
         /// and a mixer that a per-run seed would actually harden instead of cancelling.
@@ -74,9 +75,23 @@ namespace Nethermind.Core.Extensions
             WordLanes = [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
         }
 
+        /// <summary>Asserts that <see cref="SeedHashes"/> has run, in debug builds only.</summary>
+        /// <remarks>
+        /// Hashing before the seed is installed does not fail the way an uninitialised reference usually
+        /// does: <see cref="MemoryMarshal.GetArrayDataReference{T}(T[])"/> carries no null check, so a
+        /// null lane array traps on an unmapped address instead of throwing, and the short-input path
+        /// never touches the arrays at all - it hashes with seed zero and silently succeeds. The release
+        /// guest pays nothing for this; the ZkEvm test suites are where it has to catch the ordering bug.
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private static void AssertSeeded() =>
+            Debug.Assert(AddrLanes is not null, $"{nameof(SeedHashes)} must run before the guest hashes a key.");
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
         {
+            AssertSeeded();
+
             // 32 bytes is the dominant key width in the guest (trie node hashes, storage cells), and
             // the four-lane CRC-style walk is one of its hottest leaves. Every byte still feeds the
             // result -- folding to the leading word would collide across big-endian UInt256 values,
@@ -99,6 +114,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixAddress(ref byte b)
         {
+            AssertSeeded();
             ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes!);
             return Finish(
                 Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
@@ -115,6 +131,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Mix32(ref byte b)
         {
+            AssertSeeded();
             ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes!);
             return Finish(
                 Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
