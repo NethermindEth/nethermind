@@ -97,11 +97,14 @@ jobs:
 
       - name: Extract Variables
         id: extract_variables
+        env:
+          BASE_TAG_OUT: ${{ needs.create_docker_image.outputs.base_tag }}
+          ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
         run: |
-          echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
-          echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
-          echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
-          echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
+          echo "BASE_TAG=${BASE_TAG_OUT}" >> $GITHUB_ENV
+          echo "timeout=$(echo "$ADDITIONAL_OPTIONS" | jq -r .timeout)" >> $GITHUB_OUTPUT
+          echo "allowed_ips=$(echo "$ADDITIONAL_OPTIONS" | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
+          echo "custom_machine_type=$(echo "$ADDITIONAL_OPTIONS" | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
 
       - name: Trigger Node creation Repo Action
         env:
@@ -208,8 +211,12 @@ jobs:
 
       - name: Save RPC URL to file
         if: inputs.custom_run_id != ''
+        env:
+          RPC_URL: ${{ env.RPC_URL }}
+          CLEAN_REF: ${{ env.CLEAN_REF }}
+          CUSTOM_RUN_ID: ${{ inputs.custom_run_id }}
         run: |
-          echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
+          echo "$RPC_URL" > "rpc_url%${CLEAN_REF}%${CUSTOM_RUN_ID}.txt"
 
       - name: Upload RPC URL
         uses: actions/upload-artifact@v7
