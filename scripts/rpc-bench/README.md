@@ -195,6 +195,7 @@ from `Dockerfile` on the runner.
   "health_timeout_minutes": 30,
   "cpuset": "",                    // e.g. "2-7,10-15" to pin the node like expb does
   "memory": "",                    // e.g. "64g"
+  "cpu_max_freq_khz": "",          // scaling_max_freq cap for the whole job; empty = 3800000 on amd64, none on arm64; 0 = no cap
   "reference_db_source": "",       // reference-node keys: unreachable while reference_client is pinned to `none`
   "reference_image": "",
   "reference_flags": "",
@@ -315,29 +316,187 @@ the corpus DB is how you constrain the workload. Corpus resolution order:
 the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
 in the tool repo → fresh evolution from scratch.
 
+## Triggering
+
+The workflow inputs are plain fields; the default preset (`benchmark_tool: corpus-ab`) needs no JSON
+at all. `docker_image` is the image under test (empty = this branch: the prebuilt tag for
+master/release, otherwise a build on the runner — refused on arm64); `baseline_image` is the other
+arm and the parity reference — its default `cache` is the master baseline recorded after the last
+master push, so a PR run executes only the PR image. Everything the inputs do not cover is a
+`tool_config` / `node_config` JSON override merged on top (its keys win).
+
+```bash
+# This branch vs the cached master baseline on the private corpus — the standard check, all defaults
+gh workflow run run-rpc-benchmarks.yml --ref <branch>
+
+# Real two-arm A/B in one job (master runs here too); add -f rounds=2 for A B B A with an in-run A/A control
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f baseline_image=nethermindeth/nethermind:master-<sha>
+
+# Re-record the master baseline by hand (normally automatic after every master push)
+gh workflow run run-rpc-benchmarks.yml --ref master -f benchmark_tool=corpus-baseline -f docker_image=nethermindeth/nethermind:master-<sha>
+
+# Same with pinned images (mandatory on arm64, and the fast path everywhere: no build on the runner)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f arch=arm64 \
+  -f docker_image=nethermindeth/nethermind:<pr-tag> -f baseline_image=nethermindeth/nethermind:master-<sha>
+
+# Smoke test of the harness itself (~10 min): tiny cells, one round, short warm-up
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f docker_image=nethermindeth/nethermind:master-<sha> \
+  -f requests_per_cell=3000 -f rounds=1 -f timings_passes=4 -f warmup=30
+
+# Rate ladder on the corpus (one cell per rate, still request-sized)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f rps="50 100 300"
+
+# Two images on a json-bench workload instead of the corpus (timed cells)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench-sweep -f rps="50 100" -f duration=60 \n  -f baseline_image=nethermindeth/nethermind:master
+
+# Single node: json-bench curated workload / flood / EthCallChaos
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f rps=50 -f duration=60 \
+  -f tool_config='{"benchmark_config":"ethcall-contracts-head"}'
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=flood -f rps="10 100 500" -f duration=30 \
+  -f tool_config='{"tests":"eth_call eth_getBalance"}'
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=ethcallchaos -f rps=50 -f duration=300
+
+# Cross-client response comparison (amd64 only): Nethermind vs reth, same head
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f reference_client=reth
+
+# Profile the node under the corpus load
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f dottrace=sampling \
+  -f tool_config='{"eth_call_corpus":true,"corpus_file":"/mnt/sda/expb-data/rpc-bench/eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
+```
+
+Labeling a PR `rpc-benchmark` runs the default preset for that PR's branch.
+
+### The cached master baseline
+
+Every master push that touches `src/Nethermind/**` publishes `nethermindeth/nethermind:master-<sha7>`;
+when that `Publish Docker image` run completes, a `workflow_run` trigger starts the `corpus-baseline`
+preset on the amd64 box: the new master image alone, 20k requests at 100 rps, the 40-pass replay.
+Bursts of pushes collapse to the newest *pending* run (concurrency group `rpc-bench-master-baseline`,
+`cancel-in-progress: false`): GitHub keeps one running plus one queued, so an in-flight refresh always
+finishes rather than being starved by the next merge — at the cost of up to two cells on the box. Two
+things are kept:
+
+- the staged aggregates (`summary.json`, `resources.json`, `timings.*`, per-class metrics) plus a
+  `baseline.json` (image, date, run, cell fingerprint) go to the Actions cache under
+  `rpc-corpus-baseline-<arch>-<corpus>-<cell>-<run id>`; a PR run restores the newest key with that prefix;
+- the parity responses stay on the runner under `<expb data dir>/rpc-bench/baselines/<corpus>.json.gz`
+  (response bytes never leave the box); a PR run compares against them (`corpus_baseline: use`).
+
+The comment then names the master image, date and run the baseline came from. When no cache exists
+yet (new arch, new corpus, changed cell shape, cache evicted after 7 idle days) the run falls back to
+executing `nethermindeth/nethermind:master` itself; when the comparison against the saved responses
+cannot run (snapshot head moved, unreadable state, node unreachable) the run **fails** with parity
+"not checked" — with a saved baseline that check is the run's only correctness gate, so it is never a
+warning — and the master baseline needs re-recording if the snapshot moved. Caches made from a feature
+branch are visible to that branch only — production
+baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is what the presets set.
+
+`Validate the cached master baseline` runs before the sweep and drops a restored tree this run cannot
+use — one staged at a different `corpus_results.BASELINE_SCHEMA` (a staged-file schema change since
+that master push) or measured on another cell — with a `::warning::`; the sweep then measures master
+in this job, so a schema bump costs a slower run rather than an empty comment.
+
+Three limits worth knowing before trusting a cached comparison:
+
+- **Only amd64 refreshes itself.** The `workflow_run` trigger takes the default `arch`, so every
+  automatic baseline is an amd64 one. An `arch=arm64` corpus-ab therefore misses the cache and runs
+  master in-job at roughly twice the runtime, every time. Record an arm64 one by hand after a master
+  push — `-f benchmark_tool=corpus-baseline -f arch=arm64 -f docker_image=nethermindeth/nethermind:master-<sha7>`
+  — or pass `baseline_image=<master image>` and take the two-arm run deliberately.
+- **The two halves of a baseline live in different places.** The aggregates are in the Actions cache,
+  which is repo-global and outlives any box; the parity responses are a file on one runner. So they can
+  disagree: a box whose `baselines/` dir was cleaned still restores cached aggregates (the run then
+  captures parity against its own arm and says so in the step summary), and the amd64 cache says
+  nothing about what the arm box holds. The comment names the vintage of the aggregates; the step
+  summary's parity table names the label of the saved responses. Read both.
+- **The default cell is a warm-compute signal.** The 60 s warm-up at 400 rps delivers ~24k requests
+  before a 20k-request cell, so both arms measure a node whose caches are hot — the analogue of expb's
+  `EXPB_EVM_WARMUP=1`. That is the right default for compute changes and weak for storage-layer ones;
+  for those pass `warmup=0` (cold, at the cost of ~2% failures and p99 reading ~60% high) or size a
+  much longer cell.
+
+`tool_config` templates (all keys optional; the inputs above already set the common ones):
+
+```json
+{"clients": "nethermind@<a> nethermind@<b> nethermind@<c>", "seed": 7, "corpus_passes": 40,
+ "timings_rps": 100, "timings_concurrency": 16, "corpus_warmup_rps": 400,
+ "parity_diffs": true, "max_corpus_records": 50000, "max_divergence_indexes": 500,
+ "db_isolation_all": "copy", "node_env_vars": "NETHERMIND_EXPERIMENTAL_X=1", "resource_sampling": true,
+ "benchmark_config": "config/benchmark/ethcallchaos-percategory-validated.yaml", "iso_configs": "", "iso_duration": "20s",
+ "ref": "<json-bench sha>", "state_layout": "flat", "snapshot_block": "25490000", "corpus_dir": ""}
+```
+```json
+{"mode": "benchmark", "benchmark_config": "ethcall-contracts-head", "vus": 10, "seed": 1, "deep_check": false,
+ "compare_config": "config/compare/defaults.yaml", "concurrency": 5, "timeout": 30, "validate_schema": false,
+ "fail_on_diff": false, "max_fail_rate_pct": 1, "html_report": true, "corpus_file": "", "extra_args": ""}
+```
+```json
+{"tests": "eth_call eth_getBalance", "deep_check": false, "label": "", "extra_args": ""}
+```
+```json
+{"parallel": 8, "leaderboard_top": 50, "api_port": 5000, "min_mean_ms": 1, "max_cv": 10, "corpus_db": "", "corpus_url": ""}
+```
+
+`node_config` template: see [`node_config` JSON](#node_config-json).
+
 ## Fixed corpus A/B against master
 
-The canonical branch-vs-master check is a fixed `eth_call` corpus A/B — the 497-record
-corpus, 100 rps for 120s, the branch build against `nethermind:master` as the parity
-baseline. Dispatch it with `benchmark_tool: jsonbench-sweep` and:
+The canonical branch-vs-master check (`benchmark_tool: corpus-ab`, the default) is a fixed `eth_call`
+corpus A/B — the 497-record corpus, 20k requests at 100 rps per arm, plus a closed-loop per-record
+replay, `docker_image` against the cached master baseline (`baseline_image: cache`) or against a
+given `baseline_image`. The inputs expand to this sweep config (with an explicit `baseline_image`,
+`clients` lists both arms and `corpus_baseline` is `none`):
 
 ```json
 {"eth_call_corpus": true,
- "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:<branch-tag>",
- "rps_list": "100", "duration": "120s",
- "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
+ "clients": "nethermind@<docker_image>", "corpus_baseline": "use",
+ "rps_list": "100", "corpus_requests": 20000, "rounds": 1, "timings_passes": 40,
+ "corpus_warmup_duration": "60s", "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
 ```
 
-Pin both arms to prebuilt tags: a bare `nethermind` entry builds the image on the benchmark
-runner, which serializes every other job behind it. Holding the rest fixed is what keeps results
-comparable across branches and over time.
-`corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders the
-per-metric latency deltas and the response-parity verdict from the **staged** tree, not the
-raw output, so its rendering has already passed the aggregate-only validator.
+Pin both arms to prebuilt tags where you can: building the branch image on the benchmark runner
+serializes every other job behind it. What makes the number trustworthy:
 
-Read it correctly: a parity divergence is a correctness regression regardless of the
-latency numbers, and latency deltas under roughly 2.5% are within run-to-run noise on
-this corpus.
+- **Request count, not wall time** (`corpus_requests`): every cell has the same sample size
+  whatever the rate, so percentiles resolve equally at 50, 100 or 300 rps.
+- **Seeded request sequence** (`seed`, default 1): json-bench draws corpus records with a fixed
+  generator, so both arms replay byte-identical request sequences at every rate instead of two
+  different random mixes of a heavy-tailed corpus.
+- **Rounds** (`rounds`, default 1): with the frequency cap and seeded requests a single round lands
+  within ~1–1.5% run to run, so one round is the default. `rounds: 2` runs the client list again in
+  reverse (A B B A) — each node restarted and re-warmed, position bias cancelled, and the two master
+  runs give an A/A control printed next to every delta — at twice the runtime; use it when a delta
+  sits within a few percent.
+- **The noise floor follows the evidence in the run.** A measured A/A spread (two master runs) sets
+  it: twice the spread, minimum 1%. With no repeat it falls back to a constant — `NOISE_FLOOR_PCT`
+  2.5% when both arms ran here, `CACHED_NOISE_FLOOR_PCT` 5% when master came from the cache, because
+  then the arms are not co-run and the drift between the two jobs is measured nowhere. That ~1–1.5%
+  figure and the 2.5% constant are *in-run* evidence, so the wider floor is a placeholder until the
+  cross-job spread is measured from consecutive `corpus-baseline` runs; the comment says which floor
+  it applied.
+- **Paired per-record replay** (`timings_passes`, unpaced by default): each record is hit exactly
+  N times per arm; the comment reports the median per-record delta with a bootstrap CI, how many
+  records moved by more than 5%, and the closed-loop throughput at `timings_concurrency`
+  (default 16) — the capacity signal an unsaturated 100 rps cell cannot show.
+- **CPU-ms/request** from the node's cgroup, printed first: rate-independent and more sensitive to
+  compute changes than p50 at an unsaturated rate. Its window brackets the json-bench container, so it
+  also covers container start and k6's fixture parse, when the node is near idle: comparable between
+  arms (same window shape), but not an absolute per-request cost.
+- **Selector classes**: the corpus is split by 4-byte selector into `class_1..N` (ranked by record
+  count) and the comment breaks p50/p99 down per class, so "p99 moved" becomes "class 2 moved".
+- **CPU frequency cap** (`node_config.cpu_max_freq_khz`, default 3.8 GHz on amd64): turbo boost is
+  off and the governor is `performance` for the whole job, restored afterwards.
+
+The workflow's `Render corpus comparison` step runs `corpus_results.py comment --baseline
+nethermind_<baseline tag> --candidate nethermind_<candidate tag>` against the **staged** tree
+(labels derived from `baseline_image` / `docker_image` the way the sweep derives them, `_rN`
+repeats pooled into one arm per side), appends it to the step summary and, on a
+label-triggered PR run, posts it as a PR comment. Rendering is best-effort — the artifact is the
+record — and a `tool_config.clients` override that names other arms is rendered by hand from
+the downloaded artifact. Read it correctly: a parity divergence is a correctness regression
+regardless of latency; a delta inside the A/A spread (or under the no-repeat floor the footer
+names) is noise; an "Unequal load" line means the arms did not receive the same request count (k6
+dropped iterations), so the deltas are not like for like.
 
 ## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
 
@@ -375,13 +534,20 @@ single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
 corpus's record count) instead size the cell by how many requests it should issue: the
 rate is unchanged and the length is derived as `ceil(count / rps)`, since k6's
 constant-arrival-rate executor holds the rate. `corpus_passes: 5` on a 50k corpus at
-`rps_list: "500"` is 250,000 requests over 500s. Note this is *draws with replacement*,
-not a guarantee every record is visited — coverage is `N x (1 - (1 - 1/N)^requests)`.
+`rps_list: "500"` is 250,000 requests over 500s. Draws are *with replacement* from a
+seeded generator (`seed`, default 1): every arm and every rate replays the same sequence,
+but coverage is still `N x (1 - (1 - 1/N)^requests)`, not a guarantee every record is visited.
 
-**Per-record timings.** The k6 cells cannot attribute a latency to a corpus record: every
-corpus request carries the same `req_name` tag, and json-bench samples the corpus
-uniformly *with replacement* without recording which record it drew. To get a
-record-by-record profile, replay the corpus directly against a running node:
+**Selector classes.** `prepare-eth-call-corpus.py` splits the corpus by the 4-byte selector of
+`params[0].data` into `class_1..N` fixtures (ranked by record count; records without calldata
+form their own class) and renders one weighted json-bench call per class, so k6 emits a
+per-class sub-metric. The published `summary.json` carries them under `metrics.classes`; the
+selector-to-class mapping exists only in the fixture files on the runner.
+
+**Per-record timings.** The k6 cells cannot attribute a latency to a corpus record. The sweep's
+`timings_passes` replay (`corpus_parity.py timings`) walks the corpus in order N times per arm
+— unpaced by default, i.e. a closed loop at `timings_concurrency` — and the PR comment pairs
+the two arms record by record. To get the same matrix by hand against a running node:
 
 ```bash
 python3 scripts/rpc-bench/corpus_parity.py timings \
@@ -423,8 +589,12 @@ corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix 
 rejected; default `60s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
 N x 60 s per client before measuring) driven at `corpus_warmup_rps` (default `400`, so the
 window delivers the ~24k requests that `240s` at 100 rps used to, in a quarter of the wall
-time; it is a floor, so a run measuring a higher rate warms at that rate instead): a k6 cell
-when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
+time; it is a floor, so a run measuring a higher rate warms at that rate instead, and
+`corpus_warmup_rps_max` caps that pace — json-bench pre-generates rps x duration request rows
+that k6 parses whole, so a long warm-up ahead of a high-rate cell would exceed what the fixture
+can hold): a k6 cell
+when `rps_list` is non-empty (seeded with `seed + 1000`, so a measured cell never replays exactly
+the sequence the warm-up just ran), otherwise a paced `corpus_parity.py timings` replay so the
 fixture-free mode stays fixture-free.
 
 The request count is the point, and the rate is a request for one, not a guarantee of one — so
@@ -442,7 +612,8 @@ this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
 then one full-corpus replay via `corpus_parity.py` while the node is still up.
-The **first client in `clients` is the parity baseline**; every later client's
+The **first client in `clients` is the parity baseline** (or, with `corpus_baseline: use`, the
+responses the last master-baseline run saved on the runner); every later client's
 responses are compared byte-for-byte against it, and any defect or mismatch
 fails the job. Calls the baseline client rejects with a JSON-RPC error are
 recorded as error outcomes (captured corpora legitimately contain calls that
@@ -482,7 +653,7 @@ one dispatch:
 ```json
 {"eth_call_corpus": true,
  "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:some-pr-branch nethermind@nethermindeth/nethermind:paprika nethermind@nethermindeth/nethermind:performance",
- "rps_list": "1 10 100", "duration": "120s"}
+ "rps_list": "50 100 300", "corpus_requests": 20000, "rounds": 2}
 ```
 
 ## dotTrace flow (goal #3)
@@ -642,8 +813,12 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
 | `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
-| `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema and stage only validated aggregate files for the corpus artifact. |
-| `prepare-eth-call-corpus.py` | Convert a JSONL(.gz) corpus into the JSON-array fixture json-bench consumes. |
+| `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema, stage only validated aggregate files, render the PR comment (pooled repeats, A/A spread, paired timings, classes). |
+| `prepare-eth-call-corpus.py` | Split a JSONL(.gz) corpus into per-selector-class JSON-array fixtures for json-bench. |
 | `../nettrace-report.cs` | Summarize a sidecar `.nettrace`: GC pauses per generation, contention percentiles, exceptions (`dotnet run scripts/nettrace-report.cs -- <file>`). |
-| `run-jsonbench.sh` | Clone/build json-bench's runner image, adapt the workload config to the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
+| `run-jsonbench.sh` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
+| `run-rpc-sweep.sh` | One node per `clients` entry `ctype[@image][#K=V[,K=V]]` (times `rounds`, ABBA; the env suffix is passed as `docker -e` to that arm's node only and folded into its label, so one sweep can compare config values of one image), cells per rps, corpus warm-up/parity/timings, step summary. |
+| `cpu-stabilize.sh` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
+| `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI). |
+| `percat-matrix.py`, `deep-check-compare.py` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
