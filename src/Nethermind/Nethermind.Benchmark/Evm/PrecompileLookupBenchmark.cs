@@ -3,10 +3,8 @@
 
 #nullable enable
 
-using System.Buffers.Binary;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -77,19 +75,6 @@ public class PrecompileLookupBenchmark
         return new Address(bytes);
     }
 
-    /// <summary>The precompile's number, or negative if the address cannot be one.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOrNegative(Address address)
-    {
-        ref byte b = ref Unsafe.AsRef(in address.Bytes[0]);
-        if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
-        {
-            return -1;
-        }
-
-        return (int)BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)));
-    }
-
     [Benchmark(Baseline = true)]
     public int Membership_FrozenSet()
     {
@@ -108,34 +93,26 @@ public class PrecompileLookupBenchmark
         int found = 0;
         foreach (Address address in _addresses)
         {
-            int index = IndexOrNegative(address);
+            int index = address.PrecompileIndexOrNegative();
             if ((uint)index < 64 ? (_mask & (1UL << index)) != 0 : index == 0x100) found++;
         }
 
         return found;
     }
 
-    /// <summary>Reject on address shape first, and only then consult the set.</summary>
+    /// <summary>Reject on address shape first, and only then consult the set — what the host now does.</summary>
     /// <remarks>Needs no per-spec state and no bound on the precompile number, so it works for a chain
-    /// whose plugin registers one far above the dense run.</remarks>
+    /// whose plugin registers one far above the low run.</remarks>
     [Benchmark]
     public int Membership_ShapeGuardThenFrozenSet()
     {
         int found = 0;
         foreach (Address address in _addresses)
         {
-            if (CouldBePrecompile(address) && _set.Contains(address)) found++;
+            if (address.CouldBePrecompile() && _set.Contains(address)) found++;
         }
 
         return found;
-    }
-
-    /// <summary>Whether the address could name a precompile at all: sixteen leading zero bytes.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool CouldBePrecompile(Address address)
-    {
-        ref byte b = ref Unsafe.AsRef(in address.Bytes[0]);
-        return (Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) == 0;
     }
 
     [Benchmark]
@@ -156,7 +133,7 @@ public class PrecompileLookupBenchmark
         int hit = 0;
         foreach (Address address in _addresses)
         {
-            int index = IndexOrNegative(address);
+            int index = address.PrecompileIndexOrNegative();
             if ((uint)index < (uint)_byIndex.Length && _byIndex[index] is not null) hit++;
         }
 

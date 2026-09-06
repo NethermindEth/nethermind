@@ -34,6 +34,6 @@ public static partial class IReleaseSpecExtensions
         /// two loads against hashing and probing twenty bytes. Only an address that could name a
         /// precompile at all — sixteen leading zero bytes — reaches the set.</remarks>
         public bool IsPrecompile(Address address)
-            => address.PrecompileIndexOrNegative() >= 0 && spec.Precompiles.Contains(address);
+            => address.CouldBePrecompile() && spec.Precompiles.Contains(address);
     }
 }

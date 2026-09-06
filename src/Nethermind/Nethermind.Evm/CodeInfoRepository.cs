@@ -29,10 +29,10 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
     /// </remarks>
     private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
-    /// <summary>Precompile <see cref="CodeInfo"/> indexed by precompile number, for the dense low run.</summary>
+    /// <summary>Precompile <see cref="CodeInfo"/> indexed by precompile number, for the low numbers.</summary>
     /// <remarks>Replaces a <see cref="FrozenDictionary{TKey, TValue}"/> hash and probe on every precompile
-    /// call with an array index. Sized to the run the chain actually uses; a number above it — a plugin
-    /// may register one far away, as Taiko does at 0x10001 — is left out and served by
+    /// call with an array index. Sized to the highest number the chain registers within the cap; anything
+    /// above it — a plugin may register one far away, as Taiko does at 0x10001 — is left out and served by
     /// <see cref="_localPrecompiles"/> instead, so the array never has to cover the whole address space
     /// to be correct.</remarks>
     private readonly CodeInfo?[] _localPrecompileArray;
@@ -50,22 +50,22 @@ public class CodeInfoRepository : ICodeInfoRepository
         _localPrecompileArray = BuildPrecompileArray(_localPrecompiles);
     }
 
-    /// <summary>Indexes the precompiles whose numbers form a dense run from zero.</summary>
+    /// <summary>Indexes the precompiles numbered at or below <c>MaxIndexedNumber</c>.</summary>
     /// <param name="precompiles">Every precompile the chain knows.</param>
-    /// <returns>An array holding those within the run, indexed by number, and nothing else.</returns>
+    /// <returns>An array holding those within the cap, indexed by number, and nothing else.</returns>
     /// <remarks>The bound is taken from the precompiles themselves rather than fixed, so a chain adding
-    /// one just above the run grows the array instead of falling off it, while a distant one costs a
+    /// one just above the last grows the array instead of falling off it, while a distant one costs a
     /// dictionary lookup rather than an array of its own size. The cap keeps a far-away number from
     /// turning into a huge mostly-empty array.</remarks>
     private static CodeInfo?[] BuildPrecompileArray(FrozenDictionary<AddressAsKey, CodeInfo> precompiles)
     {
-        const int MaxDenseIndex = 0x100;
+        const int MaxIndexedNumber = 0x100;
 
         int highest = -1;
         foreach (AddressAsKey key in precompiles.Keys)
         {
             int index = ((Address)key).PrecompileIndexOrNegative();
-            if (index > highest && index <= MaxDenseIndex) highest = index;
+            if (index > highest && index <= MaxIndexedNumber) highest = index;
         }
 
         if (highest < 0) return [];
