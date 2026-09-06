@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
@@ -14,6 +15,28 @@ namespace Nethermind.Evm.Test;
 
 public class EvmStackTests
 {
+    [Test]
+    public void UInt256_writeback_preserves_aliases_and_unaligned_slots(
+        [Values(0, 1, 7, 8, 31)] int offset, [Values] bool alias)
+    {
+        byte[] buffer = new byte[offset + EvmPooledMemory.WordSize + 1];
+        Array.Fill(buffer, (byte)0xa5);
+        UInt256 value = new(0x0123456789abcdef, 0xfedcba9876543210, 0x1122334455667788, 0x8877665544332211);
+        byte[] expected = value.ToBigEndian();
+        ref byte slot = ref buffer[offset];
+        Unsafe.WriteUnaligned(ref slot, value);
+        ref UInt256 source = ref (alias ? ref Unsafe.As<byte, UInt256>(ref slot) : ref value);
+
+        EvmStack.WriteUInt256ToSlot(ref slot, in source);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.AsSpan(offset, EvmPooledMemory.WordSize).ToArray(), Is.EqualTo(expected));
+            Assert.That(buffer[^1], Is.EqualTo(0xa5));
+            if (offset > 0) Assert.That(buffer[offset - 1], Is.EqualTo(0xa5));
+        }
+    }
+
     // Regression coverage:
     // - Pop operations on empty stack must return the failure signal without mutating Head.
     //   Bug: previous Head-- post-decrement left Head = -1 on underflow (PopAddress, PopWord256).
