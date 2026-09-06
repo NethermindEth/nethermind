@@ -158,6 +158,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
 
+    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+        _snapshotBundle.CreateTrieWarmupSession(_currentStateId, _warmer, _logManager);
+
     public void UpdateRootHash()
     {
         if (!_trieless) _stateTree.UpdateRootHash();
@@ -353,20 +356,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
 
-            try
-            {
-                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-                // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+            // this is just for warming up
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-                return true;
-            }
-            finally
-            {
-                _snapshotBundle.ReleaseReadOnlyBundleLease();
-            }
+            return true;
         }
         finally
         {

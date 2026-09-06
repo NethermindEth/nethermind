@@ -1177,6 +1177,159 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
+    [Test]
+    public void OwnedTrieWarmupSession_DisposeRejectsNewHintsAndInFlightJobsFinishSafely()
+    {
+        FlatDbConfig config = new();
+        TrackingResourcePool resourcePool = new();
+        RecordingPersistenceReader reader = new();
+        ReadOnlySnapshotBundle snapshotBundle = new(
+            new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty());
+        ITrieNodeCache trieNodeCache = Substitute.For<ITrieNodeCache>();
+        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, trieNodeCache);
+        using DeferredTrieWarmer trieWarmer = new();
+        using FlatScopeProvider provider = new(
+            new TestMemDb(),
+            flatDbManager,
+            config,
+            trieWarmer,
+            ResourcePool.Usage.MainBlockProcessing,
+            LimboLogs.Instance,
+            isReadOnly: false);
+        using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
+            Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject, new LocalMetrics());
+        FlatTrieWarmupSession session = (FlatTrieWarmupSession)ordinaryScope.CreateTrieWarmupSession();
+
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        ordinaryScope.Dispose();
+        session.Dispose();
+        session.Dispose();
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        Assert.That(() => trieWarmer.CompleteAccountJob(), Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
+            Assert.That(trieWarmer.EnterCount, Is.EqualTo(1));
+            Assert.That(trieWarmer.ExitCount, Is.EqualTo(1));
+            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
+            Assert.That(reader.DisposeCount, Is.EqualTo(1));
+            trieNodeCache.DidNotReceive().Add(Arg.Any<TransientResource>());
+        }
+    }
+
+    private sealed class FixedFlatDbManager(ReadOnlySnapshotBundle snapshotBundle, IResourcePool resourcePool, ITrieNodeCache trieNodeCache) : IFlatDbManager
+    {
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+            new(snapshotBundle, trieNodeCache, resourcePool, usage);
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) => snapshotBundle;
+
+        public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) =>
+            throw new NotSupportedException();
+
+        public void FlushCache(CancellationToken cancellationToken) { }
+
+        public bool HasStateForBlock(in StateId stateId) => true;
+    }
+
+    private sealed class TrackingResourcePool : IResourcePool, IDisposable
+    {
+        public int ReturnedCachedResources { get; private set; }
+
+        public SnapshotContent GetSnapshotContent(ResourcePool.Usage usage) => new();
+
+        public void ReturnSnapshotContent(ResourcePool.Usage usage, SnapshotContent snapshotContent) =>
+            snapshotContent.Reset();
+
+        public SortedSnapshotContent GetSortedSnapshotContent(ResourcePool.Usage usage) => new();
+
+        public void ReturnSortedSnapshotContent(ResourcePool.Usage usage, SortedSnapshotContent sortedContent) =>
+            sortedContent.Reset();
+
+        public TransientResource GetCachedResource(ResourcePool.Usage usage)
+        {
+            TransientResource transientResource = new(new TransientResource.Size(1024, 1024));
+            transientResource.OnRented(this, usage);
+            return transientResource;
+        }
+
+        public void ReturnCachedResource(ResourcePool.Usage usage, TransientResource transientResource)
+        {
+            ReturnedCachedResources++;
+            transientResource.Reset();
+            transientResource.Dispose();
+        }
+
+        public Snapshot CreateSnapshot(in StateId from, in StateId to, ResourcePool.Usage usage) =>
+            new(from, to, GetSnapshotContent(usage), this, usage);
+
+        public void Dispose() { }
+    }
+
+    private sealed class DeferredTrieWarmer : ITrieWarmer, IDisposable
+    {
+        private ITrieWarmer.IAddressWarmer? _addressWarmer;
+        private Address? _address;
+
+        public ManualResetEventSlim JobAccepted { get; } = new(false);
+        public int AddressJobPushes { get; private set; }
+        public int EnterCount { get; private set; }
+        public int ExitCount { get; private set; }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            AddressJobPushes++;
+            _addressWarmer = scope;
+            _address = path;
+            JobAccepted.Set();
+            return true;
+        }
+
+        public void CompleteAccountJob() => _addressWarmer!.WarmUpStateTrie(_address!, sequenceId: 0);
+
+        public void OnEnterScope() => EnterCount++;
+
+        public void OnExitScope() => ExitCount++;
+
+        public void Dispose() => JobAccepted.Dispose();
+    }
+
+    private sealed class RecordingPersistenceReader : IPersistence.IPersistenceReader
+    {
+        public int DisposeCount { get; private set; }
+        public StateId CurrentState => StateId.PreGenesis;
+        public bool IsPreimageMode => false;
+
+        public Account? GetAccount(Address requestedAddress) => null;
+
+        public bool TryGetSlot(Address requestedAddress, in UInt256 requestedSlot, ref SlotValue outValue) => false;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+
+        public byte[]? TryLoadStorageRlp(Hash256 requestedAddress, in TreePath path, ReadFlags flags) => null;
+
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+            throw new NotSupportedException();
+
+        public IPersistence.IFlatIterator CreateStorageIterator(
+            in ValueHash256 accountKey,
+            in ValueHash256 startSlotKey,
+            in ValueHash256 endSlotKey) => throw new NotSupportedException();
+
+        public void Dispose() => DisposeCount++;
+    }
+
     private sealed class RecordingBalReaderSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         private readonly Lock _lock = new();
