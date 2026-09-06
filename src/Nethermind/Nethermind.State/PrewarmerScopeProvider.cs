@@ -68,7 +68,7 @@ public class PrewarmerScopeProvider(
             {
                 if (storageReadCapture is null)
                 {
-                    lock (preBlockCaches.MainScopeLock)
+                    lock (preBlockCaches)
                     {
                         trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
                     }
@@ -79,7 +79,7 @@ public class PrewarmerScopeProvider(
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
                 consumerScopeOpened = true;
                 preBlockCaches.BeginConsumerScope();
-                lock (preBlockCaches.MainScopeLock)
+                lock (preBlockCaches)
                 {
                     preBlockCaches.MainScope = scope;
                     registeredMainScope = true;
@@ -98,7 +98,7 @@ public class PrewarmerScopeProvider(
         {
             if (registeredMainScope)
             {
-                lock (preBlockCaches.MainScopeLock)
+                lock (preBlockCaches)
                 {
                     if (ReferenceEquals(preBlockCaches.MainScope, scope)) preBlockCaches.MainScope = null;
                 }
@@ -167,7 +167,7 @@ public class PrewarmerScopeProvider(
             }
 
             // Unregister before teardown so no new warm hints target a disposing scope.
-            lock (preBlockCaches.MainScopeLock)
+            lock (preBlockCaches)
             {
                 if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
             }
