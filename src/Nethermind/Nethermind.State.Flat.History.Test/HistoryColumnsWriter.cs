@@ -15,6 +15,8 @@ namespace Nethermind.State.Flat.History.Test;
 
 internal static class HistoryColumnsWriter
 {
+    public static byte[] ScopeKeyOf(Address address) => address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
+
     public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account)
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());

@@ -282,7 +282,8 @@ public abstract class BlockchainTestBase
 
             IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
 
-            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+            // Joins any prewarming still in flight; the MainWorldState scope opened below then clears the carried
+            // account and storage caches unless they describe the head.
             preWarmer?.ClearCaches();
 
             Block? headBlock = blockTree.RetrieveHeadBlock();

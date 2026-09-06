@@ -31,7 +31,14 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
         if (decoderContext.Position < lastCheck)
         {
-            DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
+            try
+            {
+                DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
+            }
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)

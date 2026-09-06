@@ -110,27 +110,40 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
+        // A consumer scope and a speculative session never coexist: the session is joined the moment a consumer opens.
+        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
         // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
-        CancelAndJoinSpeculative();
-
-        if (_preBlockCaches is null) return Task.CompletedTask;
-
-        // A spec that disables warming still needs the clear-or-retain decision below: joining stops a session from
-        // writing further, but its entries describe the head it warmed, which need not be this block's parent.
-        bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
-        if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
+        if (_preBlockCaches is null)
         {
-            // Handoff taken: the caches already hold this parent's state, so keep RLP caching on for execution.
+            CancelAndJoinSpeculative();
+            return Task.CompletedTask;
+        }
+
+        bool carried;
+        lock (_speculativeLock)
+        {
+            CancelAndJoinSpeculativeLocked();
+            // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
+            // further, but the caches describe the state they were filled from, which need not be this block's parent.
+            carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
+        }
+
+        bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
+        // The marker's tx set only means anything while the entries it describes are still in the caches.
+        ISet<Hash256>? speculativelyWarmed =
+            TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
+        if (speculativelyWarmed is not null)
+        {
+            // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.
             _nodeStorageCache.Enabled = true;
         }
         else
         {
-            _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
             // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
             if (skipReactiveWarming) return Task.CompletedTask;
@@ -484,6 +497,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // An equal-or-newer session already started (out-of-order work item); don't clobber it.
             if (generation <= _speculativeGeneration) return _speculativeTask;
+            // A consumer is open: the caches describe its parent, and a late session for another head must not
+            // repurpose them underneath it. Its head's own successor will start a session of its own.
+            if (_preBlockCaches.ConsumerScopeOpen) return Task.CompletedTask;
             _speculativeGeneration = generation;
 
             CancelAndJoinSpeculativeLocked();
@@ -494,7 +510,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             ClearWarmMarker();
             _warmedTxHashes.Clear();
-            _preBlockCaches.ClearCaches();
+            _preBlockCaches.PrepareFor(head.StateRoot, _logger);
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
 
@@ -607,14 +623,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
         ClearWarmMarker();
-        CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
+        // keeps or clears them before the next use. This continuation can overlap that write-back, so it must not touch them.
+        _preBlockCaches?.ClearPrecompileCache();
+        CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
 
     public void Dispose()
     {
+        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened -= CancelAndJoinSpeculative;
         CancelAndJoinSpeculative();
         _warmedTxHashes.Dispose();
         (_envPool as IDisposable)?.Dispose();
