@@ -68,7 +68,7 @@ public ref struct Merkleizer
                 break;
             }
 
-            UInt256 chunk = Merkle.ZeroHashes[lowestSet];
+            UInt256 chunk = Merkle.ZeroHash(lowestSet);
             FeedAtLevel(chunk, lowestSet);
         }
 

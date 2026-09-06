@@ -207,6 +207,44 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void post_step_fires_once_per_step()
+    {
+        // postStep runs from ReportOperationRemainingGas. The interpreter reports that once per
+        // instruction, and the CALL handler reports it once more itself before the child frame runs, so
+        // the one CALL below is the only step that fires postStep twice. Both frames halt on an explicit
+        // opcode, so no instruction picks up the extra end-of-code report either.
+        string userTracer = @"{
+                    steps: 0,
+                    postSteps: 0,
+                    step: function(log, db) { this.steps++ },
+                    postStep: function(log, db) { this.postSteps++ },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.steps + ':' + this.postSteps }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+
+        string[] counts = ((string)traces.CustomTracerResult!.Value!).Split(':');
+        int steps = int.Parse(counts[0]);
+        Assert.That(steps, Is.GreaterThan(0));
+        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
+    }
+
+    [Test]
     public void Js_traces_simple_filter()
     {
         string userTracer = @"{

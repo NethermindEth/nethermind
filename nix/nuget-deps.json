@@ -100,6 +100,11 @@
     "hash": "sha256-XSs8mXYHgp+jM8tPvm4lO6U8ynistGzZAHvcY9nuGVU="
   },
   {
+    "pname": "Fody",
+    "version": "6.9.3",
+    "hash": "sha256-JLom3mbO4NCUXDHoU86l720QXlRx52+ROb5wBwcC5nM="
+  },
+  {
     "pname": "Fractions",
     "version": "7.3.0",
     "hash": "sha256-wr4I1mj1qrXjD2Z3dca70OBe14zZNGagDLW9/8xQtCU="
@@ -143,6 +148,11 @@
     "pname": "Humanizer.Core",
     "version": "2.14.1",
     "hash": "sha256-EXvojddPu+9JKgOG9NSQgUTfWq1RpOYw7adxDPKDJ6o="
+  },
+  {
+    "pname": "InlineIL.Fody",
+    "version": "1.10.2",
+    "hash": "sha256-9V03mxEvfv3SaBjifombgZCycRhXZPqcW/gtjXLDzzk="
   },
   {
     "pname": "IPNetwork2",
@@ -811,8 +821,13 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.6.0",
-    "hash": "sha256-vmEuQU3EGJgNi01AVaOtSCz0DolTfTrUeGCMD/A3nwY="
+    "version": "1.7.0",
+    "hash": "sha256-FXapSQQnBbunYsUlnvSTKnBDBUcWfoH2teNBlKuShrQ="
+  },
+  {
+    "pname": "Nethermind.RocksDbBindings",
+    "version": "11.8.1-preview.92",
+    "hash": "sha256-DXrV5LELNDICN6tK68/cFR0/dJuj9+bjZqfU29nGKUk="
   },
   {
     "pname": "Nethermind.TurboPForBindings",
@@ -893,11 +908,6 @@
     "pname": "Pyroscope",
     "version": "1.4.0",
     "hash": "sha256-EaRJT8vI4A0EpJQJ9Xqt7aUqv1GmRwXadLDZ+Rr9HIw="
-  },
-  {
-    "pname": "RocksDB",
-    "version": "10.10.1.1747",
-    "hash": "sha256-HJwad2DAUpJHZW9rc0mx/s19guywI4oo3BZeE6drAtk="
   },
   {
     "pname": "SCrypt",

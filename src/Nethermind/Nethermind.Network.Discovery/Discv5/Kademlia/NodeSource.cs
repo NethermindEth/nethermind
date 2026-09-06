@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
@@ -26,7 +27,7 @@ public sealed class NodeSource(
 
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
-    private readonly int _recentNodeLimit = RecentNodeFilter.GetLimit(kademliaConfig.KSize, Hash256KademliaDistance.Instance.MaxDistance, ChannelCapacity);
+    private readonly int _recentNodeLimit = RecentNodeFilter.GetLimit(kademliaConfig.KSize, ValueHash256KademliaDistance.Instance.MaxDistance, ChannelCapacity);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -156,6 +157,12 @@ public sealed class NodeSource(
 
         try
         {
+            if (record.EnrSequence < discoveryNode.HighestObservedEnrSequence)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping stale discv5 ENR peer candidate for {discoveryNode:s}.");
+                return false;
+            }
+
             if (recordFilter.Excludes(record))
             {
                 return false;
@@ -167,7 +174,22 @@ public sealed class NodeSource(
                 return false;
             }
 
-            return Node.TryFromEnr(record, out peerCandidate);
+            AddressFamily addressFamily = DiscoveryAddressSupport.GetFamily(discoveryNode.DiscoveryAddress.Address);
+            // EIP-778 endpoints are independent: prefer the proven discovery family without
+            // discarding a record whose only usable RLPx endpoint belongs to the other family.
+            if (!Node.TryFromEnr(record, addressFamily, out peerCandidate) &&
+                !Node.TryFromEnr(record, out peerCandidate))
+            {
+                return false;
+            }
+
+            if (discoveryNode.IsVerifiedEnr(record))
+            {
+                peerCandidate.SetVerifiedEnr(record);
+            }
+
+            peerCandidate.ObserveEnrSequence(discoveryNode.HighestObservedEnrSequence);
+            return true;
         }
         catch (Exception e)
         {

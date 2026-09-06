@@ -26,7 +26,13 @@ while (true)
     try
     {
         byte[] bytes = Bytes.FromHexString(input);
-        Transaction tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
+        Transaction? tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
+        if (tx is null)
+        {
+            Console.WriteLine("err: Transaction decoded as null");
+            continue;
+        }
+
         ITxValidator signatureValidator = tx.Type == TxType.Legacy
             ? legacySignatureTxValidator
             : signatureTxValidator;

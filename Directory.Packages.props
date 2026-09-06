@@ -21,10 +21,12 @@
     <PackageVersion Include="DnsClient" Version="1.8.0" />
     <PackageVersion Include="DynamicExpresso.Core" Version="2.19.3" />
     <PackageVersion Include="FastEnum" Version="2.0.7" />
+    <PackageVersion Include="Fody" Version="6.9.3" />
     <PackageVersion Include="Google.Protobuf" Version="3.35.1" />
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.35.1" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.82.0" />
+    <PackageVersion Include="InlineIL.Fody" Version="1.10.2" />
     <PackageVersion Include="JetBrains.Profiler.Api" Version="1.4.11" />
     <PackageVersion Include="KubernetesClient" Version="19.0.2" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
@@ -54,6 +56,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.400" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.10.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.3.3" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.1.0" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.6.0" />
@@ -65,7 +68,8 @@
     <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
-    <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.6.0" />
+    <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.7.0" />
+    <PackageVersion Include="Nethermind.RocksDbBindings" Version="[11.8.1-preview.92]" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
     <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="1.0.0-preview.2" />
     <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.8" />
@@ -84,7 +88,6 @@
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
     <PackageVersion Include="Pyroscope" Version="1.4.0" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="[10.10.1.1747]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="SlackNet" Version="0.17.9" />
     <PackageVersion Include="SmartFormat" Version="3.6.1" />
