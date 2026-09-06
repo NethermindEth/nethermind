@@ -46,10 +46,10 @@ public static partial class EvmInstructions
         where Eip2780 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
     {
-        public static bool UseHotAndColdStorage => Eip2929.IsActive;
-        public static bool ClearEmptyAccountWhenTouched => Eip158.IsActive;
-        public static bool IsEip2780Enabled => Eip2780.IsActive;
-        public static bool IsEip8038Enabled => Eip8038.IsActive;
+        public static bool UseHotAndColdStorage { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip2929.IsActive; }
+        public static bool ClearEmptyAccountWhenTouched { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip158.IsActive; }
+        public static bool IsEip2780Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip2780.IsActive; }
+        public static bool IsEip8038Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8038.IsActive; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryReserveChildGas<TGasPolicy>(ref TGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
@@ -79,8 +79,8 @@ public static partial class EvmInstructions
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
     {
-        public static bool UseHotAndColdStorage => Eip2929.IsActive;
-        public static bool IsEip3860Enabled => Eip3860.IsActive;
+        public static bool UseHotAndColdStorage { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip2929.IsActive; }
+        public static bool IsEip3860Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip3860.IsActive; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryReserveChildGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec, out ulong childGas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
@@ -110,11 +110,11 @@ public static partial class EvmInstructions
         where Eip8246 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
     {
-        public static bool UseShanghaiDDosProtection => Eip150.IsActive;
-        public static bool ClearEmptyAccountWhenTouched => Eip158.IsActive;
-        public static bool SelfdestructOnlyOnSameTransaction => Eip6780.IsActive;
-        public static bool RemoveSelfdestructBurn => Eip8246.IsActive;
-        public static bool IsEip8038Enabled => Eip8038.IsActive;
+        public static bool UseShanghaiDDosProtection { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip150.IsActive; }
+        public static bool ClearEmptyAccountWhenTouched { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip158.IsActive; }
+        public static bool SelfdestructOnlyOnSameTransaction { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip6780.IsActive; }
+        public static bool RemoveSelfdestructBurn { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8246.IsActive; }
+        public static bool IsEip8038Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8038.IsActive; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
