@@ -14,40 +14,71 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Blockchain;
 
-public class PrecompileCachedCodeInfoRepository(
-    IWorldState worldState,
-    IPrecompileProvider precompileProvider,
-    ICodeInfoRepository baseCodeInfoRepository,
-    PrecompileCaches? precompileCaches) : ICodeInfoRepository
+public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCaches is null
-        ? precompileProvider.GetPrecompiles()
-        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCaches));
+    private readonly IWorldState _worldState;
+    private readonly ICodeInfoRepository _baseCodeInfoRepository;
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile;
+    /// <inheritdoc cref="CodeInfoRepository.BuildPrecompileArray" />
+    /// <remarks>This decorator answers precompile calls before the base repository sees them, so it needs
+    /// the same index the base one holds — without it the dictionary probe survives on the processing
+    /// path, which is the one place it was worth removing.</remarks>
+    private readonly CodeInfo?[] _cachedPrecompileArray;
 
-    public bool IsCodeOverridable => baseCodeInfoRepository.IsCodeOverridable;
+    public PrecompileCachedCodeInfoRepository(
+        IWorldState worldState,
+        IPrecompileProvider precompileProvider,
+        ICodeInfoRepository baseCodeInfoRepository,
+        PrecompileCaches? precompileCaches)
+    {
+        _worldState = worldState;
+        _baseCodeInfoRepository = baseCodeInfoRepository;
+        _cachedPrecompile = precompileCaches is null
+            ? precompileProvider.GetPrecompiles()
+            : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCaches));
+        _cachedPrecompileArray = CodeInfoRepository.BuildPrecompileArray(_cachedPrecompile);
+    }
+
+    public bool IsCodeOverridable => _baseCodeInfoRepository.IsCodeOverridable;
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo))
+        if (vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out CodeInfo? cachedCodeInfo))
         {
             // EIP-7928: mirror base CodeInfoRepository.GetCachedCodeInfo precompile path so the read lands in the BAL.
-            worldState.AddAccountRead(codeSource);
+            _worldState.AddAccountRead(codeSource);
             delegationAddress = null;
             return cachedCodeInfo;
         }
-        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        return _baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+    }
+
+    /// <summary>Resolves a precompile's cached <see cref="CodeInfo"/> from its number, then from the map.</summary>
+    /// <remarks>The map still has to answer for a number above the array — Taiko registers at 0x10001 — and
+    /// for one the spec knows but this provider does not, which falls through to the base repository.</remarks>
+    private bool TryGetCachedPrecompile(Address codeSource, [NotNullWhen(true)] out CodeInfo? cachedCodeInfo)
+    {
+        int index = codeSource.PrecompileIndexOrNegative();
+        CodeInfo?[] byIndex = _cachedPrecompileArray;
+        if ((uint)index < (uint)byIndex.Length && byIndex[index] is { } indexed)
+        {
+            cachedCodeInfo = indexed;
+            return true;
+        }
+
+        return _cachedPrecompile.TryGetValue(codeSource, out cachedCodeInfo);
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+        _baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
-        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
+        _baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
-        baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+        _baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,

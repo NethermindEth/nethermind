@@ -31,11 +31,16 @@ public class CodeInfoRepository : ICodeInfoRepository
     private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
     /// <summary>Precompile <see cref="CodeInfo"/> indexed by precompile number, for the low numbers.</summary>
     /// <remarks>Replaces a <see cref="FrozenDictionary{TKey, TValue}"/> hash and probe on every precompile
-    /// call with an array index. Sized to the highest number the chain registers within the cap; anything
-    /// above it — a plugin may register one far away, as Taiko does at 0x10001 — is left out and served by
-    /// <see cref="_localPrecompiles"/> instead, so the array never has to cover the whole address space
-    /// to be correct.</remarks>
+    /// call with an array index. A number above <see cref="MaxIndexedNumber"/> — a plugin may register one
+    /// far away, as Taiko does at 0x10001 — is left out and served by <see cref="_localPrecompiles"/>
+    /// instead, so the array never has to cover the whole address space to be correct.</remarks>
     private readonly CodeInfo?[] _localPrecompileArray;
+
+    /// <summary>Highest precompile number the index array covers.</summary>
+    /// <remarks>0x100 is RIP-7212, the highest Ethereum registers, so the array is 2 KB and fully used on
+    /// every in-tree chain. Capping it is what keeps a distant registration from sizing the array to
+    /// itself.</remarks>
+    private const int MaxIndexedNumber = 0x100;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -50,27 +55,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         _localPrecompileArray = BuildPrecompileArray(_localPrecompiles);
     }
 
-    /// <summary>Indexes the precompiles numbered at or below <c>MaxIndexedNumber</c>.</summary>
+    /// <summary>Indexes the precompiles numbered at or below <see cref="MaxIndexedNumber"/>.</summary>
     /// <param name="precompiles">Every precompile the chain knows.</param>
     /// <returns>An array holding those within the cap, indexed by number, and nothing else.</returns>
-    /// <remarks>The bound is taken from the precompiles themselves rather than fixed, so a chain adding
-    /// one just above the last grows the array instead of falling off it, while a distant one costs a
-    /// dictionary lookup rather than an array of its own size. The cap keeps a far-away number from
-    /// turning into a huge mostly-empty array.</remarks>
-    private static CodeInfo?[] BuildPrecompileArray(FrozenDictionary<AddressAsKey, CodeInfo> precompiles)
+    /// <remarks>Public so that a decorator answering precompile calls ahead of this repository can index
+    /// its own map the same way; a decorator left probing a dictionary puts the probe back on the path.</remarks>
+    public static CodeInfo?[] BuildPrecompileArray(FrozenDictionary<AddressAsKey, CodeInfo> precompiles)
     {
-        const int MaxIndexedNumber = 0x100;
-
-        int highest = -1;
-        foreach (AddressAsKey key in precompiles.Keys)
-        {
-            int index = ((Address)key).PrecompileIndexOrNegative();
-            if (index > highest && index <= MaxIndexedNumber) highest = index;
-        }
-
-        if (highest < 0) return [];
-
-        CodeInfo?[] byIndex = new CodeInfo?[highest + 1];
+        CodeInfo?[] byIndex = new CodeInfo?[MaxIndexedNumber + 1];
         foreach (KeyValuePair<AddressAsKey, CodeInfo> entry in precompiles)
         {
             int index = ((Address)entry.Key).PrecompileIndexOrNegative();

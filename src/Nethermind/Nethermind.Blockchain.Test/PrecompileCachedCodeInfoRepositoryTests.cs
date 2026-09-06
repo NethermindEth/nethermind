@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -72,6 +73,23 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         caches.TryGetPartition(address ?? PrecompileAddress, out PrecompileCaches.Partition? partition);
         return partition!;
+    }
+
+    /// <summary>Precompile numbers this decorator has to resolve, on and off its index array.</summary>
+    /// <remarks>The array stops at 0x100, so 0x101 and Taiko's 0x10001 come back from the map instead, and
+    /// at 0x8000_0000 the number no longer fits an <see cref="int"/> and the index reads negative. The
+    /// decorator answers before the base repository sees the call, so a number it drops is not resolved
+    /// by anything behind it.</remarks>
+    private static readonly long[] PrecompileNumbers = [1, 9, 0x100, 0x101, 0x10001, 0x8000_0000];
+
+    [TestCaseSource(nameof(PrecompileNumbers))]
+    public void GetCachedCodeInfo_AtAnyPrecompileNumber_ResolvesFromTheCache(long number)
+    {
+        Address address = Address.FromNumber((UInt256)(ulong)number);
+        TestPrecompile precompile = new(supportsCaching: false);
+        IPrecompileProvider provider = CreateProvider((address, precompile));
+
+        Assert.That(Resolve(BuildRepository(null, provider), address), Is.SameAs(precompile));
     }
 
     [Test]
