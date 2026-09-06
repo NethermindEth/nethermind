@@ -10,9 +10,11 @@ namespace Nethermind.Core.Test.Cpu;
 public class RuntimeInformationTests
 {
     /// <summary>
-    /// The CI matrix pins the runtime to one processor with <c>DOTNET_PROCESSOR_COUNT</c> so the
-    /// paths behind <see cref="RuntimeInformation.IsSingleProcessor"/> run. That leg is only worth
-    /// its minutes if the pin reaches the runtime, so it fails here if the runtime ignores it.
+    /// The <c>Nethermind tests (Single Proc)</c> workflow
+    /// (<c>.github/workflows/nethermind-tests-single-proc.yml</c>) pins the runtime to one processor
+    /// with <c>DOTNET_PROCESSOR_COUNT</c> so the paths behind
+    /// <see cref="RuntimeInformation.IsSingleProcessor"/> run. That run is only worth its minutes if
+    /// the pin reaches the runtime, so it fails here if the runtime ignores it.
     /// </summary>
     [Test]
     public void Processor_count_follows_the_runtime_pin()
