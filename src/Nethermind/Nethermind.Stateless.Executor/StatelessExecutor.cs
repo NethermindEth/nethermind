@@ -26,6 +26,7 @@ public static class StatelessExecutor
 
         try
         {
+            // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
         }
         catch (Exception ex)

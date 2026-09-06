@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -20,8 +21,10 @@ namespace Nethermind.Core.Extensions
         private const ulong AesHashFinalSeed0 = 0x3C6EF372FE94F82BUL;
         private const ulong AesHashFinalSeed1 = 0xA54FF53A5F1D36F1UL;
 
-        // Guest execution requires stable hashes across runs.
-        public static readonly uint InstanceRandom = 2098026241U;
+        // Assigned by SeedHashes, never initialised inline: a static initializer anywhere in this type
+        // gives it a class constructor, and then every mixer call pays a class-initialisation check, a
+        // fence and a two-level static load. The consts below carry no storage and cost nothing.
+        internal static uint InstanceRandom;
 
         // Distinct odd multipliers so a lane's contribution depends on its position: a plain XOR fold
         // would collide for inputs that differ only by swapping two lanes.
@@ -44,11 +47,12 @@ namespace Nethermind.Core.Extensions
         /// to the same value, because the tail read of the shorter key is the zero-extension of the
         /// longer one's and the unused lane contributes nothing.
         /// <para>
-        /// This placement does not by itself make the mixer hard to collide.
-        /// <see cref="InstanceRandom"/> is a fixed literal in the guest, so the seeded multipliers
-        /// are public constants and remain odd and invertible: the same closed-form derivation
-        /// applies to them. What it buys is the width separation above, which fixes a present bug,
-        /// and a mixer that a per-run seed would actually harden instead of cancelling.
+        /// This placement does not by itself make the mixer hard to collide: the multipliers remain odd
+        /// and invertible, so the same closed-form derivation applies to them, and anyone who knows the
+        /// run's seed can still construct a colliding set. What it buys is the width separation above,
+        /// which fixes a present bug, and a seed that reaches the key difference at all - applied after
+        /// the lanes are combined it would cancel, leaving one offline collision set good against every
+        /// run.
         /// </para>
         /// </remarks>
         private static ulong SeededLane(ulong lane, int width) =>
@@ -57,15 +61,40 @@ namespace Nethermind.Core.Extensions
         // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
         // constant with a five-instruction sequence at every use, and an array element - unlike a
         // static readonly primitive - cannot be folded back into one.
-        private static readonly ulong[] AddrLanes =
-            [SeededLane(Lane0, Address.Size), SeededLane(Lane1, Address.Size), SeededLane(Lane2, Address.Size)];
+        // Nullable rather than initialised: any initializer here, even `null!`, gives the type a class
+        // constructor. Null until SeedHashes runs, which the input decoder does as soon as it has the
+        // payload root and before it builds anything keyed by a hash.
+        private static ulong[]? AddrLanes;
 
-        private static readonly ulong[] WordLanes =
-            [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
+        private static ulong[]? WordLanes;
+
+        /// <inheritdoc cref="SpanExtensions.SeedHashes(uint)" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static partial void SeedHashes(uint instanceRandom)
+        {
+            InstanceRandom = instanceRandom;
+            AddrLanes = [SeededLane(Lane0, Address.Size), SeededLane(Lane1, Address.Size), SeededLane(Lane2, Address.Size)];
+            WordLanes = [SeededLane(Lane0, WordWidth), SeededLane(Lane1, WordWidth), SeededLane(Lane2, WordWidth), SeededLane(Lane3, WordWidth)];
+        }
+
+        /// <summary>Asserts that <see cref="SeedHashes(uint)"/> has run, in a Debug build only.</summary>
+        /// <remarks>
+        /// Hashing before the seed is installed does not fail the way an uninitialised reference usually
+        /// does: <see cref="MemoryMarshal.GetArrayDataReference{T}(T[])"/> carries no null check, so a
+        /// null lane array traps on an unmapped address instead of throwing, and the short-input path
+        /// never touches the arrays at all - it hashes with seed zero and silently succeeds. Naming that
+        /// invariant where it is relied on costs the release guest nothing, but it is a local aid rather
+        /// than a CI gate: CI dispatches every ZkEvm suite in Release, where the call sites are stripped.
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private static void AssertSeeded() =>
+            Debug.Assert(AddrLanes is not null, $"{nameof(SeedHashes)} must run before the guest hashes a key.");
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
         {
+            AssertSeeded();
+
             // 32 bytes is the dominant key width in the guest (trie node hashes, storage cells), and
             // the four-lane CRC-style walk is one of its hottest leaves. Every byte still feeds the
             // result -- folding to the leading word would collide across big-endian UInt256 values,
@@ -88,7 +117,8 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixAddress(ref byte b)
         {
-            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes);
+            AssertSeeded();
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(AddrLanes!);
             return Finish(
                 Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
@@ -104,7 +134,8 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Mix32(ref byte b)
         {
-            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes);
+            AssertSeeded();
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(WordLanes!);
             return Finish(
                 Unsafe.ReadUnaligned<ulong>(ref b) * lanes ^
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^

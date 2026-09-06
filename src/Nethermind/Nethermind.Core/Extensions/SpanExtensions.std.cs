@@ -17,6 +17,11 @@ namespace Nethermind.Core.Extensions
         public static readonly uint InstanceRandom =
             (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 
+        /// <inheritdoc cref="SpanExtensions.SeedHashes(uint)" />
+        /// <remarks>The host draws its own seed above, per process; the argument is the guest's.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static partial void SeedHashes(uint instanceRandom) { }
+
         private static readonly ulong AesHashSeed0 = CreateAesHashSeed();
         private static readonly ulong AesHashSeed1 = CreateAesHashSeed();
         private static readonly ulong AesHash20Seed0 = CreateAesHashSeed();

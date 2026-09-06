@@ -65,7 +65,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         StorageChanges = storageChanges;
         if (storageChanges.Length > 0)
         {
-            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length);
+            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length, GenericEqualityComparer.GetOptimized<UInt256>());
             UInt256[] changedSlots = new UInt256[storageChanges.Length];
             for (int i = 0; i < storageChanges.Length; i++)
             {
@@ -86,7 +86,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         CodeChanges = codeChanges;
         // Hash-set lookup beats array.Contains() for accounts with many declared reads; allocated
         // lazily to avoid the overhead on accounts that never get queried via IsStorageRead.
-        _storageReadSet = storageReads.Length > 4 ? [.. storageReads] : null;
+        _storageReadSet = storageReads.Length > 4 ? new HashSet<UInt256>(storageReads, GenericEqualityComparer.GetOptimized<UInt256>()) : null;
     }
 
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
