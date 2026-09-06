@@ -38,9 +38,6 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-#if !ZK_EVM
-        Metrics.Bn254AddPrecompile++;
-#endif
         ReadOnlySpan<byte> input = inputData.Span;
         if (InputLength < input.Length)
         {

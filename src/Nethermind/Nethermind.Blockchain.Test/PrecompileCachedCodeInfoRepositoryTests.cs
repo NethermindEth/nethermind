@@ -27,6 +27,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
     private const long UnconstrainedMaxBytes = 32 * 1024 * 1024;
 
+    private const string MetricLabel = "TEST_METRIC_LABEL";
+
     // budget tests below feed 4-byte inputs, and TestPrecompile echoes them
     private const int EntryCost = 4 * 2 + PrecompileCaches.EntryOverheadBytes;
 
@@ -481,8 +483,58 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
-    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
+    [Test]
+    public void Run_ThroughEveryCacheOutcome_ReportsMetrics()
     {
+        const int inputLength = 3;
+        const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: MetricLabel), maxBytes: entryCost);
+
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // miss, admitted to both tiers
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // per-block hit
+        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // miss, budget full, so only the surviving tier takes it
+
+        caches.ClearBlockCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
+            Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
+            Assert.That(AddMetric("block"), Is.EqualTo(1));
+            Assert.That(AddMetric("surviving"), Is.EqualTo(2), "the surviving tier takes an entry the full partition refused");
+            Assert.That(AddMetric("rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
+            Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
+            Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
+        }
+
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // surviving tier outlives the block
+        caches.ClearBlockCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProbeMetric("surviving_hit"), Is.EqualTo(1));
+            Assert.That(UsedBytesMetric(), Is.Zero, "a block that only hit the surviving tier holds no budget");
+            Assert.That(EntriesMetric(), Is.Zero, "a block that only hit the surviving tier holds no entries");
+        }
+    }
+
+    private static long ProbeMetric(string result) =>
+        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
+
+    private static long AddMetric(string outcome) =>
+        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabel, outcome), out long count) ? count : 0;
+
+    private static long UsedBytesMetric() =>
+        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
+
+    private static long EntriesMetric() =>
+        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
+
+    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null, string? name = null) : IPrecompile
+    {
+        public string Name => name ?? nameof(TestPrecompile);
+
         public bool SupportsCaching => supportsCaching;
 
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
