@@ -37,9 +37,6 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
     public async Task<byte[]?> Recover(ValueHash256 codeHash, CancellationToken cancellationToken = default)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource(RecoveryTimeout);
-        // Read once. A losing attempt still between Allocate and its request would otherwise read
-        // the token after the winner returned and disposed the source, and be blamed for the
-        // ObjectDisposedException that follows.
         CancellationToken token = cts.Token;
 
         if (_logger.IsDebug) _logger.Debug($"Recovering code {codeHash}");

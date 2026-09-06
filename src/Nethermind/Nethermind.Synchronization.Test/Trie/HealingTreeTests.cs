@@ -274,8 +274,6 @@ public class HealingTreeTests
                 Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));
             }
 
-            // The code db was never copied, so this can only be served by recovering the code over snap.
-            // A hash-keyed state db serves no snap, and snap is the only protocol carrying bytecode.
             if (keyScheme == INodeStorage.KeyScheme.HalfPath)
             {
                 Assert.That(mainWorldState.GetCode(_codeAddress), Is.EqualTo(_code));
