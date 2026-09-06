@@ -71,6 +71,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private void CancelHintBal()
         {
+            // HintBal never starts the warm-up task on a single processor, so both fields are null.
+            // Returning early keeps the task awaiter out of the guest image.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return;
+
             _hintBalCts?.Cancel();
             try { _hintBalTask?.GetAwaiter().GetResult(); }
             catch (OperationCanceledException) { }
@@ -110,6 +114,19 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             int accountCount = bal.AccountChanges.Count;
             if (accountCount == 0) return Task.CompletedTask;
 
+            // The one processor that will run the block would only contend with a warm-up task, so
+            // feed the sink inline; the guest folds the threaded path away.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                ReadOnlySpan<ReadOnlyAccountChanges> accounts = bal.AccountChanges.AsSpan();
+                for (int i = 0; i < accounts.Length; i++)
+                {
+                    WarmAccount(sink, in accounts[i]);
+                }
+
+                return Task.CompletedTask;
+            }
+
             // Copy the span into a pooled array so the Parallel.For body can capture it.
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
@@ -128,65 +145,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     {
                         if (token.IsCancellationRequested) return;
                         ReadOnlyAccountChanges ac = accountChanges[i];
-                        Address address = ac.Address;
-
-                        // Swallow MissingTrieNodeException so a partially-synced trie can't blow up
-                        // the background warmup task; it'll fault the main read path normally instead.
-                        try
-                        {
-                            StateTree privateStateTree = _scopeProvider.CreateStateTree();
-                            privateStateTree.RootHash = _backingStateTree.RootHash;
-
-                            Account? account;
-                            if (sink.StillNeeded(address, out Account? cached))
-                            {
-                                account = privateStateTree.Get(address);
-                                sink.OnAccountRead(address, account);
-                            }
-                            else
-                            {
-                                account = cached;
-                            }
-
-                            if (account is null) return;
-                            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                            if (storageRoot == Keccak.EmptyTreeHash) return;
-
-                            ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
-                            ReadOnlySpan<UInt256> reads = ac.StorageReads;
-                            if (changed.Length + reads.Length == 0) return;
-
-                            // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
-                            // ascending and disjoint, so one merged pass keeps adjacent trie paths
-                            // hot across consecutive Get calls.
-                            StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-                            int slotIndex = 0;
-                            int readIndex = 0;
-                            while (slotIndex < changed.Length || readIndex < reads.Length)
-                            {
-                                UInt256 slot;
-                                if (readIndex >= reads.Length)
-                                {
-                                    slot = changed[slotIndex++];
-                                }
-                                else
-                                {
-                                    slot = reads[readIndex];
-                                    if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
-                                    {
-                                        slot = changed[slotIndex++];
-                                    }
-                                    else
-                                    {
-                                        readIndex++;
-                                    }
-                                }
-                                StorageCell cell = new(address, in slot);
-                                if (!sink.StillNeeded(in cell)) continue;
-                                sink.OnStorageRead(in cell, storageTree.Get(in slot));
-                            }
-                        }
-                        catch (MissingTrieNodeException) { }
+                        WarmAccount(sink, in ac);
                     });
                 }
                 catch (OperationCanceledException) { }
@@ -195,6 +154,69 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     accountChanges.Dispose();
                 }
             });
+        }
+
+        private void WarmAccount(IWorldStateScopeProvider.IAsyncBalReaderSink sink, in ReadOnlyAccountChanges ac)
+        {
+            Address address = ac.Address;
+
+            // Swallow MissingTrieNodeException so a partially-synced trie can't blow up
+            // the background warmup task; it'll fault the main read path normally instead.
+            try
+            {
+                StateTree privateStateTree = _scopeProvider.CreateStateTree();
+                privateStateTree.RootHash = _backingStateTree.RootHash;
+
+                Account? account;
+                if (sink.StillNeeded(address, out Account? cached))
+                {
+                    account = privateStateTree.Get(address);
+                    sink.OnAccountRead(address, account);
+                }
+                else
+                {
+                    account = cached;
+                }
+
+                if (account is null) return;
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash) return;
+
+                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> reads = ac.StorageReads;
+                if (changed.Length + reads.Length == 0) return;
+
+                // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
+                // ascending and disjoint, so one merged pass keeps adjacent trie paths
+                // hot across consecutive Get calls.
+                StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                int slotIndex = 0;
+                int readIndex = 0;
+                while (slotIndex < changed.Length || readIndex < reads.Length)
+                {
+                    UInt256 slot;
+                    if (readIndex >= reads.Length)
+                    {
+                        slot = changed[slotIndex++];
+                    }
+                    else
+                    {
+                        slot = reads[readIndex];
+                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
+                        {
+                            slot = changed[slotIndex++];
+                        }
+                        else
+                        {
+                            readIndex++;
+                        }
+                    }
+                    StorageCell cell = new(address, in slot);
+                    if (!sink.StillNeeded(in cell)) continue;
+                    sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                }
+            }
+            catch (MissingTrieNodeException) { }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -217,27 +239,38 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
-            using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
             {
-                if (blockCommitter.TryRequestConcurrencyQuota())
-                {
-                    commitTask.Add(Task.Factory.StartNew((ctx) =>
-                    {
-                        StorageTree st = (StorageTree)ctx;
-                        st.Commit();
-                        blockCommitter.ReturnConcurrencyQuota();
-                    }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-                }
-                else
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
                 {
                     storage.Value.Commit();
                 }
             }
+            else
+            {
+                // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
+                // may make it worst. Always check on mainnet.
+                using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+                {
+                    if (blockCommitter.TryRequestConcurrencyQuota())
+                    {
+                        commitTask.Add(Task.Factory.StartNew((ctx) =>
+                        {
+                            StorageTree st = (StorageTree)ctx;
+                            st.Commit();
+                            blockCommitter.ReturnConcurrencyQuota();
+                        }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
+                    }
+                    else
+                    {
+                        storage.Value.Commit();
+                    }
+                }
 
-            Task.WaitAll(commitTask.AsSpan());
+                Task.WaitAll(commitTask.AsSpan());
+            }
+
             _backingStateTree.Commit();
             _storages.Clear();
         }
