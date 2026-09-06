@@ -557,7 +557,18 @@ public class Startup : IStartup
         {
             while (true)
             {
-                ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
+                ReadResult readResult;
+                try
+                {
+                    readResult = await bodyReader.ReadAsync(cancellationToken);
+                }
+                catch (IOException e) when (e is not Microsoft.AspNetCore.Http.BadHttpRequestException)
+                {
+                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a plain
+                    // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
+                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(e.Message, StatusCodes.Status400BadRequest, e);
+                }
+
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
 
                 long newBytesRead = collectedBody.BytesRead + buffer.Length;

@@ -10,12 +10,20 @@ using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
@@ -173,6 +181,37 @@ public class StartupTests
 
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         AssertErrorCodeResponse(response, ErrorCodes.LimitExceeded);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_BodyReadThrowsIOException_ReturnsBadRequestFramedError()
+    {
+        // Kestrel reports a chunk-size line that overflows Int32 (e.g. "80000000") as a plain
+        // IOException rather than a BadHttpRequestException.
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
+            new ThrowingReadStream(new IOException("Bad chunk size data.")),
+            contentLength: null);
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        AssertErrorCodeResponse(response, ErrorCodes.InvalidRequest);
+    }
+
+    [TestCase("80000000", StatusCodes.Status400BadRequest, TestName = "Chunk size int.MaxValue + 1")]
+    [TestCase("ffffffff", StatusCodes.Status400BadRequest, TestName = "Chunk size uint.MaxValue")]
+    [TestCase("zzz", StatusCodes.Status400BadRequest, TestName = "Non-hex chunk size")]
+    [TestCase("7fffffff", StatusCodes.Status408RequestTimeout, TestName = "Chunk size int.MaxValue never completes")]
+    public async Task Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(string chunkSizeLine, int expectedStatusCode)
+    {
+        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(Startup, CreateUrl());
+        byte[] request = Encoding.ASCII.GetBytes(
+            "POST / HTTP/1.1\r\nHost: h\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+            + chunkSizeLine + "\r\n" + CreateJsonRpcRequest());
+
+        (int statusCode, string body) = await host.SendRawAsync(request);
+
+        Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
+        Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        AssertErrorCodeResponse(body, ErrorCodes.InvalidRequest);
     }
 
     [Test]
@@ -480,17 +519,31 @@ public class StartupTests
         bool isAuthenticated = false)
     {
         byte[] requestBytes = Encoding.UTF8.GetBytes(request);
+        return await ProcessJsonRpcRequestWithStatus(
+            new MemoryStream(requestBytes),
+            setContentLength ? requestBytes.Length : null,
+            maxRequestBodySize,
+            startup,
+            isAuthenticated);
+    }
 
+    private static async Task<(string Response, int StatusCode)> ProcessJsonRpcRequestWithStatus(
+        Stream body,
+        long? contentLength,
+        long? maxRequestBodySize = null,
+        Startup? startup = null,
+        bool isAuthenticated = false)
+    {
         DefaultHttpContext ctx = new()
         {
             Request =
             {
                 Method = "POST",
                 ContentType = "application/json",
-                Body = new MemoryStream(requestBytes)
+                Body = body
             }
         };
-        if (setContentLength) ctx.Request.ContentLength = requestBytes.Length;
+        if (contentLength is not null) ctx.Request.ContentLength = contentLength;
 
         ctx.Request.Headers.Authorization = "Bearer test";
         MemoryStream responseBody = new();
@@ -666,6 +719,132 @@ public class StartupTests
             await writer.FlushAsync(cancellationToken);
             onFlushed?.Invoke();
             writer.Write("]"u8);
+        }
+    }
+
+    private sealed class ThrowingReadStream(Exception exception) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw exception;
+        public override int Read(Span<byte> buffer) => throw exception;
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromException<int>(exception);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromException<int>(exception);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// Real Kestrel listener on a loopback ephemeral port routing every request to
+    /// <see cref="Startup.ProcessJsonRpcRequestCoreAsync"/>, so tests can exercise Kestrel's own
+    /// HTTP/1.1 framing (chunk parsing, body data-rate timeouts) which <c>DefaultHttpContext</c> bypasses.
+    /// </summary>
+    private sealed class KestrelJsonRpcHost(IHost host, int port) : IAsyncDisposable
+    {
+        private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(30);
+
+        public static async Task<KestrelJsonRpcHost> StartAsync(Startup startup, JsonRpcUrl url)
+        {
+            IHost host = new HostBuilder()
+                .ConfigureWebHost(webHost => webHost
+                    .UseKestrel(static options =>
+                    {
+                        options.Listen(IPAddress.Loopback, 0);
+                        // Kestrel requires a grace period above its 1 s heartbeat; keep it short so a body that never completes times out quickly.
+                        options.Limits.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: 240, gracePeriod: TimeSpan.FromSeconds(2));
+                    })
+                    .Configure(app => app.Run(ctx => startup.ProcessJsonRpcRequestCoreAsync(ctx, url))))
+                .Build();
+            await host.StartAsync();
+
+            int port = 0;
+            foreach (string address in host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)
+            {
+                port = new Uri(address).Port;
+            }
+
+            return new KestrelJsonRpcHost(host, port);
+        }
+
+        public async Task<(int StatusCode, string Body)> SendRawAsync(byte[] request)
+        {
+            using TcpClient client = new();
+            await client.ConnectAsync(IPAddress.Loopback, port);
+            using NetworkStream stream = client.GetStream();
+            await stream.WriteAsync(request);
+
+            using CancellationTokenSource cts = new(ResponseTimeout);
+            StringBuilder raw = new();
+            byte[] buffer = new byte[16 * 1024];
+            string? headers = null;
+            string body = string.Empty;
+            while (true)
+            {
+                int read = await stream.ReadAsync(buffer, cts.Token);
+                if (read == 0) break;
+
+                // Latin-1 keeps byte count == char count, so Content-Length arithmetic works on the string.
+                raw.Append(Encoding.Latin1.GetString(buffer, 0, read));
+                string received = raw.ToString();
+                int headersEnd = received.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                if (headersEnd < 0) continue;
+
+                headers = received[..headersEnd];
+                body = received[(headersEnd + 4)..];
+                if (IsBodyComplete(headers, body)) break;
+            }
+
+            Assert.That(headers, Is.Not.Null, $"Incomplete HTTP response: {raw}");
+            int statusCode = int.Parse(headers.Split(' ', 3)[1]);
+            if (IsChunked(headers)) body = Dechunk(body);
+            return (statusCode, body);
+        }
+
+        private static bool IsChunked(string headers) =>
+            headers.Contains("Transfer-Encoding: chunked", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsBodyComplete(string headers, string body)
+        {
+            if (IsChunked(headers)) return body.EndsWith("0\r\n\r\n", StringComparison.Ordinal);
+
+            const string contentLengthHeader = "Content-Length: ";
+            int index = headers.IndexOf(contentLengthHeader, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return false;
+
+            int valueStart = index + contentLengthHeader.Length;
+            int valueEnd = headers.IndexOf("\r\n", valueStart, StringComparison.Ordinal);
+            long contentLength = long.Parse(valueEnd < 0 ? headers[valueStart..] : headers[valueStart..valueEnd]);
+            return body.Length >= contentLength;
+        }
+
+        private static string Dechunk(string chunked)
+        {
+            StringBuilder result = new();
+            int position = 0;
+            while (true)
+            {
+                int lineEnd = chunked.IndexOf("\r\n", position, StringComparison.Ordinal);
+                if (lineEnd < 0) break;
+
+                int size = Convert.ToInt32(chunked[position..lineEnd], 16);
+                if (size == 0) break;
+
+                result.Append(chunked, lineEnd + 2, size);
+                position = lineEnd + 2 + size + 2;
+            }
+
+            return result.ToString();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await host.StopAsync();
+            host.Dispose();
         }
     }
 
