@@ -236,7 +236,7 @@ public class EthereumGasPolicyTests
         spec.IsEip8038Enabled.Returns(eip8038);
         EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
         EthereumGasPolicy specializedGas = dynamicGas;
-        bool expected = ChargeCreate<EvmInstructions.DynamicCreateSpec>(ref dynamicGas, spec, eip8037, create2, words);
+        bool expected = ChargeCreateDynamic(ref dynamicGas, spec, eip8037, create2, words);
         spec.ClearReceivedCalls();
         bool actual = (eip3860, eip8038) switch
         {
@@ -263,6 +263,17 @@ public class EthereumGasPolicyTests
             (true, false) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OnFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
             (false, true) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OffFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
             (false, false) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OffFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
+        };
+
+    /// <summary>The policy's own spec-reading create charge, the oracle the specialized specs must match.</summary>
+    private static bool ChargeCreateDynamic<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec, bool eip8037, bool create2, ulong words)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+        (eip8037, create2) switch
+        {
+            (true, true) => TGasPolicy.ConsumeCreateGas<OnFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
+            (true, false) => TGasPolicy.ConsumeCreateGas<OnFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
+            (false, true) => TGasPolicy.ConsumeCreateGas<OffFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
+            (false, false) => TGasPolicy.ConsumeCreateGas<OffFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
         };
 
     // Locks the ConsumeDataCopyGas contract: the policy computes base access cost + per-word copy
