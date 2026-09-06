@@ -409,6 +409,14 @@ namespace Nethermind.Core.Specs
         /// </summary>
         FrozenSet<AddressAsKey> Precompiles { get; }
 
+        /// <summary>Whether <paramref name="address"/> names a precompile active at this fork.</summary>
+        /// <param name="address">The call target to test.</param>
+        /// <remarks>On the interface rather than beside it because the answer depends on the fork, so only
+        /// the spec can hold a form of it faster than a set probe — a caller memoising one has to re-check
+        /// which fork it belongs to on every call, which costs more than it saves. The default is the probe
+        /// itself, so an implementation that has nothing better keeps today's behaviour.</remarks>
+        bool IsPrecompile(Address address) => address.CouldBePrecompile() && Precompiles.Contains(address);
+
         /// <summary>
         /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>

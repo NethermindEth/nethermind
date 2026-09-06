@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -28,11 +29,18 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
     /// </remarks>
     private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
-#if ZK_EVM
-    // Precompile CodeInfo indexed by precompile address number (0x01..0x100):
-    // replaces a FrozenDictionary hash+probe on every precompile CALL.
-    private readonly CodeInfo[] _localPrecompileArray = new CodeInfo[0x101];
-#endif
+    /// <summary>Precompile <see cref="CodeInfo"/> indexed by precompile number, for the low numbers.</summary>
+    /// <remarks>Replaces a <see cref="FrozenDictionary{TKey, TValue}"/> hash and probe on every precompile
+    /// call with an array index. A number above <see cref="MaxIndexedNumber"/> — a plugin may register one
+    /// far away, as Taiko does at 0x10001 — is left out and served by <see cref="_localPrecompiles"/>
+    /// instead, so the array never has to cover the whole address space to be correct.</remarks>
+    private readonly CodeInfo?[] _localPrecompileArray;
+
+    /// <summary>Highest precompile number the index array covers.</summary>
+    /// <remarks>0x100 is RIP-7212, the highest Ethereum registers, so the array covers every in-tree
+    /// chain's low run in 2 KB — sparsely: mainnet fills 18 of the 257 slots. The cap is what stops a
+    /// distant registration, as Taiko's at 0x10001, from sizing the array to itself.</remarks>
+    private const int MaxIndexedNumber = 0x100;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -44,13 +52,24 @@ public class CodeInfoRepository : ICodeInfoRepository
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _codeInfoLoader = codeInfoLoader;
-#if ZK_EVM
-        foreach (System.Collections.Generic.KeyValuePair<AddressAsKey, CodeInfo> kv in _localPrecompiles)
+        _localPrecompileArray = BuildPrecompileArray(_localPrecompiles);
+    }
+
+    /// <summary>Indexes the precompiles numbered at or below <see cref="MaxIndexedNumber"/>.</summary>
+    /// <param name="precompiles">Every precompile the chain knows.</param>
+    /// <returns>An array holding those within the cap, indexed by number, and nothing else.</returns>
+    /// <remarks>Public so that a decorator answering precompile calls ahead of this repository can index
+    /// its own map the same way; a decorator left probing a dictionary puts the probe back on the path.</remarks>
+    public static CodeInfo?[] BuildPrecompileArray(FrozenDictionary<AddressAsKey, CodeInfo> precompiles)
+    {
+        CodeInfo?[] byIndex = new CodeInfo?[MaxIndexedNumber + 1];
+        foreach (KeyValuePair<AddressAsKey, CodeInfo> entry in precompiles)
         {
-            int idx = ((Address)kv.Key).PrecompileIndexOrNegative();
-            if ((uint)idx < (uint)_localPrecompileArray.Length) _localPrecompileArray[idx] = kv.Value;
+            int index = ((Address)entry.Key).PrecompileIndexOrNegative();
+            if ((uint)index < (uint)byIndex.Length) byIndex[index] = entry.Value;
         }
-#endif
+
+        return byIndex;
     }
 
     public bool IsCodeOverridable => false;
@@ -62,11 +81,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             _worldState.AddAccountRead(codeSource);
             _worldState.RecordAccountAccess(codeSource);
-#if ZK_EVM
-            return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
-#else
-            return _localPrecompiles[codeSource];
-#endif
+            int index = codeSource.PrecompileIndexOrNegative();
+            CodeInfo?[] byIndex = _localPrecompileArray;
+            return (uint)index < (uint)byIndex.Length && byIndex[index] is { } precompile
+                ? precompile
+                : _localPrecompiles[codeSource];
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
@@ -115,8 +117,64 @@ public class ReleaseSpec : IReleaseSpec
     public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
     public bool IsEip7939Enabled { get; set; }
-    private FrozenSet<AddressAsKey>? _precompiles;
-    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+    /// <summary>The fork's precompiles, with the low-numbered ones also held as a bitmask.</summary>
+    /// <param name="Addresses">Every precompile active at this fork.</param>
+    /// <param name="LowMask">Bit <c>n</c> set when precompile number <c>n</c> is active, for numbers
+    /// below 64 — which is all of them on Ethereum bar RIP-7212 at 0x100.</param>
+    /// <remarks>One object so that a single reference publish carries both. Held as two fields, a thread
+    /// racing the lazy initialisation could see the set already assigned and the mask still empty, and
+    /// would then miss every precompile.</remarks>
+    private sealed record PrecompileIndex(FrozenSet<AddressAsKey> Addresses, ulong LowMask);
+
+    private PrecompileIndex? _precompiles;
+
+    private PrecompileIndex Precompiled => _precompiles ??= BuildPrecompileIndex();
+
+    private PrecompileIndex BuildPrecompileIndex()
+    {
+        FrozenSet<AddressAsKey> addresses = BuildPrecompilesCache();
+        ulong lowMask = 0;
+        foreach (AddressAsKey key in addresses)
+        {
+            Address address = key;
+            if (!address.CouldBePrecompile()) ThrowUnreachablePrecompile(address);
+
+            int index = address.PrecompileIndexOrNegative();
+            if ((uint)index < 64) lowMask |= 1UL << index;
+        }
+
+        return new PrecompileIndex(addresses, lowMask);
+    }
+
+    /// <summary>Rejects a registration <see cref="IsPrecompile"/> could never find.</summary>
+    /// <remarks>Membership rejects on address shape before consulting the set, so a precompile with a
+    /// non-zero byte above its number is unreachable: the call would resolve as an ordinary empty account,
+    /// with no exception anywhere and a consensus divergence to show for it. Failing when the set is built
+    /// turns that into a startup failure on the chain that registered it.</remarks>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnreachablePrecompile(Address address) =>
+        throw new InvalidOperationException(
+            $"Precompile {address} has a non-zero byte above its trailing number, so IsPrecompile can never find it; a precompile number must fit 32 bits.");
+
+    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => Precompiled.Addresses;
+
+    /// <inheritdoc cref="IReleaseSpec.IsPrecompile" />
+    /// <remarks>The precompile's number is its address, so membership is a bit test rather than hashing
+    /// and probing twenty bytes. Numbers above the mask fall back to the set, which is what keeps this
+    /// correct for a chain registering one far away — Taiko's sit at 0x10001 and 0x10002.</remarks>
+    public bool IsPrecompile(Address address)
+    {
+        // The shape test is the guard, not the sign of the index: a tail that overflows int also comes
+        // back negative. Testing it first means an ordinary call target — almost all of them — is rejected
+        // on two loads without touching the index or the lazily built set.
+        if (!address.CouldBePrecompile()) return false;
+
+        PrecompileIndex precompiles = Precompiled;
+        int index = address.PrecompileIndexOrNegative();
+        return (uint)index < 64
+            ? (precompiles.LowMask & (1UL << index)) != 0
+            : precompiles.Addresses.Contains(address);
+    }
     private SpecGasCosts? _gasCosts;
     public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
