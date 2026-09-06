@@ -42,45 +42,54 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
     public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
+        CancellationToken token = cts.Token;
 
-        try
+        Task<IOwnedReadOnlyList<(TreePath, byte[])>?>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
+            .Select((_) => Attempt())
+            .ToArray();
+
+        return await Wait.AnyWhere(
+            result => result is not null,
+            concurrentAttempts);
+
+        // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
+        // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
+        async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Attempt()
         {
-            Task<IOwnedReadOnlyList<(TreePath, byte[])>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
-                .Select((_) =>
+            try
+            {
+                return await peerPool.AllocateAndRun(async (peer) =>
                 {
-                    return peerPool.AllocateAndRun(async (peer) =>
-                        {
-                            if (peer == null) return null;
-                            try
-                            {
-                                IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
-                                    fullPath,
-                                    cts.Token);
-                                if (result is not null) return result;
+                    try
+                    {
+                        IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
+                            fullPath,
+                            token);
+                        if (result is not null) return result;
 
-                                if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
-                                peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                            }
-                            catch (Exception ex)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"Error recovering node from {peer} {ex}");
-                                peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
-                            }
-                            return null;
-                        }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
-                })
-                .ToArray();
-
-            return await Wait.AnyWhere(
-                result => result is not null,
-                concurrentAttempts);
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
+                        if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
+                        peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Error recovering node from {peer} {ex}");
+                        peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
+                    }
+                    return null;
+                }, SnapPeerStrategy, AllocationContexts.Snap, token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
+                return null;
+            }
         }
     }
 

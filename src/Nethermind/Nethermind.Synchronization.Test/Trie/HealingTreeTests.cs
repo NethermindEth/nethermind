@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -36,6 +37,8 @@ public class HealingTreeTests
 {
     private static readonly byte[] _rlp = { 3, 4 };
     private static readonly Hash256 _key = Keccak.Compute(_rlp);
+    private static readonly byte[] _code = { 0x60, 0x00, 0x60, 0x00, 0xf3 };
+    private static readonly Address _codeAddress = new(Keccak.Compute("code"));
 
     [Test]
     public void get_state_tree_works()
@@ -77,6 +80,48 @@ public class HealingTreeTests
         Hash256 fullPath = new("1200000000000000000000000000000000000000000000000000000000000000");
 
         recovery_works(successfullyRecovered, addressPath, path, fullPath, CreateHealingStorageTree);
+    }
+
+    [Test]
+    public void code_recovery_works([Values(true, false)] bool successfullyRecovered)
+    {
+        TestMemDb db = new();
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(successfullyRecovered ? _rlp : null));
+
+        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+
+        Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(successfullyRecovered ? _rlp : null));
+        if (successfullyRecovered)
+        {
+            // Recovered code is persisted, so the next read no longer hits the network.
+            Assert.That(db[_key.Bytes], Is.EqualTo(_rlp));
+            Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(_rlp));
+            recovery.Received(1).Recover(_key.ValueHash256, Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Test]
+    public void code_recovery_skips_present_code()
+    {
+        TestMemDb db = new() { [_key.Bytes] = _rlp };
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+
+        Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(_rlp));
+        recovery.DidNotReceiveWithAnyArgs().Recover(default, default);
+    }
+
+    [Test]
+    public void code_recovery_skips_keys_that_cannot_be_a_code_hash()
+    {
+        TestMemDb db = new();
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+
+        Assert.That(codeDb.Get([1, 2, 3]), Is.Null);
+        recovery.DidNotReceiveWithAnyArgs().Recover(default, default);
     }
 
     private void recovery_works<T>(
@@ -172,6 +217,9 @@ public class HealingTreeTests
                 mainWorldState.Set(new StorageCell(storageAddress, (UInt256)i), i.ToBigEndianByteArray());
             }
 
+            mainWorldState.CreateAccount(_codeAddress, 1, 1);
+            mainWorldState.InsertCode(_codeAddress, ValueKeccak.Compute(_code), _code, Cancun.Instance);
+
             mainWorldState.Commit(Cancun.Instance);
 
             // Snap server check for the past 128 block in blocktree explicitly to pass hive test.
@@ -224,6 +272,11 @@ public class HealingTreeTests
             for (int i = 1; i < 100; i++)
             {
                 Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));
+            }
+
+            if (keyScheme == INodeStorage.KeyScheme.HalfPath)
+            {
+                Assert.That(mainWorldState.GetCode(_codeAddress), Is.EqualTo(_code));
             }
         }
     }

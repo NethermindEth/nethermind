@@ -9,7 +9,14 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager logManager) : TrieStoreScopeProvider(trieStore, codeDb, logManager, codeDbIsPersistent: true)
+public class HealingWorldStateScopeProvider(
+    ITrieStore trieStore,
+    IKeyValueStoreWithBatching codeDb,
+    INodeStorage nodeStorage,
+    Lazy<IPathRecovery> recovery,
+    Lazy<ICodeRecovery> codeRecovery,
+    ILogManager logManager)
+    : TrieStoreScopeProvider(trieStore, new HealingCodeDb(codeDb, codeRecovery), logManager, codeDbIsPersistent: true)
 {
     private readonly ILogManager? _logManager = logManager;
     private readonly ITrieStore _trieStore = trieStore;

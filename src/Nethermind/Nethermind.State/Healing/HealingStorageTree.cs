@@ -11,13 +11,16 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
+public sealed class HealingStorageTree(
+    IScopedTrieStore? trieStore,
+    INodeStorage nodeStorage,
+    Hash256 rootHash,
+    ILogManager? logManager,
+    Address address,
+    Hash256 stateRoot,
+    Lazy<IPathRecovery> recovery)
+    : StorageTree(trieStore, rootHash, logManager)
 {
-    private readonly INodeStorage _nodeStorage = nodeStorage;
-    private readonly Address _address = address;
-    private readonly Hash256 _stateRoot = stateRoot;
-    private readonly Lazy<IPathRecovery> _recovery = recovery;
-
     public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
@@ -58,16 +61,16 @@ public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage
 
     private bool Recover(in TreePath missingNodePath, Hash256 hash, Hash256 fullPath)
     {
-        if (_recovery is not null)
+        if (recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = recovery.Value.Recover(stateRoot, Keccak.Compute(address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
-                Hash256 addressHash = _address.ToAccountPath.ToCommitment();
+                Hash256 addressHash = address.ToAccountPath.ToCommitment();
                 foreach ((TreePath, byte[]) kv in rlps)
                 {
                     ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
-                    _nodeStorage.Set(addressHash, kv.Item1, nodeHash, kv.Item2);
+                    nodeStorage.Set(addressHash, kv.Item1, nodeHash, kv.Item2);
                 }
                 return true;
             }

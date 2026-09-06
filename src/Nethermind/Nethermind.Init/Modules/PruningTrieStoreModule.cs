@@ -111,6 +111,7 @@ public class PruningTrieStoreModule : Module
                 new SnapRangeRecovery(peerPool!, logManager),
                 logManager
             ))
+            .AddSingleton<ICodeRecovery, CodeRecovery>()
             ;
 
     private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
