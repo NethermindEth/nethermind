@@ -207,16 +207,20 @@ public class GuestNibblesTests
         Assert.That(roundTripped, Is.EqualTo(bytes));
     }
 
+    /// <remarks>
+    /// The pad is a full word wide and the counts straddle <c>count % 4</c>, so a word store that ran
+    /// one iteration too far is visible at the counts where it would not land on the boundary.
+    /// </remarks>
     [Test]
-    public void Pack_nibbles_writes_no_further_than_count()
+    public void Pack_nibbles_writes_no_further_than_count([Values(1, 3, 4, 5, 6, 7, 8, 9)] int count)
     {
-        byte[] nibbles = Nibble(16, seed: 5);
-        byte[] actual = new byte[9];
-        actual[8] = 0xAA;
+        byte[] nibbles = Nibble(count * 2, seed: 5);
+        byte[] actual = new byte[count + sizeof(uint)];
+        Array.Fill(actual, (byte)0xAA);
 
-        Nibbles.PackNibbles(ref Ref(nibbles), ref Ref(actual), 8);
+        Nibbles.PackNibbles(ref Ref(nibbles), ref Ref(actual), count);
 
-        Assert.That(actual[8], Is.EqualTo((byte)0xAA));
+        Assert.That(actual[count..], Is.All.EqualTo((byte)0xAA));
     }
 
     private static byte[] Nibble(int length, int seed)
