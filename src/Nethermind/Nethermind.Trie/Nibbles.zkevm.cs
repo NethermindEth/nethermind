@@ -10,13 +10,13 @@ namespace Nethermind.Trie
 {
     public static partial class Nibbles
     {
-        private static readonly ulong[] ExpandMasks = [0x0000FFFF0000FFFFUL, 0x00FF00FF00FF00FFUL, 0x000F000F000F000FUL, 0x00000000FFFFFFFFUL];
+        private static readonly ulong[] SwarMasks = [0x0000FFFF0000FFFFUL, 0x00FF00FF00FF00FFUL, 0x000F000F000F000FUL, 0x00000000FFFFFFFFUL];
 
         /// <summary>Expands <paramref name="count"/> bytes into high/low nibble pairs.</summary>
         /// <remarks>
-        /// SWAR: four source bytes spread into 16-bit lanes of one word, then split into the two
-        /// nibble bytes per lane with shared masks and stored as a single 64-bit write. Byte-wide
-        /// stores are among the most expensive memory accesses in the zkVM cost model.
+        /// SWAR: a whole word of source bytes per read, each half spread into 16-bit lanes and split
+        /// into its two nibble bytes with shared masks, one 64-bit store per half. Byte-wide stores are
+        /// among the most expensive memory accesses in the zkVM cost model.
         /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes.
         /// Little-endian only: the lane order reaches memory as ascending nibbles solely because the
         /// 64-bit store writes the low byte first. riscv64 is little-endian; the host keeps the plain
@@ -27,16 +27,14 @@ namespace Nethermind.Trie
         {
             // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
             // constant with a five-instruction sequence.
-            ref ulong masks = ref MemoryMarshal.GetArrayDataReference(ExpandMasks);
+            ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwarMasks);
             ulong m16 = masks;
             ulong m8 = Unsafe.Add(ref masks, 1);
             ulong mNibble = Unsafe.Add(ref masks, 2);
             ulong mLow = Unsafe.Add(ref masks, 3);
             int i = 0;
-            // Eight source bytes per read, expanded as two halves: one load, one loop test and one
-            // address computation instead of two, and the four-byte load the zkVM charges roughly eight
-            // times an aligned word read becomes a word read. The low half must be masked first - the
-            // spread's own mask keeps bits 32..47, which in a whole word hold source bytes four and five.
+            // Eight source bytes per read: the zkVM charges a four-byte load roughly eight times an
+            // aligned word read, and one load, loop test and address computation now serve two spreads.
             for (; i + sizeof(ulong) <= count; i += sizeof(ulong))
             {
                 ulong src = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, i));
@@ -74,7 +72,7 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
         {
-            ref ulong masks = ref MemoryMarshal.GetArrayDataReference(ExpandMasks);
+            ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwarMasks);
             ulong m16 = masks;
             ulong m8 = Unsafe.Add(ref masks, 1);
             int i = 0;

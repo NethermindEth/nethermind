@@ -44,17 +44,13 @@ public class GuestNibblesTests
     }
 
     /// <remarks>
-    /// The SWAR body consumes four bytes at a time, so <c>count % 4</c> selects which scalar tail
-    /// runs. Every high nibble is 0x0 and every low nibble 0xF here, which catches a swapped pair
-    /// that a symmetric byte value would hide.
+    /// The counts walk the word body, the four-byte body and the scalar tail, and each combination of
+    /// them. Every high nibble is 0x0 and every low nibble 0xF here, which catches a swapped pair that
+    /// a symmetric byte value would hide.
     /// </remarks>
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    public void Expand_nibbles_orders_the_pair_high_then_low_across_every_tail(int count)
+    [Test]
+    public void Expand_nibbles_orders_the_pair_high_then_low_across_every_tail(
+        [Values(1, 2, 3, 5, 6, 7, 8, 9, 11, 12, 13, 16)] int count)
     {
         byte[] bytes = new byte[count];
         Array.Fill(bytes, (byte)0x0F);
@@ -69,16 +65,19 @@ public class GuestNibblesTests
         }
     }
 
+    /// <remarks>
+    /// The pad is a full word wide, so the 64-bit store of a body that ran one iteration too far shows
+    /// up at every count, not only where it would overshoot into the next word.
+    /// </remarks>
     [Test]
-    public void Expand_nibbles_writes_nothing_beyond_the_pairs()
+    public void Expand_nibbles_writes_nothing_beyond_the_pairs([Values(1, 3, 4, 5, 7, 8, 9, 12, 16)] int count)
     {
-        const int count = 6;
-        byte[] actual = new byte[(count * 2) + 4];
+        byte[] actual = new byte[(count * 2) + sizeof(ulong)];
         Array.Fill(actual, (byte)0xCC);
 
         Nibbles.ExpandNibbles(ref Ref(Fill(count, seed: 3)), ref Ref(actual), count);
 
-        Assert.That(actual[(count * 2)..], Is.EqualTo(new byte[] { 0xCC, 0xCC, 0xCC, 0xCC }));
+        Assert.That(actual[(count * 2)..], Is.All.EqualTo((byte)0xCC));
     }
 
     [TestCase(0)]
