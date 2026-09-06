@@ -83,6 +83,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int IpcProcessingConcurrency { get; set; } = 1;
     public bool EnablePerMethodMetrics { get; set; } = true;
     public int FiltersTimeout { get; set; } = 900000;
+    public int FiltersMaxQueuedItems { get; set; } = 1_000_000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
