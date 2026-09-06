@@ -32,11 +32,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> InitializeFrame =
-            spec.ClearEmptyAccountWhenTouched ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
+            SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
             spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, CallResult> RunPrecompile =
-            spec.ClearEmptyAccountWhenTouched ? &RunPrecompileCore<OnFlag> : &RunPrecompileCore<OffFlag>;
+            SpecFlags.Eip158(spec) ? &RunPrecompileCore<OnFlag> : &RunPrecompileCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, bool, void> CreditStateGasRefund =
             spec.IsEip8037Enabled ? &CreditStateGasRefundCore<OnFlag> : &CreditStateGasRefundCore<OffFlag>;
     }

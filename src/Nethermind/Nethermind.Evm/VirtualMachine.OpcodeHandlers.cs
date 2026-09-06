@@ -86,7 +86,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.SMOD] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSMod, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.ADDMOD] = OpcodeHandler<Math3Opcode<EvmInstructions.OpAddMod, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MULMOD] = OpcodeHandler<Math3Opcode<EvmInstructions.OpMulMod, TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.EXP] = spec.UseExpDDosProtection
+        lookup[(int)Instruction.EXP] = SpecFlags.Eip160(spec)
             ? OpcodeHandler<ExpOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>()
             : OpcodeHandler<ExpOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SIGNEXTEND] = OpcodeHandler<SignExtendOpcode, TTracingInst, TCancelable>();
