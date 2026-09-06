@@ -642,7 +642,7 @@ public static partial class EvmInstructions
         vm.MetricsCounters.IncrementSLoad();
 
         // Deduct the gas cost for performing an SLOAD.
-        if (!TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.TryConsumeSLoadBaseGas<Eip2929>(ref gas, spec)) return EvmExceptionType.OutOfGas;
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;

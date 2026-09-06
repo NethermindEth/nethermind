@@ -139,6 +139,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual bool TryConsumeNetMeteredSStoreGas(ref TSelf gas, IReleaseSpec spec) =>
         TSelf.UpdateGas(ref gas, spec.GasCosts.NetMeteredSStoreCost);
 
+    /// <summary>Charges the SLOAD base cost for the selected EIP-2929 mode.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryConsumeSLoadBaseGas<Eip2929>(ref TSelf gas, IReleaseSpec spec)
+        where Eip2929 : struct, IFlag => TSelf.UpdateGas<SLoadGasCost>(ref gas, spec);
+
     /// <summary>Charges net-metered storage using the selected EIP-8038 mode.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeNetMeteredSStoreGas<Eip8038>(ref TSelf gas, IReleaseSpec spec)

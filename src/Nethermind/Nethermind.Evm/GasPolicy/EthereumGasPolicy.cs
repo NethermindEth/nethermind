@@ -282,6 +282,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         where Eip8038 : struct, IFlag =>
         UpdateGas(ref gas, Eip8038.IsActive ? GasCostOf.Free : spec.GasCosts.NetMeteredSStoreCost);
 
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumeSLoadBaseGas<Eip2929>(ref EthereumGasPolicy gas, IReleaseSpec spec)
+        where Eip2929 : struct, IFlag =>
+        Eip2929.IsActive || UpdateGas(ref gas, spec.GasCosts.SLoadCost);
+
     private readonly struct StorageMode<Eip2929, Eip8038> : IStorageMode
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag
