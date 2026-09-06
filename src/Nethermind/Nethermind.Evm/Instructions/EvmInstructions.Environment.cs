@@ -556,7 +556,7 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
-        return PushBalance<TTracingInst>(ref stack, in result);
+        return PushBalance<TTracingInst, OnFlag>(ref stack, in result);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -567,7 +567,9 @@ public static partial class EvmInstructions
     /// <summary>
     /// Pushes the balance of the executing account onto the stack.
     /// </summary>
+    /// <remarks>Keep the account lookup separately tierable for profile-guided inlining.</remarks>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
+    /// <typeparam name="TCheck">Whether to check gas and stack capacity; dispatch establishes both when disabled.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
@@ -575,22 +577,25 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/>
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfBalance<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static EvmExceptionType InstructionSelfBalance<TGasPolicy, TTracingInst, TCheck>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where TCheck : struct, IFlag
     {
-        if (!TGasPolicy.UpdateGas<SelfBalanceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (TCheck.IsActive && !TGasPolicy.UpdateGas<SelfBalanceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         // Get balance for currently executing account.
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
-        return PushBalance<TTracingInst>(ref stack, in result);
+        return PushBalance<TTracingInst, TCheck>(ref stack, in result);
     }
 
     // Keep the 32-byte writer out of the already large state-access bodies.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvmExceptionType PushBalance<TTracingInst>(ref EvmStack stack, in UInt256 value)
+    private static EvmExceptionType PushBalance<TTracingInst, TCheck>(ref EvmStack stack, in UInt256 value)
         where TTracingInst : struct, IFlag
-        => stack.PushUInt256<TTracingInst>(in value);
+        where TCheck : struct, IFlag
+        => stack.PushUInt256<TTracingInst, TCheck>(in value);
 
     /// <summary>
     /// Retrieves the code hash of an external account.

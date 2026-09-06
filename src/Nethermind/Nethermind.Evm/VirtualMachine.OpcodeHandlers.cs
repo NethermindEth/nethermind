@@ -946,8 +946,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct SelfBalanceOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody => !TTracingInst.IsActive;
+        public static bool UsesVm => true;
+        public static int StackGrowth => 1;
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.SelfBalanceGasCost>(ref gas);
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSelfBalance<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody ? EvmInstructions.InstructionSelfBalance<TGasPolicy, TTracingInst, OffFlag>(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionSelfBalance<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm);
     }
 
     private readonly struct BlobHashOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
