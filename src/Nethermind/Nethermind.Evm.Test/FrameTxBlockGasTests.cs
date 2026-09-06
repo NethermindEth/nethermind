@@ -325,6 +325,29 @@ public class FrameTxBlockGasTests
         }
     }
 
+    [Test]
+    public void Execute_PayloadFrameClearsAStorageSlot_BlockExecutionGasCountsBeforeTheRefund()
+    {
+        Address clearer = TestItem.AddressE;
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(clearer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        _state.Set(new StorageCell(clearer, (UInt256)0), [1]);
+        _state.Commit(Spec);
+        _state.CommitTree(0);
+
+        TestAllTracerWithOutput tracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, clearer), tracer).TransactionExecuted, Is.True);
+
+        GasConsumed gas = tracer.GasConsumedResult;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.Get(new StorageCell(clearer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+                "the slot was cleared, so the transaction earned a storage refund");
+            Assert.That(gas.EffectiveBlockGas + gas.BlockStateGas, Is.GreaterThan(gas.SpentGas),
+                "EIP-7778: a storage refund lowers the payer charge but not the gas counted toward the block");
+        }
+    }
+
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 

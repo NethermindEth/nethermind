@@ -478,8 +478,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         System.Diagnostics.Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
         ulong gasAfterRefund = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
-        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(gasAfterRefund, blockStateGas, floorGas);
-        ulong spentGas = blockRegularGas + blockStateGas;
+        // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.
+        ulong payerRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(gasAfterRefund, blockStateGas, floorGas);
+        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
+        ulong spentGas = payerRegularGas + blockStateGas;
         // Set explicitly like the regular path: the BlockGasUsed getter otherwise falls back to tx.GasLimit,
         // which for a frame tx is the frame-gas sum rather than the gas spent that block validation sums.
         tx.BlockGasUsed = blockRegularGas;
