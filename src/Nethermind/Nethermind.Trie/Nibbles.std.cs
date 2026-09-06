@@ -23,6 +23,21 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>Packs <c>2 * count</c> nibble bytes, high nibble first, into <paramref name="count"/> bytes.</summary>
+        /// <remarks>Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes, each in
+        /// <c>0..15</c>, and that <paramref name="bytes"/> has room for <paramref name="count"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
+        {
+            // Raw refs rather than spans, as in ExpandNibbles: the doubled source index defeats the
+            // JIT's bounds-check elimination.
+            for (int i = 0; i < count; i++)
+            {
+                Unsafe.Add(ref bytes, i) =
+                    (byte)((Unsafe.Add(ref nibbles, i * 2) << 4) | Unsafe.Add(ref nibbles, i * 2 + 1));
+            }
+        }
+
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)

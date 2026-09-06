@@ -63,10 +63,12 @@ public sealed class HistoryWindowPruner(
     private bool _started;
 
     /// <summary>Called by the startup step, never the constructor, so resolving the singleton has no side
-    /// effects. No-op when retention is unbounded.</summary>
+    /// effects. No-op unless <c>HistoryRetention</c> is <c>Rolling</c> - deliberately narrower than
+    /// <c>IsHistoryWindowed()</c>, because this loop advances the floor with the watermark, which only a rolling
+    /// window wants; a mode that fixes its floor must not inherit it.</summary>
     public void Start()
     {
-        if (config.HistoryRetentionBlocks == 0 || _started) return;
+        if (config.HistoryRetention != HistoryRetentionMode.Rolling || _started) return;
         _started = true;
         _wakeSignal.Release();
         writer.WatermarkAdvanced += OnWatermarkAdvanced;
@@ -86,9 +88,10 @@ public sealed class HistoryWindowPruner(
         if (configured.Count > 0 && !rowFormat.IsV3)
         {
             throw new InvalidConfigurationException(
-                "FlatDb.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
-                "(HistoryRetentionBlocks is 0). Per-contract slices require the v3 pre-value format used by " +
-                "windowed retention; unset HistorySliceAddresses or set HistoryRetentionBlocks.", -1);
+                "FlatDb.HistorySliceAddresses is set, but flat history is not using the windowed (v3) row format: " +
+                "HistoryRetention is None and the database holds no windowed history. Per-contract slices need that " +
+                "format; unset HistorySliceAddresses, or set HistoryRetention=Rolling (with a HistoryRetentionBlocks " +
+                "window size) or SinceBlock on a fresh flatHistory database.", -1);
         }
 
         foreach (SliceScopeEntry entry in configured)

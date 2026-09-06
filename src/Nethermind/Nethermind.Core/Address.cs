@@ -227,14 +227,18 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode() =>
-#if ZK_EVM
-                // Always 20 bytes, so skip the length-dispatching FastHash and use the
-                // dedicated 20-byte hasher — the dominant Dictionary/FrozenSet probe on zkVM.
-                unchecked((int)GetHashCode64());
-#else
-                Bytes.FastHash();
-#endif
+        public override int GetHashCode() => GetHashCodeNonVirtual();
+
+        /// <summary>Returns exactly what <see cref="GetHashCode"/> returns, without a virtual call.</summary>
+        /// <remarks>
+        /// ILC lowers a <c>callvirt</c> on this sealed type's <see cref="GetHashCode"/> override to a vtable
+        /// dispatch rather than resolving it statically, so a caller on a hash-table probe path — chiefly
+        /// <see cref="AddressAsKey.GetHashCode"/> — pays an out-of-line call it cannot inline through.
+        /// An address is always 20 bytes, so the body skips the length-dispatching <see cref="SpanExtensions.FastHash"/>
+        /// for the dedicated 20-byte hasher.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -369,7 +373,9 @@ namespace Nethermind.Core
         public static implicit operator AddressAsKey(Address key) => new(key);
 
         public bool Equals(AddressAsKey other) => Equals(in other);
-        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode() => _key?.GetHashCodeNonVirtual() ?? 0;
         public override string ToString() => _key?.ToString() ?? "<null>";
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
