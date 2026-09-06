@@ -3,6 +3,8 @@
 
 using System.Collections.Frozen;
 using Nethermind.Core;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -26,6 +28,44 @@ public class CodeInfoRepositoryTests
     {
         _releaseSpec = ReleaseSpecSubstitute.Create();
         _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
+    }
+
+    /// <summary>Precompile numbers a chain might register, including ones far above the dense run.</summary>
+    /// <remarks>Ethereum's stop at 0x100 (RIP-7212), which is what the index array is sized against, but a
+    /// plugin may register anywhere: Taiko's L1Sload and L1StaticCall sit at 0x10001 and 0x10002. Indexing
+    /// by precompile number is only sound if those are still found, so each of these has to resolve.
+    /// 0 is included because it is a valid index but not a valid precompile.</remarks>
+    private static readonly int[] PrecompileNumbers = [1, 2, 9, 0x11, 0x100, 0x101, 0x10001, 0x10002];
+
+    [TestCaseSource(nameof(PrecompileNumbers))]
+    public void Precompile_is_resolved_whatever_its_number(int number)
+    {
+        Address address = Address.FromNumber((UInt256)(ulong)number);
+        CodeInfo expected = new(Substitute.For<IPrecompile>());
+
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [Address.FromNumber(UInt256.One)] = new(Substitute.For<IPrecompile>()),
+            [address] = expected,
+        }.ToFrozenDictionary());
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.Precompiles.Returns(new AddressAsKey[] { Address.FromNumber(UInt256.One), address }.ToFrozenSet());
+
+        CodeInfoRepository repository = new(Substitute.For<IWorldState>(), provider);
+
+        Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
+    }
+
+    [Test]
+    public void Ordinary_address_is_not_taken_for_a_precompile()
+    {
+        // Sixteen leading zero bytes is what makes an address a candidate; this has none.
+        Address ordinary = TestItem.AddressA;
+
+        Assert.That(ordinary.PrecompileIndexOrNegative(), Is.Negative);
+        Assert.That(_releaseSpec.IsPrecompile(ordinary), Is.False);
     }
 
     public static IEnumerable<TestCaseData> NotDelegationCodeCases()

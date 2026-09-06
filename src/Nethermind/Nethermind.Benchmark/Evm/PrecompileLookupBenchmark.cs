@@ -115,6 +115,29 @@ public class PrecompileLookupBenchmark
         return found;
     }
 
+    /// <summary>Reject on address shape first, and only then consult the set.</summary>
+    /// <remarks>Needs no per-spec state and no bound on the precompile number, so it works for a chain
+    /// whose plugin registers one far above the dense run.</remarks>
+    [Benchmark]
+    public int Membership_ShapeGuardThenFrozenSet()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (CouldBePrecompile(address) && _set.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>Whether the address could name a precompile at all: sixteen leading zero bytes.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CouldBePrecompile(Address address)
+    {
+        ref byte b = ref Unsafe.AsRef(in address.Bytes[0]);
+        return (Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) == 0;
+    }
+
     [Benchmark]
     public int Lookup_FrozenDictionary()
     {
