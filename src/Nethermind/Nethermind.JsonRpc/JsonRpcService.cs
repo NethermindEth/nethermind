@@ -298,7 +298,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         catch (Exception e)
         {
             ReturnParameters(parameters, returnParametersToPool);
-            if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
+            // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
+            // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
+            if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
             string message = GetSafePublicMessage(e) ?? "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }

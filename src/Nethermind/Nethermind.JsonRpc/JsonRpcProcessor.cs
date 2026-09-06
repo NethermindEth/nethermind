@@ -1082,7 +1082,22 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (responseError?.SuppressWarning == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}");
+                // A request error is the caller's fault and costs one unauthenticated request, so it must not be able
+                // to dictate the operator's WARN volume (#13156); the line stays available at Debug. Server-side
+                // codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN.
+                bool requestError = ErrorCodes.IsRequestError(responseError.Code);
+                if (requestError ? _logger.IsDebug : _logger.IsWarn)
+                {
+                    string message = $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";
+                    if (requestError)
+                    {
+                        _logger.Debug(message);
+                    }
+                    else
+                    {
+                        _logger.Warn(message);
+                    }
+                }
                 if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {SerializeResponseForDiagnostics(response)}");
             }
             Metrics.JsonRpcErrors++;

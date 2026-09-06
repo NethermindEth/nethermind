@@ -175,5 +175,13 @@ namespace Nethermind.JsonRpc
         /// Error during EVM execution
         /// </summary>
         public const int VMError = -32015;
+
+        /// <summary>
+        /// True for the JSON-RPC 2.0 pre-defined request errors (<see cref="ParseError"/>, <see cref="InvalidRequest"/>,
+        /// <see cref="MethodNotFound"/>, <see cref="InvalidParams"/>): the request itself was wrong, which is the
+        /// caller's fault rather than a condition of this node.
+        /// </summary>
+        public static bool IsRequestError(int code) =>
+            code is ParseError or InvalidRequest or MethodNotFound or InvalidParams;
     }
 }

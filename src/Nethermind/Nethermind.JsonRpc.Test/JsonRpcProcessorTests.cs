@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -66,6 +67,44 @@ public class JsonRpcProcessorTests
         new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
+
+    private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+
+    // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
+    // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
+    [TestCase(ErrorCodes.ParseError, false, TestName = "ParseError (-32700) is not WARN")]
+    [TestCase(ErrorCodes.InvalidRequest, false, TestName = "InvalidRequest (-32600) is not WARN")]
+    [TestCase(ErrorCodes.MethodNotFound, false, TestName = "MethodNotFound (-32601) is not WARN")]
+    [TestCase(ErrorCodes.InvalidParams, false, TestName = "InvalidParams (-32602) is not WARN")]
+    [TestCase(ErrorCodes.InternalError, true, TestName = "InternalError (-32603) keeps WARN")]
+    [TestCase(ErrorCodes.Default, true, TestName = "Default (-32000) keeps WARN")]
+    [TestCase(ErrorCodes.LimitExceeded, true, TestName = "LimitExceeded (-32005) without suppression keeps WARN")]
+    public async Task Error_response_log_level_follows_error_class(int errorCode, bool expectWarn)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = errorCode, Message = "test message" }
+        });
+        string request = CreateRequest("1", "eth_getBalance", """["0x1234","latest"]""");
+
+        // Warn/Error-only capture: anything recorded here would be one stdout line per request on a default node.
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, CreateHttpContext());
+
+        // Full capture: the message must still be available at Debug for operators debugging a client.
+        TestLogger debugLogger = new();
+        await ProcessAsync(CreateProcessorWithLogger(service, debugLogger), request, CreateHttpContext());
+
+        string expectedFragment = $"Code: {errorCode} Message: test message";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warnLogger.LogList.Where(l => l.Contains(expectedFragment)), expectWarn ? Is.Not.Empty : Is.Empty,
+                $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+            Assert.That(debugLogger.LogList.Where(l => l.Contains(expectedFragment)), Is.Not.Empty);
+        }
+    }
 
     [Test]
     public async Task Http_engine_newPayloadV4_keeps_envelope_and_params_on_direct_utf8_path()
