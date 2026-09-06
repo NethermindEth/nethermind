@@ -33,7 +33,8 @@ public class BlobsBundleV2
 
             foreach (Transaction? tx in block.Transactions)
             {
-                if (!tx.SupportsBlobs)
+                // Must match the type-agnostic GetBlobCount sizing above, or the bundle silently keeps nulls.
+                if (!tx.CarriesBlobs)
                 {
                     continue;
                 }

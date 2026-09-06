@@ -481,6 +481,21 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
+    [Test]
+    public void GetPrecompile_ForPrecompileAddress_SharesCachedInstanceWithoutRecordingAccountRead()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        IPrecompileProvider provider = CreateProvider((PrecompileAddress, new TestPrecompile(supportsCaching: true)));
+        PrecompileCachedCodeInfoRepository repository = new(worldState, provider, Substitute.For<ICodeInfoRepository>(), CreateCaches(provider));
+        IReleaseSpec spec = CreateSpecWithPrecompiles(PrecompileAddress);
+
+        IPrecompile? resolved = repository.GetPrecompile(PrecompileAddress, spec);
+
+        worldState.DidNotReceive().AddAccountRead(Arg.Any<Address>());
+        Assert.That(resolved, Is.SameAs(repository.GetCachedCodeInfo(PrecompileAddress, false, spec, out _).Precompile),
+            "frame-tx signature validation must share the block-cache-decorated instance with EVM calls");
+    }
+
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;

@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -48,6 +49,9 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
         _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        _inner.GetPrecompile(codeSource, vmSpec);
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);

@@ -11,7 +11,8 @@ public sealed class HeadTxValidator() :
     internal static readonly ITxValidator[] Validators = [
         ReleaseSpecTxValidator.Instance,
         MaxBlobCountBlobTxValidator.Instance,
-        GasLimitCapTxValidator.Instance,
-        MempoolBlobTxProofVersionValidator.Instance
+        new ExceptFrameTxValidator(GasLimitCapTxValidator.Instance),
+        MempoolBlobTxProofVersionValidator.Instance,
+        FrameTxNonceKeysTxValidator.Instance
     ];
 }

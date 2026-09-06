@@ -14,7 +14,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
 {
     private const byte ConsensusEncodingSizeFormatVersion = 1;
 
-    private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx, Address? paymaster) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -29,11 +29,46 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
                + Rlp.LengthOf(GetConsensusEncodingSize(tx))
-               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion);
+               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion)
+               + Rlp.LengthOf((byte)tx.Type)
+               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
+               + TrailingLength(tx, paymaster);
+
+    /// <summary>
+    /// Length of the single optional trailing group, or zero when the record needs none.
+    /// </summary>
+    /// <remarks>
+    /// One group rather than two adjacent optional sequences: RLP cannot tell a 20-byte integer from an
+    /// address, so a two-key <c>nonce_keys</c> list is byte-identical to a payer pair.
+    /// </remarks>
+    private static int TrailingLength(Transaction tx, Address? paymaster)
+    {
+        int content = TrailingContentLength(tx, paymaster);
+        return content == 0
+            ? tx.NonceKeys is { } keysOnly ? FrameTxNonceCalldata.KeysLength(keysOnly) : 0
+            : Rlp.LengthOfSequence(content);
+    }
+
+    /// <summary>Content length of the grouped form, or zero for a record that needs neither payer nor paymaster.</summary>
+    /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
+    /// disagree and over- or under-fill the buffer.</remarks>
+    private static int TrailingContentLength(Transaction tx, Address? paymaster)
+    {
+        if (tx.PayerAddress is null && paymaster is null) return 0;
+
+        // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
+        // nonce_keys list a groupless record still writes, whose first element is a scalar.
+        return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
+               + Rlp.LengthOf(tx.PayerAddress)
+               + Rlp.LengthOf(tx.PayerExposure ?? default)
+               + (paymaster is null ? 0 : Rlp.LengthOf(paymaster));
+    }
 
     public static byte[] Encode(Transaction tx)
     {
-        byte[] bytes = new byte[GetLength(tx)];
+        // Read once through the pool's own key, so the record and the cap's ledger cannot disagree on the sponsor.
+        Address? paymaster = PendingPaymasterCache.KeyFor(tx);
+        byte[] bytes = new byte[GetLength(tx, paymaster)];
         RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
@@ -52,8 +87,41 @@ public class LightTxDecoder : TxDecoder<Transaction>
         EncodeAvailableCellMask(tx, ref writer);
         writer.Encode(GetConsensusEncodingSize(tx));
         writer.Encode(ConsensusEncodingSizeFormatVersion);
+        // Appended after the blob fields so records written before it still decode, defaulting to TxType.Blob.
+        writer.Encode((byte)tx.Type);
+        // Expiry needs the deadline after a reload, where the frames that carried it are gone.
+        if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
+        // One optional trailing group, a sequence so the decoder tells it from the expiry deadline that only
+        // sometimes precedes it. Written whole, so the keys list is present even when empty.
+        int trailingContent = TrailingContentLength(tx, paymaster);
+        if (trailingContent == 0)
+        {
+            // Nothing to group: a keys-only record keeps the exact bytes every earlier build writes.
+            if (tx.NonceKeys is { } keysOnly) FrameTxNonceCalldata.EncodeKeys(keysOnly, ref writer);
+        }
+        else
+        {
+            writer.StartSequence(trailingContent);
+            if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
+            else writer.StartSequence(0);
+
+            // Null when only the paymaster needs the group: a record admitted without simulation names a
+            // sponsor the cap counts, but has no resolved payer to reserve against.
+            writer.Encode(tx.PayerAddress);
+            // A payer that never reached the exposure gate holds no reservation, which this record does not
+            // distinguish from a zero one: reserving, releasing and restoring zero are all no-ops.
+            writer.Encode(tx.PayerExposure ?? default);
+            if (paymaster is not null) writer.Encode(paymaster);
+        }
 
         return bytes;
+    }
+
+    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
+    private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
+    {
+        UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
+        return keys.Length == 0 ? null : keys;
     }
 
     public static LightTransaction Decode(byte[] data)
@@ -72,8 +140,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         ulong poolIndex = ctx.DecodeULong();
         int size = ctx.DecodePositiveInt();
 
-        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 5);
-        if (optionalFieldCount > 4)
+        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 8);
+        if (optionalFieldCount > 7)
         {
             throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
         }
@@ -88,6 +156,43 @@ public class LightTxDecoder : TxDecoder<Transaction>
         int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
             ? persistedEncodingSize
             : 0;
+        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
+        // The deadline is the only optional scalar left, so a sequence here means the keys follow instead.
+        ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
+        UInt256[]? nonceKeys = null;
+        Address? payerAddress = null;
+        UInt256? payerExposure = null;
+        Address? paymaster = null;
+        if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
+        {
+            // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
+            // always opens with the keys list. That is total, since a key can never encode as a sequence.
+            int groupStart = ctx.Position;
+            int trailingLength = ctx.ReadSequenceLength();
+            int end = ctx.Position + trailingLength;
+            // Length-checked first: an empty group is a legacy empty list, and IsSequenceNext is an
+            // unguarded index that would read past the buffer for it.
+            if (trailingLength > 0 && ctx.IsSequenceNext())
+            {
+                nonceKeys = DecodeKeysOrNull(ref ctx);
+                // Nullable: a group written for the paymaster alone leaves this slot empty.
+                if (ctx.Position < end) payerAddress = ctx.DecodeAddressOrNull();
+                if (ctx.Position < end) payerExposure = ctx.DecodeUInt256();
+                // Nullable for the same reason as the payer: once a later slot exists, an absent paymaster
+                // is written as the placeholder rather than omitted.
+                if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
+                // Anything a later build appended is skipped, so a new slot costs this one that field
+                // rather than making every grouped record unreadable.
+                ctx.Position = end;
+            }
+            else
+            {
+                // Rewound so the same decoder reads the flat list, whose header this group's was.
+                ctx.Position = groupStart;
+                nonceKeys = DecodeKeysOrNull(ref ctx);
+            }
+        }
+
         ctx.Check(data.Length);
 
         return new LightTransaction(
@@ -105,7 +210,13 @@ public class LightTxDecoder : TxDecoder<Transaction>
             size,
             proofVersion,
             blobCellMask,
-            consensusEncodingSize);
+            consensusEncodingSize,
+            type,
+            expiryDeadline,
+            nonceKeys,
+            payerAddress,
+            payerExposure,
+            paymaster);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)

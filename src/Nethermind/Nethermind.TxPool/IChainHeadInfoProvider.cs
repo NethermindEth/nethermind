@@ -17,6 +17,9 @@ namespace Nethermind.TxPool
 
         ulong HeadNumber { get; }
 
+        /// <summary>Timestamp (Unix seconds) of the current chain head.</summary>
+        ulong HeadTimestamp { get; }
+
         ulong? BlockGasLimit { get; }
 
         UInt256 CurrentBaseFee { get; }

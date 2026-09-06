@@ -17,4 +17,9 @@ public static class RpcTransactionErrors
 
     public static string MaxFeePerGasSmallerThanMaxPriorityFeePerGas(UInt256? maxFeePerGas, UInt256? maxPriorityFeePerGas)
         => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
+
+    public static string NullEntryIn(string field) => $"{field} must not contain a null entry";
+
+    public static string FrameGasAboveCap(ulong totalGasLimit, ulong gasCap)
+        => $"frame gas limits ({totalGasLimit}) exceed the gas cap ({gasCap})";
 }

@@ -33,7 +33,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         {
             try
             {
-                transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
+                DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
             }
             catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
@@ -51,6 +51,9 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
             CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
         }
     }
+
+    protected virtual void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+        transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
 
     protected static void CalculateHash(Transaction transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext)
     {

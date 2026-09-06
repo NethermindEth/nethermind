@@ -32,6 +32,9 @@ namespace Nethermind.Blockchain
 
         public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out _);
 
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell) =>
+            _stateReader.GetStorage(BaseBlock, storageCell.Address, storageCell.Index);
+
         [SkipLocalsInit]
         public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
     }

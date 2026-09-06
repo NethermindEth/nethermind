@@ -50,6 +50,9 @@ public class KeyedNonceManagerTests
     }
 
     [TestCase(8)]
+    [TestCase(9)]
+    [TestCase(12)]
+    [TestCase(15)]
     [TestCase(Eip8250Constants.MaxNonceKeys)]
     public void Batched_storage_indices_match_individual_slots(int count)
     {
@@ -64,10 +67,11 @@ public class KeyedNonceManagerTests
         }
     }
 
-    [Test]
-    public void Batched_nonce_set_is_consumed_and_validated()
+    [TestCase(12)]
+    [TestCase(Eip8250Constants.MaxNonceKeys)]
+    public void Batched_nonce_set_is_consumed_and_validated(int count)
     {
-        UInt256[] keys = StrictlyIncreasing(Eip8250Constants.MaxNonceKeys);
+        UInt256[] keys = StrictlyIncreasing(count);
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, keys, nonceSeq: 41);
 

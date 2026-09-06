@@ -255,6 +255,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.RevertOpcodeEnabled)
             lookup[(int)Instruction.REVERT] = TerminatingOpcodeHandler<RevertOpcode, TTracingInst, TCancelable>();
 
+        if (spec.IsEip8141Enabled)
+        {
+            lookup[(int)Instruction.APPROVE] = OpcodeHandler<ApproveOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.TXPARAM] = (spec.IsEip8250Enabled, spec.IsEip8272Enabled) switch
+            {
+                (true, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OnFlag>, TTracingInst, TCancelable>(),
+                (true, false) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OffFlag>, TTracingInst, TCancelable>(),
+                (false, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OnFlag>, TTracingInst, TCancelable>(),
+                _ => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OffFlag>, TTracingInst, TCancelable>(),
+            };
+            lookup[(int)Instruction.FRAMEDATALOAD] = OpcodeHandler<FrameDataLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.FRAMEDATACOPY] = OpcodeHandler<FrameDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.FRAMEPARAM] = OpcodeHandler<FrameParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.SIGPARAM] = OpcodeHandler<SigParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.SIGDATACOPY] = OpcodeHandler<SigDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        }
+        if (spec.IsEip7906Enabled)
+        {
+            lookup[(int)Instruction.TXTRACE] = OpcodeHandler<TxTraceOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.TXDIFF] = OpcodeHandler<TxDiffOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.EVENTDATACOPY] = OpcodeHandler<EventDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        }
+        if (spec.IsEip8141Enabled && spec.IsEip8272Enabled)
+        {
+            lookup[(int)Instruction.RECENTROOTREFLOAD] = OpcodeHandler<RecentRootRefLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        }
+
         lookup[(int)Instruction.INVALID] = TerminatingOpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
 
         return lookup;

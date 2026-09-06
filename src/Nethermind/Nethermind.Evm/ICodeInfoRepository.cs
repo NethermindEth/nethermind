@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
@@ -14,6 +15,10 @@ public interface ICodeInfoRepository
     /// <remarks>Wrapping implementations must forward this, else the fast path is wrongly taken under overrides.</remarks>
     bool IsCodeOverridable { get; }
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
+
+    /// <summary>Resolves the precompile at <paramref name="codeSource"/>, or null when <paramref name="vmSpec"/> enables none there.</summary>
+    /// <remarks>Records no account access, so unlike <see cref="GetCachedCodeInfo"/> it creates no EIP-7928 entry.</remarks>
+    IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);

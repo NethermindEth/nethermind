@@ -45,8 +45,10 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
+    /// <summary>Reported when the gas required exceeds the transaction and block gas limits, or the gas limit cap.</summary>
+    public const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
+    private const string FrameTxGasLimitOverflows = "frame transaction gas limit overflows";
 
     public ulong Estimate(
         Transaction tx,
@@ -74,6 +76,9 @@ public class GasEstimator(
         IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
         tx.SenderAddress ??= Address.Zero;
 
+        if (tx.SupportsFrames)
+            return EstimateFrameTx(tx, header, spec);
+
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
 
         if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
@@ -92,6 +97,24 @@ public class GasEstimator(
         EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), available, feeCap);
 
         return BinarySearchEstimate(tx, header, spec, gasTracer, bounds, errorMargin, token);
+    }
+
+    /// <summary>The gas an EIP-8141 frame transaction reserves, or a failure when that budget is unestimable.</summary>
+    /// <remarks>There is nothing to binary-search: the budget is fixed by the signed per-frame limits. The
+    /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.</remarks>
+    private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
+    {
+        // The budget below is computable from an empty or oversized frame list, so a count no valid
+        // transaction can carry is reported rather than priced.
+        if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
+            return EstimationResult.Failure(FrameTxValidation.MissingFrames);
+
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
+            return EstimationResult.Failure(FrameTxGasLimitOverflows);
+
+        return maxGas > Math.Min(header.GasLimit, spec.GetTxGasLimitCap())
+            ? EstimationResult.Failure(CannotEstimateGasExceeded)
+            : EstimationResult.Success(maxGas);
     }
 
     private static EstimationResult? ValidateErrorMargin(ulong errorMargin) =>

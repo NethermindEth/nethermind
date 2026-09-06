@@ -29,6 +29,11 @@ public class VmState<TGasPolicy> : IDisposable
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
     public long StateGasRefundAdvanced;
+    /// <summary>
+    /// EIP-8141 outstanding-charge/receipt journal position at this call frame's entry; the same
+    /// boundary that restores world state on revert/halt restores the journal to here.
+    /// </summary>
+    public int StateGasJournalCheckpoint;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -65,7 +70,8 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionType executionType,
         ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        bool isStatic = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -74,7 +80,7 @@ public class VmState<TGasPolicy> : IDisposable
             outputLength: 0L,
             executionType: executionType,
             isTopLevel: true,
-            isStatic: false,
+            isStatic: isStatic,
             isCreateOnPreExistingAccount: false,
             isCreateStateGasCharged: false,
             newAccountCharged: false,
@@ -99,7 +105,8 @@ public class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot,
         bool isTopLevel = false,
         bool newAccountCharged = false,
-        bool isCreateStateGasCharged = false)
+        bool isCreateStateGasCharged = false,
+        int stateGasJournalCheckpoint = 0)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -114,7 +121,8 @@ public class VmState<TGasPolicy> : IDisposable
             newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
-            snapshot: snapshot);
+            snapshot: snapshot,
+            stateGasJournalCheckpoint: stateGasJournalCheckpoint);
         return state;
     }
 
@@ -137,7 +145,8 @@ public class VmState<TGasPolicy> : IDisposable
         bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        int stateGasJournalCheckpoint = 0)
     {
         _env = env;
         _snapshot = snapshot;
@@ -157,6 +166,7 @@ public class VmState<TGasPolicy> : IDisposable
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
         StateGasRefundAdvanced = 0;
+        StateGasJournalCheckpoint = stateGasJournalCheckpoint;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;

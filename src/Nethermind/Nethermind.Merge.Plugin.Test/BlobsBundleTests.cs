@@ -1,0 +1,83 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Linq;
+using CkzgLib;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data;
+using NUnit.Framework;
+
+namespace Nethermind.Merge.Plugin.Test;
+
+// The header counts a type-6's blob gas, so the bundle has to publish its blobs alongside type-3's.
+[TestFixture]
+public class BlobsBundleTests
+{
+    // Symmetry only: ResolveBlob declines a V0 wrapper, so this shape cannot reach a produced block.
+    [Test]
+    public void BlobsBundleV1_includes_blob_carrying_frame_tx()
+    {
+        Transaction frameBlobTx = BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V0);
+        Transaction type3Tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(blobCount: 1).SignedAndResolved().TestObject;
+        Block block = Build.A.Block.WithTransactions(type3Tx, frameBlobTx).TestObject;
+
+        BlobsBundleV1 bundle = new(block);
+
+        // Arrays are sized from the type-agnostic blob count, so only non-null entries prove the frame tx was copied in.
+        Assert.That(bundle.Blobs, Has.Length.EqualTo(3).And.None.Null);
+        Assert.That(bundle.Commitments, Has.Length.EqualTo(3).And.None.Null);
+        Assert.That(bundle.Proofs, Has.Length.EqualTo(3).And.None.Null);
+    }
+
+    [Test]
+    public void BlobsBundleV2_includes_blob_carrying_frame_tx()
+    {
+        Transaction frameBlobTx = BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1);
+        Block block = Build.A.Block.WithTransactions(frameBlobTx).TestObject;
+
+        BlobsBundleV2 bundle = new(block);
+
+        Assert.That(bundle.Blobs, Has.Length.EqualTo(2).And.None.Null);
+        Assert.That(bundle.Commitments, Has.Length.EqualTo(2).And.None.Null);
+        Assert.That(bundle.Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob).And.None.Null);
+    }
+
+    private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
+    {
+        if (!KzgPolynomialCommitments.IsInitialized)
+        {
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+        }
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([.. Enumerable.Range(1, blobCount).Select(i =>
+        {
+            byte[] blob = new byte[Ckzg.BytesPerBlob];
+            blob[0] = (byte)(i % 256);
+            return blob;
+        })]);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            GasLimit = 1_000_000,
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+            MaxFeePerBlobGas = 1,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
+            NetworkWrapper = wrapper,
+        };
+    }
+}

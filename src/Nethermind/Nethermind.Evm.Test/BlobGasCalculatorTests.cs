@@ -53,6 +53,40 @@ public class BlobGasCalculatorTests
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
     }
 
+    [Test]
+    public void CalculateBlobGas_counts_blob_carrying_frame_txs_alongside_type3()
+    {
+        Transaction type3 = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(2).TestObject;
+        Transaction frameWithBlobs = Build.A.Transaction.WithType(TxType.FrameTx).WithBlobVersionedHashes(3).TestObject;
+        Transaction frameNoBlobs = Build.A.Transaction.WithType(TxType.FrameTx).TestObject;
+        Transaction legacy = Build.A.Transaction.TestObject;
+
+        ulong blobGas = BlobGasCalculator.CalculateBlobGas([type3, frameWithBlobs, frameNoBlobs, legacy]);
+
+        Assert.That(blobGas, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2 + 3)));
+    }
+
+    // Otherwise the receipt reports no blob gas while the block budget still meters it.
+    [Test]
+    public void GetGasInfo_reports_blob_gas_for_blob_carrying_frame_tx()
+    {
+        IReleaseSpec spec = Cancun.Instance;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).WithBaseFee(1).TestObject;
+        Transaction frameBlobTx = Build.A.Transaction
+            .WithType(TxType.FrameTx)
+            .WithBlobVersionedHashes(2)
+            .WithMaxFeePerBlobGas(1000)
+            .TestObject;
+
+        TxGasInfo gasInfo = frameBlobTx.GetGasInfo(spec, header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasInfo.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2)));
+            Assert.That(gasInfo.BlobGasPrice, Is.Not.Null);
+        }
+    }
+
     private static IEnumerable<TestCaseData> GenerateTestCases()
     {
         (IReleaseSpec Instance, bool)[] specs =

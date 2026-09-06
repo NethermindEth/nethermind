@@ -31,7 +31,7 @@ public class FlatStateReader(
         return false;
     }
 
-    public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+    public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, scoped in UInt256 index)
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];

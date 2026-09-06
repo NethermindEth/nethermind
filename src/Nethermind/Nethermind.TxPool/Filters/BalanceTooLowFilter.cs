@@ -36,7 +36,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
 
             BucketBalanceState bucketBalanceState = new(account.Nonce, tx.Nonce);
-            TxDistinctSortedPool pool = tx.SupportsBlobs ? _blobTxs : _txs;
+            TxDistinctSortedPool pool = tx.CarriesBlobs ? _blobTxs : _txs;
             // tx.SenderAddress! as unknownSenderFilter will run before this one
             pool.VisitBucket(tx.SenderAddress!, ref bucketBalanceState, static (Transaction otherTx, ref BucketBalanceState bucketState) =>
             {

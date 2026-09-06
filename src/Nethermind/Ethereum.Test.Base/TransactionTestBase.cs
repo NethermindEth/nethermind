@@ -29,7 +29,7 @@ public abstract class TransactionTestBase
         IReleaseSpec spec;
         try
         {
-            spec = SpecNameParser.Parse(test.Fork);
+            spec = SpecNameParser.Parse(ForkAliases.Resolve(test.Fork));
         }
         catch (Exception ex)
         {
@@ -154,6 +154,12 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_NONCE"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_NONCE_SIZE"] = ["Non-canonical integer", .. s_rlpDecodeFragments],
         ["TransactionException.RLP_INVALID_NONCE"] = ["NonceTooWide", .. s_rlpDecodeFragments],
+        // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
+        // signature failures, which the fixtures file under a separate label.
+        ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] = [.. FrameExceptionFragments.Format, .. FrameExceptionFragments.Decode],
+        // EIP-7825's per-transaction gas cap under both wordings: a frame transaction reports it
+        // against its own budget, every other type against its envelope gas limit.
+        ["TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM"] = ["exceeds the transaction gas cap of", "TxGasLimitCapExceeded"],
         ["TransactionException.RLP_INVALID_SIGNATURE_R"] = ["sequence prefix", "Collection count"],
         ["TransactionException.RLP_INVALID_SIGNATURE_S"] = ["sequence prefix", "Collection count"],
         ["TransactionException.RLP_INVALID_TO"] = ["Unexpected RLP prefix"],
