@@ -21,6 +21,8 @@ namespace Nethermind.Core.Extensions
         private static readonly ulong AesHashSeed1 = CreateAesHashSeed();
         private static readonly ulong AesHash20Seed0 = CreateAesHashSeed();
         private static readonly ulong AesHash20Seed1 = CreateAesHashSeed();
+        private static readonly ulong AesHashPairSeed0 = CreateAesHashSeed();
+        private static readonly ulong AesHashPairSeed1 = CreateAesHashSeed();
         private static readonly ulong AesHash32Seed0 = CreateAesHashSeed();
         private static readonly ulong AesHash32Seed1 = CreateAesHashSeed();
         private static readonly ulong AesHashFinalSeed0 = CreateAesHashSeed();

@@ -46,12 +46,9 @@ namespace Nethermind.Core
         public bool Equals(StorageCell other) => Equals(in other);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public long GetHashCode64()
-        {
-            long indexHash = SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index)));
-            long addressHash = _address.Value.GetHashCode64();
-            return SpanExtensions.MumFold((ulong)indexHash, (ulong)addressHash);
-        }
+        public long GetHashCode64() => SpanExtensions.FastHash64ForAddressAndSlot(
+            ref MemoryMarshal.GetReference(_address.Value.Bytes),
+            ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index)));
 
         public override bool Equals(object? obj)
         {

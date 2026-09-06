@@ -104,6 +104,18 @@ public class InclusionListBuilderTests
         pool.Received().GetPendingTransactionsBySender(true, (UInt256)17);
     }
 
+    // The named parent, not the head, fixes the fee the candidates are filtered against.
+    [Test]
+    public void Requests_transactions_ready_at_the_named_parents_base_fee()
+    {
+        ITxPool pool = PoolOf();
+        BlockHeader parent = Build.A.BlockHeader.WithBaseFee(23).TestObject;
+
+        BuildBuilder(pool, baseFee: 17).GetInclusionList(parent).Dispose();
+
+        pool.Received().GetPendingTransactionsBySender(true, (UInt256)23);
+    }
+
     // Listing a frame transaction spends the byte cap for nothing, and its per-key nonce would break the
     // gapless-offset test for everything behind it — hence both assertions.
     [Test]

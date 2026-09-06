@@ -163,6 +163,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
+    /// <summary>Repays outstanding EIP-8037 state-gas spill from the reservoir after a successful child merge.</summary>
+    /// <remarks>
+    /// Implements the EIP-8037 <c>d = min(state_gas_reservoir, state_gas_from_gas_left)</c> merge step.
+    /// Policies that retain total spill separately record <c>d</c> as repaid spill instead of reducing that total.
+    /// Policies that implement this step leave either the reservoir or the outstanding spill exhausted.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void RepayStateGasSpill(ref TSelf gas) { }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool ConsumeCreateStateGas(ref TSelf gas) =>
         TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost());

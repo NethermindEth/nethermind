@@ -402,28 +402,29 @@ public sealed partial class KeccakHash
         // fold into a load/store displacement. Only reachable with no vector width, i.e. the guest.
         // The state is ulong-aligned so it stays a ulong ref; the input is a caller-supplied span with
         // no such guarantee, hence ReadUnaligned, which costs nothing (riscv64 emits a plain ld for
-        // both spellings, and every rate block starts on a multiple of eight anyway).
+        // both spellings, and every rate block starts on a multiple of eight anyway). The lanes are
+        // spelled out as read-xor-write rather than `^=` for the reason given at the unrolled loop
         if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
         {
             ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);
             ref byte inRef = ref MemoryMarshal.GetReference(input);
-            Unsafe.Add(ref st, 0) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
-            Unsafe.Add(ref st, 1) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
-            Unsafe.Add(ref st, 2) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
-            Unsafe.Add(ref st, 3) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
-            Unsafe.Add(ref st, 4) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
-            Unsafe.Add(ref st, 5) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
-            Unsafe.Add(ref st, 6) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
-            Unsafe.Add(ref st, 7) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
-            Unsafe.Add(ref st, 8) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
-            Unsafe.Add(ref st, 9) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
-            Unsafe.Add(ref st, 10) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
-            Unsafe.Add(ref st, 11) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
-            Unsafe.Add(ref st, 12) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
-            Unsafe.Add(ref st, 13) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
-            Unsafe.Add(ref st, 14) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
-            Unsafe.Add(ref st, 15) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
-            Unsafe.Add(ref st, 16) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+            Unsafe.Add(ref st, 0) = Unsafe.Add(ref st, 0) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
+            Unsafe.Add(ref st, 1) = Unsafe.Add(ref st, 1) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
+            Unsafe.Add(ref st, 2) = Unsafe.Add(ref st, 2) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
+            Unsafe.Add(ref st, 3) = Unsafe.Add(ref st, 3) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
+            Unsafe.Add(ref st, 4) = Unsafe.Add(ref st, 4) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
+            Unsafe.Add(ref st, 5) = Unsafe.Add(ref st, 5) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
+            Unsafe.Add(ref st, 6) = Unsafe.Add(ref st, 6) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
+            Unsafe.Add(ref st, 7) = Unsafe.Add(ref st, 7) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
+            Unsafe.Add(ref st, 8) = Unsafe.Add(ref st, 8) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
+            Unsafe.Add(ref st, 9) = Unsafe.Add(ref st, 9) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
+            Unsafe.Add(ref st, 10) = Unsafe.Add(ref st, 10) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
+            Unsafe.Add(ref st, 11) = Unsafe.Add(ref st, 11) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
+            Unsafe.Add(ref st, 12) = Unsafe.Add(ref st, 12) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
+            Unsafe.Add(ref st, 13) = Unsafe.Add(ref st, 13) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
+            Unsafe.Add(ref st, 14) = Unsafe.Add(ref st, 14) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
+            Unsafe.Add(ref st, 15) = Unsafe.Add(ref st, 15) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
+            Unsafe.Add(ref st, 16) = Unsafe.Add(ref st, 16) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
             return;
         }
         if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
@@ -493,10 +494,12 @@ public sealed partial class KeccakHash
             {
                 ref ulong s0 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
                 ref byte in0 = ref Unsafe.Add(ref inputRef, i);
-                s0 ^= Unsafe.ReadUnaligned<ulong>(ref in0);
-                Unsafe.Add(ref s0, 1) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
-                Unsafe.Add(ref s0, 2) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
-                Unsafe.Add(ref s0, 3) ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
+                // Explicit read-xor-write: a compound assignment captures the element address in a
+                // temp (lvalue-once), which blocks base+offset folding into the loads and stores.
+                s0 = s0 ^ Unsafe.ReadUnaligned<ulong>(ref in0);
+                Unsafe.Add(ref s0, 1) = Unsafe.Add(ref s0, 1) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
+                Unsafe.Add(ref s0, 2) = Unsafe.Add(ref s0, 2) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
+                Unsafe.Add(ref s0, 3) = Unsafe.Add(ref s0, 3) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
             }
 
             for (; i < ulongLength; i += sizeof(ulong))

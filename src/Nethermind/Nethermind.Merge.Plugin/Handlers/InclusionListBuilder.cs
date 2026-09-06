@@ -21,20 +21,23 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     // Senders drawn per list. The byte cap, not this, decides how many of them reach the wire.
     private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
 
-    public InclusionListBytes GetInclusionList()
+    /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
+    /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
+    /// <returns>The encoded transactions; the caller owns and disposes them.</returns>
+    public InclusionListBytes GetInclusionList(BlockHeader? parent = null)
     {
-        using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs();
+        using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs(parent);
         return EncodeTransactionsUpToLimit(in sample);
     }
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn
     /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
-    private ArrayPoolListRef<Transaction> SampleAppendableTxs()
+    private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
         Random rnd = Random.Shared;
-        UInt256 baseFee = NextBlockBaseFee();
+        UInt256 baseFee = NextBlockBaseFee(parent);
 
         // Reservoir over senders rather than over their runs, so the pool's size costs no allocation and no
         // state read: only the drawn senders below pay for one.
@@ -141,10 +144,10 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     /// <summary>The base fee the next block will charge.</summary>
     /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's
     /// stands in and pre-fork EIP-1559 parameters are resolved for a post-fork block.</remarks>
-    private UInt256 NextBlockBaseFee()
+    private UInt256 NextBlockBaseFee(BlockHeader? parent)
     {
-        BlockHeader? head = blockTree.Head?.Header;
-        return head is null ? UInt256.Zero : BaseFeeCalculator.Calculate(head, specProvider.GetSpec(head.Number + 1, head.Timestamp));
+        parent ??= blockTree.Head?.Header;
+        return parent is null ? UInt256.Zero : BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent.Number + 1, parent.Timestamp));
     }
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)

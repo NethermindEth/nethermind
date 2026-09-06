@@ -9,13 +9,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -106,7 +104,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 blocksConfig.PreWarming = PreWarmMode.Block;
                 return blocksConfig;
             })
-            .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })
+            .AddSingleton(TestPreBlockCachesConfig.Small)
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {
                 networkConfig.DiscoveryDns = null;

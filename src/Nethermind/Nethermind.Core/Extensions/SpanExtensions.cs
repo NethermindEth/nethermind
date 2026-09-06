@@ -42,6 +42,17 @@ namespace Nethermind.Core.Extensions
         private static Vector128<byte> ComputeAes32Seed()
             => Vector128.Create(AesHash32Seed0, AesHash32Seed1).AsByte();
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector128<byte> ComputeAesPairSeed()
+            => Vector128.Create(AesHashPairSeed0, AesHashPairSeed1).AsByte();
+
+        // Round constants for FastHash64ForAddressAndSlot. Public values, distinct from each other; the secrecy
+        // is the seed they are combined with.
+        private static Vector128<byte> PairRound2 => Vector128.Create(0x9E3779B97F4A7C15UL, 0xBF58476D1CE4E5B9UL).AsByte();
+        private static Vector128<byte> PairRound3 => Vector128.Create(0x94D049BB133111EBUL, 0x2545F4914F6CDD1DUL).AsByte();
+        private static Vector128<byte> PairRound4 => Vector128.Create(0xD6E8FEB86659FD93UL, 0xA0761D6478BD642FUL).AsByte();
+        private static Vector128<byte> PairRound5 => Vector128.Create(0xE7037ED1A0B428DBUL, 0x8EBC6AF09C88C6E3UL).AsByte();
+
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false) =>
             memory.Span.ToHexString(withZeroX, false, false);
 
@@ -606,7 +617,7 @@ namespace Nethermind.Core.Extensions
         // factor's zeroing input off the common all-zero word; a factor still degenerates when a word
         // equals its constant, which seeded inputs hit with probability 2^-64.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static long MumFold(ulong a, ulong b)
+        public static long MumFold(ulong a, ulong b)
         {
             ulong low = Math.BigMul(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL, out ulong high);
             return (long)(low ^ high);
@@ -681,6 +692,50 @@ namespace Nethermind.Core.Extensions
             }
 
             return FastHash64For20BytesFallback(ref start);
+        }
+
+        /// <summary>
+        /// Computes a 64-bit hash of a 20-byte address paired with a 32-byte slot index.
+        /// </summary>
+        /// <param name="address">Reference to the first byte of the 20-byte address.</param>
+        /// <param name="index">Reference to the first byte of the 32-byte slot index.</param>
+        /// <returns>A 64-bit hash with good distribution across all bits.</returns>
+        /// <remarks>
+        /// One AES chain over both inputs where AES is available, instead of hashing each and folding the two.
+        /// The fallback keeps the older form.
+        /// <para>
+        /// Each part of the key is the data of a round of its own, and no part is ever a round key. So no two
+        /// parts share a word, and a difference in one can only be cancelled by evaluating a round, which needs
+        /// the seed. A part used as a round key would share a word with the next round's data, and such a pair is
+        /// found offline at the birthday bound over addresses an attacker grinds. That is the flaw the earlier
+        /// four-lane XOR fold had, and it is a cache-flood lever.
+        /// </para>
+        /// <para>
+        /// Four parts need five rounds, because the last one injected needs a second round to spread its
+        /// difference past one column. Round keys are the seed against a distinct constant, which drops the
+        /// repeated round key for about 2% of the hash.
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long FastHash64ForAddressAndSlot(ref byte address, ref byte index)
+        {
+            if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
+            {
+                Vector128<byte> seed = ComputeAesPairSeed();
+                Vector128<byte> addressHead = Unsafe.As<byte, Vector128<byte>>(ref address);
+                uint addressTail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref address, 16));
+                Vector128<byte> indexLow = Unsafe.As<byte, Vector128<byte>>(ref index);
+                Vector128<byte> indexHigh = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref index, 16));
+
+                Vector128<byte> mixed = FastHashAesRound(addressHead ^ seed, seed);
+                mixed = FastHashAesRound(mixed ^ Vector128.CreateScalar(addressTail).AsByte(), seed ^ PairRound2);
+                mixed = FastHashAesRound(mixed ^ indexLow, seed ^ PairRound3);
+                mixed = FastHashAesRound(mixed ^ indexHigh, seed ^ PairRound4);
+                mixed = FastHashAesRound(mixed, seed ^ PairRound5);
+                return MumFold(mixed);
+            }
+
+            return MumFold((ulong)FastHash64For32Bytes(ref index), (ulong)FastHash64For20Bytes(ref address));
         }
 
         /// <inheritdoc cref="FastHash64For32BytesCrc"/>
