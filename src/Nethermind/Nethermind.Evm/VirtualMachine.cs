@@ -117,7 +117,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private ReadOnlyMemory<byte> _returnDataBuffer;
     protected VmState<TGasPolicy> _currentState;
-    protected ReadOnlyMemory<byte>? _previousCallResult;
+    protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
 
     public ILogger Logger => _logger;
@@ -204,7 +204,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
         using FrameCleanupScope _ = new(this, vmState);
-        _previousCallResult = null;
+        _previousCallResult = default;
         _previousCallOutputDestination = UInt256.Zero;
         nuint previousCallOutputLength = 0;
 
@@ -418,7 +418,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref nuint previousCallOutputLength)
     {
-        _previousCallResult = previousState.Env.ExecutingAccount.Bytes.ToArray();
+        _previousCallResult = (previousState.Env.ExecutingAccount, true);
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = default;
         previousCallOutputLength = 0;
@@ -428,9 +428,7 @@ public partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
     {
         ReturnDataBuffer = callResult.Output;
-        _previousCallResult = callResult.PrecompileSuccess.HasValue
-            ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
-            : StatusCode.SuccessBytes;
+        _previousCallResult = (null, callResult.PrecompileSuccess != false);
         nuint previousCallOutputLength = (nuint)Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength);
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
         if (previousState.IsPrecompile)
@@ -562,7 +560,7 @@ public partial class VirtualMachine<TGasPolicy>(
             }
             RestoreRipemdTouch(_worldState, spec, _shouldRestoreRipemdTouch);
 
-            _previousCallResult = BytesZero;
+            _previousCallResult = (null, false);
             previousStateSucceeded = false;
 
             if (_isTracingActionsCached)
@@ -604,7 +602,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Set the return data buffer to the output bytes from the failed call.
         ReturnDataBuffer = outputBytes;
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResult = (null, false);
 
         previousCallOutputLength = (nuint)Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength);
 
@@ -682,7 +680,7 @@ public partial class VirtualMachine<TGasPolicy>(
             };
         }
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResult = (null, false);
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
         // Captured before the pop: the parent refunds NEW_ACCOUNT for the failed *CALL's uncreated recipient.
         bool childNewAccountCharged = _currentState.NewAccountCharged;
@@ -820,7 +818,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _currentState = callResult.StateToExecute;
 
         // Clear the previous call result as the execution context is moving to a new frame.
-        _previousCallResult = null;
+        _previousCallResult = default;
 
         previousCallOutputLength = 0;
     }
@@ -868,7 +866,7 @@ public partial class VirtualMachine<TGasPolicy>(
             };
         }
 
-        _previousCallResult = StatusCode.FailureBytes;
+        _previousCallResult = (null, false);
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
         // Captured before the pop: the parent refunds NEW_ACCOUNT for the halted *CALL's uncreated recipient.
         bool childNewAccountCharged = _currentState.NewAccountCharged;
@@ -1215,8 +1213,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// The current EVM state containing the execution environment, gas, memory, and stack information.
     /// </param>
     /// <param name="previousCallResult">
-    /// An optional read-only memory buffer containing the output of a previous call; if provided, its bytes
-    /// will be pushed onto the stack for further processing.
+    /// The pending call status or created address to push onto the resumed frame's stack.
     /// </param>
     /// <param name="previousCallOutputLength">
     /// The bounded number of return bytes to copy into parent memory.
@@ -1234,7 +1231,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     [SkipLocalsInit]
     protected unsafe CallResult ExecuteCall<TTracingInst>(
-        ReadOnlyMemory<byte>? previousCallResult,
+        in (Address? CreatedAddress, bool? Success) previousCallResult,
         nuint previousCallOutputLength,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
@@ -1275,10 +1272,24 @@ public partial class VirtualMachine<TGasPolicy>(
         // gas/state-gas accounting without needing interpreter-wide exception handling.
         ref TGasPolicy gas = ref vmState.Gas;
 
-        // If a previous call result exists, push its bytes onto the stack.
-        if (previousCallResult is not null)
+        // If a previous call result exists, push it onto the stack.
+        if (previousCallResult.Success.HasValue)
         {
-            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
+            EvmExceptionType pushResult;
+            if (previousCallResult.CreatedAddress is { } createdAddress)
+            {
+                pushResult = stack.PushAddress<TTracingInst>(createdAddress);
+            }
+            else if (TTracingInst.IsActive)
+            {
+                pushResult = previousCallResult.Success.GetValueOrDefault()
+                    ? stack.PushOne<TTracingInst>()
+                    : stack.PushZero<TTracingInst, OnFlag>();
+            }
+            else
+            {
+                pushResult = stack.PushUInt32<TTracingInst, OnFlag>(previousCallResult.Success.GetValueOrDefault() ? 1u : 0u);
+            }
             if (pushResult != EvmExceptionType.None) return new(pushResult);
 
             // Report the remaining gas if tracing instructions are enabled.
