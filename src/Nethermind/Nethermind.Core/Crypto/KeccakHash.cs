@@ -318,7 +318,7 @@ public sealed partial class KeccakHash
             ThrowHashingComplete();
 
         if (output.Length > _roundSize)
-            ThrowOutputWiderThanRate(output.Length, _roundSize);
+            ThrowOutputWiderThanRate($"{nameof(output)}.{nameof(output.Length)}", output.Length, _roundSize);
 
         ulong[] state = _state;
 
@@ -564,8 +564,8 @@ public sealed partial class KeccakHash
         paramName, size, $"Keccak hash size must be between 1 and {MAX_HASH_SIZE}.");
 
     [DoesNotReturn]
-    private static void ThrowOutputWiderThanRate(int length, int roundSize) => throw new ArgumentOutOfRangeException(
-        "output.Length", length, $"A single squeeze cannot serve more than the {roundSize}-byte rate.");
+    private static void ThrowOutputWiderThanRate(string paramName, int length, int roundSize) => throw new ArgumentOutOfRangeException(
+        paramName, length, $"A single squeeze cannot serve more than the {roundSize}-byte rate.");
 
     [InlineArray(STATE_LANES)]
     private struct KeccakState
