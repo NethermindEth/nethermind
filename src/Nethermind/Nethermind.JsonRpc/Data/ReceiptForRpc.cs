@@ -25,6 +25,9 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
+            BlockGasUsed = receipt.BlockGasUsed;
+            ExecutionGasUsed = receipt.ExecutionGasUsed;
+            StorageGasUsed = receipt.StorageGasUsed;
             EffectiveGasPrice = gasInfo.EffectiveGasPrice ?? receipt.EffectiveGasPrice;
             BlobGasUsed = gasInfo.BlobGasUsed;
             BlobGasPrice = gasInfo.BlobGasPrice;
@@ -57,6 +60,20 @@ namespace Nethermind.JsonRpc.Data
         public ulong BlockNumber { get; set; }
         public ulong CumulativeGasUsed { get; set; }
         public ulong GasUsed { get; set; }
+
+        /// <summary>Diagnostic-only EIP-7778 pre-refund gas counted by block-level execution accounting.
+        /// Non-standard (not in execution-apis); zero for non-frame receipts.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ulong BlockGasUsed { get; set; }
+
+        /// <summary>Diagnostic-only post-refund execution gas (OperationGas) without the EIP-7976 floor
+        /// adjustment. Not the EIP-8037 execution-dimension block figure — see <see cref="BlockGasUsed"/>.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ulong ExecutionGasUsed { get; set; }
+
+        /// <summary>Diagnostic-only EIP-8037 state-dimension gas used by block accounting.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ulong StorageGasUsed { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }
@@ -101,6 +118,9 @@ namespace Nethermind.JsonRpc.Data
                 BlockNumber = BlockNumber,
                 ContractAddress = ContractAddress,
                 GasUsed = GasUsed,
+                BlockGasUsed = BlockGasUsed,
+                ExecutionGasUsed = ExecutionGasUsed,
+                StorageGasUsed = StorageGasUsed,
                 StatusCode = Status is not null ? (byte)Status : byte.MinValue,
                 TxHash = TransactionHash,
                 GasUsedTotal = CumulativeGasUsed,
