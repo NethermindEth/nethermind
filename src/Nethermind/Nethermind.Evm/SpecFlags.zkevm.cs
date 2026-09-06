@@ -60,13 +60,13 @@ internal static partial class SpecFlags
     // EIP-2780, EIP-7708, EIP-8037 and EIP-8246 also activate at Amsterdam and at no other fork in the
     // range, so they follow the EIP-8038 flag the table has already chosen. Reading the spec here
     // would compile every pairing of the five where the range produces two.
-    public static bool Eip2780<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => TEip8038.IsActive;
+    public static bool Eip2780<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => TEip8038.IsActive;
 
-    public static bool Eip7708<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => TEip8038.IsActive;
+    public static bool Eip7708<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => TEip8038.IsActive;
 
-    public static bool Eip8037<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => TEip8038.IsActive;
+    public static bool Eip8037<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => TEip8038.IsActive;
 
-    public static bool Eip8246<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => TEip8038.IsActive;
+    public static bool Eip8246<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => TEip8038.IsActive;
 
     private static IReleaseSpec? _validated;
 

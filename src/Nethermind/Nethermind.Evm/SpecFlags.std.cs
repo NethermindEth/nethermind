@@ -39,13 +39,13 @@ internal static partial class SpecFlags
 
     // The type parameter is the EIP-8038 flag the table has already chosen. A build whose fork range
     // switches these rules together with it derives them from the flag; this build reads the spec.
-    public static bool Eip2780<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => spec.IsEip2780Enabled;
+    public static bool Eip2780<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => spec.IsEip2780Enabled;
 
-    public static bool Eip7708<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => spec.IsEip7708Enabled;
+    public static bool Eip7708<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => spec.IsEip7708Enabled;
 
-    public static bool Eip8037<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => spec.IsEip8037Enabled;
+    public static bool Eip8037<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => spec.IsEip8037Enabled;
 
-    public static bool Eip8246<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IFlag => spec.RemoveSelfdestructBurn;
+    public static bool Eip8246<TEip8038>(IReleaseSpec spec) where TEip8038 : struct, IEip8038Flag => spec.RemoveSelfdestructBurn;
 
     /// <summary>Rejects a spec the build cannot serve.</summary>
     /// <remarks>Every rule is read from <paramref name="spec"/> here, so every spec is servable.</remarks>

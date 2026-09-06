@@ -85,13 +85,13 @@ public class SpecFlagsTests
             .Matches(source, @"public const bool Const(?<rule>\w+) = (?<value>true|false);")
             .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["value"].Value == "true");
         HashSet<string> folded = Regex
-            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)(?: where T\w+ : struct, IFlag)? => Const\k<rule>;")
+            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)(?: where T\w+ : struct, I\w+)? => Const\k<rule>;")
             .Select(static m => m.Groups["rule"].Value).ToHashSet();
         Dictionary<string, string> reads = Regex
-            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)(?: where T\w+ : struct, IFlag)? => spec\.(?<property>\w+);")
+            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)(?: where T\w+ : struct, I\w+)? => spec\.(?<property>\w+);")
             .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["property"].Value);
         Dictionary<string, string> derived = Regex
-            .Matches(source, @"public static bool (?<rule>\w+)<T(?<anchor>\w+)>\(IReleaseSpec spec\) where T\k<anchor> : struct, IFlag => T\k<anchor>\.IsActive;")
+            .Matches(source, @"public static bool (?<rule>\w+)<T(?<anchor>\w+)>\(IReleaseSpec spec\) where T\k<anchor> : struct, I\k<anchor>Flag => T\k<anchor>\.IsActive;")
             .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["anchor"].Value);
         Dictionary<string, string> checkedProperties = Regex
             .Matches(source, @"Check\(spec\.(?<property>\w+), Const(?<rule>\w+),")
@@ -223,6 +223,22 @@ public class SpecFlagsTests
             if (f.GetType() == fork.GetType()) return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// A follower rule is anchored on the EIP-8038 setting through its type-parameter constraint, so
+    /// the marker interface has to stay exclusive to the two EIP-8038 flags.
+    /// </summary>
+    [Test]
+    public void Anchor_interface_is_implemented_only_by_the_two_Eip8038_flags()
+    {
+        string[] implementers = typeof(IEip8038Flag).Assembly.GetTypes()
+            .Where(static t => t.IsValueType && typeof(IEip8038Flag).IsAssignableFrom(t))
+            .Select(static t => t.Name)
+            .Order()
+            .ToArray();
+
+        Assert.That(implementers, Is.EqualTo(new[] { nameof(Eip8038Off), nameof(Eip8038On) }));
     }
 
     private static string Describe(List<NamedReleaseSpec> range) =>

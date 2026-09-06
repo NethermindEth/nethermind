@@ -370,8 +370,11 @@ public partial class BlockAccessListManager
             BalTxProcessorFactory txProcessorFactory)
         {
             IWorldState worldState = stateProvider;
-            if (ExecutionFlags.ParallelExecution && parallel)
+            if (parallel)
             {
+                // A build without the capability never constructs the parallel pool; failing here
+                // keeps a mis-wired processor from producing a wrong BAL.
+                if (!ExecutionFlags.ParallelExecution) ThrowParallelExecutionUnavailable();
                 _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager);
                 worldState = _balWorldState;
             }
@@ -402,6 +405,10 @@ public partial class BlockAccessListManager
             _parentReader?.Dispose();
             _parentReader = null;
         }
+
+        [DoesNotReturn]
+        private static void ThrowParallelExecutionUnavailable()
+            => throw new NotSupportedException("Parallel execution is not available in this build.");
 
         [DoesNotReturn]
         private static void ThrowParentReaderStillAttached()

@@ -589,7 +589,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // there is nothing to await; skipping the awaiter keeps the task machinery out of the guest.
         static void AwaitCodeFlush(Task codeFlushTask)
         {
-            if (!Core.Cpu.RuntimeInformation.IsSingleProcessor) codeFlushTask.GetAwaiter().GetResult();
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                Debug.Assert(codeFlushTask.IsCompletedSuccessfully, "A single processor persists the code batch inline.");
+                return;
+            }
+
+            codeFlushTask.GetAwaiter().GetResult();
         }
 
         Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
