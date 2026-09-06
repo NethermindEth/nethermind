@@ -523,8 +523,7 @@ public class SnapshotBundleWarmerTests
 
         SnapshotBundle bundle = NewBundle(content => content.StateNodes[persistedPath] = persistedNode);
 
-        using ReadOnlySnapshotBundle? readOnlySnapshotBundle = bundle.TryLeaseReadOnlySnapshotBundle();
-        Assert.That(readOnlySnapshotBundle, Is.Not.Null);
+        Assert.That(bundle.TryLeaseReadOnlyBundle(), Is.True);
         bundle.Dispose();
 
         Task<(TrieNode Node, bool ShouldPrewarm)> read = Task.Run(() =>
@@ -537,6 +536,7 @@ public class SnapshotBundleWarmerTests
             Assert.That(read.Result.Node, Is.SameAs(persistedNode));
             Assert.That(read.Result.ShouldPrewarm, Is.False);
         }
+        bundle.ReleaseReadOnlyBundleLease();
     }
 
     private sealed record ChurnEpoch(SnapshotBundle Bundle, TrieNode Node);
@@ -577,15 +577,21 @@ public class SnapshotBundleWarmerTests
                     while (!Volatile.Read(ref stop))
                     {
                         ChurnEpoch epoch = Volatile.Read(ref published);
-                        using ReadOnlySnapshotBundle? readOnlySnapshotBundle = epoch.Bundle.TryLeaseReadOnlySnapshotBundle();
-                        if (readOnlySnapshotBundle is null) continue;
+                        if (!epoch.Bundle.TryLeaseReadOnlyBundle()) continue;
 
-                        TrieNode node = epoch.Bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
-                        if (!ReferenceEquals(node, epoch.Node)) Interlocked.Increment(ref foreignReads);
-                        Interlocked.Increment(ref leasedReads);
+                        try
+                        {
+                            TrieNode node = epoch.Bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
+                            if (!ReferenceEquals(node, epoch.Node)) Interlocked.Increment(ref foreignReads);
+                            Interlocked.Increment(ref leasedReads);
 
-                        UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
-                        if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
+                            UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
+                            if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
+                        }
+                        finally
+                        {
+                            epoch.Bundle.ReleaseReadOnlyBundleLease();
+                        }
                     }
                 }
                 catch (Exception e)

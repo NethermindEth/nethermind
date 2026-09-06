@@ -1243,7 +1243,7 @@ public class FlatWorldStateScopeProviderTests
         ordinaryScope.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
+            Assert.That(resourcePool.ReturnedCachedResources, Is.Zero);
             Assert.That(reader.DisposeCount, Is.Zero);
         }
 

@@ -16,8 +16,9 @@ internal sealed class FlatTrieWarmupSession :
     IWorldStateScopeProvider.ITrieWarmupSession,
     ITrieWarmer.IAddressWarmer
 {
-    private readonly SnapshotBundle _snapshotBundle;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
+    private readonly TransientResource _transientResource;
+    private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
     private readonly PatriciaTree _stateTree;
     private readonly ILogManager _logManager;
@@ -33,41 +34,30 @@ internal sealed class FlatTrieWarmupSession :
 
     public FlatTrieWarmupSession(
         in StateId baseState,
-        SnapshotBundle snapshotBundle,
+        ReadOnlySnapshotBundle readOnlySnapshotBundle,
+        TransientResource transientResource,
+        ITrieNodeCache trieNodeCache,
         ITrieWarmer trieWarmer,
         ILogManager logManager)
     {
-        ReadOnlySnapshotBundle? readOnlySnapshotBundle = null;
-        try
+        _readOnlySnapshotBundle = readOnlySnapshotBundle;
+        _transientResource = transientResource;
+        _trieNodeCache = trieNodeCache;
+        _trieWarmer = trieWarmer;
+        _logManager = logManager;
+        _stateTree = new PatriciaTree(new StateResolver(this), logManager)
         {
-            readOnlySnapshotBundle = snapshotBundle.TryLeaseReadOnlySnapshotBundle()
-                ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
+            RootHash = baseState.StateRoot.ToCommitment()
+        };
 
-            _snapshotBundle = snapshotBundle;
-            _readOnlySnapshotBundle = readOnlySnapshotBundle;
-            _trieWarmer = trieWarmer;
-            _logManager = logManager;
-            _stateTree = new PatriciaTree(new StateResolver(this), logManager)
-            {
-                RootHash = baseState.StateRoot.ToCommitment()
-            };
-
-            _trieWarmer.OnEnterScope();
-            readOnlySnapshotBundle = null;
-        }
-        finally
-        {
-            readOnlySnapshotBundle?.Dispose();
-        }
+        _trieWarmer.OnEnterScope();
     }
 
     public void HintWarmAccount(in ValueAddress address)
     {
-        if (!_snapshotBundle.ShouldQueuePrewarm(in address)) return;
-
         lock (_lifetimeLock)
         {
-            if (_isDisposing) return;
+            if (_isDisposing || !_transientResource.ShouldPrewarm(in address, null)) return;
 
             AcceptJob();
             bool accepted = false;
@@ -84,13 +74,11 @@ internal sealed class FlatTrieWarmupSession :
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
-        if (!_snapshotBundle.ShouldQueuePrewarm(in address, index)) return;
-
         Address accountAddress = address.ToAddress();
         StorageWarmer? storageWarmer;
         lock (_lifetimeLock)
         {
-            if (_isDisposing) return;
+            if (_isDisposing || !_transientResource.ShouldPrewarm(in address, index)) return;
             if (_storageWarmers.TryGetValue(accountAddress, out storageWarmer))
             {
                 QueueSlotJob(storageWarmer, in index);
@@ -184,10 +172,26 @@ internal sealed class FlatTrieWarmupSession :
 
     private TrieNode FindNodeOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
-        TrieNode node = address is null
-            ? _snapshotBundle.FindStateNodeOrUnknownForTrieWarmer(in path, hash)
-            : _snapshotBundle.FindStorageNodeOrUnknownTrieWarmer(address, in path, hash);
-        return node.Keccak != hash
+        bool found = address is null
+            ? _transientResource.TryGetStateNode(in path, hash, out TrieNode? node)
+            : _transientResource.TryGetStorageNode((Hash256AsKey)address, in path, hash, out node);
+        if (!found && !_trieNodeCache.TryGet(address, in path, hash, out node))
+        {
+            bool foundInSnapshot = address is null
+                ? _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node)
+                : _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
+            if (!foundInSnapshot)
+            {
+                node = new TrieNode(NodeType.Unknown, hash);
+                node.MarkWarmerOwned();
+            }
+
+            node = address is null
+                ? _transientResource.GetOrAddStateNode(in path, node!)
+                : _transientResource.GetOrAddStorageNode((Hash256AsKey)address, in path, node!);
+        }
+
+        return node!.Keccak != hash
             ? throw new NodeHashMismatchException($"Node hash mismatch. Address {address}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}")
             : node;
     }
@@ -221,6 +225,7 @@ internal sealed class FlatTrieWarmupSession :
                     disposeException = ExceptionDispatchInfo.Capture(exception);
                 }
 
+                CaptureException(ref disposeException, _transientResource.ReleaseLease);
                 CaptureException(ref disposeException, _readOnlySnapshotBundle.Dispose);
                 CaptureException(ref disposeException, _trieWarmer.OnExitScope);
             }

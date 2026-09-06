@@ -41,7 +41,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
-    private readonly Lock _stateIdLock = new();
     internal volatile bool _pausePrewarmer = false;
 
     private CancellationTokenSource? _hintBalCts;
@@ -159,13 +158,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
 
-    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession()
-    {
-        lock (_stateIdLock)
-        {
-            return new FlatTrieWarmupSession(_currentStateId, _snapshotBundle, _warmer, _logManager);
-        }
-    }
+    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+        _snapshotBundle.CreateTrieWarmupSession(_currentStateId, _warmer, _logManager);
 
     public void UpdateRootHash()
     {
@@ -362,8 +356,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-            using ReadOnlySnapshotBundle? readOnlySnapshotBundle = _snapshotBundle.TryLeaseReadOnlySnapshotBundle();
-            if (readOnlySnapshotBundle is null) return false;
 
             // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
             // this is just for warming up
@@ -486,10 +478,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
         }
 
-        lock (_stateIdLock)
-        {
-            _currentStateId = newStateId;
-        }
+        _currentStateId = newStateId;
         _pausePrewarmer = false;
     }
 
