@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("StorageRead", "TransientRead", "BalanceRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -196,6 +196,9 @@ public class OpcodeChainBenchmarks
                 "StorageRead" or "TransientRead" or "BalanceRead" => ([(byte)Instruction.DUP1,
                     (byte)(Chain == "StorageRead" ? Instruction.SLOAD : Chain == "TransientRead" ? Instruction.TLOAD : Instruction.BALANCE),
                     (byte)Instruction.POP], 3),
+                "StorageWrite" => ([(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE], 3),
+                "ExpOne" or "ExpCompute" => ([(byte)Instruction.PUSH1, 7,
+                    (byte)Instruction.PUSH1, Chain == "ExpOne" ? (byte)1 : (byte)3, (byte)Instruction.EXP, (byte)Instruction.POP], 4),
                 "Bitwise" => ([(byte)Instruction.DUP1, (byte)Instruction.AND], 2),
                 "Predicate" => ([(byte)Instruction.ISZERO, (byte)Instruction.NOT], 2),
                 "Stack" => ([(byte)Instruction.DUP1, (byte)Instruction.SWAP1, (byte)Instruction.POP], 3),
@@ -222,6 +225,15 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP,
                     (byte)Instruction.DUP1, (byte)Instruction.PUSH1, 64, (byte)Instruction.MSTORE8,
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP], 12),
+                "StaticIdentity" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
+                    (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+                    (byte)Instruction.PUSH1, 4, (byte)Instruction.PUSH2, 0xff, 0xff,
+                    (byte)Instruction.STATICCALL, (byte)Instruction.POP], 8),
+                "CallEmpty" or "CallIdentity" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
+                    (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+                    (byte)Instruction.PUSH20, .. (Chain == "CallIdentity" ? Address.FromNumber(4).Bytes.ToArray() : TestItem.AddressC.Bytes.ToArray()),
+                    (byte)Instruction.PUSH2, 0xff, 0xff, (byte)Instruction.CALL, (byte)Instruction.POP,
+                    (byte)Instruction.PUSH0, (byte)Instruction.POP, (byte)Instruction.JUMPDEST], 12),
                 // Includes the three opcodes executed by the child frame.
                 "CallReturn" or "CallRevert" or "CallInput" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
                     .. (Chain == "CallInput" ? new byte[] { (byte)Instruction.PUSH1, 32 } : new byte[] { (byte)Instruction.PUSH0 }),
