@@ -956,6 +956,31 @@ public class FrameTxProcessorTests
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
+    /// <remarks>Above the EIP-7825 per-transaction cap the frame validator rejects the transaction, so the
+    /// estimate must report it unestimable rather than hand back a budget that would fail admission; the cap
+    /// binds even where the reservation still fits the block.</remarks>
+    [Test]
+    public void EstimateGas_FrameTxReservingAboveThePerTxCapButUnderTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient,
+                executionGasLimit: Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        _transactionProcessor.CallAndRestore(tx, gasTracer);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
+    }
+
     /// <remarks>
     /// A type-6 transaction reaches the frame estimator on its type alone, so a frame count EIP-8141 never
     /// admits must be reported as such: an absent list is not the gas-limit overflow the estimator blamed,
