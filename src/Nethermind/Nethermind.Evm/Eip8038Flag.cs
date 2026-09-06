@@ -13,17 +13,17 @@ namespace Nethermind.Evm;
 /// <see cref="Eip8038On"/> and <see cref="Eip8038Off"/> implement the interface, so anchoring one of
 /// those rules on any other flag does not compile.
 /// </remarks>
-public interface IEip8038Flag : IFlag;
+internal interface IEip8038Flag : IFlag;
 
 /// <summary>EIP-8038 is active.</summary>
-public readonly struct Eip8038On : IEip8038Flag
+internal readonly struct Eip8038On : IEip8038Flag
 {
     /// <inheritdoc />
     public static bool IsActive => true;
 }
 
 /// <summary>EIP-8038 is inactive.</summary>
-public readonly struct Eip8038Off : IEip8038Flag
+internal readonly struct Eip8038Off : IEip8038Flag
 {
     /// <inheritdoc />
     public static bool IsActive => false;

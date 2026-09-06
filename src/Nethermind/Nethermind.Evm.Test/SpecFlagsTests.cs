@@ -227,7 +227,8 @@ public class SpecFlagsTests
 
     /// <summary>
     /// A follower rule is anchored on the EIP-8038 setting through its type-parameter constraint, so
-    /// the marker interface has to stay exclusive to the two EIP-8038 flags.
+    /// the marker interface has to stay exclusive to the two EIP-8038 flags. The interface is internal,
+    /// so this assembly is the only place an implementation can live and the scan is exhaustive.
     /// </summary>
     [Test]
     public void Anchor_interface_is_implemented_only_by_the_two_Eip8038_flags()
