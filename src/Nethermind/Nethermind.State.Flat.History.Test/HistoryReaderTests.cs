@@ -129,7 +129,7 @@ public class HistoryReaderTests
     [TestCase(true, 5ul)]
     public void A_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, ulong expectedNonce)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryColumnsWriter.SetPersistedAccount(_db, Address, new Account(9, 900));
 
@@ -154,7 +154,7 @@ public class HistoryReaderTests
     [TestCase(true, true)]
     public void A_storage_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, bool expectedFound)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
 
         HookedFlatColumns hooked = new(_db, FlatDbColumns.Storage, () =>

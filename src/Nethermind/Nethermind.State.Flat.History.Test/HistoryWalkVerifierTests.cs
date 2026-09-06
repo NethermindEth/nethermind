@@ -343,7 +343,7 @@ public class HistoryWalkVerifierTests
     public void A_windowed_database_is_refused()
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(
-            _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 100 });
+            _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 });
 
         Assert.That(
             () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance),
