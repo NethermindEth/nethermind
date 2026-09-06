@@ -12,4 +12,9 @@ public interface IHistoryHeaderSource
     /// <summary>The state root this node's header records for <paramref name="block"/>, or <c>null</c> when no
     /// header for that number is available - which the walk reports as a mismatch rather than skipping.</summary>
     ValueHash256? TryGetStateRoot(ulong block);
+
+    void FillStateRoots(ulong firstBlock, Span<ValueHash256?> roots)
+    {
+        for (int i = 0; i < roots.Length; i++) roots[i] = TryGetStateRoot(firstBlock + (ulong)i);
+    }
 }

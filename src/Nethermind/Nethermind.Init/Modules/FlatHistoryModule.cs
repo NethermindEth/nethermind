@@ -11,6 +11,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.Init.Modules;
 
@@ -55,6 +56,15 @@ public class FlatHistoryModule : Module
             .AddSingleton<SlicedReceiptRetention>()
             .Bind<IPrunedReceiptRetention, SlicedReceiptRetention>()
             .Bind<IPrunedLogsRetention, SlicedReceiptRetention>()
+            .AddSingleton<CommitmentDepthPolicy>(ctx => CommitmentDepthPolicy.FromConfig(ctx.Resolve<IFlatDbConfig>()))
+            .AddSingleton<CommitmentMetadata>()
+            .AddSingleton<ArchiveProofSettings>()
+            .AddSingleton<CommitmentReclaimer>()
+            .AddStep(typeof(StartCommitmentReclaimer))
+            .AddSingleton<ArchiveProofRetrofit>()
+            .AddSingleton<ForwardCommitmentCapture>()
+            .AddSingleton<ArchiveProofSource>()
+            .Bind<IHistoricalTrieVisitor, ArchiveProofSource>()
             .AddSingleton<HistoryWalkVerificationCoordinator>()
             .AddStep(typeof(StartHistoryWalkVerification));
 }

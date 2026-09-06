@@ -8,6 +8,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.History.Walk;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -28,6 +30,8 @@ public class HistoryWalkVerificationCoordinatorTests
     [TearDown]
     public void TearDown()
     {
+        foreach (CommitmentReclaimer reclaimer in _reclaimers) reclaimer.Dispose();
+        _reclaimers.Clear();
         _db.Dispose();
         _historyColumns.Dispose();
     }
@@ -45,11 +49,21 @@ public class HistoryWalkVerificationCoordinatorTests
         return (availability, HistoryRowFormat.Resolve(availability, config));
     }
 
+    private readonly List<CommitmentReclaimer> _reclaimers = [];
+
+    private ArchiveProofRetrofit CreateRetrofit(CommitmentMetadata metadata, FlatDbConfig config, HistoryRowFormat rowFormat)
+    {
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        CommitmentReclaimer reclaimer = new(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, LimboLogs.Instance);
+        _reclaimers.Add(reclaimer);
+        return new ArchiveProofRetrofit(_historyColumns, CommitmentDepthPolicy.Default, metadata, settings, reclaimer, LimboLogs.Instance);
+    }
+
     private HistoryWalkVerificationCoordinator CreateCoordinator(FlatDbConfig config, FakeHeaders headers)
     {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         return new HistoryWalkVerificationCoordinator(
-            _db, _historyColumns, headers, availability, rowFormat, config, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), config, rowFormat), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
     }
 
     [Test]
@@ -80,7 +94,7 @@ public class HistoryWalkVerificationCoordinatorTests
         availability.PublishWatermark(2, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
-            _db, _historyColumns, headers, availability, rowFormat, config, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), config, rowFormat), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
         coordinator.Start();
 
         Assert.That(coordinator.Started, Is.True);
@@ -93,6 +107,127 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(verdict!.Verified, Is.True);
             Assert.That(verdict!.Mismatches, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task WhenTheTipAlreadyCoversTheBlocksCapturedMeanwhile_TheWalkDoesNotRunAgain()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems);
+        metadata.AdvanceTipSeries(3, 8, out _);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.LessThanOrEqualTo(3),
+            "the walk covered blocks 0 to 2 and the tip series already commits 3 to 8, so a second walk would scan the whole key space to find a handful of blocks it does not need to build");
+    }
+
+    [Test]
+    public async Task AnUnfinishedWalkOverBlocksTheTipCommitted_IsDroppedRatherThanResumed()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.TryPublishVerifiedCoverage(0, 3, out _, out _);
+        metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems);
+        metadata.AdvanceTipSeries(2, 8, out _);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict, Is.Null, "an interrupted catch-up whose blocks the tip has already committed must be dropped, not resumed: resuming costs a scan of the whole key space to find blocks that are already there");
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "and its marks must go, or the next restart resumes it again");
+        }
+    }
+
+    [Test]
+    public async Task AnUnfinishedWalkOverBlocksNoWalkHasVerified_IsResumedRatherThanDropped()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems);
+        metadata.AdvanceTipSeries(0, 8, out _);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        Assert.That(coordinator.LastVerdict?.Verified, Is.True,
+            "the tip series brackets every range the coordinator picks once the retained floor has risen above the block the tip started at, so dropping on that alone would leave a first walk, and the epoch snapshots pruning needs, permanently unwritten");
+    }
+
+    [Test]
+    public void WalkResources_UseTheCoresLeftAfterTheNodeAndTheMemoryTheBudgetLeaves()
+    {
+        FlatDbConfig auto = new() { HistoryEnabled = true };
+        WalkResources roomy = WalkResources.Resolve(auto, processorCount: 8, totalMemoryBytes: 32L << 30, workingSetBytes: 4L << 30);
+        WalkResources tight = WalkResources.Resolve(auto, processorCount: 8, totalMemoryBytes: 32L << 30, workingSetBytes: 26L << 30);
+        WalkResources pinned = WalkResources.Resolve(new FlatDbConfig { HistoryEnabled = true, HistoryVerifySegments = 3, HistoryVerifyMaxRows = 100 }, processorCount: 8, totalMemoryBytes: 32L << 30, workingSetBytes: 4L << 30);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roomy.Workers, Is.EqualTo(6), "two cores stay with block processing; memory allows the rest");
+            Assert.That(roomy.RowsPerPartition, Is.EqualTo(WalkResources.DefaultRowsPerPartition));
+            Assert.That(tight.Workers, Is.EqualTo(1), "with four gigabytes of headroom only one worker fits its two and a half, never zero");
+            Assert.That((pinned.Workers, pinned.RowsPerPartition), Is.EqualTo((3, 100L)), "explicit settings are honoured as given");
         }
     }
 
