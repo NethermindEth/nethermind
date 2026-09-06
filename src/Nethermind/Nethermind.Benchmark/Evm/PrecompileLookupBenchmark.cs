@@ -53,6 +53,8 @@ public class PrecompileLookupBenchmark
 
         _dictionary = entries.ToFrozenDictionary();
         _set = _dictionary.Keys.ToFrozenSet();
+        _setSpec = new SetSpec(_set);
+        _maskSpec = new MaskSpec(_set, _mask);
 
         // A realistic CALL mix: mostly ordinary contracts, which is what the membership test rejects.
         _addresses = new Address[16];
@@ -143,6 +145,59 @@ public class PrecompileLookupBenchmark
                 ? (t_mask & (1UL << index)) != 0
                 : index >= 0 && precompiles.Contains(address);
             if (isPrecompile) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>Stands in for <c>IReleaseSpec</c>: the membership test reached by interface dispatch.</summary>
+    private interface ISpecLike
+    {
+        bool IsPrecompile(Address address);
+    }
+
+    /// <summary>What the host does today, but through the dispatch the real call site pays.</summary>
+    private sealed class SetSpec(FrozenSet<AddressAsKey> precompiles) : ISpecLike
+    {
+        public bool IsPrecompile(Address address) => address.CouldBePrecompile() && precompiles.Contains(address);
+    }
+
+    /// <summary>The mask held by the spec itself, so no caller has to check which fork it belongs to.</summary>
+    /// <remarks>A spec is immutable and fork-fixed, so the mask can be built once beside its precompile
+    /// set and simply read - no memo, no reference compare, and nothing shared between threads.</remarks>
+    private sealed class MaskSpec(FrozenSet<AddressAsKey> precompiles, ulong mask) : ISpecLike
+    {
+        public bool IsPrecompile(Address address)
+        {
+            int index = address.PrecompileIndexOrNegative();
+            return (uint)index < 64
+                ? (mask & (1UL << index)) != 0
+                : address.CouldBePrecompile() && precompiles.Contains(address);
+        }
+    }
+
+    private ISpecLike _setSpec = null!;
+    private ISpecLike _maskSpec = null!;
+
+    [Benchmark]
+    public int Membership_ViaSpec_FrozenSet()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_setSpec.IsPrecompile(address)) found++;
+        }
+
+        return found;
+    }
+
+    [Benchmark]
+    public int Membership_ViaSpec_CachedMask()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_maskSpec.IsPrecompile(address)) found++;
         }
 
         return found;
