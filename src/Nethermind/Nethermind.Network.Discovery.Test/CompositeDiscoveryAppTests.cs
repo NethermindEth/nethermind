@@ -1,11 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test;
@@ -25,6 +34,90 @@ public class CompositeDiscoveryAppTests
         if (expectedFamily == AddressFamily.InterNetworkV6)
         {
             Assert.That(socket.DualMode, Is.EqualTo(expectedDualMode));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task StartAsync_ReleasesChannelAndEventLoopWhenBindFails()
+    {
+        int port;
+        using (Socket blocker = CreateUdpListenerSocket(0))
+        {
+            port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
+            NetworkConfig networkConfig = new() { LocalIp = "0.0.0.0", DiscoveryPort = port };
+            IIPResolver ipResolver = Substitute.For<IIPResolver>();
+            ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+                new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
+            NetworkListenerState listenerState = new(networkConfig, ipResolver, LimboLogs.Instance);
+            IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+            discoveryApp.StopAsync().Returns(Task.CompletedTask);
+            RecordingChannelFactory channelFactory = new();
+            CompositeDiscoveryApp app = new(
+                networkConfig,
+                new DiscoveryConfig(),
+                LimboLogs.Instance,
+                listenerState,
+                [discoveryApp],
+                channelFactory);
+
+            Assert.That(async () => await app.StartAsync(), Throws.TypeOf<PortInUseException>());
+
+            Assert.That(app.HasEventLoopGroup, Is.False);
+            Assert.That(listenerState.DiscoveryAddress, Is.Null);
+            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(1));
+            Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
+            Assert.That(channelFactory.CreatedChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
+            await discoveryApp.Received(1).StopAsync();
+        }
+
+        using Socket released = CreateUdpListenerSocket(port);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task StartAsync_InitializesDiscoveryAppsOnlyAfterFallbackBindSucceeds()
+    {
+        int port;
+        using (Socket reservation = CreateUdpListenerSocket(0))
+        {
+            port = ((IPEndPoint)reservation.LocalEndPoint!).Port;
+        }
+
+        NetworkConfig networkConfig = new() { DiscoveryPort = port };
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        bool initializedOnEventLoop = false;
+        discoveryApp.When(app => app.InitializeChannel(Arg.Any<IChannel>())).Do(call =>
+            initializedOnEventLoop = ((IChannel)call[0]).EventLoop.InEventLoop);
+        discoveryApp.StartAsync().Returns(Task.CompletedTask);
+        discoveryApp.StopAsync().Returns(Task.CompletedTask);
+        RecordingChannelFactory channelFactory = new();
+        CompositeDiscoveryApp app = new(
+            networkConfig,
+            new DiscoveryConfig(),
+            LimboLogs.Instance,
+            listenerState,
+            [discoveryApp],
+            channelFactory);
+
+        try
+        {
+            await app.StartAsync();
+            await discoveryApp.Received(1).StartAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
+                Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
+                Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
+                Assert.That(initializedOnEventLoop, Is.True);
+                discoveryApp.Received(1).InitializeChannel(channelFactory.CreatedChannels[1]);
+            }
+        }
+        finally
+        {
+            await app.StopAsync();
         }
     }
 
@@ -83,5 +176,31 @@ public class CompositeDiscoveryAppTests
         record.SetEntry(new Tcp6Entry(30306));
         record.SetEntry(new Udp6Entry(30305));
         return record;
+    }
+
+    private static Socket CreateUdpListenerSocket(int port)
+    {
+        Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+        {
+            ExclusiveAddressUse = true
+        };
+        socket.Bind(new IPEndPoint(IPAddress.Any, port));
+        return socket;
+    }
+
+    private sealed class RecordingChannelFactory : IChannelFactory
+    {
+        public List<IChannel> CreatedChannels { get; } = [];
+
+        public IChannel CreateDatagramChannel()
+        {
+            IChannel channel = new SocketDatagramChannel(CompositeDiscoveryApp.CreateDatagramSocket(IPAddress.Any));
+            CreatedChannels.Add(channel);
+            return channel;
+        }
+
+        public IServerChannel CreateServer() => throw new NotSupportedException();
+
+        public IChannel CreateClient() => throw new NotSupportedException();
     }
 }

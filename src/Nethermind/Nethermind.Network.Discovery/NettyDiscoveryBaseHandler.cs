@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -20,6 +21,15 @@ public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager, IChanne
     protected IChannel Channel => _channel ?? throw new InvalidOperationException("Discovery channel is not initialized.");
 
     public void InitializeChannel(IChannel channel) => _channel = channel;
+
+    /// <summary>
+    /// Reduces an IPv4-mapped IPv6 sender address (<c>::ffff:a.b.c.d</c>, reported by dual-stack sockets) to its plain IPv4 form.
+    /// </summary>
+    protected static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
+    {
+        IPAddress address = endpoint.Address.NormalizeMappedIPv4();
+        return ReferenceEquals(address, endpoint.Address) ? endpoint : new IPEndPoint(address, endpoint.Port);
+    }
 
     public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
 

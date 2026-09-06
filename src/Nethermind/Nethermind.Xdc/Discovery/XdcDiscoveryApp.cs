@@ -21,7 +21,8 @@ public class XdcDiscoveryApp(
     INetworkConfig networkConfig,
     IDiscoveryConfig discoveryConfig,
     IIPResolver ipResolver,
-    ILogManager logManager)
+    ILogManager logManager,
+    NetworkListenerState listenerState)
     : DiscoveryApp(
         rootScope,
         enode,
@@ -30,6 +31,7 @@ public class XdcDiscoveryApp(
         ipResolver,
         processExitSource,
         logManager,
+        listenerState,
         static builder =>
         {
             builder.RegisterType<XdcNettyDiscoveryHandler>()

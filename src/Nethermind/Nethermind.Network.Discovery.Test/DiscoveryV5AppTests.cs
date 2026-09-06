@@ -23,6 +23,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,23 +41,28 @@ public class DiscoveryV5AppTests
     public void Setup()
     {
         _discoveryDb = new MemDb();
-        _discoveryV5App = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"), localIp: IPAddress.IPv6Any);
+        _discoveryV5App = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"), localIp: IPAddress.Any);
     }
 
     private DiscoveryV5App CreateDiscoveryV5App(
         IPAddress externalIp,
         Action<ContainerBuilder>? configureDiscv5Services = null,
-        IPAddress? localIp = null)
+        IPAddress? localIp = null,
+        IPAddress? boundDiscoveryIp = null,
+        NetworkNode[]? bootnodes = null)
     {
         NetworkConfig networkConfig = new()
         {
-            Bootnodes = [],
+            Bootnodes = bootnodes ?? [],
             ExternalIp = externalIp.ToString(),
             LocalIp = localIp?.ToString()
         };
         IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        NetworkListenerState listenerState = boundDiscoveryIp is not null && localIp is not null
+            ? new NetworkListenerState(boundDiscoveryIp, localIp, LimboLogs.Instance)
+            : new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
         EthereumEcdsa ecdsa = new(0);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         Block head = Build.A.Block.Genesis.TestObject;
@@ -68,6 +74,7 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
         builder.RegisterInstance(enode).As<IEnode>();
         builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        builder.RegisterInstance(listenerState);
         builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
         builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
         builder.RegisterInstance(blockTree).As<IBlockTree>();
@@ -80,7 +87,7 @@ public class DiscoveryV5AppTests
         IContainer container = builder.Build();
         _containers.Add(container);
 
-        return new DiscoveryV5App(
+        DiscoveryV5App discoveryV5App = new(
             container,
             nodeKey,
             enode,
@@ -89,8 +96,15 @@ public class DiscoveryV5AppTests
             new DiscoveryConfig { },
             new ProcessExitSource(CancellationToken.None),
             LimboLogs.Instance,
+            listenerState,
             configureDiscv5Services
         );
+        if (boundDiscoveryIp is not null)
+        {
+            listenerState.SetDiscoveryAddress(boundDiscoveryIp);
+        }
+
+        return discoveryV5App;
     }
 
     [TearDown]
@@ -120,9 +134,14 @@ public class DiscoveryV5AppTests
         TestEnrBuilder.BuildSigned(privateKey, ipAddress, tcpPort: null, udpPort: udpPort, useUdp6: useUdp6);
 
     private static NodeRecord CreateEnrForAddress(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress) =>
-        ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+        ipAddress.AddressFamily == AddressFamily.InterNetworkV6
             ? CreateTestIpv6Enr(privateKey, ipAddress, 30303)
             : CreateTestEnr(privateKey, ipAddress);
+
+    private static IPAddress GetMatchingWildcardAddress(IPAddress address) =>
+        address.AddressFamily == AddressFamily.InterNetwork
+            ? IPAddress.Any
+            : IPAddress.IPv6Any;
 
     [Test]
     public void Should_Reject_Private_Ip_Enr()
@@ -164,11 +183,15 @@ public class DiscoveryV5AppTests
     [TestCase("2001:db8::1")]
     [TestCase("2002::1")]
     [TestCase("3fff::1")]
-    public void Should_Reject_Special_Use_Ip_Enr(string ip)
+    public async Task Should_Reject_Special_Use_Ip_Enr(string ip)
     {
-        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
+        IPAddress address = IPAddress.Parse(ip);
+        await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            localIp: GetMatchingWildcardAddress(address));
+        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, address);
 
-        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+        bool result = discoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
         Assert.That(result, Is.False);
         Assert.That(node, Is.Null);
@@ -178,8 +201,11 @@ public class DiscoveryV5AppTests
     [TestCase("2001:db8::1")]
     public async Task Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment(string ip)
     {
-        await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
-        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
+        IPAddress address = IPAddress.Parse(ip);
+        await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(
+            IPAddress.Loopback,
+            localIp: GetMatchingWildcardAddress(address));
+        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, address);
 
         bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
@@ -380,11 +406,14 @@ public class DiscoveryV5AppTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Should_Accept_Ipv6_Enr(bool useUdp6)
+    public async Task Should_Accept_Ipv6_Enr(bool useUdp6)
     {
+        await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
+            IPAddress.Parse("2001:4860:4860::8844"),
+            localIp: IPAddress.IPv6Any);
         NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001, useUdp6);
 
-        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+        bool result = discoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
@@ -406,8 +435,78 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
-    public void Should_Restore_Persisted_Dual_Enr_Through_Acceptable_Address_Family()
+    public async Task Should_UseBoundDiscoveryFamilyAfterFallback()
     {
+        await using DiscoveryV5App fallbackApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            localIp: IPAddress.IPv6Any,
+            boundDiscoveryIp: IPAddress.Any);
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
+
+        bool result = fallbackApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    [Test]
+    public async Task StartAsync_ShouldRemoveBootnodeOutsideBoundFamilyAfterFallback()
+    {
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        await using DiscoveryV5App fallbackApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>(),
+            localIp: IPAddress.IPv6Any,
+            boundDiscoveryIp: IPAddress.Any,
+            bootnodes: [new NetworkNode(enr.ToString())]);
+
+        await fallbackApp.StartAsync();
+
+        kademlia.Received(1).Remove(Arg.Is<Node>(node => node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
+        kademlia.DidNotReceive().AddOrRefresh(Arg.Is<Node>(node =>
+            DiscoveryAddressSupport.GetFamily(node.DiscoveryAddress.Address) == AddressFamily.InterNetworkV6));
+    }
+
+    [Test]
+    public async Task StartAsync_ShouldPreserveBootnodeStateWhenBoundFamilyChanges()
+    {
+        IPAddress ipv6 = IPAddress.Parse("2001:4860:4860::8888");
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("8.8.8.8"),
+            tcpPort: null,
+            udpPort: 9001,
+            configureExtras: record =>
+            {
+                record.SetEntry(new Ip6Entry(ipv6));
+                record.SetEntry(new Udp6Entry(9002));
+            });
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        await using DiscoveryV5App app = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>(),
+            localIp: IPAddress.IPv6Any,
+            boundDiscoveryIp: IPAddress.IPv6Loopback,
+            bootnodes: [new NetworkNode(enr.ToString())]);
+
+        await app.StartAsync();
+
+        kademlia.Received(1).AddOrRefresh(Arg.Is<Node>(node =>
+            DiscoveryAddressSupport.GetFamily(node.DiscoveryAddress.Address) == AddressFamily.InterNetworkV6 &&
+            node.IsBootnode &&
+            node.Enr != null &&
+            node.Enr.GetHex() == enr.GetHex() &&
+            node.IsVerifiedEnr(node.Enr) &&
+            node.HighestObservedEnrSequence == enr.EnrSequence));
+    }
+
+    [Test]
+    public async Task Should_Restore_Persisted_Dual_Enr_Through_Acceptable_Address_Family()
+    {
+        await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
+            IPAddress.Parse("2001:4860:4860::8844"),
+            localIp: IPAddress.IPv6Any);
         IPAddress ip6 = IPAddress.Parse("2606:4700:4700::1111");
         NodeRecord enr = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyA,
@@ -421,7 +520,7 @@ public class DiscoveryV5AppTests
                 record.SetEntry(new Udp6Entry(30305));
             });
 
-        Node? node = _discoveryV5App.RestorePersistedNode(new NetworkNode(enr.ToString()));
+        Node? node = discoveryApp.RestorePersistedNode(new NetworkNode(enr.ToString()));
 
         Assert.That(node, Is.Not.Null);
         using (Assert.EnterMultipleScope())

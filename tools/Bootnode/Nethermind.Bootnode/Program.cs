@@ -249,6 +249,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         BootnodeMetrics metrics = new();
         metrics.UpdateSnapshot(nodeStore.AddConfiguredBootnodes(configuredBootnodes));
 
+        await using BootnodeRuntime runtime = new(discoveryApp, discoverySources, nodeStore, metrics, bucketRegistry, processExitSource, logManager);
+        await runtime.StartAsync(shutdownSource.Token);
+
         BootnodeIdentity identity = await CreateIdentity(container.Resolve<IEnode>(), nodeRecordProvider, nodeKey, shutdownSource.Token);
         metrics.SetIdentity(identity);
         BootnodeStatus status = CreateStatus(options, identity);
@@ -258,9 +261,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Console.WriteLine($"enode: {identity.Enode}");
             Console.WriteLine($"enr:   {identity.Enr}");
         }
-
-        await using BootnodeRuntime runtime = new(discoveryApp, discoverySources, nodeStore, metrics, bucketRegistry, processExitSource, logManager);
-        await runtime.StartAsync(shutdownSource.Token);
 
         await using WebApplication httpApp = BuildHttpApp(options.HttpHost, options.HttpPort, nodeStore, status);
         await using WebApplication metricsApp = BuildMetricsApp(options.MetricsHost, options.MetricsPort);

@@ -341,24 +341,28 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await adapter.Received(8).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
-        [Test]
-        public async Task DualStackMappedSender_IsAcceptedAndNormalizedToIPv4()
+        [TestCase("::ffff:127.0.0.2", "127.0.0.2")]
+        [TestCase("2001:db8::2", "2001:db8::2")]
+        public async Task DualStackSender_IsAcceptedInCanonicalForm(string senderAddress, string expectedAddress)
         {
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
 
-            DiscoveryMsg? received = null;
-            _ = adapter.OnIncomingMsg(Arg.Do<DiscoveryMsg>(x => received = x));
+            TaskCompletionSource<DiscoveryMsg> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(callInfo =>
+            {
+                received.TrySetResult(callInfo.Arg<DiscoveryMsg>());
+                return Task.CompletedTask;
+            });
 
-            IPEndPoint mappedSender = new(IPAddress.Parse("::ffff:127.0.0.2"), _address2.Port);
+            IPEndPoint sender = new(IPAddress.Parse(senderAddress), _address2.Port);
             byte[] data = SerializePing(service);
 
-            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), mappedSender, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), sender, _address));
 
-            await SleepWhileWaiting();
-
+            DiscoveryMsg message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
             ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
-            Assert.That(received?.FarAddress?.Address, Is.EqualTo(IPAddress.Parse("127.0.0.2")));
+            Assert.That(message.FarAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse(expectedAddress), sender.Port)));
         }
 
         [Test]

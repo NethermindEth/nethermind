@@ -188,7 +188,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
             ThrowInvalidIP(ip);
         }
 
-        return new IPEndPoint(new IPAddress(ip), port);
+        return new IPEndPoint(new IPAddress(ip).NormalizeMappedIPv4(), port);
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidPort(int port) => throw new NetworkingException($"Invalid discovery port {port}.", NetworkExceptionType.Validation);
