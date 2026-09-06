@@ -18,12 +18,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private ExecutionHandlers GetExecutionHandlers()
     {
         Debug.Assert(_executionHandlers is not null, "PrepareOpcodes resolves frame handlers before execution.");
+#if DEBUG
+        Debug.Assert(ReferenceEquals(_executionHandlers.Spec, Spec), "Frame handlers must belong to the current block spec.");
+#endif
         return _executionHandlers!;
     }
 
     /// <summary>Frame operations selected once for the same spec as the opcode tables.</summary>
     private sealed class ExecutionHandlers(IReleaseSpec spec)
     {
+#if DEBUG
+        public readonly IReleaseSpec Spec = spec;
+#endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> InitializeFrame =
             spec.ClearEmptyAccountWhenTouched ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
