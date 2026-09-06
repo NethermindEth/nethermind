@@ -553,11 +553,10 @@ namespace Nethermind.Core.Extensions
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes)
-            {
-                BigInteger value = new(bytes, isUnsigned: true, isBigEndian: true);
-                throw new OverflowException($"Value {value} exceeds maximum allowed value");
-            }
+            // Hex, not decimal: rendering the value needed a BigInteger, and that linked
+            // System.Runtime.Numerics for the sake of a message on a throwing path.
+            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes) =>
+                throw new OverflowException($"Value 0x{bytes.ToHexString()} exceeds maximum allowed value");
         }
 
         /// <summary>
@@ -603,11 +602,10 @@ namespace Nethermind.Core.Extensions
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes)
-            {
-                BigInteger value = new(bytes, isUnsigned: true, isBigEndian: true);
-                throw new OverflowException($"Value {value} exceeds maximum allowed value");
-            }
+            // Hex, not decimal: rendering the value needed a BigInteger, and that linked
+            // System.Runtime.Numerics for the sake of a message on a throwing path.
+            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes) =>
+                throw new OverflowException($"Value 0x{bytes.ToHexString()} exceeds maximum allowed value");
         }
 
         public static ulong ToULong(this byte[] bytes) => ToULong((ReadOnlySpan<byte>)bytes);

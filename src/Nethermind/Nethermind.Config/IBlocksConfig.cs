@@ -40,8 +40,13 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "State pre-warming level while processing blocks: `None`, `Block` (warm the block's own transactions), or `BlockAndMempool` (also speculatively warm from the mempool between blocks).", DefaultValue = "BlockAndMempool")]
     PreWarmMode PreWarming { get; set; }
 
-    [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
-    bool CachePrecompilesOnBlockProcessing { get; set; }
+    [ConfigItem(
+        Description =
+            "Budget for the per-block tier of the precompile results cache, in kilobytes, split between the cacheable precompiles. Requires PreWarming. " +
+            "Not recommended to set below 1MB when enabled. `0` or negative values disable precompile caching entirely.",
+        DefaultValue = "32768", HiddenFromDocs = true
+    )]
+    int PrecompileCacheMaxKilobytes { get; set; }
 
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }

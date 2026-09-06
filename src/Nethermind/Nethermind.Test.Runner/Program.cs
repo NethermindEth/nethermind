@@ -142,10 +142,6 @@ internal class Program
         string input = parseResult.GetValue(Options.Input);
         if (parseResult.GetValue(Options.Stdin)) input = Console.ReadLine();
 
-        // Rlp's and the decoders' static initializers reach into each other via RegisterDecoders;
-        // racing the first RLP use across parse workers can deadlock class init. Warm it up here.
-        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Nethermind.Serialization.Rlp.Rlp).TypeHandle);
-
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));

@@ -173,10 +173,10 @@ namespace Nethermind.Trie
         public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {
             byte[] bytes = new byte[nibbles.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
-            }
+            PackNibbles(
+                ref MemoryMarshal.GetReference(nibbles),
+                ref MemoryMarshal.GetArrayDataReference(bytes),
+                bytes.Length);
 
             return bytes;
         }
@@ -216,10 +216,10 @@ namespace Nethermind.Trie
         {
             int oddity = nibbles.Length % 2;
             byte[] bytes = new byte[nibbles.Length / 2 + 1];
-            for (int i = 0; i < bytes.Length - 1; i++)
-            {
-                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
-            }
+            PackNibbles(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), oddity),
+                ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), 1),
+                bytes.Length - 1);
 
             if (oddity == 1)
             {
