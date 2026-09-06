@@ -51,7 +51,7 @@ internal sealed class BootnodeMetrics
         "Total discovery UDP traffic handled by the bootnode.",
         new CounterConfiguration { LabelNames = ["direction"] });
 
-    private static readonly Gauge KademliaBucketNodes = PrometheusMetrics.CreateGauge(
+    internal static readonly Gauge KademliaBucketNodes = PrometheusMetrics.CreateGauge(
         "nethermind_bootnode_kademlia_bucket_nodes",
         "Number of nodes in each bootnode Kademlia routing-table bucket.",
         new GaugeConfiguration { LabelNames = ["protocol", "bucket", "depth", "prefix"] });
@@ -61,9 +61,25 @@ internal sealed class BootnodeMetrics
         "Bootnode identity information.",
         new GaugeConfiguration { LabelNames = ["enode", "enr", "seq", "node_id", "address"] });
 
-    public void RecordSeen(string protocol) => DiscoveredNodes.WithLabels(protocol).Inc();
+    // High-frequency fixed-label counters are process-lifetime caches.
+    private static readonly Counter.Child DiscoveredDiscv4Nodes = DiscoveredNodes.WithLabels("discv4");
+    private static readonly Counter.Child DiscoveredDiscv5Nodes = DiscoveredNodes.WithLabels("discv5");
+    private static readonly Counter.Child RemovedDiscv4Nodes = RemovedNodes.WithLabels("discv4");
+    private static readonly Counter.Child RemovedDiscv5Nodes = RemovedNodes.WithLabels("discv5");
 
-    public void RecordRemoved(string protocol) => RemovedNodes.WithLabels(protocol).Inc();
+    public void RecordSeen(string protocol) => (protocol switch
+    {
+        "discv4" => DiscoveredDiscv4Nodes,
+        "discv5" => DiscoveredDiscv5Nodes,
+        _ => DiscoveredNodes.WithLabels(protocol)
+    }).Inc();
+
+    public void RecordRemoved(string protocol) => (protocol switch
+    {
+        "discv4" => RemovedDiscv4Nodes,
+        "discv5" => RemovedDiscv5Nodes,
+        _ => RemovedNodes.WithLabels(protocol)
+    }).Inc();
 
     public void SetIdentity(BootnodeIdentity identity)
     {
@@ -83,7 +99,9 @@ internal sealed class BootnodeMetrics
 
             if (_publishedIdentity is { } previous)
             {
-                IdentityInfo.WithLabels(previous.Enode, previous.Enr, previous.EnrSequence, previous.NodeId, previous.Address).Unpublish();
+                Gauge.Child previousIdentity = IdentityInfo.WithLabels(previous.Enode, previous.Enr, previous.EnrSequence, previous.NodeId, previous.Address);
+                previousIdentity.Unpublish();
+                previousIdentity.Remove();
             }
 
             IdentityInfo.WithLabels(key.Enode, key.Enr, key.EnrSequence, key.NodeId, key.Address).Set(1);
@@ -175,9 +193,10 @@ internal sealed class BootnodeMetrics
             {
                 if (!currentBuckets.Contains(publishedBucket))
                 {
-                    KademliaBucketNodes
-                        .WithLabels(publishedBucket.Protocol, publishedBucket.Bucket, publishedBucket.Depth, publishedBucket.Prefix)
-                        .Unpublish();
+                    Gauge.Child previousBucket = KademliaBucketNodes
+                        .WithLabels(publishedBucket.Protocol, publishedBucket.Bucket, publishedBucket.Depth, publishedBucket.Prefix);
+                    previousBucket.Unpublish();
+                    previousBucket.Remove();
                 }
             }
 
