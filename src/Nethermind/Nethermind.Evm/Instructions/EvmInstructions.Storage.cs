@@ -389,7 +389,7 @@ public static partial class EvmInstructions
             if (!newSameAsCurrent)
             {
                 vmState.Refund += sClearRefunds;
-                if (vm.TxTracer.IsTracingRefunds)
+                if (vm.IsTracingRefunds)
                     vm.TxTracer.ReportRefund(sClearRefunds);
             }
         }
@@ -466,7 +466,7 @@ public static partial class EvmInstructions
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
         if (TUseNetGasStipendFix.IsActive)
         {
-            if (vm.TxTracer.IsTracingRefunds)
+            if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - gasCosts.NetMeteredSStoreCost + 1);
             if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
                 goto OutOfGas;
@@ -526,7 +526,7 @@ public static partial class EvmInstructions
                     if (newIsZero)
                     {
                         vmState.Refund += sClearRefunds;
-                        if (vm.TxTracer.IsTracingRefunds)
+                        if (vm.IsTracingRefunds)
                             vm.TxTracer.ReportRefund(sClearRefunds);
                     }
                 }
@@ -542,14 +542,14 @@ public static partial class EvmInstructions
                     if (currentIsZero)
                     {
                         vmState.Refund -= sClearRefunds;
-                        if (vm.TxTracer.IsTracingRefunds)
+                        if (vm.IsTracingRefunds)
                             vm.TxTracer.ReportRefund(-sClearRefunds);
                     }
 
                     if (newIsZero)
                     {
                         vmState.Refund += sClearRefunds;
-                        if (vm.TxTracer.IsTracingRefunds)
+                        if (vm.IsTracingRefunds)
                             vm.TxTracer.ReportRefund(sClearRefunds);
                     }
                 }
@@ -572,7 +572,7 @@ public static partial class EvmInstructions
                     }
 
                     vmState.Refund += refundFromReversal;
-                    if (vm.TxTracer.IsTracingRefunds)
+                    if (vm.IsTracingRefunds)
                         vm.TxTracer.ReportRefund(refundFromReversal);
                 }
             }

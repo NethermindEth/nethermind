@@ -209,7 +209,7 @@ public static partial class EvmInstructions
         // Add call stipend if value is being transferred.
         if (hasValueTransfer)
         {
-            if (vm.TxTracer.IsTracingRefunds)
+            if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
@@ -223,7 +223,7 @@ public static partial class EvmInstructions
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             // Optionally report memory changes for refund tracing.
-            if (vm.TxTracer.IsTracingRefunds)
+            if (vm.IsTracingRefunds)
             {
                 // Specific to Parity tracing: inspect 32 bytes from data offset.
                 ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
@@ -250,7 +250,7 @@ public static partial class EvmInstructions
         }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.

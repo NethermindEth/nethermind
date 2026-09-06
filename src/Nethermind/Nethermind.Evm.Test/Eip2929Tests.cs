@@ -69,6 +69,36 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        private sealed class RefundObservationTracer(bool refunds, bool actions) : TestAllTracerWithOutput
+        {
+            public override bool IsTracingInstructions => false;
+            public override bool IsTracingRefunds => refunds;
+            public override bool IsTracingActions => actions;
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Refund_and_action_flags_are_independent_and_refreshed(bool refunds, bool actions)
+        {
+            byte[] code = Bytes.FromHexString("60016000556000600055");
+            Verify(refunds, actions);
+            Verify(!refunds, !actions);
+
+            void Verify(bool traceRefunds, bool traceActions)
+            {
+                RefundObservationTracer tracer = new(traceRefunds, traceActions) { IsTracingAccess = false };
+                Execute(tracer, code);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                    Assert.That(tracer.Refund, Is.EqualTo(traceRefunds ? RefundOf.SSetReversedHotCold : 0));
+                    Assert.That(tracer.Actions, Has.Count.EqualTo(traceActions ? 1 : 0));
+                }
+            }
+        }
+
         protected override TestAllTracerWithOutput CreateTracer()
         {
             TestAllTracerWithOutput tracer = base.CreateTracer();

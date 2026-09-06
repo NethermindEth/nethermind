@@ -133,6 +133,8 @@ public partial class VirtualMachine<TGasPolicy>(
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both
     // the dispatch table and its matching loop specialization.
     private bool _isTracingActionsCached;
+    internal bool IsTracingActions => _isTracingActionsCached;
+    internal bool IsTracingRefunds { get; private set; }
     private bool _isCancelableCached;
     internal bool IsTracingAccess { get; private set; }
     internal bool IsTracingOpLevelStorage { get; private set; }
@@ -186,6 +188,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
+        IsTracingRefunds = txTracer.IsTracingRefunds;
         _isCancelableCached = txTracer.IsCancelable;
         IsTracingAccess = txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
@@ -659,7 +662,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         // If action-level tracing is enabled, report the error associated with the action.
-        if (txTracer.IsTracingActions)
+        if (_isTracingActionsCached)
         {
             txTracer.ReportActionError(errorType);
         }
@@ -843,7 +846,7 @@ public partial class VirtualMachine<TGasPolicy>(
         ITxTracer txTracer = _txTracer;
 
         // Report the error for action-level tracing if enabled.
-        if (txTracer.IsTracingActions)
+        if (_isTracingActionsCached)
         {
             txTracer.ReportActionError(callResult.ExceptionType);
         }

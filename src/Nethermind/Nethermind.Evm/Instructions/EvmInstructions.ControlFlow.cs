@@ -282,7 +282,7 @@ public static partial class EvmInstructions
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
 
-        if (vm.TxTracer.IsTracingActions)
+        if (vm.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // Charge gas if transferring to a dead or non-existent account.
