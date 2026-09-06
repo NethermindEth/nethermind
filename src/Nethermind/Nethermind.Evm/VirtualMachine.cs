@@ -1328,7 +1328,10 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            UpdateCurrentState((int)programCounter, in gas, (int)stack.Head);
+            int stackHead = (int)stack.Head;
+            VmState<TGasPolicy> state = VmState;
+            state.ProgramCounter = (int)programCounter;
+            state.DataStackHead = stackHead;
         }
         else
         {
@@ -1359,8 +1362,6 @@ public partial class VirtualMachine<TGasPolicy>(
         if (exceptionType == EvmExceptionType.OutOfGas)
             TGasPolicy.ClearExecutionGas(ref gas);
 
-        // EIP-8037: write gas back so RestoreChildStateGasOnHalt can read the child frame's state gas.
-        _currentState.Gas = gas;
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }
 
@@ -1380,15 +1381,6 @@ public partial class VirtualMachine<TGasPolicy>(
             EvmExceptionType.AccessViolation => new(exceptionType),
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
-    }
-
-    private void UpdateCurrentState(int pc, in TGasPolicy gas, int stackHead)
-    {
-        VmState<TGasPolicy> state = VmState;
-
-        state.ProgramCounter = pc;
-        state.Gas = gas;
-        state.DataStackHead = stackHead;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
