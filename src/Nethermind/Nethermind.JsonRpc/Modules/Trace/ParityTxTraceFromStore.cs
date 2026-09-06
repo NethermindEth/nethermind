@@ -65,8 +65,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public Hash256 BlockHash { get; set; }
 
-        [JsonConverter(typeof(LongRawJsonConverter))]
-        public long BlockNumber { get; set; }
+        [JsonConverter(typeof(ULongRawJsonConverter))]
+        public ulong BlockNumber { get; set; }
 
         public ParityTraceResult Result { get; set; }
 

@@ -38,6 +38,7 @@ public class NodeHealthServiceTests
         IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
         IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.SynchronizationEnabled.Returns(true);
         IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
         blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
         blockProducerRunner.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
@@ -48,7 +49,7 @@ public class NodeHealthServiceTests
         drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
         drive.RootDirectory.FullName.Returns("C:/");
 
-        static BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
+        static BlockHeaderBuilder GetBlockHeader(ulong blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
         blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
         if (test.IsSyncing)
         {
@@ -83,7 +84,7 @@ public class NodeHealthServiceTests
         drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
         drive.RootDirectory.FullName.Returns("C:/");
 
-        static BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
+        static BlockHeaderBuilder GetBlockHeader(ulong blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
 
         blockFinder.Head.Returns(new Block(GetBlockHeader(4).WithDifficulty(0).TestObject));
         if (test.IsSyncing)

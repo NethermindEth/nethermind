@@ -67,7 +67,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             To = engineParameters.SystemTransactionTo,
             GasLimit = 1000000,
             IsOPSystemTransaction = false,
-            Value = UInt256.Zero,
+            Value = 0UL,
             SourceHash = sourceHash
         };
     }
@@ -150,7 +150,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
                 To = depositLogEventV0.IsCreation ? null : to,
                 Mint = depositLogEventV0.Mint,
                 Value = depositLogEventV0.Value,
-                GasLimit = (long)depositLogEventV0.Gas, // WARNING: dangerous cast
+                GasLimit = depositLogEventV0.Gas,
                 Data = depositLogEventV0.Data.ToArray(),
                 SourceHash = sourceHash,
                 IsOPSystemTransaction = false,

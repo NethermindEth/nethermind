@@ -26,6 +26,7 @@ class SszProperty
             IsMemoryLikeProperty = SszTypeHelpers.IsMemoryType(prop.Type),
             IsReadOnlyMemoryProperty = SszTypeHelpers.IsReadOnlyMemoryType(prop.Type),
             IsNullable = prop.Type.NullableAnnotation == NullableAnnotation.Annotated,
+            IsReferenceType = prop.Type.IsReferenceType,
             IsListProperty = collection?.IsList ?? false,
             HasCollectionAsSpan = collection?.HasAsSpan ?? false,
             CanConstructCollectionFromReadOnlySpan = collection?.CanConstructFromReadOnlySpan ?? false,
@@ -60,7 +61,14 @@ class SszProperty
             AttributeData? listAttr = GetAttribute(attributes, nameof(SszListAttribute));
             if (listAttr is not null)
             {
-                result.Limit = listAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
+                ulong limit = listAttr.ConstructorArguments.FirstOrDefault().Value as ulong? ?? 0UL;
+                if (prop.Type.Name == nameof(BitArray) && limit > int.MaxValue)
+                {
+                    throw new InvalidOperationException(
+                        $"Bitlist property {prop.ContainingType.Name}.{prop.Name} declares limit {limit}, but a BitArray cannot exceed int.MaxValue bits.");
+                }
+
+                result.Limit = limit;
             }
 
             result.IsProgressiveList = HasAttribute(attributes, nameof(SszProgressiveListAttribute));
@@ -186,6 +194,7 @@ class SszProperty
     public bool IsMemoryLikeProperty { get; init; }
     public bool IsReadOnlyMemoryProperty { get; init; }
     public bool IsNullable { get; init; }
+    public bool IsReferenceType { get; init; }
     public bool IsListProperty { get; init; }
     public bool HasCollectionAsSpan { get; init; }
     public bool CanConstructCollectionFromReadOnlySpan { get; init; }
@@ -247,7 +256,7 @@ class SszProperty
     }
 
     public int? Length { get; set; }
-    public int? Limit { get; set; }
+    public ulong? Limit { get; set; }
 
     public bool IsCompatibleWith(SszProperty other, HashSet<(SszType, SszType)> visited)
     {

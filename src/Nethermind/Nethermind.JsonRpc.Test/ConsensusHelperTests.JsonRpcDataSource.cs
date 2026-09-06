@@ -53,7 +53,7 @@ public partial class ConsensusHelperTests
         public virtual async Task<(T2, string)> GetData()
         {
             string jsonData = await GetJsonData();
-            return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result, jsonData);
+            return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData)!.Result, jsonData);
         }
 
         public abstract Task<string> GetJsonData();

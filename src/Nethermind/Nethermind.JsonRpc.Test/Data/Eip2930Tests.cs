@@ -49,7 +49,7 @@ public class Eip2930Tests
     [TestCase(TxType.EIP1559, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","gas":"0x0","input":null,"type":"0x02","chainId":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1","0x2","0x3","0x5","0x8"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x2a"]}]}""")]
     public void can_deserialize_valid_accessList(TxType txType, string txJson)
     {
-        TransactionForRpc deserializedTxForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
+        TransactionForRpc deserializedTxForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
 
         Assert.That(deserializedTxForRpc.Type, Is.EqualTo(txType));
         AccessList actual = txType switch
@@ -95,7 +95,7 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":null}""";
 
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
         Assert.That(((AccessListTransactionForRpc)transactionForRpc).AccessList, Is.Null);
@@ -106,7 +106,7 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":"0x00"}""";
 
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
         Result<Transaction> txResult = transactionForRpc.ToTransaction();
         Assert.That(txResult.ResultType, Is.EqualTo(ResultType.Success));
 
@@ -136,7 +136,7 @@ public class Eip2930Tests
     public void can_deserialize_empty_accessList()
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":[]}""";
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
 
@@ -170,7 +170,7 @@ public class Eip2930Tests
     public void can_deserialize_accessList_with_empty_storageKeys()
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""";
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
 
@@ -183,7 +183,7 @@ public class Eip2930Tests
     public void can_deserialize_accessList_with_null_storageKeys()
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
 
@@ -196,7 +196,7 @@ public class Eip2930Tests
     public void can_deserialize_accessList_with_null_storageKeys_and_eip1559_txType()
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","maxFeePerGas":"0x10","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.EIP1559));
 
@@ -210,7 +210,7 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""";
 
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         // If there is not `TxType` provided, default value should be `TxType.Legacy`
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.Legacy));

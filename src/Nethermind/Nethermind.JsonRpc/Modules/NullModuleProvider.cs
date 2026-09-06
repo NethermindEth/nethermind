@@ -46,7 +46,5 @@ namespace Nethermind.JsonRpc.Modules
         public void Return(string methodName, IRpcModule rpcModule) { }
 
         public void Return(ResolvedMethodInfo method, IRpcModule rpcModule) { }
-
-        public IRpcModulePool? GetPoolForMethod(string moduleType) => null;
     }
 }

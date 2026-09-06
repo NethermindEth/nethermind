@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.Self)]
 public class CallDataLoadTests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     // Forces the OffFlag specialization of InstructionCallDataLoad; the default tracer
@@ -94,7 +94,7 @@ public class CallDataLoadTests : VirtualMachineTestsBase
 
         // 0x_1_0000_0009: low 32 bits = 9, true value > 4 billion. A buggy truncate-to-uint
         // implementation would read bytes[9..32]||zeros instead of the spec-correct zero word.
-        yield return new TestCaseData(ThirtyTwoSequential, (UInt256)((ulong)uint.MaxValue + 10UL), new byte[32])
+        yield return new TestCaseData(ThirtyTwoSequential, (UInt256)(uint.MaxValue + 10UL), new byte[32])
             .SetName("offset_above_uint32_returns_zero");
     }
 

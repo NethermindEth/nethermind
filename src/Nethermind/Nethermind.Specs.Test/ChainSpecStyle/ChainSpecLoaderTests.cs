@@ -103,6 +103,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
             Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+            Assert.That(chainSpec.Bootnodes, Is.Empty, nameof(chainSpec.Bootnodes));
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
@@ -146,6 +147,34 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.Parameters.Eip152Transition, Is.EqualTo(15));
             Assert.That(chainSpec.Parameters.Eip1108Transition, Is.EqualTo(10));
         }
+    }
+
+    [Test]
+    public void Can_load_builtin_without_pricing()
+    {
+        const string json = """
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                },
+                "accounts": {
+                    "0000000000000000000000000000000000000005": {
+                        "builtin": { "name": "modexp" }
+                    }
+                }
+            }
+            """;
+
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+
+        Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
     }
 
     [Test]

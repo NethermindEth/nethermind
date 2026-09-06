@@ -19,12 +19,12 @@ namespace Nethermind.State.Repositories
         private const int CacheSize = 64;
 
         private readonly object _writeLock = new();
-        private readonly ClockCache<long, ChainLevelInfo> _blockInfoCache = new(CacheSize);
+        private readonly ClockCache<ulong, ChainLevelInfo> _blockInfoCache = new(CacheSize);
         private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>();
 
         private readonly IDb _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
 
-        public void Delete(long number, BatchWrite? batch = null)
+        public void Delete(ulong number, BatchWrite? batch = null)
         {
             void LocalDelete()
             {
@@ -47,12 +47,13 @@ namespace Nethermind.State.Repositories
             }
         }
 
-        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null)
+        public void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null)
         {
             void LocalPersistLevel()
             {
                 _blockInfoCache.Set(number, level);
-                _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
+                using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
+                _blockInfoDb.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
 
             bool needLock = batch?.Disposed != false;
@@ -66,15 +67,16 @@ namespace Nethermind.State.Repositories
             else
             {
                 _blockInfoCache.Set(number, level);
-                batch.WriteBatch.Set(number, Rlp.Encode(level).Bytes);
+                using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
+                batch.WriteBatch.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
         }
 
         public BatchWrite StartBatch() => new(_writeLock, _blockInfoDb.StartWriteBatch);
 
-        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetDecoder<ChainLevelInfo>(), _blockInfoCache);
+        public ChainLevelInfo? LoadLevel(ulong number) => _blockInfoDb.Get(number, Rlp.GetDecoder<ChainLevelInfo>(), _blockInfoCache);
 
-        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
+        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
             byte[][] keys = new byte[blockNumbers.Count][];
             for (int i = 0; i < blockNumbers.Count; i++)
@@ -87,8 +89,8 @@ namespace Nethermind.State.Repositories
             return data.Select(kv =>
                 {
                     if (kv.Value == null || kv.Value.Length == 0) return null;
-                    Rlp.ValueDecoderContext rlpValueContext = kv.Value.AsRlpValueContext();
-                    return _decoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
+                    RlpReader reader = new(kv.Value);
+                    return _decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
                 })
                 .ToPooledList(data.Length);
         }

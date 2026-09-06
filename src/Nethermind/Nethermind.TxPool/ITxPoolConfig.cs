@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -19,6 +19,11 @@ public interface ITxPoolConfig : IConfig
 
     [ConfigItem(Description = "The blobs support mode.", DefaultValue = nameof(BlobsSupportMode.StorageWithReorgs))]
     BlobsSupportMode BlobsSupport { get; set; }
+
+    [ConfigItem(
+        DefaultValue = "15",
+        Description = "The EIP-8070 full-provider selection probability for normal sparse blob-pool nodes, in percent. Values are clamped to the protocol-compliant range `15..100`. Nodes with at least 64 custody columns act as supernodes and request every announced cell.")]
+    int SparseBlobProviderProbabilityPercent { get; set; }
 
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
     int PersistentBlobStorageSize { get; set; }
@@ -42,7 +47,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "null",
         Description = "The max transaction gas allowed.")]
 
-    long? GasLimit { get; set; }
+    ulong? GasLimit { get; set; }
 
     [ConfigItem(DefaultValue = "131072",
         Description = "The max transaction size allowed, in bytes.")]
@@ -56,7 +61,7 @@ public interface ITxPoolConfig : IConfig
     bool CurrentBlobBaseFeeRequired { get; set; }
 
     [ConfigItem(DefaultValue = "false",
-        Description = "Enable transformation of blob txs with network wrapper in version 0x0 (blob proof) to version 0x1 (cell proofs)",
+        Description = "Enable transformation of blob txs between network wrapper version 0x0 (blob proofs) and version 0x1 (cell proofs).",
         HiddenFromDocs = true)]
     bool ProofsTranslationEnabled { get; set; }
 

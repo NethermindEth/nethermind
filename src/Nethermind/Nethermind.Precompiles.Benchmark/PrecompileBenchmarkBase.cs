@@ -33,7 +33,7 @@ namespace Nethermind.Precompiles.Benchmark
 
             public string Name { get; } = name;
 
-            public long Gas(IReleaseSpec releaseSpec) =>
+            public ulong Gas(IReleaseSpec releaseSpec) =>
                 precompile.BaseGasCost(releaseSpec) + precompile.DataGasCost(Bytes, releaseSpec);
 
             public override string ToString() => Name;
@@ -65,7 +65,8 @@ namespace Nethermind.Precompiles.Benchmark
                     foreach (string file in Directory.GetFiles(inputsDir, "*.json", SearchOption.TopDirectoryOnly))
                     {
                         EthereumJsonSerializer jsonSerializer = new();
-                        JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
+                        JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file))
+                            ?? throw new InvalidDataException($"Precompile benchmark input file '{file}' decoded as null.");
                         IEnumerable<Param> parameters = jsonInputs.Select(i => new Param(precompile, Path.GetFileName(i.Name!), i.Input!, i.Expected));
                         inputs.AddRange(parameters);
                     }

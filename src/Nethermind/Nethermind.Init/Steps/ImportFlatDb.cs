@@ -35,11 +35,11 @@ public class ImportFlatDb(
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        // Validate that we're not using PreimageFlat layout
-        if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
+        // Validate that we're not using a preimage layout
+        if (flatDbConfig.Layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat)
         {
-            if (_logger.IsError) _logger.Error("Cannot import with FlatLayout.PreimageFlat. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
-            if (_logger.IsError) _logger.Error("PreimageFlat mode does not support importing from trie state because the importer uses hash-based raw operations.");
+            if (_logger.IsError) _logger.Error($"Cannot import with FlatLayout.{flatDbConfig.Layout}. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
+            if (_logger.IsError) _logger.Error("Preimage mode does not support importing from trie state because the importer uses hash-based raw operations.");
             exitSource.Exit(1);
             return;
         }
@@ -50,7 +50,7 @@ public class ImportFlatDb(
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             if (_logger.IsWarn) _logger.Warn($"Current state is {reader.CurrentState}");
-            if (reader.CurrentState.BlockNumber > 0)
+            if (reader.CurrentState != StateId.PreGenesis)
             {
                 if (_logger.IsInfo) _logger.Info("Flat db already exist");
                 return;

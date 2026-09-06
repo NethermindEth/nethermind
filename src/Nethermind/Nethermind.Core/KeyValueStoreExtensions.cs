@@ -52,6 +52,28 @@ namespace Nethermind.Core
 
             public byte[]? Get(long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
 
+            public bool KeyExists(ulong key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
+            public Span<byte> GetSpan(ulong key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
+            public byte[]? Get(ulong key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
+
+            public ulong GetULongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, ulong defaultValue)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                ulong value = bytes.IsNull() ? defaultValue : bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
+
+            public ulong GetULongFromBigEndianByteArrayWithoutLeadingZeros(ulong key)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                ulong value = bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
+
             public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, long defaultValue)
             {
                 Span<byte> bytes = db.GetSpan(key);
@@ -97,7 +119,7 @@ namespace Nethermind.Core
                 }
             }
 
-            public void Set(long blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+            public void Set(ulong blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
             {
                 Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
@@ -110,18 +132,56 @@ namespace Nethermind.Core
 
             public void Delete(long key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
+            public void Delete(ulong key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
             [SkipLocalsInit]
-            public void Delete(long blockNumber, Hash256 hash)
+            public void Delete(ulong blockNumber, Hash256 hash)
             {
                 Span<byte> key = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, hash, key);
                 db.Remove(key);
             }
 
+            /// <summary>Drops every block-number-prefixed key in <c>[fromInclusive, toExclusive)</c>. The capability is
+            /// checked before the empty-range guard, so an empty range is a side-effect-free probe for a caller with
+            /// something irreversible to do first.</summary>
+            [SkipLocalsInit]
+            public void DeleteBlockNumberRange(ulong fromInclusive, ulong toExclusive, string columnName)
+            {
+                if (db is not IRangeRemovableKeyValueStore rangeRemovable)
+                {
+                    throw new NotSupportedException($"The {columnName} database ({db.GetType().Name}) cannot remove a key range.");
+                }
+
+                if (fromInclusive >= toExclusive) return;
+
+                Span<byte> from = stackalloc byte[40];
+                Span<byte> to = stackalloc byte[40];
+                GetBlockNumPrefixedKey(fromInclusive, default, from);
+                GetBlockNumPrefixedKey(toExclusive, default, to);
+                rangeRemovable.RemoveRange(from, to);
+            }
+
+            /// <summary>Gives back the storage behind an already-deleted range. Separate because it touches only keys
+            /// already declared absent, so it must not run inside a caller's write lock.</summary>
+            [SkipLocalsInit]
+            public void ReclaimBlockNumberRange(ulong fromInclusive, ulong toExclusive)
+            {
+                if (fromInclusive >= toExclusive || db is not IRangeRemovableKeyValueStore rangeRemovable) return;
+
+                Span<byte> from = stackalloc byte[40];
+                Span<byte> to = stackalloc byte[40];
+                GetBlockNumPrefixedKey(fromInclusive, default, from);
+                GetBlockNumPrefixedKey(toExclusive, default, to);
+                rangeRemovable.ReclaimRange(from, to);
+            }
+
             public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
+
+            public void Set(ulong key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
         }
 
-        public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
+        public static void GetBlockNumPrefixedKey(ulong blockNumber, ValueHash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);

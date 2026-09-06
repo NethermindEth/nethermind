@@ -77,6 +77,23 @@ public static class OrderedComponentsContainerBuilderExtensions
     }
 
     /// <summary>
+    /// Remove all previously registered ordered components of type <typeparamref name="TImpl"/> for <typeparamref name="T"/>.
+    /// Useful when a plugin replaces a default component instead of layering on top of it
+    /// (e.g., XDC dropping the default eth/68 capability resolver).
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="ClearOrderedComponents{T}"/>, this relies on the removing decorator being registered
+    /// after the component it targets, which holds when a plugin module loads after the core module that
+    /// registered the default.
+    /// </remarks>
+    public static ContainerBuilder RemoveOrderedComponents<T, TImpl>(this ContainerBuilder builder) where TImpl : T =>
+        builder.AddDecorator<OrderedComponents<T>>((_, orderedComponents) =>
+        {
+            orderedComponents.RemoveAll(static item => item is TImpl);
+            return orderedComponents;
+        });
+
+    /// <summary>
     /// Clear all previously registered ordered components for <typeparamref name="T"/>.
     /// Useful when a plugin needs to disable all ordered policies (e.g., Hive).
     /// </summary>

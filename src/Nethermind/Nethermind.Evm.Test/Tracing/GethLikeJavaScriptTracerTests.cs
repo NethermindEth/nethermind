@@ -4,6 +4,8 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
@@ -19,6 +21,43 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
+    {
+        const int concurrency = 16;
+        string marker = Guid.NewGuid().ToString("N");
+        string tracerCode = $$"""
+                              {
+                                  marker: "{{marker}}",
+                                  result: function() { return this.marker; }
+                              }
+                              """;
+        using CountdownEvent ready = new(concurrency);
+        using ManualResetEventSlim start = new();
+
+        Task[] tasks = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                using Engine engine = new(Shanghai.Instance);
+                ready.Signal();
+                start.Wait();
+                dynamic tracer = engine.CreateTracer(tracerCode);
+                Assert.That((string)tracer.result(), Is.EqualTo(marker));
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default)).ToArray();
+
+        bool allReady = ready.Wait(TimeSpan.FromSeconds(30));
+        start.Set();
+        Assert.That(allReady, Is.True);
+        Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+        using Engine sequentialEngine = new(Shanghai.Instance);
+        dynamic cachedTracer = sequentialEngine.CreateTracer(tracerCode);
+        Assert.That((string)cachedTracer.result(), Is.EqualTo(marker));
+    }
+
     [TestCase("{ result: function(ctx, db) { return null } }", TestName = "fault")]
     [TestCase("{ fault: function(log, db) { } }", TestName = "result")]
     [TestCase("{ fault: function(log, db) { }, result: function(ctx, db) { return null }, enter: function(frame) { } }", TestName = "exit")]
@@ -129,6 +168,74 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void log_contract_is_restored_after_inner_call_returns()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var entry = log.getDepth() + ':' + toHex(log.contract.getAddress());
+                        if (this.retVal.length == 0 || this.retVal[this.retVal.length - 1] != entry) {
+                            this.retVal.push(entry);
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
+        string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(new[] { caller, callee, caller }));
+    }
+
+    [Test]
+    public void post_step_fires_once_per_step()
+    {
+        // postStep runs from ReportOperationRemainingGas. The interpreter reports that once per
+        // instruction, and the CALL handler reports it once more itself before the child frame runs, so
+        // the one CALL below is the only step that fires postStep twice. Both frames halt on an explicit
+        // opcode, so no instruction picks up the extra end-of-code report either.
+        string userTracer = @"{
+                    steps: 0,
+                    postSteps: 0,
+                    step: function(log, db) { this.steps++ },
+                    postStep: function(log, db) { this.postSteps++ },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.steps + ':' + this.postSteps }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+
+        string[] counts = ((string)traces.CustomTracerResult!.Value!).Split(':');
+        int steps = int.Parse(counts[0]);
+        Assert.That(steps, Is.GreaterThan(0));
+        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
+    }
+
+    [Test]
     public void Js_traces_simple_filter()
     {
         string userTracer = @"{
@@ -198,6 +305,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "35: SSTORE 0", "71: SSTORE 20", "107: SLOAD 0", "108: STOP a01234 <- a01234" };
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+    }
+
+    [Test]
+    public void getState_reads_live_slot_by_raw_key()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        if (log.op.toNumber() == 0x00) {
+                            let a = log.contract.getAddress();
+                            this.retVal.push(toHex(db.getState(a, toWord('0'))));
+                            this.retVal.push(toHex(db.getState(a, toWord('20'))));
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) {
+                        return this.retVal;
+                    }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                SStore_double(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string[] expectedStrings = { SampleHexData1.PadLeft(64, '0'), SampleHexData2.PadLeft(64, '0') };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 

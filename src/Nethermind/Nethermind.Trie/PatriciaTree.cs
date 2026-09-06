@@ -589,7 +589,7 @@ namespace Nethermind.Trie
 
                 if (node.IsLeaf || node.IsExtension)
                 {
-                    int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
                         if (node.IsExtension)
@@ -934,7 +934,7 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -955,6 +955,11 @@ namespace Nethermind.Trie
                         }
 
                         // No node match
+                        return default;
+                    }
+
+                    if (remainingKey.Length == 0)
+                    {
                         return default;
                     }
 
@@ -989,11 +994,12 @@ namespace Nethermind.Trie
 
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
+                    if (!node.TryResolveNode(TrieStore, ref path)) return;
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -1067,8 +1073,8 @@ namespace Nethermind.Trie
                 {
                     ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
                     if (bytes.IsEmpty) return Keccak.EmptyTreeHash;
-                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
-                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
+                    RlpReader valueReader = new(bytes);
+                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueReader);
                 }
 
                 rootHash = storageRoot ?? DecodeStorageRoot(rootHash, storageAddr);

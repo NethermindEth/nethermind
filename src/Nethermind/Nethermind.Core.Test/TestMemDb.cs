@@ -106,11 +106,11 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
             return max;
         }
     }
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
     {
         ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
 
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
+        foreach (KeyValuePair<byte[], byte[]> keyValuePair in GetAll())
         {
             if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0)
             {

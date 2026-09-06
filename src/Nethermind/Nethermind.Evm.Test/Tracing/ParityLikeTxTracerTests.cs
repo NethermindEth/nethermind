@@ -6,12 +6,14 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -45,7 +47,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
             Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
             Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
-            Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
+            Assert.That(trace.Action.Gas, Is.EqualTo(tx.GasLimit - 21000), "gas");
             Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
             Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
             Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
@@ -424,6 +426,25 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
             Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
         }
+    }
+
+    [TestCase(Instruction.SHL, "0x01", 0)]
+    [TestCase(Instruction.SHR, "0x8000000000000000000000000000000000000000000000000000000000000000", 0)]
+    [TestCase(Instruction.SAR, "0x01", 0)]
+    [TestCase(Instruction.SAR, "0x8000000000000000000000000000000000000000000000000000000000000000", 255)]
+    public void Shift_above_255_traces_a_full_word(Instruction instruction, string value, byte expectedByte)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(value)
+            .PushData("0x0100")
+            .Op(instruction)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(
+            (MainnetSpecProvider.ConstantinopleFixBlockNumber, Timestamp), code);
+        byte[] pushed = trace.VmTrace.Operations[2].Push.Single();
+
+        Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
     }
 
     [Test]
@@ -827,6 +848,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Mark_as_success_without_report_action_creates_synthetic_root_action()
+    {
+        Block block = Build.A.Block.TestObject;
+        Transaction tx = Build.A.Transaction.TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        byte[] output = [1, 2, 3];
+
+        Assert.DoesNotThrow(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, output, []));
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action, Is.Not.Null);
+            Assert.That(trace.Action!.From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To));
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value));
+            Assert.That(trace.Action.Result!.Output, Is.EqualTo(output));
+            Assert.That(trace.Output, Is.EqualTo(output));
+        }
+    }
+
+    [Test]
     public void Is_tracing_rewards_only_when_rewards_trace_type_selected()
     {
         ParityLikeBlockTracer tracer = new(ParityTraceTypes.All ^ ParityTraceTypes.Rewards);
@@ -849,6 +892,14 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (tracer.BuildResult(), block, transaction);
+    }
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, params byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 

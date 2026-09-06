@@ -101,7 +101,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
             copyTreeVisitor.Finish();
         }
 
-        return pruningContext;
+        return pruningContext!;
     }
 
     private static IPruningContext StartPruning(MemDb trieDb, MemDb clonedDb)
@@ -110,7 +110,8 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(trieDb, clonedDb);
 
         FullPruningDb fullPruningDb = new(new DbSettings("test", "test"), dbFactory);
-        fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
-        return pruningContext;
+        bool pruningStarted = fullPruningDb.TryStartPruning(out IPruningContext? pruningContext);
+        Assert.That(pruningStarted, Is.True);
+        return pruningContext!;
     }
 }

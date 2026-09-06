@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -22,7 +23,7 @@ public class P2PBlockValidator(
     private readonly Address _sequencerP2PAddress = sequencerP2PAddress;
     private readonly ITimestamper _timestamper = timestamper;
     private readonly ILogger _logger = logManager.GetClassLogger<P2PBlockValidator>();
-    private readonly Dictionary<long, long> _numberOfBlocksSeen = [];
+    private readonly Dictionary<ulong, long> _numberOfBlocksSeen = [];
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {
@@ -40,8 +41,8 @@ public class P2PBlockValidator(
     public ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
-        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out long currentCount);
-        _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
+        ref long count = ref CollectionsMarshal.GetValueRefOrAddDefault(_numberOfBlocksSeen, payload.BlockNumber, out _);
+        long currentCount = count++;
         return currentCount > 5 ? ValidityStatus.Reject : ValidityStatus.Valid;
     }
 

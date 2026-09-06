@@ -49,7 +49,7 @@ namespace Nethermind.Config
         }
 
         public bool Enabled { get; set; }
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public ulong? TargetBlockGasLimit { get; set; } = null;
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
@@ -57,14 +57,24 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
-        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+        public PreWarmMode PreWarming { get; set; } = PreWarmMode.BlockAndMempool;
 
-        public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
+        // A caller buys at most ~3.4 bytes of cache per gas spent, so a 60M-gas block could ask at max for ~200 MB.
+        // Real blocks store a few hundred KB, so 32 MB is a deliberate cut-off few times below max.
+        // Needs revisiting if the block gas limit or number of precompiles changes significantly.
+        public int PrecompileCacheMaxKilobytes { get; set; } = 32768;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
+        public int MempoolPreWarmConcurrency { get; set; } = 0;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
-        public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
+
+        // The 0.25 default emits an FP constant load the guest's ISA gate rejects; only block production reads it.
+        public double SingleBlockImprovementOfSlot { get; set; }
+#if !ZK_EVM
+            = 0.25;
+#endif
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 
@@ -108,6 +118,6 @@ namespace Nethermind.Config
 
         public long SlowBlockPerTxThresholdMs { get; set; } = -1;
 
-        public long MaxGasLimit { get; set; } = 1_000_000_000;
+        public ulong MaxGasLimit { get; set; } = 1_000_000_000;
     }
 }

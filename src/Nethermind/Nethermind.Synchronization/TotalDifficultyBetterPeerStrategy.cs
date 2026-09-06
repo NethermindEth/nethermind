@@ -10,15 +10,15 @@ public class TotalDifficultyBetterPeerStrategy(ILogManager logManager) : IBetter
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TotalDifficultyBetterPeerStrategy>();
 
-    public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>
+    public int Compare(in (UInt256? TotalDifficulty, ulong Number) valueX, in (UInt256? TotalDifficulty, ulong Number) valueY) =>
         valueX.TotalDifficulty is { } xTotalDifficulty && valueY.TotalDifficulty is { } yTotalDifficulty
             ? xTotalDifficulty.CompareTo(yTotalDifficulty)
             : valueX.Number.CompareTo(valueY.Number);
 
-    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock) =>
+    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, ulong Number) bestPeerInfo, in (UInt256 TotalDifficulty, ulong Number) bestBlock) =>
         Compare(bestPeerInfo, bestBlock) > 0;
 
-    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
+    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, ulong Number) bestPeerInfo, in (UInt256 TotalDifficulty, ulong Number) bestHeader)
     {
         bool desiredPeerKnown = IsBetterThanLocalChain(bestPeerInfo, bestHeader) ||
             (bestPeerInfo.TotalDifficulty is not null && bestPeerInfo.TotalDifficulty == bestHeader.TotalDifficulty && bestPeerInfo.Number > bestHeader.Number);

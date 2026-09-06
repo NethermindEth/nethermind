@@ -45,7 +45,7 @@ public class TimeoutCertificateManagerTests
     {
         TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
                     .Returns((Snapshot?)null);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -74,7 +74,7 @@ public class TimeoutCertificateManagerTests
     {
         TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
             .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -135,6 +135,10 @@ public class TimeoutCertificateManagerTests
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
         yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false)
             .SetName("MalleableDuplicateSigner");
+
+        Signature[] highOnlySigs = sigs.Select(XdcTestHelper.CreateMalleableSignature).ToArray();
+        yield return new TestCaseData(new TimeoutCertificate(1, highOnlySigs, 0), masterNodes, false)
+            .SetName("MalleableHighSOnly");
     }
 
     [TestCaseSource(nameof(TcCases))]
@@ -142,7 +146,7 @@ public class TimeoutCertificateManagerTests
     {
         Address[] masternodes = masternodesList.ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
@@ -157,15 +161,15 @@ public class TimeoutCertificateManagerTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.EpochLength.Returns(900);
-        xdcReleaseSpec.SwitchEpoch.Returns(89300);
+        xdcReleaseSpec.EpochLength.Returns(900UL);
+        xdcReleaseSpec.SwitchEpoch.Returns(89300UL);
         xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.Head.Returns(new Block(header, new BlockBody()));
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<ulong>()).Returns(header);
 
         XdcConsensusContext context = new();
         ISigner signer = Substitute.For<ISigner>();
@@ -187,6 +191,51 @@ public class TimeoutCertificateManagerTests
         Timeout timeout = new(round, null, 0);
         await tcManager.HandleTimeoutVote(timeout);
         Assert.That(tcManager.GetTimeoutsCount(timeout), Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task HandleTimeoutVote_ThresholdReached_RetainsRecentTimeouts()
+    {
+        PrivateKey[] keys = new PrivateKeyGenerator().Generate(3).ToArray();
+        Address[] masternodes = keys.Select(key => key.Address).ToArray();
+        const ulong round = 1;
+        const ulong gap = 0;
+
+        XdcConsensusContext context = new() { CurrentRound = round };
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(new Block(header, new BlockBody()));
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.GetEpochSwitchInfo(header)
+            .Returns(new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(header.Hash!, round, header.Number)));
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+
+        TimeoutCertificateManager manager = new(
+            context,
+            Substitute.For<ITimeoutTimer>(),
+            Substitute.For<ISyncPeerPool>(),
+            Substitute.For<ISnapshotManager>(),
+            epochSwitchManager,
+            specProvider,
+            blockTree,
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
+
+        foreach (PrivateKey key in keys)
+            await manager.HandleTimeoutVote(XdcTestHelper.BuildSignedTimeout(key, round, gap));
+
+        IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> retainedTimeouts = manager.GetReceivedTimeouts();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.CurrentRound, Is.EqualTo(round + 1));
+            Assert.That(retainedTimeouts, Has.Count.EqualTo(1));
+            Assert.That(retainedTimeouts.Single().Value, Has.Count.EqualTo(keys.Length));
+        }
     }
 
     [TestCase(99UL, 0UL, true, false)]     // Round smaller than current round

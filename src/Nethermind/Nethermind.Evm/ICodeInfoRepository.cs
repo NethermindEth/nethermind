@@ -12,7 +12,7 @@ public interface ICodeInfoRepository
 {
     /// <summary>Whether account code may be overridden (e.g. <c>eth_call</c> state overrides), disabling the simple-transfer fast path.</summary>
     /// <remarks>Wrapping implementations must forward this, else the fast path is wrongly taken under overrides.</remarks>
-    bool IsCodeOverridable => false;
+    bool IsCodeOverridable { get; }
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);

@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
@@ -19,7 +18,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Db;
@@ -66,7 +64,6 @@ public class ProofRpcModuleTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
             .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
@@ -208,7 +205,6 @@ public class ProofRpcModuleTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IReceiptFinder>(_receiptFinder)
             .AddSingleton<IDbProvider>(_dbProvider)

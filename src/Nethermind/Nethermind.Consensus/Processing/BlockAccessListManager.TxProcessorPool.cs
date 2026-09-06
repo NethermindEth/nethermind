@@ -12,9 +12,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -80,29 +78,23 @@ public partial class BlockAccessListManager
 
         // processors are not shared statically between BAL managers
         private readonly ConcurrentQueue<TxProcessorWithWorldState> _processors = [];
-        private readonly IBlockhashProvider _blockHashProvider;
-        private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
         private readonly ILogManager _logManager;
+        private readonly BalTxProcessorFactory _txProcessorFactory;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
-        private readonly bool _witnessMode;
 
         public ParallelTxProcessorWithWorldStateManager(
-            IBlockhashProvider blockHashProvider,
-            ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
             IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
-            bool witnessMode)
+            BalTxProcessorFactory txProcessorFactory)
         {
-            _blockHashProvider = blockHashProvider;
-            _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
-            _witnessMode = witnessMode;
+            _txProcessorFactory = txProcessorFactory;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -166,6 +158,8 @@ public partial class BlockAccessListManager
                     StaticPool<BlockAccessListAtIndex>.Return(generatedBal);
                 }
                 processor.WorldState.SetGeneratingBlockAccessList(null);
+                // Detach any parent reader Setup may have installed so the recycled slot isn't poisoned.
+                processor.ClearParentReader();
                 ReturnProcessor(processor);
                 throw;
             }
@@ -226,7 +220,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _witnessMode);
+            => new(true, _stateProvider, _logManager, _txProcessorFactory);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -329,13 +323,11 @@ public partial class BlockAccessListManager
         private readonly TxProcessorWithWorldState _txProcessorWithWorldState;
 
         public SequentialTxProcessorWithWorldStateManager(
-            IBlockhashProvider blockHashProvider,
-            ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
-            bool witnessMode)
+            BalTxProcessorFactory txProcessorFactory)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, witnessMode);
+            _txProcessorWithWorldState = new(false, stateProvider, logManager, txProcessorFactory);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -366,21 +358,17 @@ public partial class BlockAccessListManager
     private class TxProcessorWithWorldState
     {
         public readonly TracedAccessWorldState WorldState;
-        public readonly TransactionProcessor<EthereumGasPolicy> TxProcessor;
-        public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
+        public readonly ITransactionProcessor TxProcessor;
+        public readonly ITransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
 
         public TxProcessorWithWorldState(
             bool parallel,
-            IBlockhashProvider blockHashProvider,
-            ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
-            bool witnessMode)
+            BalTxProcessorFactory txProcessorFactory)
         {
-
-            VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
             IWorldState worldState = stateProvider;
             if (parallel)
             {
@@ -388,15 +376,7 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            // Witness mode must record every code access, so it uses the non-caching CodeInfoRepository.
-            // EthereumCodeInfoRepository wraps a CacheCodeInfoRepository whose process-wide static code
-            // cache serves hits without reading through the (traced) WorldState, so cached code accesses
-            // would be missing from the generated witness.
-            ICodeInfoRepository codeInfoRepository = witnessMode
-                ? new CodeInfoRepository(WorldState, new EthereumPrecompileProvider())
-                : new EthereumCodeInfoRepository(WorldState);
-            TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
-            TxProcessorAdapter = new(TxProcessor);
+            (TxProcessor, TxProcessorAdapter) = txProcessorFactory.Create(WorldState, parallel);
         }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)

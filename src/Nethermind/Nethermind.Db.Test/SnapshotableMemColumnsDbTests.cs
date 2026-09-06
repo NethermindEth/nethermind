@@ -157,20 +157,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Flush_does_not_cause_trouble()
-        {
-            SnapshotableMemColumnsDb<TestColumns> columnsDb = new();
-            columnsDb.Flush();
-        }
-
-        [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            SnapshotableMemColumnsDb<TestColumns> columnsDb = new();
-            columnsDb.Dispose();
-        }
-
-        [Test]
         public void ColumnKeys_returns_all_columns()
         {
             SnapshotableMemColumnsDb<TestColumns> columnsDb = new();

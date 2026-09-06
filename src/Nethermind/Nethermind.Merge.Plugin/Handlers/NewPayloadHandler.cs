@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -12,9 +14,11 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -26,6 +30,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -49,15 +54,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly ISpecProvider _specProvider;
+    private readonly ITxValidator _txValidator;
+    private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
-    private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
+    private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
-    private long _lastBlockNumber;
-    private long _lastBlockGasLimit;
+    private ulong _lastBlockNumber;
+    private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
@@ -74,6 +82,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
+        IEthereumEcdsa ecdsa,
+        ISpecProvider specProvider,
+        ITxValidator txValidator,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -87,6 +98,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _specProvider = specProvider;
+        _txValidator = txValidator;
+        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -96,7 +110,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(long blockGasLimit) => (blockGasLimit - _lastBlockGasLimit) switch
+    private string GetGasChange(ulong blockGasLimit) => blockGasLimit.CompareTo(_lastBlockGasLimit) switch
     {
         > 0 => "👆",
         < 0 => "👇",
@@ -111,6 +125,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        // Overlap ecrecover with root computation, hash validation and block tree insertion;
+        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
+        Task senderRecoveryTask = StartSenderRecovery(request);
+
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -130,7 +148,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
-            RecordBadBlock(block);
+            Nethermind.Blockchain.Metrics.BadBlocks++;
+            if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
+            // Skip recording bad blocks: unverified hashes can poison tracking,
+            // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
@@ -185,10 +206,36 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
+        // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
-            return NewPayloadV1Result.Valid(block.Hash);
+            if (!HasInclusionList(block))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                return NewPayloadV1Result.Valid(block.Hash);
+            }
+
+            // Reuse the cached result for this exact (block, IL) so re-validating a known-canonical block
+            // whose parent state may be pruned doesn't regress to SYNCING; a different IL falls through.
+            if (TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                return cachedResult;
+            }
+
+            // Compliance depends only on the block, the list and the state the block committed, so a
+            // canonical block is answerable from that state alone. Re-executing it instead would replay
+            // the whole pruning window whenever a consensus client resends the recent chain.
+            if (_stateReader.HasStateForBlock(block.Header))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                return EvaluateInclusionListFromState(block);
+            }
+
+            // bogota.md engine_newPayloadV6 (2.1) requires a VALID response to carry a compliance answer,
+            // and with the block's state pruned there is none to derive.
+            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload whose inclusion list is no longer evaluable. Block {block.ToString(Block.Format.Short)} found in main chain.");
+            return NewPayloadV1Result.Syncing;
         }
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
@@ -242,23 +289,94 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
 
-        if (result == ValidationResult.Invalid)
+        switch (result)
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
-            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
-            return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+            case ValidationResult.Syncing:
+                {
+                    if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
+                    return NewPayloadV1Result.Syncing;
+                }
+            case ValidationResult.Invalid:
+                {
+                    if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
+                    _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+                }
+            case ValidationResult.InclusionListUnsatisfied:
+                {
+                    if (_logger.IsInfo) _logger.Info($"Inclusion list unsatisfied. Result of {requestStr}.");
+                    return NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
+                }
+            case ValidationResult.Valid:
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
+            default:
+                return ThrowUnknownValidationResult(result);
         }
+    }
 
-        if (result == ValidationResult.Syncing)
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private ResultWrapper<PayloadStatusV1> ThrowUnknownValidationResult(ValidationResult result) =>
+        throw new InvalidOperationException($"Unknown validation result {result}.");
+
+    private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
+
+    // An absent IL digests to default, matching non-IL cache entries.
+    private static ValueHash256 ComputeInclusionListDigest(Block block)
+    {
+        if (block.InclusionListTransactions is not { Length: > 0 } il) return default;
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(il.Length * Keccak.Size, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, il.Length * Keccak.Size);
+        for (int i = 0; i < il.Length; i++)
+            (il[i].Hash ?? Keccak.Zero).Bytes.CopyTo(span.Slice(i * Keccak.Size, Keccak.Size));
+
+        return ValueKeccak.Compute(span);
+    }
+
+    /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
+    /// <remarks>
+    /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
+    /// is readable at its own state root, so the only work left is recovering the list's senders.
+    /// </remarks>
+    private ResultWrapper<PayloadStatusV1> EvaluateInclusionListFromState(Block block)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
+
+        ValidationResult result = InclusionListValidator.IsSatisfied(
+            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
+            ? ValidationResult.Valid
+            : ValidationResult.InclusionListUnsatisfied;
+
+        _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, null, ComputeInclusionListDigest(block)));
+        return result == ValidationResult.Valid
+            ? NewPayloadV1Result.Valid(block.Hash)
+            : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
+    }
+
+    // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
+    // the tree treats as canonical.
+    private bool TryGetCachedResult(Block block, [NotNullWhen(true)] out ResultWrapper<PayloadStatusV1>? result)
+    {
+        result = null;
+        if (_latestBlocks is null
+            || !_latestBlocks.TryGet(block.GetOrCalculateHash(), out CachedPayloadResult cached)
+            || cached.InclusionListDigest != ComputeInclusionListDigest(block))
+            return false;
+
+        result = cached.Result switch
         {
-            if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
-            return NewPayloadV1Result.Syncing;
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
-        return NewPayloadV1Result.Valid(block.Hash);
+            ValidationResult.Valid => NewPayloadV1Result.Valid(block.Hash),
+            ValidationResult.InclusionListUnsatisfied => NewPayloadV1Result.InclusionListUnsatisfied(block.Hash),
+            _ => null
+        };
+        return result is not null;
     }
 
     /// <summary>Records a block rejected before <c>BranchProcessor</c> ever runs.</summary>
@@ -267,8 +385,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// when it catches an <c>InvalidBlockException</c>: bumps the bad-block metrics, marks the chain
     /// as invalid in <see cref="IInvalidChainTracker"/>, and forwards the block to the
     /// <c>BadBlockStore</c> so it surfaces in <c>debug_getBadBlocks</c>.
-    /// Pre-process rejection sites (hash mismatch, failed orphan validation, failed suggested-block
-    /// validation) previously skipped all three.
+    /// Pre-process rejection sites (failed orphan validation, failed suggested-block
+    /// validation) previously skipped these two.
     /// </remarks>
     private void RecordBadBlock(Block block)
     {
@@ -335,29 +453,63 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return parentProcessed || processTerminalBlock;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
+    /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
+    /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
+    private const ulong NearHeadRecoveryDistance = 8;
+
+    private Task StartSenderRecovery(ExecutionPayload request)
     {
+        // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
+        // the senders; they recover in the processing queue as before. On rejected payloads the
+        // task is deliberately fire-and-forget — see the catch below.
+        if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
+            return Task.CompletedTask;
+
+        Result<Transaction[]> transactions = request.TryGetTransactions();
+        if (transactions.IsError || transactions.Data.Length == 0)
+            // TryGetBlock reports the decoding error; nothing to recover otherwise.
+            return Task.CompletedTask;
+
+        Transaction[] txs = transactions.Data;
+        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
+        return Task.Run(() =>
+        {
+            try
+            {
+                _senderRecovery.RecoverData(txs, spec);
+            }
+            catch (Exception e)
+            {
+                // Best-effort: the processing-queue preprocessor recovers anything still missing.
+                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
+            }
+        });
+    }
+
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
+    {
+        ValueHash256 ilDigest = ComputeInclusionListDigest(block);
+
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
-            // notice that it is not correct to add information to the cache
-            // if we return SYNCING for example, and don't know yet whether
-            // the block is valid or invalid because we haven't processed it yet
-            if (result == ValidationResult.Valid || result == ValidationResult.Invalid)
-                _latestBlocks?.Set(block.GetOrCalculateHash(), (result == ValidationResult.Valid, errorMessage));
+            // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
+            if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
+                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest));
             return result;
         }
 
         (ValidationResult? result, string? validationMessage) = (null, null);
 
         // If duplicate, reuse results
-        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out (bool valid, string? message) cachedResult))
+        if (_latestBlocks is not null
+            && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
+            && cachedResult.InclusionListDigest == ilDigest)
         {
-            (bool isValid, string? message) = cachedResult;
-            if (!isValid)
+            if (cachedResult.Result == ValidationResult.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn("Invalid block found in latestBlock cache.");
             }
-            return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, message);
+            return (cachedResult.Result, cachedResult.Message);
         }
 
         // Validate
@@ -376,9 +528,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
+            // the tree insert reads only the raw payload bytes, never the recovered senders,
+            // so it can safely overlap the remainder of sender recovery
+            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
+                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
+                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
+
+            // recovery must complete before Enqueue — the prewarmer needs all senders up front
+            await senderRecoveryTask;
+
+            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
 
             result = addResult switch
             {
@@ -388,7 +547,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // the block was processed and returned invalid but this wasn't saved anywhere or the block was
                 // processed and marked as valid.
                 // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
-                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) ? ValidationResult.Valid : null,
+                // an IL-bearing payload bypasses this shortcut so that the current call's IL is re-validated
+                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) && !HasInclusionList(block) ? ValidationResult.Valid : null,
                 _ => null
             };
 
@@ -450,6 +610,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             ProcessingResult.Success => ValidationResult.Valid,
             ProcessingResult.ProcessingError => ValidationResult.Invalid,
+            ProcessingResult.InclusionListUnsatisfied => ValidationResult.InclusionListUnsatisfied,
             _ => null
         };
 
@@ -533,6 +694,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         Invalid,
         Valid,
-        Syncing
+        Syncing,
+        InclusionListUnsatisfied
     }
+
+    // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
+    private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
 }

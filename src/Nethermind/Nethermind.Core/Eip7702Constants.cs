@@ -16,7 +16,7 @@ public static class Eip7702Constants
     public static readonly UInt256 DelegationDesignatorLength = 23;
 
     /// <summary> Gas cost to process one authorization tuple and set the delegation destination. </summary>
-    public const long PerAuthBaseCost = 12_500;
+    public const ulong PerAuthBaseCost = 12_500;
 
     private static readonly int HeaderLength = DelegationHeader.Length;
     public static bool IsDelegatedCode(ReadOnlySpan<byte> code) =>

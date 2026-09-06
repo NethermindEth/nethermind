@@ -20,13 +20,7 @@ public class FlatStateReader(
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
-        if (reader is null)
-        {
-            account = default;
-            return false;
-        }
-
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         if (reader.GetAccount(address) is { } accountCls)
         {
             account = accountCls.ToStruct();
@@ -39,12 +33,7 @@ public class FlatStateReader(
 
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
-        if (reader is null)
-        {
-            return Array.Empty<byte>();
-        }
-
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];
     }
 
@@ -56,8 +45,12 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
-            ?? throw new InvalidOperationException($"State at {baseBlock} not found");
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+
+        if (reader.IsHistorical)
+        {
+            throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
+        }
 
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
@@ -66,4 +59,23 @@ public class FlatStateReader(
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+
+    /// <summary>
+    /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
+    /// contract, which JSON-RPC maps to resource-not-found instead of an internal error.
+    /// </summary>
+    private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
+    {
+        try
+        {
+            return flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(baseBlock, $"State for block {baseBlock?.Number} is unavailable", e);
+        }
+    }
+
+    private static MissingTrieNodeException StateUnavailable(BlockHeader? baseBlock, string message, Exception? innerException = null) =>
+        new(message, null, TreePath.Empty, baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, innerException);
 }

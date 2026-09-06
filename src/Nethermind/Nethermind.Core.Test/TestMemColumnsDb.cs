@@ -12,6 +12,8 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 {
     private readonly IDictionary<TKey, TestMemDb> _columnDbs = new Dictionary<TKey, TestMemDb>();
 
+    public int WriteBatchCount { get; private set; }
+
     public TestMemColumnsDb()
     {
     }
@@ -30,6 +32,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
     public IColumnsWriteBatch<TKey> StartWriteBatch()
     {
         EnsureAllKey();
+        WriteBatchCount++;
         return new InMemoryColumnWriteBatch<TKey>(this);
     }
 

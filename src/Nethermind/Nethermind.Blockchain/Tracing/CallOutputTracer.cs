@@ -13,8 +13,8 @@ public class CallOutputTracer : TxTracer
     public override bool IsTracingReceipt => true;
     public byte[]? ReturnValue { get; set; }
 
-    public long GasSpent { get; set; }
-    public long OperationGas { get; set; }
+    public ulong GasSpent { get; set; }
+    public ulong OperationGas { get; set; }
 
     public string? Error { get; set; }
 

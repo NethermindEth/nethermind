@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -15,13 +15,14 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -32,12 +33,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IOverridableEnv<ITracer> tracerEnv,
         IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
-        private readonly HeaderDecoder _headerDecoder = new();
+        // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
+        private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
         private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
 
@@ -76,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {
-                txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
+                txWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
             }
 
             return ResultWrapper<TransactionForRpcWithProof>.Success(txWithProof);
@@ -123,13 +125,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             if (includeHeader)
             {
-                receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
+                receiptWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
             }
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
         {
             if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {
@@ -153,7 +155,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 

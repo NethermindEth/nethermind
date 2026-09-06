@@ -18,11 +18,11 @@ public partial class Bls12381FpToG1Precompile : IPrecompile<Bls12381FpToG1Precom
 
     public static Address Address { get; } = Address.FromNumber(0x10);
 
-    public static string Name => "BLS12_MAP_FP_TO_G1";
+    public string Name => "BLS12_MAP_FP_TO_G1";
 
-    public long BaseGasCost(IReleaseSpec _) => 5500L;
+    public ulong BaseGasCost(IReleaseSpec _) => 5500UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

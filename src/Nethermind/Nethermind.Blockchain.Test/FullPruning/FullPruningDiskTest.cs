@@ -69,6 +69,7 @@ public class FullPruningDiskTest
                 PruningConfig,
                 BlockTree,
                 Container.Resolve<IStateBoundaryWriter>(),
+                Container.Resolve<IStateBoundary>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
@@ -120,6 +121,7 @@ public class FullPruningDiskTest
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateBoundaryWriter stateBoundary,
+            IStateBoundary stateBoundaryReader,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IDriveInfo driveInfo,
@@ -127,7 +129,7 @@ public class FullPruningDiskTest
             IChainEstimations chainEstimations,
             ILogManager logManager)
             : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
-                stateBoundary, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
+                stateBoundary, stateBoundaryReader, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
 
@@ -179,7 +181,7 @@ public class FullPruningDiskTest
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
         if (args.Status != PruningStatus.Starting) return;
-        for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
+        for (ulong i = 0ul; i < Reorganization.MaxDepth + 2ul; i++)
         {
             await chain.AddBlock();
         }
@@ -204,7 +206,9 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            // Exclude the boundary marker FullPruner writes on commit — it's absent from the pre-prune snapshot.
+            // Exclude the OldestStateBlock floor FullPruner records in the state DB on a successful
+            // prune — it's absent from the pre-prune snapshot. (BestPersistedState lives in the
+            // BlockInfos DB, so it never shows up here.)
             byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
             Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
             currentItems.Remove(boundaryValue!);

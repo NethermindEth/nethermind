@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1014Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private static readonly byte[] _defaultSalt = [4, 5, 6];
         private static readonly byte[] _defaultDeployedCode = [1, 2, 3];
@@ -67,7 +67,6 @@ namespace Nethermind.Evm.Test
                 TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
                 TestState.Commit(Spec);
                 TestState.CommitTree(0);
-                Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
             }
 
             Execute(callCode);
@@ -75,6 +74,10 @@ namespace Nethermind.Evm.Test
             Assert.That(TestState.TryGetAccount(expectedAddress, out AccountStruct account), Is.True);
             Assert.That(account.Balance, Is.EqualTo(1.Ether));
             AssertEip1014(expectedAddress, []);
+            if (withStorage)
+            {
+                Assert.That(TestState.Get(new StorageCell(expectedAddress, 1)).ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4, 5 }));
+            }
         }
 
         [Test]
@@ -83,6 +86,21 @@ namespace Nethermind.Evm.Test
             (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
             Execute(callCode);
             Assert.That(TestState.AccountExists(expectedAddress), Is.False);
+        }
+
+        [Test]
+        public void Test_storage_without_nonce_or_code_is_not_a_collision()
+        {
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode);
+            TestState.CreateAccount(expectedAddress, 1.Ether);
+            TestState.Set(new StorageCell(expectedAddress, 1), [1]);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+
+            Execute(callCode);
+
+            AssertEip1014(expectedAddress, _defaultDeployedCode);
+            AssertStorage(new StorageCell(expectedAddress, 1), UInt256.Zero);
         }
 
         [Test]

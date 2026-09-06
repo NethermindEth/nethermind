@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
@@ -393,6 +394,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 ));
         }
 
+        [Test]
+        public void Should_send_single_retry_without_registering_another_retry()
+        {
+            _transactionPool.ClearReceivedCalls();
+
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage66>(m =>
+                m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakA));
+            _transactionPool.DidNotReceive().NotifyAboutTx(
+                Arg.Any<Hash256>(),
+                Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+        }
+
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
@@ -415,7 +430,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             public List<Delegate> ScheduledFulfillFuncs { get; } = [];
             public List<bool> ScheduledRequestsHaveDelegateFields { get; } = [];
 
-            public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
                 where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
                 ScheduledRequestsHaveDelegateFields.Add(HasDelegateField<TReq>());

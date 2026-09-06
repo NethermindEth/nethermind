@@ -46,7 +46,10 @@ public class ReceiptsRecoveryTests
         TxReceipt[] receipts = new TxReceipt[receiptsLength];
         for (int i = 0; i < receiptsLength; i++)
         {
-            receipts[i] = Build.A.Receipt.WithBlockHash(block.Hash).TestObject;
+            receipts[i] = Build.A.Receipt
+                .WithBlockHash(block.Hash)
+                .WithTransactionHash(i < txs.Length ? txs[i].Hash : TestItem.KeccakA)
+                .TestObject;
         }
 
         Assert.That(_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender), Is.EqualTo(expected));
@@ -66,5 +69,36 @@ public class ReceiptsRecoveryTests
 
         Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    public void TryRecover_should_restore_missing_transaction_hash(int missingHashIndex)
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.SignedAndResolved().TestObject,
+            Build.A.Transaction.SignedAndResolved().TestObject
+        ];
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        TxReceipt[] receipts = new TxReceipt[transactions.Length];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i] = Build.A.Receipt
+                .WithBlockHash(block.Hash)
+                .WithTransactionHash(i == missingHashIndex ? null : transactions[i].Hash)
+                .TestObject;
+        }
+
+        ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                Assert.That(receipts[i].TxHash, Is.EqualTo(transactions[i].Hash), $"receipt {i}");
+            }
+        }
     }
 }

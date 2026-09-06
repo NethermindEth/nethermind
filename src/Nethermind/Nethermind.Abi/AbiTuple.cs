@@ -39,8 +39,17 @@ namespace Nethermind.Abi
 
         public override bool IsDynamic { get; }
 
+        internal override int GetHeadSize(bool packed) =>
+            IsDynamic ? PaddingSize : GetSequenceHeadSize(_elements, packed);
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
+            using DecodeBudgetScope decodeBudget = EnterDecodeBudget(data.Length);
+            if (IsDynamic)
+            {
+                ConsumeDecodeBudget((uint)GetSequenceHeadSize(_elements, packed), this);
+            }
+
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
             return (Activator.CreateInstance(CSharpType, arguments), movedPosition)!;
         }
@@ -93,6 +102,9 @@ namespace Nethermind.Abi
         public override string Name { get; }
         public override bool IsDynamic { get; }
 
+        internal override int GetHeadSize(bool packed) =>
+            IsDynamic ? PaddingSize : GetSequenceHeadSize(_elements, packed);
+
         public AbiTuple()
         {
             _properties = typeof(T).GetProperties();
@@ -103,6 +115,12 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
+            using DecodeBudgetScope decodeBudget = EnterDecodeBudget(data.Length);
+            if (IsDynamic)
+            {
+                ConsumeDecodeBudget((uint)GetSequenceHeadSize(_elements, packed), this);
+            }
+
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
 
             object item = new T();

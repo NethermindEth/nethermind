@@ -31,8 +31,8 @@ internal class SubnetSnapshotManagerTests
     public void Setup()
     {
         _xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        _xdcReleaseSpec.EpochLength.Returns(900);
-        _xdcReleaseSpec.Gap.Returns(450);
+        _xdcReleaseSpec.EpochLength.Returns(900UL);
+        _xdcReleaseSpec.Gap.Returns(450UL);
 
         _snapshotDb = new MemDb();
 
@@ -57,7 +57,7 @@ internal class SubnetSnapshotManagerTests
     public void GetSnapshot_ShouldRetrieveFromIfFound()
     {
         // Arrange
-        const int gapBlock = 0;
+        const ulong gapBlock = 0UL;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         SubnetSnapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)], [Address.FromNumber(2)]);
         _snapshotManager.StoreSnapshot(snapshot);
@@ -73,7 +73,7 @@ internal class SubnetSnapshotManagerTests
     public void StoreSnapshot_ShouldRaiseExceptionIfTypeIsWrong()
     {
         // Act
-        const int gapBlock = 0;
+        const ulong gapBlock = 0UL;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         Snapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
 
@@ -81,29 +81,29 @@ internal class SubnetSnapshotManagerTests
         Assert.Throws<ArgumentException>(() => _snapshotManager.StoreSnapshot(snapshot));
     }
 
-    [TestCase(450)]
-    [TestCase(1350)]
-    public void OnUpdateMainChain_StoresSnapshot(int gapNumber)
+    [TestCase(450UL)]
+    [TestCase(1350UL)]
+    public void OnUpdateMainChain_StoresSnapshot(ulong gapNumber)
     {
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.EpochLength.Returns(900);
-        releaseSpec.Gap.Returns(450);
+        releaseSpec.EpochLength.Returns(900UL);
+        releaseSpec.Gap.Returns(450UL);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         Address[] penalties = [Address.FromNumber(1), Address.FromNumber(2)];
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
-        penaltyHandler.HandlePenalties(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<Address[]>()).Returns(penalties);
+        penaltyHandler.HandlePenalties(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<Address[]>()).Returns(penalties);
 
         SubnetSnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider, Substitute.For<IStateReader>(), LimboLogs.Instance, penaltyHandler);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<ulong>()).Returns(header);
 
-        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
+        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([header], true));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(gapNumber);
 
         Assert.That(result, Is.TypeOf<SubnetSnapshot>());

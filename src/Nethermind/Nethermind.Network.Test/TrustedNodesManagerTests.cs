@@ -27,7 +27,8 @@ public class TrustedNodesManagerTests
         await File.WriteAllTextAsync(path, "[]");
         TrustedNodesManager manager = new(path, LimboLogs.Instance);
         Enode enode = new(EnodeString);
-        await manager.AddAsync(enode, updateFile: false);
+        // Persist the node so the persistent remove below actually reaches the (cancelled) file write.
+        await manager.AddAsync(enode, updateFile: true);
 
         bool nodeRemovedFired = false;
         manager.NodeRemoved += (_, _) => nodeRemovedFired = true;

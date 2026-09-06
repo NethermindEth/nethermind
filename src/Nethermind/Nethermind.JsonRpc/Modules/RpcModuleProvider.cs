@@ -11,6 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Nethermind.Logging;
@@ -262,12 +263,6 @@ namespace Nethermind.JsonRpc.Modules
 
         public void Return(ResolvedMethodInfo method, IRpcModule rpcModule) => method.ReturnModule(rpcModule);
 
-        public IRpcModulePool? GetPoolForMethod(string methodName)
-        {
-            MethodCache cache = EnsureMethodCache();
-            return TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result) ? result.ModulePool : null;
-        }
-
         private sealed class MethodCache(
             FrozenDictionary<string, ResolvedMethodInfo> methods,
             ResolvedMethodInfo?[] hotMethods)
@@ -315,6 +310,7 @@ namespace Nethermind.JsonRpc.Modules
                 public readonly JsonTypeInfo? TypeInfo;
                 public readonly ConstructorInvoker? ConstructorInvoker;
                 public readonly object? DefaultValue;
+                internal readonly bool HasParameterConverter;
                 private readonly ParameterDetails _introspection;
 
                 public ParameterKind Kind { get; }
@@ -344,6 +340,7 @@ namespace Nethermind.JsonRpc.Modules
                     ConstructorInvoker? constructor,
                     ParameterKind kind,
                     object? defaultValue,
+                    bool hasParameterConverter,
                     ParameterDetails introspection)
                 {
                     ArgumentNullException.ThrowIfNull(info);
@@ -353,6 +350,7 @@ namespace Nethermind.JsonRpc.Modules
                     TypeInfo = typeInfo;
                     ConstructorInvoker = constructor;
                     DefaultValue = defaultValue;
+                    HasParameterConverter = hasParameterConverter;
                     Kind = kind;
                     _introspection = introspection;
                 }
@@ -401,6 +399,7 @@ namespace Nethermind.JsonRpc.Modules
                     }
 
                     JsonTypeInfo? typeInfo = null;
+                    Type? converterType = null;
                     ParameterKind kind = ParameterKind.Typed;
 
                     if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
@@ -421,10 +420,12 @@ namespace Nethermind.JsonRpc.Modules
                             kind = ParameterKind.JsonElement;
                         }
 
-                        typeInfo = RpcParameterTypeInfo.Get(paramType);
+                        converterType = parameter.GetCustomAttribute<JsonRpcParameterAttribute>()?.ConverterType;
+                        typeInfo = converterType is null
+                            ? RpcParameterTypeInfo.Get(paramType)
+                            : CreateParameterTypeInfo(parameter, paramType, converterType);
 
-                        JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                        if (ShouldReparseStringParameter(paramType, converter))
+                        if (ShouldReparseStringParameter(paramType, EthereumJsonSerializer.JsonOptions.GetConverter(paramType)))
                         {
                             details |= ParameterDetails.ReparseString;
                         }
@@ -440,7 +441,7 @@ namespace Nethermind.JsonRpc.Modules
                     }
 
                     object? defaultValue = parameter.IsOptional ? GetDefaultValue(parameter, paramType) : null;
-                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, defaultValue, details);
+                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, defaultValue, converterType is not null, details);
                 }
 
                 ExpectedParameters = expectedParameters;
@@ -635,6 +636,21 @@ namespace Nethermind.JsonRpc.Modules
             private static bool ShouldReparseStringParameter(Type parameterType, JsonConverter converter) =>
                 converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true ||
                 parameterType.IsArray && parameterType != typeof(byte[]);
+
+            private static JsonTypeInfo CreateParameterTypeInfo(ParameterInfo parameter, Type parameterType, Type converterType)
+            {
+                if (!typeof(JsonConverter).IsAssignableFrom(converterType)
+                    || Activator.CreateInstance(converterType, nonPublic: true) is not JsonConverter converter
+                    || !converter.CanConvert(parameterType))
+                {
+                    throw new InvalidOperationException(
+                        $"{converterType.FullName} is not a JSON converter for parameter {parameter.Name} of type {parameterType.FullName}.");
+                }
+
+                JsonSerializerOptions options = new(EthereumJsonSerializer.JsonRpcRequestOptions);
+                options.Converters.Insert(0, converter);
+                return options.GetTypeInfo(parameterType);
+            }
 
             internal IResultWrapper? ReadTaskResult(Task task) => TaskResultAccessor?.Invoke(task);
 

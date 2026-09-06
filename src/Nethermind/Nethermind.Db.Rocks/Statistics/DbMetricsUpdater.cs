@@ -8,11 +8,11 @@ using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
+public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, IColumnFamilyHandle? cf, IDbConfig dbConfig, bool isUsingSharedBlockCache, ILogger logger)
     : IDisposable
     where T : Options<T>
 {
@@ -30,19 +30,26 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            string compactionStatsString = "";
-            compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
+            string? compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
             ProcessCompactionStats(compactionStatsString);
+            LogMemoryProfile();
 
             if (dbConfig.EnableDbStatistics)
             {
-                string dbStatsString = dbOptions.GetStatisticsString();
-                ProcessStatisticsString(dbStatsString);
+                string? dbStatsString = dbOptions.GetStatisticsString();
+                if (dbStatsString is not null)
+                {
+                    ProcessStatisticsString(dbStatsString);
+                }
+                else if (logger.IsWarn)
+                {
+                    logger.Warn($"No RocksDB statistics available for {dbName} database.");
+                }
             }
         }
         catch (Exception exc)
         {
-            logger.Error($"Error when updating metrics for {dbName} database.", exc);
+            if (logger.IsError) logger.Error($"Error when updating metrics for {dbName} database.", exc);
             // Maybe we would like to stop the _timer here to avoid logging the same error all over again?
         }
     }
@@ -83,7 +90,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
     }
 
-    public void ProcessCompactionStats(string compactionStatsString)
+    public void ProcessCompactionStats(string? compactionStatsString)
     {
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
@@ -92,7 +99,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
         else
         {
-            logger.Warn($"No RocksDB compaction stats available for {dbName} database.");
+            if (logger.IsWarn) logger.Warn($"No RocksDB compaction stats available for {dbName} database.");
         }
     }
 
@@ -153,7 +160,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             }
             else
             {
-                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
+                if (logger.IsWarn) logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
             }
         }
     }
@@ -168,6 +175,46 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
 
+    private void LogMemoryProfile()
+    {
+        if (!logger.IsInfo) return;
+
+        long Prop(string name)
+        {
+            string? v = cf is not null ? db.GetProperty(name, cf) : db.GetProperty(name);
+            return long.TryParse(v, out long parsed) ? parsed : -1;
+        }
+
+        const double MB = 1024 * 1024, GB = MB * 1024;
+        long tableReaders = Prop("rocksdb.estimate-table-readers-mem");
+        long memtables = Prop("rocksdb.cur-size-all-mem-tables");
+        long blockCache = Prop("rocksdb.block-cache-usage");
+        long blockCachePinned = Prop("rocksdb.block-cache-pinned-usage");
+        long liveSst = Prop("rocksdb.live-sst-files-size");
+        long numKeys = Prop("rocksdb.estimate-num-keys");
+        long liveFiles = 0;
+        // num_levels is configurable above the default 7; querying only levels 0..6 would undercount L7+.
+        int numLevels = dbOptions.GetNumLevels();
+        for (int level = 0; level < numLevels; level++)
+        {
+            liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));
+        }
+
+        // Prop() returns -1 when a property is unavailable; render those as "n/a" rather than "-0MB".
+        string Mb(long v) => v < 0 ? "n/a" : $"{v / MB:F0}MB";
+        string Gb(long v) => v < 0 ? "n/a" : $"{v / GB:F1}GB";
+
+        // A shared block cache reports the same process-wide total on every column, so label it rather than
+        // emit a per-column value that would multiply the footprint when the [RocksDbMem] lines are summed.
+        string blockCacheField = isUsingSharedBlockCache
+            ? $"block_cache={Mb(blockCache)}(shared)"
+            : $"block_cache={Mb(blockCache)}(pinned {Mb(blockCachePinned)})";
+
+        logger.Info($"[RocksDbMem] {dbName}: table_readers={Mb(tableReaders)} memtables={Mb(memtables)} " +
+                    $"{blockCacheField} " +
+                    $"live_sst={Gb(liveSst)} sst_files={liveFiles} keys={(numKeys < 0 ? "n/a" : numKeys.ToString())}");
+    }
+
     public void Dispose()
     {
         Timer? timer = Interlocked.Exchange(ref _timer, null);
@@ -176,7 +223,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         using ManualResetEvent waitHandle = new(false);
         if (timer.Dispose(waitHandle) && !waitHandle.WaitOne(TimeSpan.FromSeconds(1)))
         {
-            logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
+            if (logger.IsWarn) logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
         }
     }
 }

@@ -14,14 +14,14 @@ public class EraPathUtilsTests
     private const string SampleChecksumHash = "aabbccdd00000000000000000000000000000000000000000000000000000000";
     private static readonly Hash256 ZeroHash = new(ZeroHashHex);
 
-    [TestCase("test", 0, "0x0000000000000000000000000000000000000000000000000000000000000000", "test-00000-00000000-noproofs.ere", TestName = "Genesis")]
-    [TestCase("goerli", 1, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "goerli-00001-ffffffff-noproofs.ere", TestName = "MaxHash")]
-    [TestCase("mainnet", 2, "0x1122ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "mainnet-00002-1122ffff-noproofs.ere", TestName = "Mainnet")]
-    public void Filename_WithValidParameters_ReturnsExpected(string network, int epoch, string hash, string expected) =>
+    [TestCase("test", 0UL, "0x0000000000000000000000000000000000000000000000000000000000000000", "test-00000-00000000-noproofs.ere", TestName = "Genesis")]
+    [TestCase("goerli", 1UL, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "goerli-00001-ffffffff-noproofs.ere", TestName = "MaxHash")]
+    [TestCase("mainnet", 2UL, "0x1122ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "mainnet-00002-1122ffff-noproofs.ere", TestName = "Mainnet")]
+    public void Filename_WithValidParameters_ReturnsExpected(string network, ulong epoch, string hash, string expected) =>
         Assert.That(EraPathUtils.Filename(network, epoch, new Hash256(hash)), Is.EqualTo(expected));
 
     [TestCaseSource(nameof(InvalidFilenameArguments))]
-    public void Filename_WithInvalidArguments_Throws(string? network, long epoch, Hash256? lastBlockHash, Type expected) =>
+    public void Filename_WithInvalidArguments_Throws(string? network, ulong epoch, Hash256? lastBlockHash, Type expected) =>
         Assert.That(() => EraPathUtils.Filename(network!, epoch, lastBlockHash!), Throws.TypeOf(expected));
 
     [TestCase("mainnet-00000-aabbccdd-noproofs.ere", ExpectedResult = true, TestName = "EreWithProfile")]
@@ -78,9 +78,8 @@ public class EraPathUtilsTests
 
     private static IEnumerable<TestCaseData> InvalidFilenameArguments()
     {
-        yield return new TestCaseData(null, 0L, ZeroHash, typeof(ArgumentNullException)) { TestName = "NullNetwork" };
-        yield return new TestCaseData("", 0L, ZeroHash, typeof(ArgumentException)) { TestName = "EmptyNetwork" };
-        yield return new TestCaseData("test", -1L, ZeroHash, typeof(ArgumentOutOfRangeException)) { TestName = "NegativeEpoch" };
-        yield return new TestCaseData("test", 0L, null, typeof(ArgumentNullException)) { TestName = "NullHash" };
+        yield return new TestCaseData(null, 0UL, ZeroHash, typeof(ArgumentNullException)) { TestName = "NullNetwork" };
+        yield return new TestCaseData("", 0UL, ZeroHash, typeof(ArgumentException)) { TestName = "EmptyNetwork" };
+        yield return new TestCaseData("test", 0UL, null, typeof(ArgumentNullException)) { TestName = "NullHash" };
     }
 }

@@ -32,18 +32,80 @@ namespace Nethermind.Xdc.Test.Contracts;
 
 internal class MasternodeVotingContractTests
 {
+    /// <summary>The sole voter every candidate carries in <see cref="GenesisAllocation"/>.</summary>
+    private static readonly Address GenesisVoter = new("0x381047523972c9fdc3aa343e0b96900a8e2fa765");
+
     [Test]
     public void GetCandidatesAndStake_GenesisSetup_CanReadExpectedCandidates()
     {
+        (MasternodeVotingContract masterVoting, _, BlockHeader genesis) = DeployVotingContract();
+
+        Address[] candidates = masterVoting.GetCandidates(genesis);
+        Assert.That(candidates.Length, Is.EqualTo(3));
+
+        foreach (Address candidate in candidates)
+        {
+            UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
+            Assert.That(stake, Is.EqualTo(10_000_000.Ether));
+        }
+    }
+
+    /// <remarks>
+    /// Reads the voter list and stakes straight from storage rather than through the EVM, so this pins the
+    /// slot arithmetic — <c>voters</c> as a mapping to a dynamic array, and <c>validatorsState[c].voters</c>
+    /// as the struct's third field — against a genuinely deployed contract's state.
+    /// </remarks>
+    [Test]
+    public void GetVotersAndStake_GenesisSetup_ReadsTheVoterLayoutFromStorage()
+    {
+        (MasternodeVotingContract masterVoting, IReadOnlyTxProcessingEnvFactory envFactory, BlockHeader genesis) =
+            DeployVotingContract();
+
+        // Resolve the candidates before opening a scope of our own: the EVM path opens one internally.
+        Address[] candidates = masterVoting.GetCandidates(genesis);
+        Assert.That(candidates, Is.Not.Empty);
+
+        using IReadOnlyTxProcessorSource source = envFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(genesis);
+        IWorldState worldState = scope.WorldState;
+
+        foreach (Address candidate in candidates)
+        {
+            Address[] voters = masterVoting.GetVoters(worldState, candidate);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(voters, Is.EquivalentTo(new[] { GenesisVoter }), $"voters of {candidate}");
+                Assert.That(masterVoting.GetVoterStake(worldState, candidate, GenesisVoter),
+                    Is.EqualTo(10_000_000.Ether), $"stake of {GenesisVoter} on {candidate}");
+            }
+        }
+    }
+
+    [Test]
+    public void GetVoters_GenesisSetup_ReturnsEmptyForAnAddressNobodyVotedFor()
+    {
+        (MasternodeVotingContract masterVoting, IReadOnlyTxProcessingEnvFactory envFactory, BlockHeader genesis) =
+            DeployVotingContract();
+
+        using IReadOnlyTxProcessorSource source = envFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(genesis);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(masterVoting.GetVoters(scope.WorldState, TestItem.AddressD), Is.Empty);
+            Assert.That(masterVoting.GetVoterStake(scope.WorldState, TestItem.AddressD, GenesisVoter), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    private static (MasternodeVotingContract Contract, IReadOnlyTxProcessingEnvFactory EnvFactory, BlockHeader Genesis) DeployVotingContract()
+    {
         PrivateKey sender = TestItem.PrivateKeyA;
-        PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
 
         ISpecProvider specProvider = new TestSpecProvider(Shanghai.Instance);
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
 
-        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
@@ -52,8 +114,7 @@ internal class MasternodeVotingContractTests
             stateProvider.CreateAccountIfNotExists(codeSource, 0);
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
 
-            Dictionary<string, string> storage = GenesisAllocation;
-            foreach (KeyValuePair<string, string> kvp in storage)
+            foreach (KeyValuePair<string, string> kvp in GenesisAllocation)
             {
                 StorageCell cell = new(codeSource, UInt256.Parse(kvp.Key));
                 stateProvider.Set(cell, Bytes.FromHexString(kvp.Value));
@@ -72,19 +133,10 @@ internal class MasternodeVotingContractTests
         AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
 
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
-
         readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
 
-        MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
-
-        Address[] candidates = masterVoting.GetCandidates(genesis);
-        Assert.That(candidates.Length, Is.EqualTo(3));
-
-        foreach (Address candidate in candidates)
-        {
-            UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
-            Assert.That(stake, Is.EqualTo(10_000_000.Ether));
-        }
+        return (new MasternodeVotingContract(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory),
+            readOnlyTxProcessingEnvFactory, genesis);
     }
 
     private static Dictionary<string, string> GenesisAllocation =

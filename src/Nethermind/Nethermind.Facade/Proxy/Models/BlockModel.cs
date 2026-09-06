@@ -12,13 +12,13 @@ namespace Nethermind.Facade.Proxy.Models
     {
         public UInt256 Difficulty { get; set; }
         public byte[] ExtraData { get; set; }
-        public UInt256 GasLimit { get; set; }
-        public UInt256 GasUsed { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong GasUsed { get; set; }
         public Hash256 Hash { get; set; }
         public Address Miner { get; set; }
         public Hash256 MixHash { get; set; }
-        public UInt256 Nonce { get; set; }
-        public UInt256 Number { get; set; }
+        public ulong Nonce { get; set; }
+        public ulong Number { get; set; }
         public Hash256 ParentHash { get; set; }
         public Hash256 ReceiptsRoot { get; set; }
         public Hash256 Sha3Uncles { get; set; }
@@ -34,14 +34,14 @@ namespace Nethermind.Facade.Proxy.Models
 
         public Block ToBlock()
         {
-            Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long)Number,
-                (long)GasLimit, Timestamp, ExtraData));
+            Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, Number,
+                GasLimit, Timestamp, ExtraData));
 
             block.Header.StateRoot = StateRoot;
-            block.Header.GasUsed = (long)GasUsed;
+            block.Header.GasUsed = GasUsed;
             block.Header.Hash = Hash;
             block.Header.MixHash = MixHash;
-            block.Header.Nonce = (ulong)Nonce;
+            block.Header.Nonce = Nonce;
             block.Header.ReceiptsRoot = ReceiptsRoot;
             block.Header.TotalDifficulty = TotalDifficulty;
             block.Header.TxRoot = TransactionsRoot;

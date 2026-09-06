@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
     private const int BufferSize = 1024 * 16;
-    private const int SlotBufferSize = 1024;
+    private const int SlotBufferSize = 1024 * 8;
     private const int DisposeTimeoutMilliseconds = 1000;
 
     private readonly ILogger _logger;
@@ -29,7 +29,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private readonly SpmcRingBuffer<SlotJob> _slotJobBuffer = new(SlotBufferSize);
 
-    // This was also used to store the job from prewarmer. It will be added back in another PR.
+    // Multi-producer jobs: BAL reads and prewarmer-driven warm hints.
     private readonly MpmcRingBuffer<Job> _jobBufferMultiThreaded = new(BufferSize);
 
     // A job needs to be small, within one cache line (64B) ideally.
@@ -55,7 +55,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount / 2, 1)
+            ? Math.Max(Environment.ProcessorCount * 3 / 4, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
@@ -93,8 +93,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
+        int activeProcessors = Volatile.Read(ref _activeProcessors);
+        if (activeProcessors >= _processors.Length) return;
+
         long pending = PendingHint();
-        int desiredProcessors = (int)Math.Min(_processors.Length, Math.Max(1, pending));
+        if (pending == 0) return;
+
+        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {

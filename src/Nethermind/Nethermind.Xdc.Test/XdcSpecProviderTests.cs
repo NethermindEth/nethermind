@@ -84,6 +84,66 @@ public class XdcSpecProviderTests
     }
 
     [Test]
+    public void ApplyV2Config_AppliesNodeCaps()
+    {
+        XdcReleaseSpec spec = new()
+        {
+            V2Configs =
+            [
+                new()
+                {
+                    SwitchRound = 0,
+                    MaxMasternodes = 10,
+                    MaxProtectorNodes = 2,
+                    MaxObserverNodes = 3,
+                },
+                new()
+                {
+                    SwitchRound = 10,
+                    MaxMasternodes = 20,
+                    MaxProtectorNodes = 4,
+                    MaxObserverNodes = 5,
+                },
+            ],
+        };
+
+        spec.ApplyV2Config(10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.MaxMasternodes, Is.EqualTo(20));
+            Assert.That(spec.MaxProtectorNodes, Is.EqualTo(4));
+            Assert.That(spec.MaxObserverNodes, Is.EqualTo(5));
+        }
+    }
+
+    [Test]
+    public void DynamicGasLimitBlock_takes_effect_on_its_own_block()
+    {
+        // The block gates block production, so it needs its own release spec boundary rather than rounding to
+        // whichever transition happens to enclose it.
+        const ulong dynamicGasLimitBlock = 1000;
+        XdcChainSpecEngineParameters parameters = new()
+        {
+            SwitchBlock = 1,
+            DynamicGasLimitBlock = dynamicGasLimitBlock,
+            V2Configs = [new V2ConfigParams { SwitchRound = 0 }],
+        };
+        IChainSpecParametersProvider parametersProvider = Substitute.For<IChainSpecParametersProvider>();
+        parametersProvider.AllChainSpecParameters.Returns([parameters]);
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip1559Transition = 5 },
+            EngineChainSpecParametersProvider = parametersProvider,
+        };
+
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
+
+        Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock - 1).IsDynamicGasLimitBlock, Is.False);
+        Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock).IsDynamicGasLimitBlock, Is.True);
+    }
+
+    [Test]
     public void GetXdcSpec_ReturnsDifferentSpecInstances()
     {
         ChainSpec chainSpec = new()

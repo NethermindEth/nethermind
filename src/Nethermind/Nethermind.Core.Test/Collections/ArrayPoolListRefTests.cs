@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
@@ -267,6 +268,20 @@ public class ArrayPoolListRefTests
         {
             Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, items + 2)));
             Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
+        }
+    }
+
+    [Test]
+    public void AddRange_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a List<T>, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolListRef<int> list = new(source.Count);
+        list.AddRange(source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.ToArray(), Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
         }
     }
 

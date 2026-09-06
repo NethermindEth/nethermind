@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -73,16 +74,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
         {
-            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session}, with exception {e}");
+            if (Logger.IsTrace) TraceRlpException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
         }
 
         private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
         {
             Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
-            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session} due to rlp limits, with exception {e}");
+            if (Logger.IsTrace) TraceRlpLimitException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization limit exception", dataLength);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRlpException(string messageType, RlpException exception) =>
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session}, with exception {exception}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRlpLimitException(string messageType, RlpLimitException exception) =>
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session} due to rlp limits, with exception {exception}");
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {

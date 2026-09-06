@@ -1,0 +1,252 @@
+name: Release Bootnode
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Bootnode release tag, for example bootnode-r1
+        required: true
+        default: bootnode-r1
+      release_name:
+        description: GitHub release title. Leave empty to derive it from the tag.
+        required: false
+        default: ""
+      prerelease:
+        description: Mark the GitHub release as a prerelease.
+        required: true
+        type: boolean
+        default: true
+      publish_latest:
+        description: Also publish Docker latest and mark the GitHub release latest. Valid only when prerelease is false.
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: bootnode-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  deployments: write
+  packages: write
+  contents: write
+
+env:
+  PACKAGE_DIR: bootnode-pkg
+  PACKAGE_RETENTION: 7
+  PUB_DIR: bootnode-pub
+
+jobs:
+  build:
+    name: Build Bootnode packages
+    runs-on: ubuntu-latest
+    outputs:
+      release-tag: ${{ steps.release.outputs.release-tag }}
+      release-name: ${{ steps.release.outputs.release-name }}
+      package-prefix: ${{ steps.release.outputs.package-prefix }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      publish-latest: ${{ steps.release.outputs.publish-latest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve release metadata
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
+        run: |
+          tag="$INPUT_TAG"
+          if [[ ! "$tag" =~ ^bootnode-[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "Bootnode release tags must start with 'bootnode-' and contain only letters, digits, dots, underscores, or hyphens."
+            exit 1
+          fi
+
+          if [[ "$INPUT_PRERELEASE" == "true" && "$INPUT_PUBLISH_LATEST" == "true" ]]; then
+            echo "A prerelease cannot also be published as latest."
+            exit 1
+          fi
+
+          release_name="$INPUT_RELEASE_NAME"
+          if [[ -z "$release_name" ]]; then
+            release_name="Nethermind Bootnode ${tag#bootnode-}"
+          fi
+
+          package_prefix=nethermind-$tag
+
+          echo "release-tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release-name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "package-prefix=$package_prefix" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$INPUT_PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "publish-latest=$INPUT_PUBLISH_LATEST" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_PREFIX=$package_prefix" >> "$GITHUB_ENV"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Bootnode solution
+        working-directory: tools
+        run: dotnet build ./Bootnode/Bootnode.slnx -c release -p:SaveDiskSpace=true
+
+      - name: Test Bootnode
+        working-directory: tools
+        run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c release -p:SaveDiskSpace=true --no-build
+
+      - name: Build packages
+        run: scripts/build/build-bootnode.sh "$GITHUB_SHA"
+
+      - name: Archive packages
+        run: scripts/build/archive-bootnode.sh
+
+      - name: Sign packages
+        env:
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+          GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
+
+          for file_name in *.tar.gz *.zip SHA256SUMS; do
+            gpg --no-tty --batch --yes --pinentry-mode loopback \
+              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+              -o "$file_name.asc" -ab "$file_name"
+          done
+
+      - name: Upload Bootnode packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-packages
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*
+          if-no-files-found: error
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+
+  approval:
+    name: Approve
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: Releases
+      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ needs.build.outputs.release-tag }}
+    steps:
+      - name: Wait for approval
+        run: echo "Waiting for approval..."
+
+  publish-github:
+    name: Publish to GitHub
+    runs-on: ubuntu-latest
+    needs: [approval, build]
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.package-prefix }}-packages
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
+
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+          RELEASE_NAME: ${{ needs.build.outputs.release-name }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          PUBLISH_LATEST: ${{ needs.build.outputs.publish-latest }}
+        run: |
+          relnotes=$(cat <<EOF
+          # Release notes
+
+          Standalone Nethermind Bootnode release.
+
+          ## Docker image
+
+          \`\`\`bash
+          docker pull nethermind/nethermind-bootnode:$RELEASE_TAG
+          \`\`\`
+
+          ## Build signatures
+
+          The packages are signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
+          EOF
+          )
+
+          prerelease_flag=()
+          latest_flag=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_flag=(-p)
+          elif [[ "$PUBLISH_LATEST" == "true" ]]; then
+            latest_flag=(--latest)
+          fi
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Drafting release $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              -t "$RELEASE_NAME" \
+              -d \
+              "${prerelease_flag[@]}" \
+              -F <(printf '%s' "$relnotes")
+          fi
+
+          echo "Uploading assets"
+          gh release upload "$RELEASE_TAG" "$PACKAGE_DIR"/* --clobber
+
+          echo "Publishing release $RELEASE_TAG"
+          gh release edit "$RELEASE_TAG" \
+            --verify-tag \
+            --target "$GITHUB_SHA" \
+            -t "$RELEASE_NAME" \
+            --draft=false \
+            "${prerelease_flag[@]}" \
+            "${latest_flag[@]}"
+
+  publish-docker:
+    name: Publish to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [approval, build]
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Build and push image to Docker Hub
+        env:
+          RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          PUBLISH_LATEST: ${{ needs.build.outputs.publish-latest }}
+        run: |
+          image=nethermind/nethermind-bootnode
+          tags=(-t "$image:$RELEASE_TAG")
+          if [[ "$PRERELEASE" == "false" && "$PUBLISH_LATEST" == "true" ]]; then
+            tags+=(-t "$image:latest")
+          fi
+
+          docker buildx build . \
+            --platform=linux/amd64,linux/arm64 \
+            -f tools/Bootnode/Dockerfile \
+            "${tags[@]}" \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=$CI \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
+            --push

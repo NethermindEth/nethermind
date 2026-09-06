@@ -20,16 +20,16 @@ namespace Nethermind.Network.P2P.Messages
             int totalLength = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
-            stream.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
-            stream.Encode(msg.Capability.Version);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
+            writer.Encode(msg.Capability.Version);
         }
 
         public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static AddCapabilityMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static AddCapabilityMessage Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
             string protocolCode = ctx.DecodeString(RlpLimit);

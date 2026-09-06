@@ -18,8 +18,14 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
 {
     private readonly bool _skipStateAndStatus = skipStateAndStatus;
 
-    protected override OptimismTxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override OptimismTxReceipt? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (ctx.IsNextItemEmptyList())
+        {
+            ctx.ReadByte();
+            return null;
+        }
+
         OptimismTxReceipt txReceipt = new();
         if (!ctx.IsSequenceNext())
         {
@@ -33,19 +39,19 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
+            txReceipt.GasUsedTotal = firstItem.ToULong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
 
-        txReceipt.Bloom = ctx.DecodeBloom();
+        txReceipt.Bloom = ctx.DecodeBloomNonNull();
 
         int logEntriesCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -54,7 +60,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+            entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
         }
         txReceipt.Logs = entries;
 
@@ -74,7 +80,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         return txReceipt;
     }
 
-    private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
@@ -116,19 +122,28 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     public static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (int i = 0; i < item.Logs?.Length; i++)
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            logsLength += Rlp.LengthOf(item.Logs[i]);
+            logsLength += Rlp.LengthOf(logs[i]);
         }
 
         return logsLength;
     }
 
+    private static LogEntry[] GetLogs(TxReceipt item)
+        => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
+        if (item is null)
+        {
+            return Rlp.LengthOfSequence(0);
+        }
+
         (int total, _) = GetContentLength(item, rlpBehaviors);
         int receiptPayloadLength = Rlp.LengthOfSequence(total);
 
@@ -141,11 +156,11 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         return result;
     }
 
-    public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
@@ -156,36 +171,37 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         {
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
             {
-                rlpStream.StartByteArray(sequenceLength + 1, false);
+                writer.StartByteArray(sequenceLength + 1, false);
             }
 
-            rlpStream.WriteByte((byte)item.TxType);
+            writer.WriteByte((byte)item.TxType);
         }
 
-        rlpStream.StartSequence(totalContentLength);
+        writer.StartSequence(totalContentLength);
         if (!_skipStateAndStatus)
         {
-            rlpStream.Encode(item.StatusCode);
+            writer.Encode(item.StatusCode);
         }
 
-        rlpStream.Encode(item.GasUsedTotal);
-        rlpStream.Encode(item.Bloom);
+        writer.Encode(item.GasUsedTotal);
+        writer.Encode(item.Bloom);
 
-        rlpStream.StartSequence(logsLength);
-        for (int i = 0; i < item.Logs?.Length; i++)
+        writer.StartSequence(logsLength);
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            rlpStream.Encode(item.Logs[i]);
+            LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
         }
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))
         {
             if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
-                rlpStream.Encode(opItem.DepositNonce.Value);
+                writer.Encode(opItem.DepositNonce.Value);
 
                 if (opItem.DepositReceiptVersion is not null)
                 {
-                    rlpStream.Encode(opItem.DepositReceiptVersion.Value);
+                    writer.Encode(opItem.DepositReceiptVersion.Value);
                 }
             }
         }

@@ -7,13 +7,12 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -137,14 +136,10 @@ public class ProgressTrackerTests
     }
 
     [Test]
-    public void Will_mark_progress_and_flush_when_finished()
+    public void Will_mark_range_phase_finished_when_ranges_drain()
     {
-        BlockTree blockTree = Build.A.BlockTree()
-            .WithStateRoot(Keccak.EmptyTreeHash)
-            .OfChainLength(2).TestObject;
-        TestMemDb memDb = new();
-        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
-        using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
@@ -154,8 +149,35 @@ public class ProgressTrackerTests
         bool finished = progressTracker.IsFinished(out _);
         Assert.That(finished, Is.True);
 
-        Assert.That(memDb.WasFlushed, Is.True);
-        Assert.That(memDb[ProgressTracker.ACC_PROGRESS_KEY], Is.EqualTo(Keccak.MaxValue.BytesToArray()));
+        snapTrieFactory.Received(1).MarkRangePhaseFinished();
+    }
+
+    [Test]
+    public void Will_skip_account_ranges_when_range_phase_already_finished()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.IsRangePhaseFinished().Returns(true);
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+
+        progressTracker.LoadProgress();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
+        Assert.That(request, Is.Null);
+    }
+
+    // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
+    [Test]
+    public void Will_request_account_ranges_when_range_phase_not_finished()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.IsRangePhaseFinished().Returns(false);
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+
+        progressTracker.LoadProgress();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.False);
+        Assert.That(request!.AccountRangeRequest, Is.Not.Null);
+        request.Dispose();
     }
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
@@ -225,10 +247,10 @@ public class ProgressTrackerTests
         Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false)
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
-        return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

@@ -33,13 +33,13 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip6780Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         private byte[] _selfDestructCode;
         private Address _contractAddress;
         private byte[] _initCode;
-        private readonly long _gasLimit = 1000000;
+        private readonly ulong _gasLimit = 1000000;
         private readonly EthereumEcdsa _ecdsa = new(1);
 
         [SetUp]

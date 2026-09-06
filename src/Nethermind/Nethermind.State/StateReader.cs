@@ -32,7 +32,7 @@ namespace Nethermind.State
                 return Bytes.ZeroByteSpan;
             }
 
-            Metrics.StorageReaderReads++;
+            Metrics.IncrementStorageReaderReads();
 
             StorageTree storage = new(_trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, _logManager);
             return storage.Get(index, new Hash256(storageRoot));

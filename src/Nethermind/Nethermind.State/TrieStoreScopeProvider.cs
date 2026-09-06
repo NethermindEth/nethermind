@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -45,7 +44,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree ??= CreateStateTree();
@@ -103,6 +102,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
+            CancelHintBal();
+
             // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
             if (sink is null) return Task.CompletedTask;
 
@@ -112,7 +113,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             // Copy the span into a pooled array so the Parallel.For body can capture it.
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
-            CancelHintBal();
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
 
@@ -194,7 +194,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 {
                     accountChanges.Dispose();
                 }
-            }, token);
+            });
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -213,7 +213,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
         }
 
-        public void Commit(long blockNumber)
+        public void Commit(ulong blockNumber)
         {
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
@@ -266,15 +266,16 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
         public void Set(Address key, Account? account) => _dirtyAccounts[key] = account;
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) => new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
-                (address, rootHash) => MarkDirty(address, rootHash), address);
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) =>
+            new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), _markDirty ??= MarkDirty, address);
 
-        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) => _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash) => _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
         public void Dispose()
         {
@@ -294,6 +295,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
                 if (logger.IsTrace) Trace(address, storageRoot, account);
             }
+
+            OnAccountUpdated = null;
 
             using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
@@ -399,7 +402,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
             = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes]?.ToArray();
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes];
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 

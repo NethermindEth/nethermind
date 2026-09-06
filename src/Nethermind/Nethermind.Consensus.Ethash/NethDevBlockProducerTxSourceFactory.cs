@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
@@ -16,7 +17,8 @@ public class NethDevBlockProducerTxSourceFactory(
     ITxPool txPool,
     ITransactionComparerProvider transactionComparerProvider,
     IBlocksConfig blocksConfig,
-    ILogManager logManager) : IBlockProducerTxSourceFactory
+    ILogManager logManager,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator) : IBlockProducerTxSourceFactory
 {
     public ITxSource Create()
     {
@@ -32,6 +34,7 @@ public class NethDevBlockProducerTxSourceFactory(
             transactionComparerProvider!,
             logManager,
             txFilterPipeline,
-            blocksConfig).ServeTxsOneByOne();
+            blocksConfig,
+            specChangeTxValidator).ServeTxsOneByOne();
     }
 }

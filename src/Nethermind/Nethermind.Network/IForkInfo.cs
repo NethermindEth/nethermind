@@ -8,7 +8,7 @@ namespace Nethermind.Network;
 
 public interface IForkInfo
 {
-    ForkId GetForkId(long headNumber, ulong headTimestamp);
+    ForkId GetForkId(ulong headNumber, ulong headTimestamp);
 
     /// <summary>
     /// Verify that the forkid from peer matches our forks.
@@ -17,6 +17,11 @@ public interface IForkInfo
     /// <param name="head"></param>
     /// <returns></returns>
     ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head);
+
+    /// <summary>
+    /// Checks whether a discovered peer fork ID belongs to the local fork schedule without local head state.
+    /// </summary>
+    bool IsForkIdCompatible(ForkId peerId);
 
     ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head);
 }

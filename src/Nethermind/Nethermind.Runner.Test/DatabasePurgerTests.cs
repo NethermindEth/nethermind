@@ -90,6 +90,7 @@ public class DatabasePurgerTests
         {
             Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.False);
             Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.False);
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryV5Nodes)), Is.False);
         }
     }
 

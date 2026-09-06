@@ -3,12 +3,13 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -29,7 +30,14 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
         Code = code;
-        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(this);
+        if (code.Length == 0)
+        {
+            _analyzer = _emptyAnalyzer;
+        }
+        else
+        {
+            _analyzer = new JumpDestinationAnalyzer(this);
+        }
     }
 
     // Precompile
@@ -39,19 +47,13 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
-    {
-        Precompile = precompile;
-        Code = code;
-        _analyzer = null;
-    }
-
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
 
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
+    public ValueHash256 CodeHash { get; set; }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
@@ -71,14 +73,10 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public void AnalyzeInBackgroundIfRequired()
     {
+#if !ZK_EVM
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
-        {
-#if ZK_EVM
-            _analyzer.Execute();
-#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 #endif
-        }
     }
 
     public override bool Equals(object? obj)

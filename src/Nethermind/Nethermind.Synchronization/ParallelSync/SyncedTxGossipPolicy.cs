@@ -9,12 +9,19 @@ namespace Nethermind.Synchronization.ParallelSync;
 public class SyncedTxGossipPolicy : ITxGossipPolicy, IDisposable
 {
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly bool _acceptTxWhenNotSynced;
     private volatile bool _shouldListen;
 
     public SyncedTxGossipPolicy(ISyncModeSelector syncModeSelector)
+        : this(syncModeSelector, new TxPoolConfig())
+    {
+    }
+
+    public SyncedTxGossipPolicy(ISyncModeSelector syncModeSelector, ITxPoolConfig txPoolConfig)
     {
         _syncModeSelector = syncModeSelector;
-        _shouldListen = (syncModeSelector.Current & SyncMode.WaitingForBlock) != 0;
+        _acceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
+        _shouldListen = ShouldListen(syncModeSelector.Current);
         syncModeSelector.Changed += OnSyncModeChanged;
     }
 
@@ -22,5 +29,8 @@ public class SyncedTxGossipPolicy : ITxGossipPolicy, IDisposable
 
     public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
 
-    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e) => _shouldListen = (e.Current & SyncMode.WaitingForBlock) != 0;
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e) => _shouldListen = ShouldListen(e.Current);
+
+    private bool ShouldListen(SyncMode syncMode) =>
+        _acceptTxWhenNotSynced || (syncMode & SyncMode.WaitingForBlock) != 0;
 }

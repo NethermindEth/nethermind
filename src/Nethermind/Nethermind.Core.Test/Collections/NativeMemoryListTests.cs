@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -229,6 +231,40 @@ public class NativeMemoryListTests
     }
 
     [Test]
+    public void Ref_struct_constructor_releases_pinned_buffer_when_enumeration_throws()
+    {
+        const int capacity = 16;
+        PoolMarker[] expected = ArrayPool<PoolMarker>.Shared.Rent(capacity);
+        ArrayPool<PoolMarker>.Shared.Return(expected);
+
+        Assert.Throws<InvalidOperationException>(ConstructFromThrowingEnumerable);
+
+        // The private element type isolates this .NET 10 SharedArrayPool TLS bucket, whose next Rent
+        // returns its most recently returned array; identity therefore proves constructor cleanup.
+        PoolMarker[] actual = ArrayPool<PoolMarker>.Shared.Rent(capacity);
+        try
+        {
+            Assert.That(actual, Is.SameAs(expected));
+        }
+        finally
+        {
+            ArrayPool<PoolMarker>.Shared.Return(actual);
+        }
+
+        static void ConstructFromThrowingEnumerable()
+        {
+            NativeMemoryListRef<PoolMarker> list = new(capacity, ThrowAfterOneItem());
+            list.Dispose();
+        }
+
+        static IEnumerable<PoolMarker> ThrowAfterOneItem()
+        {
+            yield return default;
+            throw new InvalidOperationException();
+        }
+    }
+
+    [Test]
     public void Empty_constructor_returns_disposable_zero_capacity()
     {
         using NativeMemoryList<int> empty = NativeMemoryList<int>.Empty();
@@ -319,4 +355,6 @@ public class NativeMemoryListTests
 
         static void CtorRef(int bad) { NativeMemoryListRef<int> _ = new(4, bad); }
     }
+
+    private readonly struct PoolMarker;
 }

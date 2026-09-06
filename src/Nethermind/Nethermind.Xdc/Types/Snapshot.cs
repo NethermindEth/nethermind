@@ -6,9 +6,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Types;
 
-public class Snapshot(long number, Hash256 hash, Address[] masterNodes)
+public class Snapshot(ulong number, Hash256 hash, Address[] masterNodes)
 {
-    public long BlockNumber { get; set; } = number;
+    public ulong BlockNumber { get; set; } = number;
     public Hash256 HeaderHash { get; set; } = hash;
     public Address[] NextEpochCandidates { get; set; } = masterNodes;
 }

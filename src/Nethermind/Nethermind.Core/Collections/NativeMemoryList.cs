@@ -68,7 +68,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowObjectDisposed() => throw new ObjectDisposedException(nameof(NativeMemoryList<T>));
+        static void ThrowObjectDisposed() => throw new ObjectDisposedException(nameof(NativeMemoryList<>));
     }
 
     public Enumerator GetEnumerator()
@@ -265,7 +265,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
         if (_capacity != 0 && !_disposed)
         {
 #if DEBUG
-            Console.Error.WriteLine($"Warning: {nameof(NativeMemoryList<T>)} was not disposed. Created at: {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(NativeMemoryList<>)} was not disposed. Created at: {_creationStackTrace}");
 #endif
             // Always free unmanaged memory / return pooled array in the finalizer to avoid
             // process-lifetime native leaks or starvation of the ArrayPool.

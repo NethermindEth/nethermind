@@ -110,7 +110,7 @@ namespace Nethermind.Runner.JsonRpc
         }
 
 
-        private async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
+        internal async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
         {
             using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                 string.Empty,
@@ -135,6 +135,10 @@ namespace Nethermind.Runner.JsonRpc
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == OperationCancelledError)
+            {
+                if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
+            }
+            catch (ObjectDisposedException ex) when (ex.ObjectName == typeof(IpcSocketMessageStream).FullName)
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }

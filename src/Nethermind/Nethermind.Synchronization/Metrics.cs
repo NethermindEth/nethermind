@@ -6,6 +6,7 @@ using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization
@@ -18,15 +19,15 @@ namespace Nethermind.Synchronization
 
         [GaugeMetric]
         [Description("Bodies downloaded in fast blocks stage")]
-        public static long FastBodies;
+        public static ulong FastBodies;
 
         [GaugeMetric]
         [Description("Receipts downloaded in fast blocks stage")]
-        public static long FastReceipts;
+        public static ulong FastReceipts;
 
         [GaugeMetric]
         [Description("Access lists downloaded in fast blocks stage")]
-        public static long FastBlockAccessLists;
+        public static ulong FastBlockAccessLists;
 
         [GaugeMetric]
         [Description("State synced in bytes")]
@@ -78,8 +79,13 @@ namespace Nethermind.Synchronization
         public static long StateBranchProgress;
 
         [GaugeMetric]
-        [Description("Sync time in seconds")]
-        public static long SyncTime;
+        [Description("Total wall-clock time the node has spent syncing, in seconds. Retained after sync completes; resumes accumulating if the node falls behind and re-syncs.")]
+        public static long SyncTimeSeconds;
+
+        [GaugeMetric]
+        [Description("Cumulative wall-clock seconds spent with each sync mode active. Modes can overlap, so the sum across modes may exceed the total sync time; retained after sync completes.")]
+        [KeyIsLabel("sync_mode")]
+        public static ConcurrentDictionary<SyncMode, long> SyncTimeInModeSeconds { get; } = new();
 
         [DetailedMetric]
         [Description("Snap range result")]

@@ -15,7 +15,7 @@ namespace Nethermind.Xdc.Test;
 public class XdcPoolTests
 {
     private static BlockRoundInfo MakeBlockInfo(ulong round = 1) =>
-        new(Hash256.Zero, round, (long)round);
+        new(Hash256.Zero, round, round);
 
     private static Vote BuildVote(BlockRoundInfo info, PrivateKey key, ulong gap = 0)
         => XdcTestHelper.BuildSignedVote(info, gap, key);
@@ -89,9 +89,36 @@ public class XdcPoolTests
 
         pool.Add(voteRound1);
         pool.Add(voteRound2);
-        pool.EndRound(1);
+        pool.EndRound(1UL);
 
         Assert.That(pool.GetCount(voteRound1), Is.EqualTo(0));
         Assert.That(pool.GetCount(voteRound2), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void RemoveRoundsOutsideRetention_ExpiredRounds_RemovesOnlyExpiredRounds()
+    {
+        const ulong latestRound = 12;
+        const ulong retainedRoundCount = XdcConstants.PoolHygieneRound;
+        const ulong expiredRound = latestRound - retainedRoundCount;
+        const ulong oldestRetainedRound = expiredRound + 1;
+
+        XdcPool<Vote> pool = new();
+        Vote expiredVote = BuildVote(MakeBlockInfo(expiredRound), TestItem.PrivateKeyA);
+        Vote oldestRetainedVote = BuildVote(MakeBlockInfo(oldestRetainedRound), TestItem.PrivateKeyA);
+        Vote latestVote = BuildVote(MakeBlockInfo(latestRound), TestItem.PrivateKeyA);
+
+        pool.Add(expiredVote);
+        pool.Add(oldestRetainedVote);
+        pool.Add(latestVote);
+
+        pool.RemoveRoundsOutsideRetention(latestRound, retainedRoundCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.GetCount(expiredVote), Is.Zero);
+            Assert.That(pool.GetCount(oldestRetainedVote), Is.EqualTo(1));
+            Assert.That(pool.GetCount(latestVote), Is.EqualTo(1));
+        }
     }
 }

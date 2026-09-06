@@ -104,8 +104,8 @@ public class RecordedBalStoreTests
         try
         {
             using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
-            long era0Block = 0;
-            long era1Block = 8192;
+            ulong era0Block = 0;
+            ulong era1Block = 8192;
 
             Block block0 = Build.A.Block.WithNumber(era0Block).TestObject;
             Block block1 = Build.A.Block.WithNumber(era1Block).TestObject;

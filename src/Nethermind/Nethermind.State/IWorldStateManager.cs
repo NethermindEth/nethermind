@@ -10,11 +10,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public interface IWorldStateManager : IStateBoundary
+public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapServer SnapServer { get; }
+    ISnapStateServer SnapStateServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
@@ -22,8 +22,6 @@ public interface IWorldStateManager : IStateBoundary
     /// </summary>
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
-
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     IOverridableWorldScope CreateOverridableWorldScope();
 

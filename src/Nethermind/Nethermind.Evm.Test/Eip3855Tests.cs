@@ -10,14 +10,14 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-        private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
+        private TestAllTracerWithOutput testBase(ulong repeat, bool isShanghai)
         {
             ulong timestampParam = isShanghai ? Timestamp : Timestamp - 1;
             Prepare codeInitializer = Prepare.EvmCode;
-            for (int i = 0; i < repeat; i++)
+            for (ulong i = 0; i < repeat; i++)
             {
                 codeInitializer.Op(Instruction.PUSH0);
             }
@@ -27,11 +27,11 @@ namespace Nethermind.Evm.Test
             return receipt;
         }
 
-        [TestCase(0, true)]
-        [TestCase(1, true)]
-        [TestCase(123, true)]
-        [TestCase(1024, true)]
-        public void Test_Eip3855_should_pass(int repeat, bool isShanghai)
+        [TestCase(0UL, true)]
+        [TestCase(1UL, true)]
+        [TestCase(123UL, true)]
+        [TestCase(1024UL, true)]
+        public void Test_Eip3855_should_pass(ulong repeat, bool isShanghai)
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -39,12 +39,12 @@ namespace Nethermind.Evm.Test
         }
 
 
-        [TestCase(1, false, Description = "Shanghai fork deactivated")]
-        [TestCase(123, false, Description = "Shanghai fork deactivated")]
-        [TestCase(1234, false, Description = "Shanghai fork deactivated")]
-        [TestCase(1025, true, Description = "Shanghai fork activated, stackoverflow")]
-        [TestCase(1026, true, Description = "Shanghai fork activated, stackoverflow")]
-        public void Test_Eip3855_should_fail(int repeat, bool isShanghai)
+        [TestCase(1UL, false, Description = "Shanghai fork deactivated")]
+        [TestCase(123UL, false, Description = "Shanghai fork deactivated")]
+        [TestCase(1234UL, false, Description = "Shanghai fork deactivated")]
+        [TestCase(1025UL, true, Description = "Shanghai fork activated, stackoverflow")]
+        [TestCase(1026UL, true, Description = "Shanghai fork activated, stackoverflow")]
+        public void Test_Eip3855_should_fail(ulong repeat, bool isShanghai)
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
 

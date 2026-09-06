@@ -121,7 +121,7 @@ public class VisitorProgressTracker
             return;
         }
 
-        long progressValue = (long)(progress * 10000);
+        ulong progressValue = (ulong)(progress * 10000);
 
         _logger.Update(progressValue);
         _logger.LogProgress();

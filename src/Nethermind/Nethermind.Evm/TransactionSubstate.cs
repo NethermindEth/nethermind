@@ -54,10 +54,12 @@ public readonly ref struct TransactionSubstate
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
+    internal bool ShouldRestoreRipemdTouch { get; init; }
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
-        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        // Reflection-free error name; see FastToString for why Enum.ToString() can't be used here.
+        Error = isTracerConnected ? exceptionType.FastToString() : SomeError;
         SubstateError = substateError;
         EvmExceptionType = exceptionType;
         Refund = 0;
@@ -72,7 +74,7 @@ public readonly ref struct TransactionSubstate
         JournalSet<Address>? destroyList,
         JournalCollection<LogEntry>? logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        bool isTracerConnected = default,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {

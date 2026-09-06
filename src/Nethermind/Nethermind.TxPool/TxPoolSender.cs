@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -20,9 +19,15 @@ namespace Nethermind.TxPool
         public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+
             if (tx.SenderAddress is null)
-                throw new ArgumentNullException(nameof(tx.SenderAddress));
+            {
+                if (!_ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+                {
+                    return new((tx.Hash!, AcceptTxResult.FailedToResolveSender));
+                }
+                tx.SenderAddress = senderAddress;
+            }
 
             AcceptTxResult result = manageNonce
                 ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
@@ -39,7 +44,7 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 reservedNonce);
+            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out ulong reservedNonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             tx.Nonce = reservedNonce;
             return SubmitTx(locker, tx, txHandlingOptions);

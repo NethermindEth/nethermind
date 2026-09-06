@@ -37,7 +37,7 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 
     // Write directly to _nodeStorage, which goes to db provider.
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);

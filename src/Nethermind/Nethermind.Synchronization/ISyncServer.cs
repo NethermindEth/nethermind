@@ -15,20 +15,20 @@ namespace Nethermind.Synchronization
 {
     public interface ISyncServer : IDisposable
     {
-        void HintBlock(Hash256 hash, long number, ISyncPeer receivedFrom);
+        void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
         BlockHeader? FindHeader(Hash256 hash);
-        Hash256? FindHash(long number);
+        Hash256? FindHash(ulong number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
         IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
-        long LowestBlock { get; }
+        ulong LowestBlock { get; }
     }
 }

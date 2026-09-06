@@ -5,10 +5,10 @@ namespace Ethereum.Difficulty.Test
 {
     public class DifficultyTestJson
     {
-        public int ParentTimestamp { get; set; }
-        public int ParentDifficulty { get; set; }
-        public int CurrentTimestamp { get; set; }
-        public int CurrentBlockNumber { get; set; }
-        public int CurrentDifficulty { get; set; }
+        public ulong ParentTimestamp { get; set; }
+        public ulong ParentDifficulty { get; set; }
+        public ulong CurrentTimestamp { get; set; }
+        public ulong CurrentBlockNumber { get; set; }
+        public ulong CurrentDifficulty { get; set; }
     }
 }

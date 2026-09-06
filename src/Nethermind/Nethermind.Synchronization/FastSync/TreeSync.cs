@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.FastSync
 {
     public class TreeSync
     {
-        public const int AlreadySavedCapacity = 1024 * 1024;
+        public const int AlreadySavedCapacity = MemorySizes.MiB;
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
-        private long _blockNumber;
+        private ulong _blockNumber;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -405,7 +405,7 @@ namespace Nethermind.Synchronization.FastSync
             return headerForState;
         }
 
-        private void ResetStateRoot(long blockNumber, Hash256 stateRoot)
+        private void ResetStateRoot(ulong blockNumber, Hash256 stateRoot)
         {
             _lastResetRoot = DateTime.UtcNow;
             Interlocked.Exchange(ref _hintsToResetRoot, 0);
@@ -904,7 +904,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        Rlp.ValueDecoderContext ctx = new(trieNode.Value.AsSpan());
+                        RlpReader ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {

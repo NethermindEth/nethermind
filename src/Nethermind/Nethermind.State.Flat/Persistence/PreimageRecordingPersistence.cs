@@ -74,7 +74,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             {
                 Address addr = new(addrPreimage);
                 UInt256 slot = new(slotPreimage, isBigEndian: true);
-                Rlp.ValueDecoderContext ctx = new(rlpValue);
+                RlpReader ctx = new(rlpValue);
                 inner.SetStorage(addr, slot, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             else
@@ -116,10 +116,10 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
 
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-            inner.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
+            inner.DeleteStateTrieNodeRange(from, to);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-            inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+            inner.DeleteStorageTrieNodeRange(addressHash, from, to);
     }
 }

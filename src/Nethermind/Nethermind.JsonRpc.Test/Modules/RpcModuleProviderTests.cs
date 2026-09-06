@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
@@ -110,16 +112,16 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Allows_to_replace_modules()
+    public async Task Allows_to_replace_modules()
     {
-        SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
-        _moduleProvider.Register(pool);
-        Assert.That(_moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)), Is.EqualTo(pool));
+        INetRpcModule first = Substitute.For<INetRpcModule>();
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(first));
+        Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(first));
 
-        SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
-        _moduleProvider.Register(pool2);
+        INetRpcModule second = Substitute.For<INetRpcModule>();
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(second));
 
-        Assert.That(_moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)), Is.EqualTo(pool2));
+        Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(second));
     }
 
     [TestCase("engine_newPayloadV4", ModuleType.Engine)]
@@ -151,16 +153,16 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Hot_method_cache_updates_after_module_replacement()
+    public async Task Hot_method_cache_updates_after_module_replacement()
     {
-        TestModulePool<HotEngineRpcModule> firstPool = new(new HotEngineRpcModule());
-        _moduleProvider.Register(firstPool);
-        Assert.That(_moduleProvider.GetPoolForMethod("engine_newPayloadV4"), Is.EqualTo(firstPool));
+        HotEngineRpcModule first = new();
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(first));
+        Assert.That(await _moduleProvider.Rent("engine_newPayloadV4", true), Is.SameAs(first));
 
-        TestModulePool<HotEngineRpcModule> secondPool = new(new HotEngineRpcModule());
-        _moduleProvider.Register(secondPool);
+        HotEngineRpcModule second = new();
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(second));
 
-        Assert.That(_moduleProvider.GetPoolForMethod("engine_newPayloadV4"), Is.EqualTo(secondPool));
+        Assert.That(await _moduleProvider.Rent("engine_newPayloadV4", true), Is.SameAs(second));
     }
 
     [Test]
@@ -228,6 +230,22 @@ public class RpcModuleProviderTests
             Assert.That(module.AsyncCalls, Is.EqualTo(1));
             Assert.That(module.ParameterCalls, Is.EqualTo(1));
             Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Parameter_specific_converter_is_used_for_reparsed_strings()
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo method = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_converter))!;
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = method.ExpectedParameters[0];
+
+        int[]? value = (int[]?)JsonSerializer.Deserialize("[1,2]"u8, parameter.TypeInfo!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(new[] { 42 }));
+            Assert.That(parameter.ReparseString, Is.True);
         }
     }
 
@@ -486,6 +504,10 @@ public class RpcModuleProviderTests
 
         public ResultWrapper<int> direct_required_value_param(int value) => ResultWrapper<int>.Success(value);
 
+        public ResultWrapper<int> direct_with_converter(
+            [JsonRpcParameter(ConverterType = typeof(SingleIntArrayConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values[0]);
+
         public ResultWrapper<string, bool> direct_typed_error_data() =>
             ResultWrapper<string, bool>.Fail("typed", ErrorCodes.InvalidParams, false);
 
@@ -510,6 +532,18 @@ public class RpcModuleProviderTests
     private class TestRpcModule : ITestRpcModule { public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true; }
 
     private sealed class FallbackPayload { public string? Value { get; set; } }
+
+    public sealed class SingleIntArrayConverter : JsonConverter<int[]>
+    {
+        public override int[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            return [42];
+        }
+
+        public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
 
     private class PolymorphicPayload { }
 

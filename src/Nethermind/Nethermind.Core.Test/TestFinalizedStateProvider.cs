@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test;
@@ -13,12 +14,12 @@ namespace Nethermind.Core.Test;
 /// TrieStore must be set later.
 /// </summary>
 /// <param name="depth"></param>
-public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
+public class TestFinalizedStateProvider(ulong depth) : IFinalizedStateProvider
 {
     public TrieStore TrieStore { get; set; } = null!;
     private BlockHeader? _manualFinalizedPoint = null;
 
-    public long FinalizedBlockNumber
+    public ulong FinalizedBlockNumber
     {
         get
         {
@@ -26,11 +27,11 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
             {
                 return _manualFinalizedPoint.Number;
             }
-            return TrieStore.LatestCommittedBlockNumber - depth;
+            return TrieStore.LatestCommittedBlockNumber.SaturatingSub(depth);
         }
     }
 
-    public Hash256? GetFinalizedStateRootAt(long blockNumber)
+    public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
     {
         if (_manualFinalizedPoint is not null && _manualFinalizedPoint.Number == blockNumber)
         {

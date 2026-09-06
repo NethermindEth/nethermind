@@ -56,7 +56,7 @@ public class OptimismPayloadPreparationServiceTests
         IOptimismReleaseSpec releaseSpec = OptimismReleaseSpecSubstitute.Create();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
-        releaseSpec.ElasticityMultiplier.Returns(6);
+        releaseSpec.ElasticityMultiplier.Returns(6UL);
         ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
@@ -96,7 +96,7 @@ public class OptimismPayloadPreparationServiceTests
         testCase.Attributes.PrevRandao = Hash256.Zero;
         testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
+        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes)!;
         IBlockProductionContext context = (await service.GetPayload(payloadId))!;
         Block currentBestBlock = context.CurrentBestBlock!;
 

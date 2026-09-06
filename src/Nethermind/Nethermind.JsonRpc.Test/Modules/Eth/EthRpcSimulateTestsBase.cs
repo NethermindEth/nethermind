@@ -18,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -33,7 +32,7 @@ public class EthRpcSimulateTestsBase
 
     private const string GasProbeBytecode = "0x5a60005260206000f3";
 
-    public static SimulatePayload<TransactionForRpc> CreateGasProbePayload(long? requestGas = null)
+    public static SimulatePayload<TransactionForRpc> CreateGasProbePayload(ulong? requestGas = null)
     {
         LegacyTransactionForRpc call = new()
         {
@@ -64,8 +63,8 @@ public class EthRpcSimulateTestsBase
 
     public static IEnumerable<TestCaseData> GasCapSimulateCases()
     {
-        yield return new TestCaseData(50_000L, 100_000L, true).SetName("capped");
-        yield return new TestCaseData(0L, null, false).SetName("uncapped_zero_cap");
+        yield return new TestCaseData(50_000UL, 100_000UL, true).SetName("capped");
+        yield return new TestCaseData(0UL, (ulong?)null, false).SetName("uncapped_zero_cap");
     }
 
     public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null)
@@ -133,8 +132,8 @@ public class EthRpcSimulateTestsBase
         byte[] bytecode = Bytes.FromHexString(contractBytecode);
         Transaction tx = new()
         {
-            Value = UInt256.Zero,
-            Nonce = 0,
+            Value = 0UL,
+            Nonce = 0UL,
             Data = bytecode,
             GasLimit = 3_000_000,
             SenderAddress = privateKey.Address,
@@ -147,11 +146,14 @@ public class EthRpcSimulateTestsBase
             chain.NonceManager,
             chain.EthereumEcdsa);
 
-        (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        (Hash256? hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
+        Hash256 acceptedHash = hash ?? throw new AssertionException("Accepted transaction has no hash.");
 
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        HashSet<Hash256> expectedHashes = txs.Select((tx) => tx.Hash!).ToHashSet();
+        HashSet<Hash256> expectedHashes = txs
+            .Select(static pendingTx => pendingTx.Hash ?? throw new AssertionException("Pending transaction has no hash."))
+            .ToHashSet();
 
         IBlockProducer blockProducer = chain.BlockProducer;
         IBlockTree blockTree = chain.BlockTree;
@@ -164,7 +166,9 @@ public class EthRpcSimulateTestsBase
 
             if (block is not null)
             {
-                HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
+                HashSet<Hash256> blockTxs = block.Transactions
+                    .Select(static blockTx => blockTx.Hash ?? throw new AssertionException("Block transaction has no hash."))
+                    .ToHashSet();
                 if (expectedHashes.All((tx) => blockTxs.Contains(tx)) && expectedHashes.Count == blockTxs.Count) break;
             }
 
@@ -185,7 +189,7 @@ public class EthRpcSimulateTestsBase
         while (createContractTxReceipt is null)
         {
             await Task.Delay(100);
-            createContractTxReceipt = chain.Bridge.GetReceipt(hash);
+            createContractTxReceipt = chain.Bridge.GetReceipt(acceptedHash);
         }
 
         Assert.That(createContractTxReceipt.ContractAddress, Is.Not.Null, $"Contract transaction {tx.Hash!} was not deployed.");
@@ -210,7 +214,7 @@ public class EthRpcSimulateTestsBase
     {
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
-        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+        SignableTransactionForRpc transactionForRpc = (SignableTransactionForRpc)TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
         ResultWrapper<HexBytes> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
         return ParseECRecoverAddress(mainChainResult.Data.Bytes.ToArray());

@@ -281,7 +281,53 @@ public class StartupTests
             Error = new Error { Code = ErrorCodes.ExecutionError, Message = "out of gas" }
         });
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32003,\"message\":\"out of gas\"},\"id\":1}"));
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"out of gas\"},\"id\":1}"));
+    }
+
+    [TestCase(true, "HTTP/1.1", true)]
+    [TestCase(true, "HTTP/2", false)]
+    [TestCase(false, "HTTP/1.1", true)]
+    public async Task HttpJsonRpcResponseSink_SetsContentLengthForUnflushedHttp11Response(
+        bool isAuthenticated,
+        string protocol,
+        bool expectedContentLength)
+    {
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(isAuthenticated: isAuthenticated);
+        fixture.Context.Request.Protocol = protocol;
+        JsonRpcSuccessResponse response = new() { Id = JsonRpcId.FromObject(1), Result = "ok" };
+
+        await fixture.Sink.WriteSingleAsync(response, new RpcReport("test", 0, true), CancellationToken.None);
+        long bytesWritten = fixture.Sink.BytesWritten;
+        await fixture.Sink.CompleteAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Context.Response.ContentLength, expectedContentLength ? Is.EqualTo(bytesWritten) : Is.Null);
+            Assert.That(fixture.ResponseBody.Length, Is.EqualTo(bytesWritten));
+        }
+    }
+
+    [Test]
+    public async Task HttpJsonRpcResponseSink_DoesNotSetContentLengthAfterStreamFlush()
+    {
+        bool hasStarted = false;
+        IHttpResponseFeature responseFeature = Substitute.For<IHttpResponseFeature>();
+        responseFeature.Headers.Returns(new HeaderDictionary());
+        responseFeature.HasStarted.Returns(_ => hasStarted);
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(
+            isAuthenticated: true,
+            responseFeature: responseFeature);
+        fixture.Context.Request.Protocol = "HTTP/1.1";
+        JsonRpcSuccessResponse response = new()
+        {
+            Id = JsonRpcId.FromObject(1),
+            Result = new FlushingStreamableResult(() => hasStarted = true)
+        };
+
+        await fixture.Sink.WriteSingleAsync(response, new RpcReport(GetBlobsV2Method, 0, true), CancellationToken.None);
+        await fixture.Sink.CompleteAsync(CancellationToken.None);
+
+        Assert.That(fixture.Context.Response.ContentLength, Is.Null);
     }
 
     [Test]
@@ -367,15 +413,21 @@ public class StartupTests
     [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Ws, false)]
     [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Http, true)]
     [TestCase("POST", "application/json; charset=utf-8", "127.0.0.1", RpcEndpoint.Http, true)]
+    [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Http, false, "http://example.com")]
     public void TrustedHttpFastLane_RequiresTrustedJsonHttpPost(
         string method,
         string contentType,
         string remoteIp,
         RpcEndpoint endpoint,
-        bool expected)
+        bool expected,
+        string? origin = null)
     {
         JsonRpcUrl jsonRpcUrl = CreateUrl(endpoint: endpoint);
         DefaultHttpContext ctx = CreateFastLaneContext(jsonRpcUrl.Port, method, contentType, IPAddress.Parse(remoteIp));
+        if (origin is not null)
+        {
+            ctx.Request.Headers.Origin = origin;
+        }
 
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
 
@@ -509,10 +561,16 @@ public class StartupTests
         JsonRpcConfig? rpcConfig = null,
         bool isAuthenticated = false,
         bool enableLocalStats = false,
-        IJsonRpcLocalStats? jsonRpcLocalStats = null)
+        IJsonRpcLocalStats? jsonRpcLocalStats = null,
+        IHttpResponseFeature? responseFeature = null)
     {
         DefaultHttpContext ctx = new();
         MemoryStream responseBody = new();
+        if (responseFeature is not null)
+        {
+            ctx.Features.Set(responseFeature);
+        }
+
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
@@ -598,14 +656,16 @@ public class StartupTests
         public void Dispose() => DisposeCount++;
     }
 
-    private sealed class FlushingStreamableResult : IStreamableResult
+    private sealed class FlushingStreamableResult(Action? onFlushed = null) : IStreamableResult
     {
         public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
             writer.Write("["u8);
             await writer.FlushAsync(cancellationToken);
+            onFlushed?.Invoke();
             writer.Write("null"u8);
             await writer.FlushAsync(cancellationToken);
+            onFlushed?.Invoke();
             writer.Write("]"u8);
         }
     }

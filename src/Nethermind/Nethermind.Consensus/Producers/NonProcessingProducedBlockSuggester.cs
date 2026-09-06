@@ -21,7 +21,7 @@ public class NonProcessingProducedBlockSuggester : IProducedBlockSuggester
     private void OnBlockProduced(object? sender, BlockEventArgs e)
     {
         if (_blockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.None) == AddBlockResult.Added)
-            _blockTree.UpdateMainChain([e.Block], true);
+            _blockTree.TryUpdateMainChain(e.Block.Header, wereProcessed: true, preloadedBlocks: [e.Block]);
     }
 
     public void Dispose() => _blockProducerRunner.BlockProduced -= OnBlockProduced;

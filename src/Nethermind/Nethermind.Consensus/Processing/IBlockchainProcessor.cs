@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
@@ -12,8 +11,6 @@ namespace Nethermind.Consensus.Processing
 {
     public interface IBlockchainProcessor : IAsyncDisposable
     {
-        ITracerBag Tracers { get; }
-
         void Start();
 
         Task StopAsync(bool processRemainingBlocks = false);

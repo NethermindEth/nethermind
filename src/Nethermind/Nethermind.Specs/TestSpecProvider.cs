@@ -15,7 +15,7 @@ namespace Nethermind.Specs
             NextForkSpec = initialSpecToReturn;
         }
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
                 MergeBlockNumber = (ForkActivation)blockNumber;
@@ -28,14 +28,14 @@ namespace Nethermind.Specs
         public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        public IReleaseSpec GenesisSpec { get; set; }
+        public IReleaseSpec GenesisSpec { get; set; } = MainnetSpecProvider.Instance.GenesisSpec;
 
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : NextForkSpec;
 
-        public IReleaseSpec NextForkSpec { get; set; }
-        public long? ForkOnBlockNumber { get; set; }
+        public IReleaseSpec NextForkSpec { get; set; } = MainnetSpecProvider.Instance.GenesisSpec;
+        public ulong? ForkOnBlockNumber { get; set; }
 
-        public long? DaoBlockNumber { get; set; }
+        public ulong? DaoBlockNumber { get; set; }
         public ulong? BeaconChainGenesisTimestamp { get; set; }
         public ulong? _networkId;
         public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }

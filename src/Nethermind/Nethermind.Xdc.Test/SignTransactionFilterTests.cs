@@ -32,18 +32,18 @@ internal class SignTransactionFilterTests
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.BlockSignerContract.Returns(BlockSignerContract);
         xdcSpec.RandomizeSMCBinary.Returns(RandomizeSMC);
-        xdcSpec.EpochLength.Returns(900);
+        xdcSpec.EpochLength.Returns(900UL);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
+        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<ulong>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
 
         return new SignTransactionFilter(snapshotManager, blockTree, specProvider);
     }
 
-    private static Block HeadBlock(long number = 100) =>
+    private static Block HeadBlock(ulong number = 100) =>
         Build.A.Block.WithHeader(Build.A.XdcBlockHeader().WithNumber(number).TestObject).TestObject;
 
     [Test]

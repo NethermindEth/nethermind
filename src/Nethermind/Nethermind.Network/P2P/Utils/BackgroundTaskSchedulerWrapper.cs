@@ -114,7 +114,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeTaskRequest<TReq, TRes>>
         where TRes : P2PMessage
     {
-        public static int TaskId => BackgroundTaskTypeId<SyncServeTaskRequest<TReq, TRes>>.Id;
+        public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {
@@ -142,7 +142,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         where TRes : P2PMessage
         where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
     {
-        public static int TaskId => BackgroundTaskTypeId<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>>.Id;
+        public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {
@@ -169,7 +169,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeValueTaskRequest<TReq, TRes>>
         where TRes : P2PMessage
     {
-        public static int TaskId => BackgroundTaskTypeId<SyncServeValueTaskRequest<TReq, TRes>>.Id;
+        public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {
@@ -195,7 +195,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         TReq request,
         Func<TReq, CancellationToken, ValueTask> fulfillFunc) : IBackgroundTaskRequest<BackgroundTaskRequest<TReq>>
     {
-        public static int TaskId => BackgroundTaskTypeId<BackgroundTaskRequest<TReq>>.Id;
+        public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {

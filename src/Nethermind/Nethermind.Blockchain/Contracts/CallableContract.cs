@@ -22,12 +22,12 @@ namespace Nethermind.Blockchain.Contracts
     public abstract class CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : Contract(abiEncoder, contractAddress)
     {
         private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-        public const long UnlimitedGas = long.MaxValue;
+        public const ulong UnlimitedGas = ulong.MaxValue;
 
         /// <summary>
         /// Gas limit used for generated system transactions.
         /// </summary>
-        public const long SystemTransactionGasLimit = 30_000_000L;
+        public const ulong SystemTransactionGasLimit = 30_000_000UL;
 
         private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
 
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="gasLimit">Gas limit for generated transaction.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
-        protected object[] Call(BlockHeader header, string functionName, Address sender, long gasLimit, params object[] arguments)
+        protected object[] Call(BlockHeader header, string functionName, Address sender, ulong gasLimit, params object[] arguments)
         {
             AbiFunctionDescription function = AbiDefinition.GetFunction(functionName);
             Transaction transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, params object[] arguments)
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, ulong gasLimit, out object[] result, params object[] arguments)
         {
             AbiFunctionDescription function = AbiDefinition.GetFunction(functionName);
             Transaction transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);

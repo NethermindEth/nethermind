@@ -54,17 +54,11 @@ public class KeccaksIteratorTests
         {
             totalLength += Rlp.LengthOf(keccak.Bytes.WithoutLeadingZerosOrEmpty());
         }
-        int sequenceLength = Rlp.LengthOfSequence(totalLength);
 
-        RlpStream rlpStream = new(sequenceLength);
-        rlpStream.StartSequence(totalLength);
-        foreach (Hash256 keccak in input)
-        {
-            rlpStream.Encode(keccak.Bytes.WithoutLeadingZerosOrEmpty());
-        }
+        byte[] rlp = Encode(input, totalLength);
 
         Span<byte> buffer = stackalloc byte[32];
-        KeccaksIterator iterator = new(rlpStream.Data.AsSpan(), buffer);
+        KeccaksIterator iterator = new(rlp, buffer);
 
         List<Hash256> decoded = [];
         while (iterator.TryGetNext(out Hash256StructRef kec))
@@ -82,17 +76,11 @@ public class KeccaksIteratorTests
         {
             totalLength += Rlp.LengthOf(keccak.Bytes.WithoutLeadingZerosOrEmpty());
         }
-        int sequenceLength = Rlp.LengthOfSequence(totalLength);
 
-        RlpStream rlpStream = new(sequenceLength);
-        rlpStream.StartSequence(totalLength);
-        foreach (Hash256 keccak in input)
-        {
-            rlpStream.Encode(keccak.Bytes.WithoutLeadingZerosOrEmpty());
-        }
+        byte[] rlp = Encode(input, totalLength);
 
         Span<byte> buffer = stackalloc byte[32];
-        KeccaksIterator iterator = new(rlpStream.Data.AsSpan(), buffer);
+        KeccaksIterator iterator = new(rlp, buffer);
 
         List<Hash256> decoded = [];
         while (iterator.TryGetNext(out Hash256StructRef kec))
@@ -109,5 +97,18 @@ public class KeccaksIteratorTests
         }
 
         return decoded.ToArray();
+    }
+
+    private static byte[] Encode(Hash256[] input, int totalLength)
+    {
+        byte[] rlp = new byte[Rlp.LengthOfSequence(totalLength)];
+        RlpWriter writer = new(rlp);
+        writer.StartSequence(totalLength);
+        foreach (Hash256 keccak in input)
+        {
+            writer.Encode(keccak.Bytes.WithoutLeadingZerosOrEmpty());
+        }
+
+        return rlp;
     }
 }

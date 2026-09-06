@@ -17,15 +17,16 @@ public class FullStateFinder(
     // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
     // then we will never have to look 128 back again
     // note that we will be doing that every second or so
-    private const int MaxLookupBack = 128;
+    private const ulong MaxLookupBack = 128;
     private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private long _lastKnownState;
+
+    private ulong _lastKnownState;
 
     private bool IsFullySynced(BlockHeader block) =>
         block.StateRoot == Keccak.EmptyTreeHash || _stateReader.HasStateForBlock(block);
 
-    public long FindBestFullState()
+    public ulong FindBestFullState()
     {
         // so the full state can be in a few places but there are some best guesses
         // if we are state syncing then the full state may be one of the recent blocks (maybe one of the last 128 blocks)
@@ -39,7 +40,7 @@ public class FullStateFinder(
         BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
         BlockHeader bestSuggested = initialBestSuggested;
 
-        long bestFullState = 0;
+        ulong bestFullState = 0;
         if (head is not null)
         {
             // head search should be very inexpensive as we generally expect the state to be there
@@ -48,7 +49,7 @@ public class FullStateFinder(
 
         if (bestSuggested is not null)
         {
-            if (bestFullState < bestSuggested?.Number)
+            if (bestFullState < bestSuggested.Number)
             {
                 bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
             }
@@ -62,16 +63,17 @@ public class FullStateFinder(
         return bestFullState;
     }
 
-    private long SearchForFullState(BlockHeader startHeader)
+    private ulong SearchForFullState(BlockHeader startHeader)
     {
-        long bestFullState = 0;
-        long maxLookupBack = MaxLookupBack;
-        if (_lastKnownState != 0)
+        ulong bestFullState = 0;
+        ulong maxLookupBack = MaxLookupBack;
+        if (_lastKnownState != 0 && startHeader.Number >= _lastKnownState)
         {
-            maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);
+            ulong lookback = startHeader.Number - _lastKnownState + 1;
+            if (lookback > maxLookupBack) maxLookupBack = lookback;
         }
 
-        for (int i = 0; i < maxLookupBack; i++)
+        for (ulong i = 0; i < maxLookupBack; i++)
         {
             if (startHeader is null)
             {

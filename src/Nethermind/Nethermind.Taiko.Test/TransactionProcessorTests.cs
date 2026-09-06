@@ -17,6 +17,7 @@ using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -49,7 +50,7 @@ public class TransactionProcessorTests
         _stateProvider.CommitTree(0);
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        VirtualMachine<EthereumGasPolicy> virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
@@ -60,7 +61,7 @@ public class TransactionProcessorTests
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPct, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000;
         Address beneficiaryAddress = TestItem.AddressC;
 
         Transaction tx = Build.A.Transaction
@@ -85,6 +86,35 @@ public class TransactionProcessorTests
             Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
             Assert.That(_stateProvider.GetBalance(beneficiaryAddress), Is.EqualTo(goesToBeneficiary));
         });
+    }
+
+    [Test]
+    public void Contract_sender_executes_and_pays_fees_when_sender_code_check_skipped()
+    {
+        // Relaxing EIP-3607 without wrapping the spec keeps the concrete ITaikoReleaseSpec that PayFees casts to.
+        _spec.IsEip3607Enabled = true;
+        _stateProvider!.InsertCode(TestItem.AddressA, Bytes.FromHexString("0x600060"), _spec);
+        _stateProvider!.Commit(_spec);
+
+        ulong gasLimit = 100000;
+        Transaction tx = Build.A.Transaction
+            .WithValue(1)
+            .WithGasPrice(1)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
+            .WithBaseFeePerGas(1)
+            .WithExtraData(new byte[32])
+            .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
+
+        _transactionProcessor!.SkipSenderCodeCheck = true;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.GreaterThan(UInt256.Zero));
     }
 
     public static IEnumerable FeesDistributionTests
@@ -119,7 +149,7 @@ public class TransactionProcessorTests
     [TestCase(false)]
     public void Transaction_tip_and_base_fee_handling(bool isAnchorTx)
     {
-        long gasLimit = 21000;
+        ulong gasLimit = 21000;
         UInt256 gasPrice = 20;
         UInt256 baseFee = 5;
         UInt256 tipFee = gasPrice - baseFee;

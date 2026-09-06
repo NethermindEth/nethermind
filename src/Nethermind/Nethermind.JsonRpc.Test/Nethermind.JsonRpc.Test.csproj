@@ -11,6 +11,7 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />

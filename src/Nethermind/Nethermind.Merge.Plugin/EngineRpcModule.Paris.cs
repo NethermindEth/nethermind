@@ -71,14 +71,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
+        executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
-        if (!executionPayload.ValidateFork(_specProvider))
+        if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
         {
@@ -93,15 +95,11 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
-                try
-                {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
-                }
-                finally
-                {
-                    (await regionTask).Dispose();
-                }
+                // Hide the tx-root computation (consumed by TryGetBlock) under the no-GC-region
+                // start; inside the lock so competing requests cannot run trie work concurrently.
+                _ = executionPayload.StartTxRootComputation();
+                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
+                return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }
             catch (BlockchainException exception)
             {

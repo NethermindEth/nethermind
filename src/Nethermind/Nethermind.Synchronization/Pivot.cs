@@ -11,14 +11,14 @@ public class Pivot : IPivot
     public Pivot(IBlockTree blockTree)
     {
         (PivotNumber, PivotHash) = blockTree.SyncPivot;
-        PivotDestinationNumber = 0L;
+        PivotDestinationNumber = 0UL;
     }
 
-    public long PivotNumber { get; }
+    public ulong PivotNumber { get; }
 
     public Hash256? PivotHash { get; }
 
     public Hash256? PivotParentHash => null;
 
-    public long PivotDestinationNumber { get; }
+    public ulong PivotDestinationNumber { get; }
 }

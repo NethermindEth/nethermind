@@ -40,11 +40,10 @@ public static class EraPathUtils
 
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network) => GetAllEraFiles(directoryPath, network, new RealFileSystem());
 
-    public static string Filename(string network, long epoch, Hash256 root)
+    public static string Filename(string network, ulong epoch, Hash256 root)
     {
         ArgumentNullException.ThrowIfNullOrEmpty(network);
         ArgumentNullException.ThrowIfNull(root);
-        ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 
         return $"{network}-{epoch:D5}-{root.ToString(true)[2..10]}.era1";
     }

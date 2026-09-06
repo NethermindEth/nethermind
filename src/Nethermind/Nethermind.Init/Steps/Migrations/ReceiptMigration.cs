@@ -4,17 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
@@ -25,8 +24,6 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class ReceiptMigration : IDatabaseMigration, IReceiptsMigration
     {
-        private static readonly ObjectPool<Block> EmptyBlock = new DefaultObjectPool<Block>(new EmptyBlockObjectPolicy());
-
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
@@ -72,7 +69,7 @@ namespace Nethermind.Init.Steps.Migrations
         }
 
         // Actually start running it.
-        public async Task<bool> Run(long from, long to)
+        public async Task<bool> Run(ulong from, ulong to)
         {
             _cancellationTokenSource?.Cancel();
             try
@@ -109,11 +106,17 @@ namespace Nethermind.Init.Steps.Migrations
         private void RunIfNeeded(CancellationToken cancellationToken)
         {
             // Note, it start in decreasing order from this high number.
-            long migrateToBlockNumber = _migrationStore.MigratedBlockNumber == long.MaxValue
-                ? _syncModeSelector.Current.NotSyncing()
-                    ? _blockTree.Head?.Number ?? 0
-                    : _blockTree.BestKnownNumber
-                : _migrationStore.MigratedBlockNumber - 1;
+            ulong migrateToBlockNumber = 0;
+            if (_migrationStore.MigratedBlockNumber == ulong.MaxValue)
+            {
+                migrateToBlockNumber = _syncModeSelector.Current.NotSyncing()
+                    ? _blockTree.Head?.Number ?? 0UL
+                    : _blockTree.BestKnownNumber;
+            }
+            else if (_migrationStore.MigratedBlockNumber > 0)
+            {
+                migrateToBlockNumber = _migrationStore.MigratedBlockNumber - 1;
+            }
 
             if (migrateToBlockNumber > 0)
             {
@@ -132,10 +135,11 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private void RunMigration(long from, long to, bool updateReceiptMigrationPointer, CancellationToken token)
+        private void RunMigration(ulong from, ulong to, bool updateReceiptMigrationPointer, CancellationToken token)
         {
             from = Math.Min(from, to);
-            long synced = 0;
+            ulong synced = 0;
+            long missingBlockBodies = 0;
 
             if (_logger.IsWarn) _logger.Warn($"Running migration from {from} to {to}");
 
@@ -163,24 +167,32 @@ namespace Nethermind.Init.Steps.Migrations
                 GetBlockBodiesForMigration(from, to, pointerTracker, token)
                     .AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
-                    (long blockNum, Hash256 blockHash) = item;
-                    Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
-                    bool usingEmptyBlock = block is null;
-                    if (usingEmptyBlock)
-                    {
-                        block = GetMissingBlock(blockNum, blockHash);
-                    }
-
+                    (ulong blockNum, Hash256 blockHash) = item;
+                    Block? storedBlock = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
                     _progressLogger.Update(Interlocked.Increment(ref synced));
-                    MigrateBlock(block!);
-
-                    if (usingEmptyBlock)
+                    if (storedBlock is null)
                     {
-                        ReturnMissingBlock(block!);
+                        Interlocked.Increment(ref missingBlockBodies);
+                        if (_logger.IsDebug) _logger.Debug($"Block {blockNum} not found. Logs will not be searchable for this block.");
+                        pointerTracker?.ReportCompleted(blockNum);
+                        return;
                     }
 
-                    pointerTracker?.ReportCompleted(blockNum);
+                    bool migrationCompleted = MigrateBlock(storedBlock);
+                    if (migrationCompleted)
+                    {
+                        pointerTracker?.ReportCompleted(blockNum);
+                    }
+                    else
+                    {
+                        pointerTracker?.ReportIncomplete(blockNum);
+                    }
                 });
+
+                if (missingBlockBodies > 0 && _logger.IsWarn)
+                {
+                    _logger.Warn($"Receipt migration skipped {missingBlockBodies} blocks with missing bodies; their legacy receipt data was left unchanged.");
+                }
 
                 if (!token.IsCancellationRequested)
                 {
@@ -204,20 +216,9 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        Block GetMissingBlock(long i, Hash256? blockHash)
+        IEnumerable<(ulong, Hash256)> GetBlockBodiesForMigration(ulong from, ulong to, MigrationPointerTracker? pointerTracker, CancellationToken token)
         {
-            if (_logger.IsDebug) _logger.Debug($"Block {i} not found. Logs will not be searchable for this block.");
-            Block emptyBlock = EmptyBlock.Get();
-            emptyBlock.Header.Number = i;
-            emptyBlock.Header.Hash = blockHash;
-            return emptyBlock;
-        }
-
-        static void ReturnMissingBlock(Block emptyBlock) => EmptyBlock.Return(emptyBlock);
-
-        IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(long from, long to, MigrationPointerTracker? pointerTracker, CancellationToken token)
-        {
-            bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
+            bool TryGetMainChainBlockHashFromLevel(ulong number, out Hash256? blockHash)
             {
                 using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
                 ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
@@ -242,106 +243,154 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            for (long i = to; i >= from; i--)
+            if (to >= from)
             {
-                if (token.IsCancellationRequested)
+                for (ulong i = to; ; i--)
                 {
-                    if (_logger.IsInfo) _logger.Info("Receipt migration cancelled");
-                    yield break;
-                }
+                    if (token.IsCancellationRequested)
+                    {
+                        if (_logger.IsInfo) _logger.Info("Receipt migration cancelled");
+                        yield break;
+                    }
 
-                if (TryGetMainChainBlockHashFromLevel(i, out Hash256? blockHash))
-                {
-                    yield return (i, blockHash!);
-                }
-                else
-                {
-                    pointerTracker?.ReportCompleted(i);
+                    if (TryGetMainChainBlockHashFromLevel(i, out Hash256? blockHash))
+                    {
+                        yield return (i, blockHash!);
+                    }
+                    else
+                    {
+                        pointerTracker?.ReportCompleted(i);
+                    }
+
+                    if (i == from)
+                    {
+                        break;
+                    }
                 }
             }
         }
 
-        private void MigrateBlock(Block block)
+        private bool MigrateBlock(Block block)
         {
-            TxReceipt?[] receipts = _migrationStore.Get(block);
-            TxReceipt[] notNullReceipts = FilterNotNullReceipts(receipts, out int missingCount);
+            Hash256 blockHash = block.Hash
+                ?? throw new InvalidDataException($"Cannot migrate receipts for block {block.Number} without a block hash.");
+            TxReceipt?[] receipts = _migrationStore.GetForMigration(block.Number, blockHash);
+            if (receipts.Length == 0) return true;
 
-            if (notNullReceipts.Length == 0) return;
+            if (receipts.Length != block.Transactions.Length)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} has {receipts.Length} receipts for {block.Transactions.Length} transactions; leaving its legacy receipt data unchanged.");
+                return false;
+            }
 
-            _migrationStore.InsertForMigration(block, notNullReceipts);
+            if (!TryGetCompleteReceipts(receipts, out TxReceipt[]? completeReceipts, out int missingCount))
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {missingCount} of {receipts.Length} receipts; leaving its legacy receipt data unchanged.");
+                return false;
+            }
+
+            if (_recovery.TryRecover(block, completeReceipts, forceRecoverSender: true) == ReceiptsRecoveryResult.Fail)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Could not recover receipt metadata for block {block.ToString(Block.Format.FullHashAndNumber)}; leaving its legacy receipt data unchanged.");
+                return false;
+            }
+
+            Hash256[] transactionHashes = new Hash256[completeReceipts.Length];
+            for (int i = 0; i < completeReceipts.Length; i++)
+            {
+                if (completeReceipts[i].TxHash is not Hash256 transactionHash)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Receipt {i} for block {block.ToString(Block.Format.FullHashAndNumber)} has no transaction hash after recovery; leaving its legacy receipt data unchanged.");
+                    return false;
+                }
+
+                transactionHashes[i] = transactionHash;
+            }
+
+            _migrationStore.InsertForMigration(block, completeReceipts);
 
             // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
                 using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Default);
-                for (int i = 0; i < notNullReceipts.Length; i++)
+                for (int i = 0; i < transactionHashes.Length; i++)
                 {
-                    writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;
+                    writeBatch[transactionHashes[i].Bytes] = null;
                 }
             }
 
             // Receipts are now prefixed with block number.
-            _receiptsBlockDb.Delete(block.Hash!);
+            _receiptsBlockDb.Delete(blockHash);
 
-            // Remove old tx index
-            bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && _blockTree.Head?.Number - block.Number > _receiptConfig.TxLookupLimit;
-            bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
+            // Guarded: block.Number can transiently exceed head during reorgs.
+            ulong? headNumber = _blockTree.Head?.Number;
+            bool txIndexExpired = _receiptConfig.TxLookupLimit > 0ul
+                                  && headNumber is ulong h
+                                  && h > block.Number
+                                  && h - block.Number > _receiptConfig.TxLookupLimit.Value;
+            bool neverIndexTx = _receiptConfig.TxLookupLimit == ulong.MaxValue;
             if (neverIndexTx || txIndexExpired)
             {
                 using IWriteBatch writeBatch = _txIndexDb.StartWriteBatch();
-                foreach (TxReceipt? receipt in notNullReceipts)
+                foreach (Hash256 txHash in transactionHashes)
                 {
-                    writeBatch[receipt.TxHash!.Bytes] = null;
+                    writeBatch[txHash.Bytes] = null;
                 }
             }
 
-            if (missingCount == 0) return;
-            if (_logger.IsWarn)
-                _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {missingCount} of {receipts.Length} receipts!");
+            return true;
         }
 
-        private static TxReceipt[] FilterNotNullReceipts(TxReceipt?[] receipts, out int missingCount)
+        private static bool TryGetCompleteReceipts(
+            TxReceipt?[] receipts,
+            [NotNullWhen(true)] out TxReceipt[]? completeReceipts,
+            out int missingCount)
         {
             missingCount = 0;
-            foreach (TxReceipt? t in receipts)
+            TxReceipt[] candidates = new TxReceipt[receipts.Length];
+            for (int i = 0; i < receipts.Length; i++)
             {
-                if (t is null) missingCount++;
+                TxReceipt? receipt = receipts[i];
+                if (receipt is null)
+                {
+                    missingCount++;
+                }
+                else
+                {
+                    candidates[i] = receipt;
+                }
             }
 
-            if (missingCount == 0) return receipts!;
-            if (missingCount == receipts.Length) return [];
-
-            TxReceipt[] notNullReceipts = new TxReceipt[receipts.Length - missingCount];
-            int next = 0;
-            foreach (TxReceipt? receipt in receipts)
-            {
-                if (receipt is not null) notNullReceipts[next++] = receipt;
-            }
-
-            return notNullReceipts;
+            completeReceipts = missingCount == 0 ? candidates : null;
+            return completeReceipts is not null;
         }
 
         private void ResetMigrationIndexIfNeeded()
         {
             if (_receiptConfig.ForceReceiptsMigration)
             {
-                _migrationStore.MigratedBlockNumber = long.MaxValue;
+                _migrationStore.MigratedBlockNumber = ulong.MaxValue;
                 return;
             }
 
-            if (_migrationStore.MigratedBlockNumber == long.MaxValue) return;
-            long blockNumber = _blockTree.Head?.Number ?? 0;
+            if (_migrationStore.MigratedBlockNumber == ulong.MaxValue) return;
+            ulong blockNumber = _blockTree.Head?.Number ?? 0UL;
             while (blockNumber > 0)
             {
                 ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
                 BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
                 if (firstBlockInfo is not null)
                 {
-                    TxReceipt[] receipts = _migrationStore.Get(firstBlockInfo.BlockHash);
+                    TxReceipt?[] receipts = _migrationStore.GetForMigration(blockNumber, firstBlockInfo.BlockHash);
                     if (receipts.Length > 0)
                     {
-                        if (IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, receipts))
+                        if (!TryGetCompleteReceipts(receipts, out TxReceipt[]? completeReceipts, out _) ||
+                            IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, completeReceipts))
                         {
-                            _migrationStore.MigratedBlockNumber = long.MaxValue;
+                            _migrationStore.MigratedBlockNumber = ulong.MaxValue;
                         }
 
                         break;
@@ -352,7 +401,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private bool IsMigrationNeeded(long blockNumber, Hash256 blockHash, TxReceipt[] receipts)
+        private bool IsMigrationNeeded(ulong blockNumber, Hash256 blockHash, TxReceipt[] receipts)
         {
             if (!_receiptConfig.CompactReceiptStore && _recovery.NeedRecover(receipts))
             {
@@ -371,27 +420,50 @@ namespace Nethermind.Init.Steps.Migrations
             return _receiptConfig.CompactReceiptStore != isCompactEncoding;
         }
 
-        internal sealed class MigrationPointerTracker(IReceiptStorage receiptStorage, long to, int expectedBacklog = 16)
+        internal sealed class MigrationPointerTracker(IReceiptStorage receiptStorage, ulong to, int expectedBacklog = 16)
         {
             private readonly Lock _lock = new();
-            private readonly HashSet<long> _completedAwaitingContiguity = new(expectedBacklog);
-            private long _nextToConfirm = to;
+            private readonly HashSet<ulong> _completedAwaitingContiguity = new(expectedBacklog);
+            private ulong _nextToConfirm = to;
+            private ulong? _highestIncomplete;
 
-            public void ReportCompleted(long blockNumber)
+            public void ReportIncomplete(ulong blockNumber)
             {
                 lock (_lock)
                 {
+                    if (_highestIncomplete is null || blockNumber > _highestIncomplete)
+                    {
+                        _highestIncomplete = blockNumber;
+                    }
+
+                    ulong highestIncomplete = _highestIncomplete.Value;
+                    _completedAwaitingContiguity.RemoveWhere(number => number <= highestIncomplete);
+                }
+            }
+
+            public void ReportCompleted(ulong blockNumber)
+            {
+                lock (_lock)
+                {
+                    if (_highestIncomplete is ulong highestIncomplete && blockNumber <= highestIncomplete)
+                    {
+                        return;
+                    }
+
                     _completedAwaitingContiguity.Add(blockNumber);
 
                     bool advanced = false;
+                    bool reachedGenesis = false;
                     while (_completedAwaitingContiguity.Remove(_nextToConfirm))
                     {
-                        _nextToConfirm--;
                         advanced = true;
+                        if (_nextToConfirm == 0) { reachedGenesis = true; break; }
+                        _nextToConfirm--;
                     }
 
-                    long migratedBlockNumber = _nextToConfirm + 1;
-                    if (advanced && receiptStorage.MigratedBlockNumber > migratedBlockNumber)
+                    if (!advanced) return;
+                    ulong migratedBlockNumber = reachedGenesis ? 0UL : _nextToConfirm + 1;
+                    if (receiptStorage.MigratedBlockNumber > migratedBlockNumber)
                     {
                         receiptStorage.MigratedBlockNumber = migratedBlockNumber;
                     }
@@ -399,11 +471,5 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
-        {
-            public Block Create() => new(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []));
-
-            public bool Return(Block obj) => true;
-        }
     }
 }

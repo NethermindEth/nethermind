@@ -167,6 +167,25 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False); // the root node is NOT a part of the proof nodes
     }
 
+    [TestCase("ffffffff", TestName = "undecodable RLP")]
+    [TestCase("c28080", TestName = "valid RLP list, invalid trie node")]
+    public void AddAccountRange_with_malformed_proof_is_rejected_and_does_not_throw(string corruptProofNodeHex)
+    {
+        Hash256 rootHash = _inputTree.RootHash;
+
+        byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
+        byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
+        firstProof[0] = Bytes.FromHexString(corruptProofNodeHex);
+
+        using IContainer container = CreateContainer();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+
+        AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths,
+            new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
     [Test]
     public void RecreateAccountStateFromMultipleRange()
     {

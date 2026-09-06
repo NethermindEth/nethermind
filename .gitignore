@@ -451,8 +451,17 @@ FodyWeavers.xsd
 
 ## Nethermind
 keystore/
+/data/
+/bootnode-data/
 /.githooks
 
 # Worktrees
 .worktrees/
 /.dotnet-cli
+
+# Nix build output symlinks
+/result
+/result-*
+
+# Clawpatch
+.clawpatch/

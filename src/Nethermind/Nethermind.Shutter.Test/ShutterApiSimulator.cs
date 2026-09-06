@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Net;
+using Nethermind.Network;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -41,7 +41,7 @@ public class ShutterApiSimulator(
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
         logManager, specProvider, timestamper, shareableTxProcessorSource, fileSystem,
-        keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
+        keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, Substitute.For<IIPResolver>())
 {
     public int EonUpdateCalled = 0;
     public int KeysValidated = 0;
@@ -114,7 +114,7 @@ public class ShutterApiSimulator(
 
 
     // fake out P2P module
-    protected override void InitP2P(IPAddress _) =>
+    protected override void InitP2P(IIPResolver _) =>
         P2P = Substitute.For<IShutterP2P>();
 
     protected override IShutterEon InitEon()

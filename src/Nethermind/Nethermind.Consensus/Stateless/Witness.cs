@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -29,30 +28,21 @@ public class Witness : IDisposable
 
 public static class WitnessExtensions
 {
-    private static readonly IRlpDecoder<BlockHeader> _decoder =
-        Rlp.GetDecoder<BlockHeader>() ?? new HeaderDecoder();
+    // Resolved per use, not cached at static-init: a consensus plugin (e.g. AuRa) may register its
+    // header decoder after this type is first touched, and caching would pin the base decoder.
+    private static IRlpDecoder<BlockHeader> Decoder => Rlp.GetDecoderOrThrow<BlockHeader>();
 
     extension(Witness witness)
     {
-        public INodeStorage CreateNodeStorage()
-        {
-            IKeyValueStore db = new MemDb();
-            foreach (byte[] stateElement in witness.State)
-            {
-                ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                db.PutSpan(hash, stateElement);
-            }
-
-            return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
-        }
+        public INodeStorage CreateNodeStorage() => WitnessNodeStorage.Create(witness.State);
 
         public IKeyValueStoreWithBatching CreateCodeDb()
         {
-            IKeyValueStoreWithBatching db = new MemDb();
+            IKeyValueStoreWithBatching db = MemDb.WithCapacity(witness.Codes.Count);
             foreach (byte[] code in witness.Codes)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
-                db.PutSpan(hash, code);
+                db.Set(hash, code);
             }
 
             return db;
@@ -77,9 +67,9 @@ public static class WitnessExtensions
 
                 for (int i = 0; i < headersSpan.Length; i++)
                 {
-                    Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+                    RlpReader reader = new(headersSpan[i]);
 
-                    decodedHeaders[i] = _decoder.Decode(ref stream)
+                    decodedHeaders[i] = Decoder.Decode(ref reader)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");
 
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))

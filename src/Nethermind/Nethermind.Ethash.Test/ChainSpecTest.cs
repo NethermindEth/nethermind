@@ -23,7 +23,7 @@ public class ChainSpecTest
     {
         ChainSpec chainSpec = new()
         {
-            Parameters = new ChainParameters { GasLimitBoundDivisor = 17 }
+            Parameters = new ChainParameters { GasLimitBoundDivisor = 17UL }
         };
 
         chainSpec.EngineChainSpecParametersProvider =
@@ -32,7 +32,7 @@ public class ChainSpecTest
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.GenesisSpec.DifficultyBoundDivisor, Is.EqualTo(19));
-        Assert.That(provider.GenesisSpec.GasLimitBoundDivisor, Is.EqualTo(17));
+        Assert.That(provider.GenesisSpec.GasLimitBoundDivisor, Is.EqualTo(17UL));
     }
 
     [Test]
@@ -45,13 +45,13 @@ public class ChainSpecTest
         chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
             new EthashChainSpecEngineParameters
             {
-                DifficultyBombDelays = new Dictionary<long, long>
+                DifficultyBombDelays = new Dictionary<ulong, ulong>
                 {
-                    { 3, 100 },
-                    { 7, 200 },
-                    { 13, 300 },
-                    { 17, 400 },
-                    { 19, 500 },
+                    { 3UL, 100UL },
+                    { 7UL, 200UL },
+                    { 13UL, 300UL },
+                    { 17UL, 400UL },
+                    { 19UL, 500UL },
                 }
             });
 
@@ -78,10 +78,10 @@ public class ChainSpecTest
                 MaxCodeSizeTransition = maxCodeTransition,
                 MaxCodeSize = maxCodeSize,
                 Registrar = Address.Zero,
-                MinGasLimit = 11,
+                MinGasLimit = 11UL,
                 MinHistoryRetentionEpochs = 11,
                 MinBalRetentionEpochs = 7,
-                GasLimitBoundDivisor = 13,
+                GasLimitBoundDivisor = 13UL,
                 MaximumExtraDataSize = 17,
                 Eip140Transition = 1400L,
                 Eip145Transition = 1450L,
@@ -153,10 +153,10 @@ public class ChainSpecTest
         TestTransitions((ForkActivation)0L, r =>
         {
             r.DifficultyBoundDivisor = 0x800;
-            r.MinGasLimit = 11L;
+            r.MinGasLimit = 11UL;
             r.MinHistoryRetentionEpochs = 11L;
             r.MinBalRetentionEpochs = 7L;
-            r.GasLimitBoundDivisor = 13L;
+            r.GasLimitBoundDivisor = 13UL;
             r.MaximumExtraDataSize = 17L;
             r.MaxCodeSize = long.MaxValue;
             r.Eip1559TransitionBlock = 15590L;

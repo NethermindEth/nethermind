@@ -22,10 +22,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
-            private bool NoBaseFee { get; set; }
+            protected bool NoBaseFee { get; private set; }
             private BlockOverride? _blockOverride;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
+
+            protected BlockOverride? BlockOverrideForExecution =>
+                !NoBaseFee || _blockOverride?.BaseFeePerGas is null
+                    ? _blockOverride
+                    : _blockOverride.WithBaseFee(UInt256.Zero);
 
             protected IReleaseSpec GetSpec(BlockHeader header) => specProvider.GetSpec(header);
 
@@ -85,7 +90,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
             {
-                if (blockOverride?.GasLimit > (ulong)_rpcConfig.GasCap!.Value)
+                if (blockOverride?.GasLimit > _rpcConfig.GasCap!.Value)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {_rpcConfig.GasCap.Value}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
                 return Execute(transactionCall, blockParameter, stateOverride);
@@ -123,7 +128,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, token);
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
@@ -155,7 +160,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     if (BlockOverride?.GasLimit is not null)
                     {
-                        transactionCall.Gas = (long)BlockOverride.GasLimit.Value;
+                        transactionCall.Gas = BlockOverride.GasLimit.Value;
                     }
                     else
                     {
@@ -169,7 +174,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, token);
 
                 string? errorMessage = result.Error;
                 if (!result.ExecutionReverted && !result.InputError && errorMessage is not null)

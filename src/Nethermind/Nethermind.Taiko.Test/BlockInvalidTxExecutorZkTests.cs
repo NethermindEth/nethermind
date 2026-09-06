@@ -12,7 +12,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.TaikoSpec;
@@ -45,7 +44,7 @@ public class BlockInvalidTxExecutorZkTests
 
     /// <summary>Builds a valid (non-blob) transaction stub with a given nonce (for uniqueness).</summary>
     private static Transaction MakeTx(ulong nonce = 0) =>
-        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce((UInt256)nonce).TestObject;
+        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(nonce).TestObject;
 
     /// <summary>Builds a blob transaction stub.</summary>
     private static Transaction MakeBlobTx() =>

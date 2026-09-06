@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Imports state from trie-based persistence to flat persistence.
 ///
-/// This importer uses SetAccountRaw/SetStorageRaw with hash-based keys. For PreimageFlat mode,
+/// This importer uses SetAccountRaw/SetStorageRawEncoded with hash-based keys. For PreimageFlat mode,
 /// wrap the persistence with PreimageRecordingPersistence and provide a previously recorded
 /// preimage database - it will automatically translate raw operations to preimage-keyed operations.
 /// </summary>
@@ -81,7 +81,7 @@ public class Importer(
 
         await Task.WhenAll(tasks.AsSpan());
 
-        // Finally, we increment the state id
+        // An empty write batch from→to advances the persisted state ID to `to` without writing any data entries.
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, to);
         writeBatch.Dispose();
         persistence.Flush();
@@ -114,8 +114,8 @@ public class Importer(
                 ValueHash256 fullPath = path.Append(node.Key).Path;
                 if (address is null)
                 {
-                    Rlp.ValueDecoderContext accountContext = node.Value.AsSpan().AsRlpValueContext();
-                    Account acc = _accountDecoder.Decode(ref accountContext)!;
+                    RlpReader accountReader = new(node.Value.AsSpan());
+                    Account acc = _accountDecoder.Decode(ref accountReader)!;
                     writeBatch.SetAccountRaw(fullPath, acc);
                 }
                 else

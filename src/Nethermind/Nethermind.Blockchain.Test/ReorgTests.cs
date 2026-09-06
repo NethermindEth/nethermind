@@ -24,6 +24,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using NSubstitute;
@@ -90,7 +91,7 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockAccessListManager balManager = new(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, specProvider, LimboLogs.Instance));
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
@@ -110,17 +111,17 @@ public class ReorgTests
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            new RecoverSignatures(
+            [new RecoverSignatures(
                 ecdsa,
                 specProvider,
-                LimboLogs.Instance),
+                LimboLogs.Instance)],
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,

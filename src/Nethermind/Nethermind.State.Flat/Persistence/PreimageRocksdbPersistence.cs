@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -21,11 +22,17 @@ namespace Nethermind.State.Flat.Persistence;
 /// - Cannot snap sync.
 /// - Cannot import without a complete preimage db.
 /// </summary>
-public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager) : IPersistence
+public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, FlatLayout layout) : IPersistence
 {
     private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private readonly WriteBufferAdjuster _adjuster = new(db);
-    private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.PreimageFlat);
+    private readonly bool _fullAddressStorageKey = layout switch
+    {
+        FlatLayout.PreimageFlat => true,
+        FlatLayout.PreimageFlatV1 => false,
+        _ => throw new ArgumentOutOfRangeException(nameof(layout), layout, "Not a preimage layout")
+    };
+    private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, layout);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<PreimageRocksdbPersistence>());
 
     public void Flush() => db.Flush();
@@ -52,7 +59,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 state,
                 storage,
                 isPreimageMode: true,
-                rlpWrapSlots: _rlpWrapSlots
+                rlpWrapSlots: _rlpWrapSlots,
+                fullAddressStorageKey: _fullAddressStorageKey
             )
         );
 
@@ -93,7 +101,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 accountBatch,
                 storageBatch,
                 flags,
-                rlpWrapSlots: _rlpWrapSlots
+                rlpWrapSlots: _rlpWrapSlots,
+                fullAddressStorageKey: _fullAddressStorageKey
             )
         );
 
@@ -118,7 +127,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 if (_rlpWrapSlots)
-                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.PreimageFlat);
+                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, layout);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();
@@ -155,8 +164,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return;
             }
 
-            using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = SlimAccountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(fakeAddrHash, rlp);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
@@ -203,7 +212,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return AccountDecoder.Slim.Decode(ref ctx);
         }
 

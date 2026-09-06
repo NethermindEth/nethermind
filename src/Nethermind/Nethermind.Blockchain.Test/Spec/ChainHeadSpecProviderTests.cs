@@ -52,6 +52,25 @@ public class ChainHeadSpecProviderTests
     }
 
     [Test]
+    public void New_timestamp_at_same_height_invalidates_cache_and_re_resolves_spec()
+    {
+        BlockHeader first = Build.A.BlockHeader.WithNumber(42).WithTimestamp(100).TestObject;
+        BlockHeader second = Build.A.BlockHeader.WithNumber(42).WithTimestamp(200).TestObject;
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(first).Returns(Cancun.Instance);
+        specProvider.GetSpec(second).Returns(Prague.Instance);
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBestSuggestedHeader().Returns(first, second);
+
+        ChainHeadSpecProvider provider = new(specProvider, blockFinder);
+
+        Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Cancun.Instance));
+        Assert.That(provider.GetCurrentHeadSpec(), Is.SameAs(Prague.Instance));
+    }
+
+    [Test]
     public void Null_header_falls_back_to_zero_fork_activation()
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();

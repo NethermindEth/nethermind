@@ -8,8 +8,10 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -129,6 +131,42 @@ public class BlockStoreTests
         ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
 
         Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public void Test_DeleteRanges_takes_every_range_and_keeps_the_heights_between()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block[] blocks = new Block[6];
+        for (ulong number = 1; number <= 5; number++)
+        {
+            blocks[number] = Build.A.Block.WithNumber(number).TestObject;
+            store.Insert(blocks[number]);
+        }
+
+        store.Get(blocks[2].Number, blocks[2].Hash!, RlpBehaviors.None, shouldCache: true);
+
+        store.DeleteRanges([(1, 3), (4, 5)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(blocks[1].Number, blocks[1].Hash!), Is.Null);
+            Assert.That(store.Get(blocks[2].Number, blocks[2].Hash!), Is.Null, "a cached block inside a deleted range must stop being served");
+            Assert.That(store.Get(blocks[3].Number, blocks[3].Hash!), Is.Not.Null, "the height between the ranges survives");
+            Assert.That(store.Get(blocks[4].Number, blocks[4].Hash!), Is.Null);
+            Assert.That(store.Get(blocks[5].Number, blocks[5].Hash!), Is.Not.Null, "the upper bound is exclusive");
+        }
+    }
+
+    [Test]
+    public void Test_DeleteRanges_with_an_empty_range_still_probes_range_delete_support()
+    {
+        BlockStore store = new(Substitute.For<IDb>());
+
+        Assert.That(() => store.DeleteRanges([(0, 0)]), Throws.InstanceOf<NotSupportedException>(),
+            "an empty range is the pruner's capability probe, so it must reach the store instead of being skipped");
     }
 
     [Test]

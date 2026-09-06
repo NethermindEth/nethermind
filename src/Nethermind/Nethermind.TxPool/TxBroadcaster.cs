@@ -53,6 +53,7 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+        private readonly Lock _accumulatedTxsLock = new();
 
         /// <summary>
         /// Minimal value of MaxFeePerGas of local tx to be broadcasted immediately after receiving it
@@ -131,7 +132,7 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
-            lock (_accumulatedTemporaryTxs)
+            lock (_accumulatedTxsLock)
             {
                 _accumulatedTemporaryTxs.Add(tx);
             }
@@ -280,7 +281,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void EnsureStopBroadcastUpToNonce(Address address, UInt256 nonce)
+        public void EnsureStopBroadcastUpToNonce(Address address, ulong nonce)
         {
             if (_persistentTxs.Count != 0)
             {
@@ -296,7 +297,10 @@ namespace Nethermind.TxPool
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void NotifyPeers()
             {
-                _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
+                lock (_accumulatedTxsLock)
+                {
+                    (_accumulatedTemporaryTxs, _txsToSend) = (_txsToSend, _accumulatedTemporaryTxs);
+                }
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 

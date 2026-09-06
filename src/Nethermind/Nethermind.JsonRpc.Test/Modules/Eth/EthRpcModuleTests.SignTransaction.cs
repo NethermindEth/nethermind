@@ -84,7 +84,7 @@ public partial class EthRpcModuleTests
             From = new Address(UnlockedTestAccount),
             To = new Address("0x2d44c0e097f6cd0f514edac633d82e01280b4a5c"),
             Gas = 0x76c0,
-            Nonce = (UInt256)0,
+            Nonce = 0UL,
             MaxFeePerGas = (UInt256)0x9184e72a000,
             MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
             MaxFeePerBlobGas = (UInt256)1_000_000,
@@ -142,8 +142,8 @@ public partial class EthRpcModuleTests
             RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
 
         Assert.That(decoded.Type, Is.EqualTo(type), "type must round-trip through RLP encode/decode");
-        Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0L), "gas must round-trip exactly - caller provided it explicitly");
-        Assert.That(decoded.Nonce, Is.EqualTo((UInt256)0), "nonce must round-trip - caller provided it explicitly");
+        Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0UL), "gas must round-trip exactly - caller provided it explicitly");
+        Assert.That(decoded.Nonce, Is.EqualTo(0UL), "nonce must round-trip - caller provided it explicitly");
 
         Address recovered = new EthereumEcdsa(decoded.ChainId ?? 1).RecoverAddress(decoded)!;
         Assert.That(recovered, Is.EqualTo(new Address(UnlockedTestAccount)),
@@ -218,8 +218,8 @@ public partial class EthRpcModuleTests
 
         Address to = new("0x2d44c0e097f6cd0f514edac633d82e01280b4a5c");
         UInt256 value = 0x9184e72a;
-        long gas = 0x76c0;
-        UInt256 nonce = 0;
+        ulong gas = 0x76c0;
+        ulong nonce = 0;
         UInt256 gasPrice = 0x9184e72a000;
 
         return type switch

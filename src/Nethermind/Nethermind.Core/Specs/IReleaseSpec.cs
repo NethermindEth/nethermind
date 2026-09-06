@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -16,14 +14,14 @@ namespace Nethermind.Core.Specs
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        long MinGasLimit { get; }
-        long MinHistoryRetentionEpochs { get; }
-        long MinBalRetentionEpochs { get; }
-        long GasLimitBoundDivisor { get; }
+        ulong MinGasLimit { get; }
+        ulong MinHistoryRetentionEpochs { get; }
+        ulong MinBalRetentionEpochs { get; }
+        ulong GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
-        long DifficultyBombDelay { get; }
-        long DifficultyBoundDivisor { get; }
-        long? FixedDifficulty { get; }
+        ulong DifficultyBombDelay { get; }
+        ulong DifficultyBoundDivisor { get; }
+        ulong? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
 
         /// <summary>
@@ -274,14 +272,12 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
         Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
         Address? Eip7002ContractAddress { get; }
 
 
@@ -289,7 +285,6 @@ namespace Nethermind.Core.Specs
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
         Address? Eip7251ContractAddress { get; }
 
 
@@ -302,19 +297,28 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
         Address? Eip2935ContractAddress { get; }
 
         /// <summary>
         /// EIP-2935 ring buffer size for historical block hash storage.
         /// Defaults to 8,191 blocks for Ethereum mainnet.
         /// </summary>
-        public long Eip2935RingBufferSize { get; }
+        public ulong Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
+
+        /// <summary>
+        /// EIP-8282: builder execution requests (builder deposit + builder exit predeploys).
+        /// </summary>
+        bool IsEip8282Enabled { get; }
+
+        /// <summary>
+        /// EIP-8038: State-access gas cost update
+        /// </summary>
+        bool IsEip8038Enabled { get; }
 
         /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
@@ -390,7 +394,7 @@ namespace Nethermind.Core.Specs
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
         public ulong MaxBlobsPerTx { get; }
-        public UInt256 BlobBaseFeeUpdateFraction { get; }
+        public ulong BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
@@ -398,32 +402,6 @@ namespace Nethermind.Core.Specs
 
         public bool IsEip7594Enabled { get; }
 
-        /// <summary>
-        /// This property holds an array that, at runtime, is actually an array of function pointers
-        /// with the signature:
-        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
-        /// but it cannot be explicitly typed as such due to cross-project layering constraints.
-        /// </summary>
-        /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
-        /// even though it internally represents a typed array of function pointers.
-        /// </remarks>
-        public Array? EvmInstructionsNoTrace { get; set; }
-
-        /// <summary>
-        /// This property holds an array that, at runtime, is actually an array of function pointers
-        /// with the signature:
-        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM,
-        /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
-        /// layering constraints.
-        /// </summary>
-        /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
-        /// even though it internally represents a typed array of function pointers.
-        /// </remarks>
-        public Array? EvmInstructionsTraced { get; set; }
 
         /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
@@ -462,6 +440,23 @@ namespace Nethermind.Core.Specs
         /// EIP-7954: Increase Maximum Contract Size
         /// </summary>
         public bool IsEip7954Enabled { get; }
+
+        /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        public bool IsEip8246Enabled { get; }
+
+        /// <summary>
+        /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
+        /// and cold-account costs against actual state work.
+        /// </summary>
+        /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
+        public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

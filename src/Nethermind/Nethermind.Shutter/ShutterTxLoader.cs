@@ -14,7 +14,6 @@ using Nethermind.Shutter.Contracts;
 using Nethermind.Shutter.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using System.IO;
 using Nethermind.Abi;
 using Nethermind.Facade.Find;
 using System.Runtime.CompilerServices;
@@ -182,22 +181,23 @@ public class ShutterTxLoader(
         {
             _logger.DebugError("Could not recover Shutter transaction sender address", e);
         }
-        catch (InvalidDataException e)
-        {
-            _logger.DebugError("Decrypted Shutter transaction had no signature", e);
-        }
-
         return null;
     }
 
-    private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
+    private Transaction? DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
         Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
-        tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
+        if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, true))
+        {
+            if (_logger.IsDebug) _logger.Debug("Decrypted Shutter transaction sender address is not recoverable.");
+            return null;
+        }
+
+        tx.SenderAddress = senderAddress;
         return tx;
     }
 
-    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         lock (_events)
         {
@@ -242,7 +242,7 @@ public class ShutterTxLoader(
         };
     }
 
-    private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
+    private void LoadFromScanningLogs(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         _txPointer = txPointer;
 

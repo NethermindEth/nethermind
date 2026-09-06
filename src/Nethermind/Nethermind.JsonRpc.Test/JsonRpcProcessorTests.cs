@@ -255,6 +255,26 @@ public class JsonRpcProcessorTests
         Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
     }
 
+    [TestCase(RpcEndpoint.IPC, true)]
+    [TestCase(RpcEndpoint.Ws, false)]
+    public async Task ProcessAsync_makes_the_request_context_current_for_the_handler(RpcEndpoint endpoint, bool expectedAuthenticated)
+    {
+        bool? seenAuthenticated = null;
+        IJsonRpcService service = CreateService(request =>
+        {
+            seenAuthenticated = JsonRpcContext.Current.Value?.IsAuthenticated;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        JsonRpcContext context = new(endpoint);
+        JsonRpcContext.Current.Value = null;
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), context);
+
+        Assert.That(seenAuthenticated, Is.EqualTo(expectedAuthenticated));
+    }
+
     [Test]
     public async Task Sink_processor_entry_point_reads_params_through_envelope_reader()
     {

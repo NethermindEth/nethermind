@@ -159,10 +159,10 @@ public class HealingTreeTests
 
             using IDisposable _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
-            for (int i = 0; i < 100; i++)
+            for (ulong i = 0; i < 100; i++)
             {
                 Address address = new(Keccak.Compute(i.ToString()));
-                mainWorldState.CreateAccount(address, (UInt256)i, (UInt256)i);
+                mainWorldState.CreateAccount(address, (UInt256)i, i);
             }
 
             Address storageAddress = new(Keccak.Compute("storage"));
@@ -181,7 +181,7 @@ public class HealingTreeTests
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
 
             Assert.That(blockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
-            blockTree.UpdateMainChain([block], true);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
             return block.Header;
         }
@@ -192,12 +192,12 @@ public class HealingTreeTests
             IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
 
             Random random = new(0);
-            using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = serverStateDb.GetAll().ToPooledList(10);
+            using ArrayPoolList<KeyValuePair<byte[], byte[]>> allValues = serverStateDb.GetAll().ToPooledList(10);
             // Sort for reproducibility
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 
             // Copy from server to client, but randomly remove some of them.
-            foreach (KeyValuePair<byte[], byte[]?> kv in allValues.AsSpan())
+            foreach (KeyValuePair<byte[], byte[]> kv in allValues.AsSpan())
             {
                 if (random.NextDouble() < 0.9)
                 {
@@ -211,16 +211,16 @@ public class HealingTreeTests
             IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
             using IDisposable _ = mainWorldState.BeginScope(baseBlock);
 
-            for (int i = 0; i < 100; i++)
+            for (ulong i = 0; i < 100; i++)
             {
                 Address address = new(Keccak.Compute(i.ToString()));
                 Assert.That(mainWorldState.GetBalance(address), Is.EqualTo((UInt256)i));
-                Assert.That(mainWorldState.GetNonce(address), Is.EqualTo((UInt256)i));
+                Assert.That(mainWorldState.GetNonce(address), Is.EqualTo(i));
             }
 
             Address storageAddress = new(Keccak.Compute("storage"));
             Assert.That(mainWorldState.GetBalance(storageAddress), Is.EqualTo((UInt256)100));
-            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo((UInt256)100));
+            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo(100ul));
             for (int i = 1; i < 100; i++)
             {
                 Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));

@@ -51,7 +51,7 @@ public sealed class RetrospectiveTracer(IBlockTree blockTree, OpcodeCounter coun
         }
 
         // Generate block numbers without int cast to avoid overflow for large ranges
-        IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
+        IEnumerable<ulong> blockNumbers = GenerateBlockNumbers(range);
 
         ParallelOptions parallelOptions = new()
         {
@@ -98,9 +98,9 @@ public sealed class RetrospectiveTracer(IBlockTree blockTree, OpcodeCounter coun
         }).ConfigureAwait(false);
     }
 
-    private static IEnumerable<long> GenerateBlockNumbers(BlockRange range)
+    private static IEnumerable<ulong> GenerateBlockNumbers(BlockRange range)
     {
-        for (long i = range.StartBlock; i <= range.EndBlock; i++)
+        for (ulong i = range.StartBlock; i <= range.EndBlock; i++)
         {
             yield return i;
         }

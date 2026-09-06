@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
@@ -25,9 +26,9 @@ public class AuraMainProcessingModule(
     AuRaChainSpecEngineParameters chainSpecAuRa
 ) : Module, IMainProcessingModule
 {
-    protected override void Load(ContainerBuilder builder) => builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor>(CreateAuRaValidator);
+    protected override void Load(ContainerBuilder builder) => builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor, IReceiptStorage, IAuRaBlockFinalizationManager>(CreateAuRaValidator);
 
-    private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor)
+    private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor, IReceiptStorage receiptStorage, IAuRaBlockFinalizationManager finalizationManager)
     {
 
         IAuRaValidator validator = new AuRaValidatorFactory(
@@ -36,9 +37,9 @@ public class AuraMainProcessingModule(
                 transactionProcessor,
                 api.BlockTree,
                 envFactory.Create(),
-                api.ReceiptStorage,
+                receiptStorage,
                 api.ValidatorStore,
-                api.FinalizationManager,
+                finalizationManager,
                 new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa),
                 api.TxPool,
                 api.Config<IBlocksConfig>(),
@@ -49,6 +50,8 @@ public class AuraMainProcessingModule(
                 api.ReportingContractValidatorCache,
                 chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, api.BlockTree.Head?.Header);
+
+        api.AuraStatefulComponents.MainProcessingReportingValidator = validator.GetReportingValidator();
 
         if (validator is IDisposable disposableValidator)
         {

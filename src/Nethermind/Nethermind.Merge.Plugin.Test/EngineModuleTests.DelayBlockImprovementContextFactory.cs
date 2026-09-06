@@ -16,12 +16,12 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
+    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay, Action<CancellationToken>? onBuildStarted = null)
         : IBlockImprovementContextFactory
     {
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
         UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
-            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts);
+            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts, onBuildStarted);
     }
 
     /// <summary>
@@ -59,13 +59,17 @@ public partial class EngineModuleTests
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
             DateTimeOffset startDateTime,
-            SharedCancellationTokenSource cts)
+            SharedCancellationTokenSource cts,
+            Action<CancellationToken>? onBuildStarted = null)
         {
             CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
             _improvementCancellation = cts;
             _timeOutCancellation = new CancellationTokenSource(timeout);
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
+            // Publishes the production token, so a test-side tx source can abort a blocking
+            // wait when this improvement is cancelled.
+            onBuildStarted?.Invoke(_linkedCancellation.Token);
             ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _linkedCancellation.Token);
         }
 

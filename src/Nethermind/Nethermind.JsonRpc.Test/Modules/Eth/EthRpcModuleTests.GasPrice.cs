@@ -54,7 +54,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(GetBaseFeeTestCases))]
-    public async Task<string> Eth_baseFee_ShouldGiveCorrectResult(UInt256 baseFeePerGas, long gasLimit, long gasUsed, ISpecProvider specProvider)
+    public async Task<string> Eth_baseFee_ShouldGiveCorrectResult(UInt256 baseFeePerGas, ulong gasLimit, ulong gasUsed, ISpecProvider specProvider)
     {
         using Context ctx = await Context.Create(specProvider);
         Block[] blocks = [
@@ -73,22 +73,22 @@ public partial class EthRpcModuleTests
             static string Success(UInt256 result) => $"{{\"jsonrpc\":\"2.0\",\"result\":\"{result.ToHexString(true)}\",\"id\":67}}";
             const string NullResult = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}";
 
-            yield return new TestCaseData(UInt256.Zero, 30_000_000L, 0L, GetSpecProviderWithEip1559EnabledAs(false))
+            yield return new TestCaseData(UInt256.Zero, 30_000_000UL, 0UL, GetSpecProviderWithEip1559EnabledAs(false))
             {
                 TestName = "Pre-London block returns null",
                 ExpectedResult = NullResult
             };
-            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 15_000_000L, new TestSpecProvider(London.Instance))
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000UL, 15_000_000UL, new TestSpecProvider(London.Instance))
             {
                 TestName = "Block at gas target returns same base fee",
                 ExpectedResult = Success(1_000_000_000)
             };
-            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 30_000_000L, new TestSpecProvider(London.Instance))
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000UL, 30_000_000UL, new TestSpecProvider(London.Instance))
             {
                 TestName = "Block over gas target increases base fee by 12.5%",
                 ExpectedResult = Success(1_125_000_000)
             };
-            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 0L, new TestSpecProvider(London.Instance))
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000UL, 0UL, new TestSpecProvider(London.Instance))
             {
                 TestName = "Block under gas target decreases base fee by 12.5%",
                 ExpectedResult = Success(875_000_000)

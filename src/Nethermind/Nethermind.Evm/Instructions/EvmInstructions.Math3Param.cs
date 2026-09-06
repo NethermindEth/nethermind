@@ -12,23 +12,24 @@ using Int256;
 
 public static partial class EvmInstructions
 {
-    public interface IOpMath3Param
+    public interface IOpMath3Param : IGasCost
     {
-        virtual static long GasCost => GasCostOf.Mid;
+        static ulong IGasCost.GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
         // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
-        ref byte topRef = ref stack.Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool ok);
-        if (!ok) goto StackUnderflow;
+        if (!stack.EnsureDepth(3)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b);
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
         if (c.IsZero)
@@ -42,7 +43,7 @@ public static partial class EvmInstructions
             EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         }
 
-        if (TTracingInst.IsActive) stack.ReportPushUInt256(ref topRef);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor

@@ -51,12 +51,12 @@ jobs:
           - name: Mainnet
             container: rpc-monitor-mainnet
             target_secret: RPC_MONITOR_MAINNET_TARGET
-            reference_url: https://ethereum-rpc.publicnode.com
+            reference_secret: RPC_MONITOR_MAINNET_REFERENCE
             test_glob: mainnet/**/*
           - name: Gnosis
             container: rpc-monitor-gnosis
             target_secret: RPC_MONITOR_GNOSIS_TARGET
-            reference_url: https://gnosis-rpc.publicnode.com
+            reference_secret: RPC_MONITOR_GNOSIS_REFERENCE
             test_glob: gnosis/**/*
     steps:
       - name: Deploy ${{ matrix.name }} monitor
@@ -65,11 +65,12 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.RPC_MONITOR_SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.RPC_MONITOR_SLACK_CHANNEL_ID }}
           TARGET_URL: ${{ secrets[matrix.target_secret] }}
+          REFERENCE_URL: ${{ secrets[matrix.reference_secret] }}
         with:
           host: ${{ secrets.RPC_MONITOR_SSH_HOST }}
           username: ${{ secrets.RPC_MONITOR_SSH_USER }}
           key: ${{ secrets.RPC_MONITOR_SSH_KEY }}
-          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID,TARGET_URL
+          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID,TARGET_URL,REFERENCE_URL
           script: |
             docker pull nethermindeth/rpc-monitor:latest
             docker stop ${{ matrix.container }} 2>/dev/null || true
@@ -84,6 +85,6 @@ jobs:
               nethermindeth/rpc-monitor:latest \
               --name "${{ matrix.name }}" \
               --target "$TARGET_URL" \
-              --reference "${{ matrix.reference_url }}" \
+              --reference "$REFERENCE_URL" \
               --tests "${{ matrix.test_glob }}" \
               --report-at "12:00:00"

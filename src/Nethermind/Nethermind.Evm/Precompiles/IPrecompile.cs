@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Precompiles
     public interface IPrecompile
     {
         static virtual Address Address => Address.Zero;
-        static virtual string Name => string.Empty;
+        string Name => GetType().Name;
         bool SupportsCaching => true;
 
         /// <summary>
@@ -22,8 +22,8 @@ namespace Nethermind.Evm.Precompiles
         /// </remarks>
         ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => inputData;
 
-        long BaseGasCost(IReleaseSpec releaseSpec);
-        long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+        ulong BaseGasCost(IReleaseSpec releaseSpec);
+        ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
         // N.B. returns a byte array so that inputData cannot be returned
         // this can lead to the wrong value being returned due to the cache modifying inputData

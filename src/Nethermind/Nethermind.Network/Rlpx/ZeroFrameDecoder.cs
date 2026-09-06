@@ -123,6 +123,9 @@ namespace Nethermind.Network.Rlpx
             payloadSize = (payloadSize << 8) + (_decryptedBytes[1] & 0xFF);
             payloadSize = (payloadSize << 8) + (_decryptedBytes[2] & 0xFF);
 
+            if (payloadSize is 0)
+                ThrowZeroSizeFrame();
+
             if (payloadSize > _maxFrameSize)
                 ThrowFrameTooLarge(payloadSize, _maxFrameSize);
 
@@ -167,6 +170,10 @@ namespace Nethermind.Network.Rlpx
             WaitingForPayload,
             WaitingForPayloadMac
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowZeroSizeFrame()
+            => throw new CorruptedFrameException("Frame payload is empty");
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowFrameTooLarge(int payloadSize, int maxFrameSize)

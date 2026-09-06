@@ -7,7 +7,6 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
@@ -38,6 +37,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.AutoDump = DumpOptions.None;
 
+        configProvider.GetConfig<IFlatDbConfig>().EnableLongFinality = false;
+
         base.Load(builder);
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
@@ -45,12 +46,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
-                blockProcessingContext.BranchProcessor,
-                chainHeadInfoProvider,
-                initConfig.BackgroundTaskConcurrency,
-                initConfig.BackgroundTaskMaxNumber,
-                logManager))
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 

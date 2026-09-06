@@ -12,10 +12,14 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 {
     internal class ZeroFrameMergerTestWrapper : ZeroFrameMerger
     {
-        public ZeroFrameMergerTestWrapper()
-            : base(LimboLogs.Instance) => _context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
-
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
+
+        /// <param name="allocator">
+        /// Allocator the merger draws in-progress packet buffers from. Pass a <see cref="PooledBufferLeakDetector"/>
+        /// allocator to assert those buffers are released.
+        /// </param>
+        public ZeroFrameMergerTestWrapper(IByteBufferAllocator? allocator = null)
+            : base(LimboLogs.Instance) => _context.Allocator.Returns(allocator ?? UnpooledByteBufferAllocator.Default);
 
         public ZeroPacket Decode(IByteBuffer input)
         {

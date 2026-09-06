@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -10,10 +9,14 @@ namespace Nethermind.Evm.TransactionProcessing
     public interface ITransactionProcessorAdapter
     {
         TransactionResult Execute(Transaction transaction, ITxTracer txTracer);
-        TransactionResult Execute<TGasPolicy>(Transaction transaction, ITxTracer txTracer, in IntrinsicGas<TGasPolicy> intrinsicGas)
-            where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-            => Execute(transaction, txTracer);
 
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+
+        /// <summary>
+        /// Resolves an implicit gas limit to the value execution will use, ahead of the EIP-8037 per-tx
+        /// inclusion check. No-op unless the adapter defaults gas (simulate, for calls that omit <c>gas</c>).
+        /// </summary>
+        /// <param name="stateGasAvailable">Remaining EIP-8037 state-dimension budget, so the limit fits that dimension too.</param>
+        void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) { }
     }
 }
