@@ -42,9 +42,6 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
     public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
-        // Read once. A losing attempt still between Allocate and its request would otherwise read
-        // the token after the winner returned and disposed the source, and be blamed for the
-        // ObjectDisposedException that follows.
         CancellationToken token = cts.Token;
 
         Task<IOwnedReadOnlyList<(TreePath, byte[])>?>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
