@@ -816,9 +816,6 @@ public partial class VirtualMachine<TGasPolicy>(
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
 
-        // Reset the return data buffer to ensure no residual data persists across call frames.
-        ReturnDataBuffer = Array.Empty<byte>();
-
         // Clear the previous call output, preparing for new output data in the next call frame.
         previousCallOutput = ReadOnlySpan<byte>.Empty;
     }
