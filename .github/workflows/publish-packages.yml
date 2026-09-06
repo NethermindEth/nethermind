@@ -8,7 +8,7 @@ jobs:
   publish-ppa:
     name: Publish on PPA
     runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -87,7 +87,7 @@ jobs:
   publish-winget:
     name: Publish on Windows Package Manager
     runs-on: windows-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     steps:
       - name: Submit package
         env:
@@ -103,7 +103,7 @@ jobs:
   publish-homebrew:
     name: Publish on Homebrew
     runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     env:
       FORMULA: nethermind.rb
     steps:
@@ -155,7 +155,7 @@ jobs:
   publish-nuget:
     name: Publish NuGet packages
     runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
