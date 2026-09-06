@@ -303,7 +303,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         Handle(e);
                         processingState.ShouldExit = true;
                     }
-                    catch (JsonException ex)
+                    catch (Exception ex) when (IsRequestDecodingException(ex))
                     {
                         result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
                         processingState.ShouldExit = true;
@@ -417,7 +417,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
             await ProcessCoreAsync(reader, context, sink, options, timeoutSource: null, timeoutToken: CancellationToken.None, cancellationToken, recordRequest: false);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (IsRequestDecodingException(ex))
         {
             await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
         }
@@ -550,6 +550,16 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
     }
 
+    /// <summary>Tells whether <paramref name="exception"/> means the request text could not be decoded into a JSON-RPC envelope.</summary>
+    /// <remarks>
+    /// System.Text.Json reports malformed syntax as <see cref="JsonException"/>, but invalid UTF-8 bytes and lone UTF-16
+    /// surrogate escapes inside a string value, as well as reading a non-object element as an object, surface as a bare
+    /// <see cref="InvalidOperationException"/>. Both are caller input errors and must become a JSON-RPC error response
+    /// instead of escaping to the transport as an unhandled exception.
+    /// </remarks>
+    private static bool IsRequestDecodingException(Exception exception) =>
+        exception is JsonException or InvalidOperationException;
+
     private static bool TryParseJson(
         ref ReadOnlySequence<byte> buffer,
         bool isFinalBlock,
@@ -652,7 +662,13 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             foreach (JsonElement item in rootElement.EnumerateArray())
             {
-                JsonRpcRequest jsonRpcRequest = CreateRequest(item);
+                JsonRpcRequest? jsonRpcRequest = TryCreateBatchItemRequest(item);
+                if (jsonRpcRequest is null)
+                {
+                    await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
+                    continue;
+                }
+
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(jsonRpcRequest)
                     : await HandleSingleRequest(jsonRpcRequest, context);
@@ -723,7 +739,13 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             while (JsonRpcArrayReader.TryReadNextItem(batchBody, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> itemBody))
             {
                 requestIndex++;
-                JsonRpcRequest jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? ownedRequestDocument);
+                JsonRpcRequest? jsonRpcRequest = TryDeserializeBatchItem(itemBody, out JsonDocument? ownedRequestDocument);
+                if (jsonRpcRequest is null)
+                {
+                    await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
+                    continue;
+                }
+
                 batchRequestJsonLifetime.TrackUntilBatchEnd(jsonRpcRequest, ownedRequestDocument);
 
                 JsonRpcResult.Entry response = isStopped
@@ -756,31 +778,62 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private JsonRpcRequest DeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
+    private JsonRpcRequest? TryDeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
     {
-        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
-        {
-            requestDocument = null;
-            return directRequest;
-        }
-
-        requestDocument = JsonDocument.Parse(itemBody);
+        requestDocument = null;
         try
         {
-            return CreateRequest(requestDocument.RootElement);
+            if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
+            {
+                return directRequest;
+            }
+
+            requestDocument = JsonDocument.Parse(itemBody);
+            if (requestDocument.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                return CreateRequest(requestDocument.RootElement);
+            }
         }
-        catch
+        catch (Exception ex) when (IsRequestDecodingException(ex))
         {
-            requestDocument.Dispose();
-            requestDocument = null;
-            throw;
+            LogInvalidBatchItem(ex);
+        }
+
+        requestDocument?.Dispose();
+        requestDocument = null;
+        return null;
+    }
+
+    private JsonRpcRequest? TryCreateBatchItemRequest(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        try
+        {
+            return CreateRequest(item);
+        }
+        catch (Exception ex) when (IsRequestDecodingException(ex))
+        {
+            LogInvalidBatchItem(ex);
+            return null;
         }
     }
 
-    private async ValueTask WriteInvalidRequestAsync(
+    private void LogInvalidBatchItem(Exception exception)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Invalid JSON-RPC batch item.{Environment.NewLine}{exception}");
+    }
+
+    private ValueTask WriteInvalidRequestAsync(
         IJsonRpcResponseSink sink,
         long startTime,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        WriteSingleEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
+
+    private JsonRpcResult.Entry CreateInvalidRequestEntry(long startTime)
     {
         Metrics.JsonRpcInvalidRequests++;
         JsonRpcErrorResponse invalidResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
@@ -791,8 +844,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        JsonRpcResult.Entry result = new(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
-        await WriteSingleEntryAsync(result, sink, cancellationToken);
+        return new(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
     private async ValueTask WriteShutdownResponseAsync(IJsonRpcResponseSink sink, CancellationToken cancellationToken)

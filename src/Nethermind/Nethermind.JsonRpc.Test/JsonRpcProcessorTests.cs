@@ -751,6 +751,127 @@ public class JsonRpcProcessorTests
         AssertBatchResponse(result, expectedBatchItems.Value);
     }
 
+    public enum RequestTransport
+    {
+        HttpMemory,
+        HttpPipe,
+        WsPipe
+    }
+
+    private static readonly byte[] _methodPrefixUtf8 = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_");
+    private static readonly byte[] _methodSuffixUtf8 = Encoding.UTF8.GetBytes("\",\"params\":[]}");
+
+    private static byte[] CreateRequestWithRawMethodTail(params byte[] rawMethodTail) =>
+        [.. _methodPrefixUtf8, .. rawMethodTail, .. _methodSuffixUtf8];
+
+    private static IEnumerable<TestCaseData> MalformedMethodTextCases()
+    {
+        (string name, byte[] tail)[] cases =
+        [
+            ("Invalid UTF-8 continuation byte", [0xC3]),
+            ("Overlong UTF-8 encoding", [0xC0, 0xAF]),
+            ("Truncated 4-byte UTF-8 sequence", [0xF0, 0x9F]),
+            ("Lone high surrogate escape", Encoding.ASCII.GetBytes("\\ud800")),
+            ("Lone low surrogate escape", Encoding.ASCII.GetBytes("\\udc00")),
+        ];
+
+        foreach ((string name, byte[] tail) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(CreateRequestWithRawMethodTail(tail), transport).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(MalformedMethodTextCases))]
+    public async Task Malformed_utf8_or_utf16_in_method_name_is_a_parse_error(byte[] request, RequestTransport transport)
+    {
+        bool dispatched = false;
+        IJsonRpcService service = CreateService(rpcRequest =>
+        {
+            dispatched = true;
+            return new JsonRpcSuccessResponse { Id = rpcRequest.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport);
+
+        CollectedJsonRpcResult only = AssertOnlyResult(result);
+        Assert.That(only.BatchItems, Is.Null, "a malformed single request must produce a single framed error, not a batch");
+        Assert.That(only.Response, Is.TypeOf<JsonRpcErrorResponse>());
+        Assert.That(((JsonRpcErrorResponse)only.Response!).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
+        Assert.That(dispatched, Is.False, "a request that cannot be decoded must never reach the service");
+    }
+
+    private static IEnumerable<TestCaseData> NonObjectBatchElementCases()
+    {
+        (string name, byte[] request, int expectedItems, int validItemIndex)[] cases =
+        [
+            ("Null element", "[null]"u8.ToArray(), 1, -1),
+            ("Array element", "[[]]"u8.ToArray(), 1, -1),
+            ("Number element", "[1]"u8.ToArray(), 1, -1),
+            ("String element", "[\"x\"]"u8.ToArray(), 1, -1),
+            ("Null element followed by valid request", "[null,{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Object element with invalid UTF-8 method", [(byte)'[', .. CreateRequestWithRawMethodTail(0xC3), (byte)']'], 1, -1),
+            ("Object element with fractional id", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
+        ];
+
+        foreach ((string name, byte[] request, int expectedItems, int validItemIndex) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(request, expectedItems, validItemIndex, transport).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(NonObjectBatchElementCases))]
+    public async Task Batch_with_undecodable_element_returns_invalid_request_for_that_element(byte[] request, int expectedItems, int validItemIndex, RequestTransport transport)
+    {
+        int dispatched = 0;
+        IJsonRpcService service = CreateService(rpcRequest =>
+        {
+            dispatched++;
+            return new JsonRpcSuccessResponse { Id = rpcRequest.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport);
+
+        CollectedJsonRpcResult only = AssertOnlyResult(result);
+        Assert.That(only.Response, Is.Null, "a syntactically valid JSON array must be answered with a batch response");
+        Assert.That(only.BatchItems, Has.Count.EqualTo(expectedItems));
+        for (int i = 0; i < expectedItems; i++)
+        {
+            JsonRpcResponse item = only.BatchItems![i];
+            if (i == validItemIndex)
+            {
+                Assert.That(item, Is.TypeOf<JsonRpcSuccessResponse>(), $"item {i} is a valid request and must be dispatched");
+                Assert.That(item.Id, Is.EqualTo(new JsonRpcId(1)));
+                continue;
+            }
+
+            Assert.That(item, Is.TypeOf<JsonRpcErrorResponse>(), $"item {i} is not a request object");
+            Assert.That(((JsonRpcErrorResponse)item).Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        }
+
+        Assert.That(dispatched, Is.EqualTo(validItemIndex < 0 ? 0 : 1));
+    }
+
+    private static async ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, byte[] request, RequestTransport transport)
+    {
+        if (transport == RequestTransport.HttpMemory)
+        {
+            CollectingJsonRpcResponseSink sink = new();
+            await processor.ProcessAsync(request.AsMemory(), CreateHttpContext(), sink, new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+            return sink.Responses;
+        }
+
+        JsonRpcContext context = transport == RequestTransport.HttpPipe ? CreateHttpContext() : new JsonRpcContext(RpcEndpoint.Ws);
+        return await ProcessAsync(processor, PipeReader.Create(new ReadOnlySequence<byte>(request)), context);
+    }
+
     [Test]
     public async Task Should_stop_processing_when_shutdown_requested()
     {
