@@ -72,6 +72,10 @@ public sealed partial class KeccakHash
         HashSize = size;
     }
 
+    /// <summary>Creates an incremental hasher whose digest is <paramref name="size"/> bytes wide.</summary>
+    /// <param name="size">The digest size in bytes, from 1 to 66.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> is outside [1, 66], the widths
+    /// whose digest still fits the sponge's rate.</exception>
     public static KeccakHash Create(int size = HASH_SIZE) => new(size);
 
     /// <summary>
@@ -124,6 +128,10 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Computes the Keccak digest of <paramref name="input"/> in one shot.</summary>
+    /// <param name="output">Receives the digest; its length picks the Keccak width and must be from 1 to 66.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="output"/> is empty or wider than 66 bytes,
+    /// the widths whose digest still fits the sponge's rate.</exception>
     [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
@@ -311,6 +319,13 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Squeezes the sponge into <paramref name="output"/>, completing the hash.</summary>
+    /// <param name="output">Receives the digest. It may be narrower than <see cref="HashSize"/>, but not wider
+    /// than the sponge's rate, <c>200 - 2 * HashSize</c>.</param>
+    /// <remarks>The sponge squeezes a single block, so the rate rather than <see cref="HashSize"/> bounds the
+    /// output here.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="output"/> is wider than the rate.</exception>
+    /// <exception cref="CryptographicException">The hash is already complete.</exception>
     [SkipLocalsInit]
     public void UpdateFinalTo(Span<byte> output)
     {
