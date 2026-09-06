@@ -68,7 +68,7 @@ public class RecoveryTests
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new AccountsAndProofs
+            .Returns(c => Task.FromResult(new AccountsAndProofs()
             {
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp }),
                 PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0)) },
@@ -129,14 +129,13 @@ public class RecoveryTests
     [Test]
     public async Task cannot_recover_eth66_invalid_rlp()
     {
-        _returnedRlp = [5, 6, 7];
+        _returnedRlp = new byte[] { 5, 6, 7 };
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         Assert.That(response, Is.Null);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public async Task can_recover_eth67(int peerCount)
+    [Test]
+    public async Task can_recover_eth67([Values(1, 2)] int peerCount)
     {
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, Eth67Peers(peerCount));
         Assert.That(response![0].Item1, Is.EqualTo(_path));
@@ -150,9 +149,8 @@ public class RecoveryTests
         Assert.That(response, Is.Null);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public async Task can_recover_code_eth67(int peerCount)
+    [Test]
+    public async Task can_recover_code_eth67([Values(1, 2)] int peerCount)
     {
         byte[]? response = await RecoverCode(Eth67Peers(peerCount));
         Assert.That(response, Is.EqualTo(_nodeRlp));
@@ -165,7 +163,22 @@ public class RecoveryTests
         Assert.That(response, Is.Null);
     }
 
-    private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
+    [Test]
+    public async Task cannot_recover_code_eth67_empty_response()
+    {
+        _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance));
+        byte[]? response = await RecoverCode(_peerEth67);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task cannot_recover_code_eth67_hash_mismatch()
+    {
+        _returnedRlp = [5, 6, 7];
+        byte[]? response = await RecoverCode(_peerEth67);
+        Assert.That(response, Is.Null);
+    }
 
     [Test]
     public async Task cannot_recover_eth67_empty_response()
@@ -202,9 +215,11 @@ public class RecoveryTests
         });
     }
 
+    private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
+
     private Task<byte[]?> RecoverCode(params PeerInfo[] peers)
     {
         SetupPeers(peers);
-        return _codeRecovery.Recover(_hash.Bytes.ToArray());
+        return _codeRecovery.Recover(_hash.ValueHash256);
     }
 }

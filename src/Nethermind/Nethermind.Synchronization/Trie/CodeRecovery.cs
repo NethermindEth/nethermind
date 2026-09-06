@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -28,43 +27,53 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
             new BySpeedStrategy(TransferSpeedType.Latency, false),
             Protocol.Snap);
 
-    private const int ConcurrentAttempt = 3;
-    private readonly ILogger _logger = logManager.GetClassLogger<SnapRangeRecovery>();
+    // The caller blocks a processing thread on this, and peer allocation waits indefinitely on its own,
+    // so the wait must be bounded here. Matches PathNodeRecovery.
+    private static readonly TimeSpan RecoveryTimeout = TimeSpan.FromSeconds(3);
 
-    public async Task<byte[]?> Recover(byte[] key, CancellationToken cancellationToken = default)
+    private const int ConcurrentAttempt = 3;
+    private readonly ILogger _logger = logManager.GetClassLogger<CodeRecovery>();
+
+    public async Task<byte[]?> Recover(ValueHash256 codeHash, CancellationToken cancellationToken = default)
     {
-        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
+        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource(RecoveryTimeout);
+
+        if (_logger.IsDebug) _logger.Debug($"Recovering code {codeHash}");
 
         try
         {
-            using ArrayPoolList<Task<byte[]>>? concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
-                .Select(_ =>
+            using ArrayPoolList<Task<byte[]?>> concurrentAttempts = new(ConcurrentAttempt);
+            for (int i = 0; i < ConcurrentAttempt; i++)
+            {
+                concurrentAttempts.Add(peerPool.AllocateAndRun(async (PeerInfo peer) =>
                 {
-                    return peerPool.AllocateAndRun(async (peer) =>
+                    try
                     {
-                        if (peer is null) return null;
-                        try
-                        {
-                            byte[]? result = await RecoverFromPeer(peer.SyncPeer, key, cts.Token);
-                            if (result is not null) return result;
+                        byte[]? result = await RecoverFromPeer(peer.SyncPeer, codeHash, cts.Token);
+                        if (result is not null) return result;
 
-                            if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
-                            peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                        }
-                        catch (Exception ex)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Error recovering node from {peer} {ex}");
-                            peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
-                        }
-                        return null;
-                    }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
-                })
-                .ToPooledList(ConcurrentAttempt);
+                        if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
+                        peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Error recovering code from {peer} {ex}");
+                        peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
+                    }
+                    return null;
+                }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token));
+            }
 
-            return await Wait.AnyWhere(result => result is not null, concurrentAttempts);
+            byte[]? recovered = await Wait.AnyWhere(static result => result is not null, concurrentAttempts);
+            if (recovered is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to recover code {codeHash}");
+            }
+
+            return recovered;
         }
         catch (OperationCanceledException)
         {
@@ -72,17 +81,17 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
         }
     }
 
-    private async Task<byte[]?> RecoverFromPeer(ISyncPeer peer, byte[] key, CancellationToken token)
+    private async Task<byte[]?> RecoverFromPeer(ISyncPeer peer, ValueHash256 codeHash, CancellationToken token)
     {
         if (!peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapProtocol)) return null;
 
-        using ArrayPoolList<ValueHash256> hashes = new(1);
-        hashes.Add(new ValueHash256(key));
+        using ArrayPoolList<ValueHash256> hashes = new(1) { codeHash };
 
         using IByteArrayList? result = await snapProtocol.GetByteCodes(hashes, token);
+        if (result is not { Count: 1 } || ValueKeccak.Compute(result[0]) != codeHash) return null;
 
-        if (_logger.IsTrace) _logger.Trace($"Fetched code {key} from {peer}");
+        if (_logger.IsTrace) _logger.Trace($"Fetched code {codeHash} from {peer}");
 
-        return result is { Count: 1 } && ValueKeccak.Compute(result[0]) == hashes[0] ? result[0].ToArray() : null;
+        return result[0].ToArray();
     }
 }
