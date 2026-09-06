@@ -71,7 +71,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private void CancelHintBal()
         {
-            // A single processor never starts the warm-up task, so there is nothing to drain.
+            // HintBal never starts the warm-up task on a single processor, so both fields are null.
+            // Returning early keeps the task awaiter out of the guest image.
             if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return;
 
             _hintBalCts?.Cancel();

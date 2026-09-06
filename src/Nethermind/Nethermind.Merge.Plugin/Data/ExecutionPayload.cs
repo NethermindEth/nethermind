@@ -164,7 +164,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        // Folded to null where the count is a constant, so the guest carries no task machinery for it.
+        // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
+        // and carries no task machinery for it.
         Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
 
         Result<Transaction[]> transactions = TryGetTransactions();

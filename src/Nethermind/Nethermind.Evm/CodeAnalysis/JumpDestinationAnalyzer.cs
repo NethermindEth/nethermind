@@ -54,9 +54,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
 #if ZK_EVM
         // Nothing analyzes in the background on the single-threaded guest, so there is no completion
         // event to allocate, signal or wait on.
-        long[] bitmap = CreateJumpDestinationBitmap();
-        Volatile.Write(ref _analysisComplete, bitmap);
-        return bitmap;
+        return CreateJumpDestinationBitmap();
 #else
         object? previous = Volatile.Read(ref _analysisComplete);
         if (previous is null)
