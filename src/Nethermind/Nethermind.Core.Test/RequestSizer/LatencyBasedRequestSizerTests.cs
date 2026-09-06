@@ -12,14 +12,13 @@ namespace Nethermind.Core.Test.RequestSizer;
 public class LatencyBasedRequestSizerTests
 {
     /// <remarks>
-    /// Latency is advanced on a <see cref="ManualTimeProvider"/> rather than awaited: sleeping for it made
-    /// the outcome depend on machine load, since a <c>Task.Delay(50)</c> that overshot the 200ms upper
-    /// watermark shrank the request instead of keeping it.
+    /// Latency is advanced on a <see cref="ManualTimeProvider"/> so the case lands on a known side of the
+    /// 20ms/200ms watermarks regardless of machine load.
     /// </remarks>
     [TestCase(0, 3)]
     [TestCase(50, 2)]
     [TestCase(500, 1)]
-    public async Task TestWait(int latencyMs, int afterRequestSize)
+    public async Task TestChangeInRequestSize(int latencyMs, int afterRequestSize)
     {
         ManualTimeProvider timeProvider = new();
         LatencyBasedRequestSizer sizer = new(

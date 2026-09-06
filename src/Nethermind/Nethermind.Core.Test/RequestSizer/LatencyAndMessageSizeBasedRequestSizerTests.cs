@@ -16,10 +16,8 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
     private static readonly int[] _sampleRequest = Enumerable.Range(0, 10).ToArray();
 
     /// <remarks>
-    /// The sizer compares measured latency against its watermarks, so the request latency is advanced on a
-    /// <see cref="ManualTimeProvider"/> rather than awaited. Sleeping for it made the outcome depend on how
-    /// loaded the machine was: a <c>Task.Delay(50)</c> that overshot the 200ms upper watermark shrank the
-    /// request instead of keeping it, and one that undershot the 20ms lower watermark grew it.
+    /// Latency is advanced on a <see cref="ManualTimeProvider"/> so the case lands on a known side of the
+    /// 20ms/200ms watermarks regardless of machine load.
     /// </remarks>
     [TestCase(0, 0, 2, 3)]
     [TestCase(0, 10000, 2, 1)]
