@@ -284,6 +284,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumeExpBytes<Eip160>(ref EthereumGasPolicy gas, IReleaseSpec spec, ulong exponentByteSize)
+        where Eip160 : struct, IFlag =>
+        UpdateGas(ref gas, (Eip160.IsActive ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * exponentByteSize);
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeSLoadBaseGas<Eip2929>(ref EthereumGasPolicy gas, IReleaseSpec spec)
         where Eip2929 : struct, IFlag =>
         Eip2929.IsActive || UpdateGas(ref gas, spec.GasCosts.SLoadCost);

@@ -387,9 +387,10 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst, Eip160>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where Eip160 : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
         if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
@@ -410,7 +411,7 @@ public static partial class EvmInstructions
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        if (!TGasPolicy.TryConsumeExpBytes(ref gas, vm.Spec, expSize)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize)) return EvmExceptionType.OutOfGas;
 
         if (a.IsZero)
         {

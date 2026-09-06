@@ -114,6 +114,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual bool TryConsumeExpBytes(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize) =>
         TSelf.UpdateGas(ref gas, spec.GasCosts.ExpByteCost * exponentByteSize);
 
+    /// <summary>Charges exponent bytes using the selected EIP-160 price.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryConsumeExpBytes<Eip160>(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize)
+        where Eip160 : struct, IFlag => TSelf.TryConsumeExpBytes(ref gas, spec, exponentByteSize);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeCreateGas<TEip8037, TOpCreate>(ref TSelf gas, IReleaseSpec spec, ulong initCodeWords)
         where TEip8037 : struct, IFlag

@@ -86,7 +86,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.SMOD] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSMod, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.ADDMOD] = OpcodeHandler<Math3Opcode<EvmInstructions.OpAddMod, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MULMOD] = OpcodeHandler<Math3Opcode<EvmInstructions.OpMulMod, TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.EXP] = OpcodeHandler<ExpOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.EXP] = spec.UseExpDDosProtection
+            ? OpcodeHandler<ExpOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>()
+            : OpcodeHandler<ExpOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SIGNEXTEND] = OpcodeHandler<SignExtendOpcode, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.LT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpLt, TTracingInst>, TTracingInst, TCancelable>();
@@ -594,10 +596,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
-    private readonly struct ExpOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    private readonly struct ExpOpcode<TTracingInst, Eip160> : IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where Eip160 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionExp<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionExp<TGasPolicy, TTracingInst, Eip160>(ref stack, ref gas, vm);
     }
 
     private readonly struct SignExtendOpcode : IOpcodeBody

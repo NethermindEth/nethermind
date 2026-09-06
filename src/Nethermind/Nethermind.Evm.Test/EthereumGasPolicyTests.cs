@@ -421,6 +421,33 @@ public class EthereumGasPolicyTests
         }
     }
 
+    [Test, Combinatorial]
+    public void Specialized_exp_price_matches_price_book(
+        [Values] bool eip160,
+        [Values(0UL, 1UL, 32UL)] ulong exponentBytes,
+        [Values(0UL, 9UL, 10UL, 49UL, 50UL, 1599UL, 1600UL)] ulong availableGas)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.UseExpDDosProtection.Returns(eip160);
+        SpecGasCosts gasCosts = new(spec);
+        spec.GasCosts.Returns(gasCosts);
+        EthereumGasPolicy expectedGas = EthereumGasPolicy.FromULong(availableGas);
+        EthereumGasPolicy actualGas = expectedGas;
+        bool expected = EthereumGasPolicy.UpdateGas(ref expectedGas, spec.GasCosts.ExpByteCost * exponentBytes);
+        spec.ClearReceivedCalls();
+
+        bool actual = eip160
+            ? EthereumGasPolicy.TryConsumeExpBytes<OnFlag>(ref actualGas, spec, exponentBytes)
+            : EthereumGasPolicy.TryConsumeExpBytes<OffFlag>(ref actualGas, spec, exponentBytes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            AssertGasMatches(in actualGas, in expectedGas);
+            Assert.That(spec.ReceivedCalls(), Is.Empty);
+        }
+    }
+
     private static ulong GetPreRefundGas<TGasPolicy>(in TGasPolicy gas, ulong gasLimit)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => TGasPolicy.GetPreRefundGas(in gas, gasLimit);
