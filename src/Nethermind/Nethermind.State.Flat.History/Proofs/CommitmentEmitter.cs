@@ -28,6 +28,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly object _windowWriteLock;
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
+    private readonly bool _respectFloors;
 
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
@@ -45,9 +46,13 @@ public sealed class CommitmentEmitter : IDisposable
     private int _rowsInBatch;
     private ulong _block;
     private bool _haveBlock;
+    private ulong _floorsEpoch = ulong.MaxValue;
+    private ulong _retainedFloor;
+    private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, bool respectFloors)
     {
+        _respectFloors = respectFloors;
         _history = history;
         _policy = policy;
         _metadata = metadata;
@@ -58,10 +63,10 @@ public sealed class CommitmentEmitter : IDisposable
     }
 
     public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes);
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, respectFloors: false);
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes, respectFloors: true);
 
     public CommitmentDepthPolicy Policy => _policy;
 
@@ -78,6 +83,14 @@ public sealed class CommitmentEmitter : IDisposable
 
         _block = block;
         _haveBlock = true;
+        ulong epoch = _policy.Epoch(block);
+        if (epoch != _floorsEpoch)
+        {
+            _floorsEpoch = epoch;
+            _retainedFloor = _respectFloors ? _metadata.RetainedFromEpoch : 0;
+            _fineFloor = _respectFloors ? _metadata.FineFromEpoch : 0;
+        }
+
         _blockArena.Clear();
         _blockNodes.Clear();
         _blockChanged.Clear();
@@ -167,8 +180,12 @@ public sealed class CommitmentEmitter : IDisposable
     public void CompleteBlock()
     {
         PersistStorageDepthsReached();
+        bool retained = _floorsEpoch >= _retainedFloor;
+        bool fine = _floorsEpoch >= _fineFloor;
         foreach ((NodePathKey key, (int offset, int length)) in _blockNodes)
         {
+            if (!retained) break;
+
             CommitmentTier tier = key.IsStorage
                 ? _policy.StorageTier(key.Depth, StorageTrieDepth(key.Scope))
                 : _policy.AccountTier(key.Depth);
@@ -177,7 +194,7 @@ public sealed class CommitmentEmitter : IDisposable
             switch (tier)
             {
                 case CommitmentTier.PerChange:
-                    WriteExact(key, rlp, isEmpty: length == EmptyRecord);
+                    if (fine) WriteExact(key, rlp, isEmpty: length == EmptyRecord);
                     Accumulate(key, rlp, isEmpty: length == EmptyRecord);
                     break;
                 case CommitmentTier.Checkpoint:
@@ -354,16 +371,9 @@ public sealed class CommitmentEmitter : IDisposable
             case WindowKind.Whole:
                 {
                     byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(state.WholeLength));
-                    try
-                    {
-                        int length = ParentRowCodec.EncodeWholeNode(state.LastBlock, state.Whole, row);
-                        store.Write(prefix, window, row.AsSpan(0, length), batch);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(row);
-                    }
-
+                    int length = ParentRowCodec.EncodeWholeNode(state.LastBlock, state.Whole, row);
+                    store.Write(prefix, window, row.AsSpan(0, length), batch);
+                    ArrayPool<byte>.Shared.Return(row);
                     break;
                 }
             default:
@@ -432,15 +442,9 @@ public sealed class CommitmentEmitter : IDisposable
     private void WriteWhole(in NodePathKey key, bool exact, ulong suffix, ReadOnlySpan<byte> rlp)
     {
         byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(rlp.Length));
-        try
-        {
-            int length = ParentRowCodec.EncodeWholeNode(suffix, rlp, row);
-            Write(key, exact, suffix, row.AsSpan(0, length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(row);
-        }
+        int length = ParentRowCodec.EncodeWholeNode(suffix, rlp, row);
+        Write(key, exact, suffix, row.AsSpan(0, length));
+        ArrayPool<byte>.Shared.Return(row);
     }
 
     private void Write(in NodePathKey key, bool exact, ulong suffix, ReadOnlySpan<byte> row)

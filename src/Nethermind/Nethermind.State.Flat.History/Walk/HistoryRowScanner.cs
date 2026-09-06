@@ -68,6 +68,7 @@ internal sealed class HistoryRowScanner(
 
             ulong block = rowFormat.DecodeSuffixBlock(key[Hash256.Size..]);
             if (block > to) continue;
+            if (block <= from && startTaken && !havePending) continue;
 
             ReadOnlySpan<byte> value = view.CurrentValue;
             ValueHash256 root = StorageRootOf(value);
@@ -184,7 +185,7 @@ internal sealed class HistoryRowScanner(
 
             if (!collector.TryAdd(view.CurrentKey, view.CurrentValue))
             {
-                if (collector.DistinctKeys == 1)
+                if (collector.DistinctKeys == 1 && rows.StreamedSlots.Count < MaxStreamedKeys)
                 {
                     rows.StreamedSlots.Add(collector.Current);
                     rows.Reset();
@@ -303,9 +304,11 @@ internal sealed class HistoryRowScanner(
         }
     }
 
+    public const int MaxStreamedKeys = 16;
+
     private static ScanOutcome Overflow(AccountPartitionRows rows, in ValueHash256 currentPath, int distinctPaths)
     {
-        if (distinctPaths == 1)
+        if (distinctPaths == 1 && rows.StreamedPaths.Count < MaxStreamedKeys)
         {
             rows.StreamedPaths.Add(currentPath);
             rows.Reset();

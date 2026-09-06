@@ -70,6 +70,27 @@ public class CommitmentEmitterTests
     }
 
     [Test]
+    public void The_tip_emitter_skips_per_block_rows_for_an_epoch_below_the_fine_floor()
+    {
+        _metadata.TryRaiseFineFromEpoch(1);
+        using (CommitmentEmitter tip = CommitmentEmitter.ForTip(_historyColumns, Policy, _metadata))
+        {
+            tip.BeginBlock(1);
+            tip.RecordAccountNode(TreePath.Empty, BranchRlp.Encode(Children(5, 9)));
+            tip.CompleteBlock();
+            tip.FlushOpenWindows();
+        }
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(key => key.Length > CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength && key[CommitmentKeyLayout.EpochLength] == CommitmentKeyLayout.FineTier), Is.False,
+                "the reclaimer has already removed this epoch's per-block rows; writing new ones there leaves rows no pass will ever revisit");
+            Assert.That(WindowRow(TreePath.Empty, Policy.WindowClosingAt(1)), Is.Not.Null, "the window row is still written, that tier was not demoted");
+        }
+    }
+
+    [Test]
     public void A_node_one_level_below_the_deepest_checkpoint_marks_its_parents_changed_child()
     {
         TreePath deepest = TreePath.FromHexString("abcde");

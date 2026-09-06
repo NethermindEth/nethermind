@@ -31,6 +31,13 @@ internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, His
 
     public override void OnChanged(ulong block, in NodeView view) => OnRoot(block, view.Hash);
 
+    public override void OnAnchor(ulong block, in NodeView view) => CheckAnchor(block, view.Hash);
+
+    public void CheckAnchor(ulong block, in ValueHash256 rebuilt)
+    {
+        if (rebuilt != _previous) sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.StorageRoot, rebuilt, _previous));
+    }
+
     public void OnRoot(ulong block, in ValueHash256 rebuilt)
     {
         while (_hasRow && _rows!.Block < block) ConsumeRowOnly();

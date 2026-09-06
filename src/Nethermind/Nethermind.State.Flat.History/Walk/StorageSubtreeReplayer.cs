@@ -49,12 +49,14 @@ internal sealed class StorageSubtreeReplayer(
                 Contract contract = contracts[contractIndex];
                 HistoryRowScanner.WriteStorageFlatKey(flatKey, contract.Identity, slot);
                 HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to, token);
+                StreamedSlot stream = new(contractIndex, slot, cursor, hasRow: false);
+                streams.Add(stream);
                 if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && !HistoryRowScanner.KilledByClear(clears, contract.Identity, writtenAt, asOf: from))
                 {
                     AccountRowRlp.SetSlot(contract.Tree!, slot, start, rlpWrapSlots);
                 }
 
-                streams.Add(new StreamedSlot(contractIndex, slot, cursor, cursor.MoveNext()));
+                stream.HasRow = cursor.MoveNext();
             }
 
             foreach (StorageRowRef row in rows.Start)
@@ -67,6 +69,7 @@ internal sealed class StorageSubtreeReplayer(
             {
                 contract.Recompute();
                 contract.PublishAnchor(from, emitter);
+                if (slotPrefix.Length == 0) contract.Check?.CheckAnchor(from, contract.Tree!.RootHash.ValueHash256);
             }
 
             emitter?.CompleteBlock();

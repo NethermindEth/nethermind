@@ -45,6 +45,7 @@ internal sealed class RowArena : IDisposable
         }
 
         _position = 0;
+        _nextChunkSize = FirstChunkSize * 2;
     }
 
     public ReadOnlySpan<byte> Slice(int offset, int length) =>

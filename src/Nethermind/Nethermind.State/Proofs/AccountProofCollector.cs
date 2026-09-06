@@ -33,6 +33,8 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]>[] _storageProofItems;
         private readonly CancellationToken _cancellationToken;
 
+        public CancellationToken CancellationToken => _cancellationToken;
+
         public ValueHash256 HashedAddress => Pack(_fullAccountPath);
 
         public ValueHash256[] GetHashedStorageKeys()

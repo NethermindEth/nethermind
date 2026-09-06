@@ -60,8 +60,13 @@ internal sealed class StorageHistoryScope(
         return written + IdentitySuffixLength + sizeof(ulong);
     }
 
-    protected override bool SurvivesTo(in ValueHash256 triePath, ulong writtenAtBlock, ulong block) =>
-        !clears.HasClearInRange(accountPath.Bytes, writtenAtBlock, block);
+    private bool? _hasAnyClear;
+
+    protected override bool SurvivesTo(in ValueHash256 triePath, ulong writtenAtBlock, ulong block)
+    {
+        _hasAnyClear ??= clears.HasClearInRange(accountPath.Bytes, 0, block);
+        return !_hasAnyClear.Value || !clears.HasClearInRange(accountPath.Bytes, writtenAtBlock, block);
+    }
 
     protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)
     {
@@ -71,7 +76,14 @@ internal sealed class StorageHistoryScope(
             return stripped.IsEmpty ? null : Rlp.Encode(stripped).Bytes;
         }
 
-        RlpReader reader = new(storedValue);
-        return reader.DecodeByteArraySpan().WithoutLeadingZeros().IsEmpty ? null : storedValue.ToArray();
+        try
+        {
+            RlpReader reader = new(storedValue);
+            return reader.DecodeByteArraySpan().WithoutLeadingZeros().IsEmpty ? null : storedValue.ToArray();
+        }
+        catch (RlpException e)
+        {
+            throw new StateUnavailableException(e.Message);
+        }
     }
 }

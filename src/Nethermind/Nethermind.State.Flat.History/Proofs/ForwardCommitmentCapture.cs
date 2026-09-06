@@ -10,7 +10,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
-public sealed class ForwardCommitmentCapture
+public sealed class ForwardCommitmentCapture : IDisposable
 {
     public const int MaxBufferedBlocks = 4096;
     public const long DefaultMaxBufferedBytes = 256L * 1024 * 1024;
@@ -116,6 +116,14 @@ public sealed class ForwardCommitmentCapture
         foreach (CapturedBlock captured in _buffered.Values) Recycle(captured);
         _buffered.Clear();
         _bufferedBytes = 0;
+    }
+
+    public void Dispose()
+    {
+        foreach (CapturedBlock captured in _buffered.Values) captured.Dispose();
+        _buffered.Clear();
+        _bufferedBytes = 0;
+        while (_spare.TryPop(out CapturedBlock? spare)) spare.Dispose();
     }
 
     public void Complete()
@@ -244,6 +252,13 @@ public sealed class ForwardCommitmentCapture
             Storages.Clear();
             StorageDepths?.Clear();
             Bytes = 0;
+        }
+
+        public void Dispose()
+        {
+            Arena.Dispose();
+            Accounts.Dispose();
+            Storages.Dispose();
         }
     }
 

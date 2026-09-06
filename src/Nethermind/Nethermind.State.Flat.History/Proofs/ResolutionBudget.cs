@@ -4,7 +4,7 @@
 
 namespace Nethermind.State.Flat.History.Proofs;
 
-internal sealed class ResolutionBudget(long maxScannedRows)
+internal sealed class ResolutionBudget(long maxScannedRows, CancellationToken cancellationToken = default)
 {
     public const long DefaultMaxScannedRows = 250_000;
 
@@ -12,8 +12,11 @@ internal sealed class ResolutionBudget(long maxScannedRows)
 
     public long MaxScannedRows { get; } = maxScannedRows > 0 ? maxScannedRows : DefaultMaxScannedRows;
 
+    public CancellationToken CancellationToken => cancellationToken;
+
     public void ChargeRow()
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (Interlocked.Increment(ref _scannedRows) <= MaxScannedRows) return;
 
         throw new StateUnavailableException(

@@ -90,8 +90,8 @@ public class ArchiveProofTests
 
         CorruptEveryAccountRow();
         AccountProof fromCommitments = ProveFromArchive(_accounts[3], block: 6);
-        Assert.That(fromCommitments.Proof!.Select(static item => item.ToHexString()),
-            Is.EqualTo(_chain.ExpectedProof(_accounts[3], 6).Proof!.Select(static item => item.ToHexString())),
+        Assert.That(fromCommitments.Proof,
+            Is.EqualTo(_chain.ExpectedProof(_accounts[3], 6).Proof),
             "rows combined upward from single-key partitions must leave the same commitment column a whole-subtree replay leaves");
     }
 
@@ -275,8 +275,8 @@ public class ArchiveProofTests
         CorruptEveryAccountRow();
         AccountProof actual = ProveFromArchive(transient, queried);
 
-        Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
-            Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
             "a child that appeared and vanished inside one window is in neither the anchor's nor the window's end presence, so only its changed bit lets the resolver find it without a rebuild");
     }
 
@@ -319,7 +319,7 @@ public class ArchiveProofTests
         CorruptEveryAccountRow();
 
         AccountProof actual = ProveFromArchive(quiet, 130);
-        Assert.That(actual.Proof!.Select(static item => item.ToHexString()), Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+        Assert.That(actual.Proof, Is.EqualTo(expected.Proof),
             "block 130 sits in the second epoch; every node on the path has a row there, either from a change or from the snapshot written at the epoch's first block, so the corrupt account rows are never read");
     }
 
@@ -453,7 +453,7 @@ public class ArchiveProofTests
 
         CorruptEveryAccountRow();
         AccountProof actual = ProveFromArchive(_accounts[1], 130);
-        Assert.That(actual.Proof!.Select(static item => item.ToHexString()), Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+        Assert.That(actual.Proof, Is.EqualTo(expected.Proof),
             "a retained epoch resolves on its own: its snapshot rows stand in for whatever the dropped epoch held, so the corrupt history rows are never read");
     }
 
@@ -489,8 +489,8 @@ public class ArchiveProofTests
         {
             Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero), "an absent account is reported by EIP-1186's zero hashes");
             Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
-            Assert.That(proof.Proof!.Select(static item => item.ToHexString()),
-                Is.EqualTo(_chain.ExpectedProof(Absent, 4).Proof!.Select(static item => item.ToHexString())),
+            Assert.That(proof.Proof,
+                Is.EqualTo(_chain.ExpectedProof(Absent, 4).Proof),
                 "the absence proof must be the same path the full trie would have walked");
         }
     }
@@ -505,8 +505,8 @@ public class ArchiveProofTests
         CreateSource(TestPolicy, maxScannedRows: 1500).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null);
         AccountProof actual = collector.BuildResult();
 
-        Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
-            Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
             "the root and the top of the path must come from commitment rows; this budget is an order of magnitude below what rebuilding the root from history rows would scan");
     }
 
@@ -520,8 +520,8 @@ public class ArchiveProofTests
 
         AccountProof actual = ProveFromArchive(_accounts[3], block: 6);
 
-        Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
-            Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
             "a fully covered height resolves from the commitment chain alone, every node verified against its parent down from the header");
     }
 
@@ -536,12 +536,12 @@ public class ArchiveProofTests
 
         AccountProof actual = ProveFromArchive(Contract, Blocks, ContractSlots);
 
-        using (Assert.EnterMultipleScope())
+        for (int i = 0; i < ContractSlots.Length; i++)
         {
-            for (int i = 0; i < ContractSlots.Length; i++)
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(actual.StorageProofs![i].Proof!.Select(static item => item.ToHexString()),
-                    Is.EqualTo(expected.StorageProofs![i].Proof!.Select(static item => item.ToHexString())),
+                Assert.That(actual.StorageProofs![i].Proof,
+                    Is.EqualTo(expected.StorageProofs![i].Proof),
                     "at the last block a window row describes, every storage node of a small trie materializes from its window row, so the slot rows are never read; a missing or wrong storage row would make the resolver fall back to the now-corrupt slot rows and refuse");
                 Assert.That(actual.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()));
             }
@@ -568,10 +568,13 @@ public class ArchiveProofTests
         List<TrieLeaf> leaves = [];
         scope.EnumerateLeaves(TreePath.Empty, block: 150, new ResolutionBudget(accounts.Length * 4), leaves);
 
-        Assert.That(leaves, Has.Count.EqualTo(accounts.Length),
-            "eight accounts of two hundred versions each must cost a seek or two per account, not a row per version: a proof rebuilds the bottom of the path from these rows, and one busy neighbour would otherwise spend the whole budget before the node is built");
-        Assert.That(leaves.Select(leaf => Rlp.Decode<Account>(leaf.Value)!.Nonce), Is.All.EqualTo((ulong)150),
-            "each account resolves to its newest version at or below the queried block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leaves, Has.Count.EqualTo(accounts.Length),
+                "eight accounts of two hundred versions each must cost a seek or two per account, not a row per version: a proof rebuilds the bottom of the path from these rows, and one busy neighbour would otherwise spend the whole budget before the node is built");
+            Assert.That(leaves.Select(leaf => Rlp.Decode<Account>(leaf.Value)!.Nonce), Is.All.EqualTo((ulong)150),
+                "each account resolves to its newest version at or below the queried block");
+        }
     }
 
     [Test]
@@ -595,8 +598,8 @@ public class ArchiveProofTests
 
         AccountProof actual = ProveFromArchive(_accounts[3], block: 6);
 
-        Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
-            Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
             "a node whose commitment does not match what its parent commits to is rebuilt from the history rows");
     }
 
@@ -770,19 +773,7 @@ public class ArchiveProofTests
         _policy = EpochPolicy;
         _recentEpochs = 1;
         Address quiet = TestItem.AddressD;
-        UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
-        _chain.AddBlock(Blocks + 1, block =>
-        {
-            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
-        });
-
-        for (ulong number = Blocks + 2; number <= 300; number++)
-        {
-            ulong current = number;
-            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
-        }
-
-        _chain.PublishWatermark();
+        UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
 
         Prune(_chain.Head);
@@ -805,23 +796,10 @@ public class ArchiveProofTests
         _policy = EpochPolicy;
         _recentEpochs = 1;
         Address quiet = TestItem.AddressD;
-        UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
-        _chain.AddBlock(Blocks + 1, block =>
+        UInt256[] slots = AddQuietContract(quiet, (block, number) =>
         {
-            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
+            if (number == 270) block.SetStorage(quiet, (UInt256)5000, [0x33, 0x44]);
         });
-
-        for (ulong number = Blocks + 2; number <= 300; number++)
-        {
-            ulong current = number;
-            _chain.AddBlock(number, block =>
-            {
-                block.SetBalance(_accounts[0], (UInt256)(9000 + current));
-                if (current == 270) block.SetStorage(quiet, slots[0], [0x33, 0x44]);
-            });
-        }
-
-        _chain.PublishWatermark();
         BuildCommitments();
 
         Prune(_chain.Head);
@@ -882,14 +860,8 @@ public class ArchiveProofTests
         }
     }
 
-    private static ulong SuffixOf(byte[] key) => CommitmentKeyLayout.ReadSuffix(key);
-
-    [Test]
-    public void Proofs_keep_resolving_while_a_moved_floor_waits_for_its_reclaim()
+    private UInt256[] AddQuietContract(Address quiet, Action<ArchiveProofTestChain.BlockBuilder, ulong>? onLaterBlock = null)
     {
-        _policy = EpochPolicy;
-        _recentEpochs = 1;
-        Address quiet = TestItem.AddressD;
         UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
         _chain.AddBlock(Blocks + 1, block =>
         {
@@ -899,10 +871,26 @@ public class ArchiveProofTests
         for (ulong number = Blocks + 2; number <= 300; number++)
         {
             ulong current = number;
-            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[0], (UInt256)(9000 + current));
+                onLaterBlock?.Invoke(block, current);
+            });
         }
 
         _chain.PublishWatermark();
+        return slots;
+    }
+
+    private static ulong SuffixOf(byte[] key) => CommitmentKeyLayout.ReadSuffix(key);
+
+    [Test]
+    public void Proofs_keep_resolving_while_a_moved_floor_waits_for_its_reclaim()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
 
         CreateRetrofit(_policy).PruneBelow(_chain.Head);
@@ -935,12 +923,9 @@ public class ArchiveProofTests
     public void Floors_only_ever_rise()
     {
         CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(metadata.TryRaiseRetainedFromEpoch(3), Is.True);
-            Assert.That(metadata.TryRaiseRetainedFromEpoch(2), Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
-            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
-        }
+        Assert.That(metadata.TryRaiseRetainedFromEpoch(3), Is.True);
+        Assert.That(metadata.TryRaiseRetainedFromEpoch(2), Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
+        Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
     }
 
     [Test]
@@ -948,19 +933,7 @@ public class ArchiveProofTests
     {
         _policy = EpochPolicy;
         Address quiet = TestItem.AddressD;
-        UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
-        _chain.AddBlock(Blocks + 1, block =>
-        {
-            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
-        });
-
-        for (ulong number = Blocks + 2; number <= 300; number++)
-        {
-            ulong current = number;
-            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
-        }
-
-        _chain.PublishWatermark();
+        UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
 
         using (Assert.EnterMultipleScope())
@@ -1016,6 +989,90 @@ public class ArchiveProofTests
         if (!left.Bytes[..wholeBytes].SequenceEqual(right.Bytes[..wholeBytes])) return false;
 
         return (nibbles & 1) == 0 || (left.Bytes[wholeBytes] & 0xF0) == (right.Bytes[wholeBytes] & 0xF0);
+    }
+
+    [Test]
+    public void A_malformed_commitment_is_refused_or_rebuilt_never_served_truncated()
+    {
+        BuildCommitments();
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        byte[] malformed = new byte[ParentRowCodec.WholeNodeRowLength(1)];
+        int length = ParentRowCodec.EncodeWholeNode(Blocks, [0xC1], malformed);
+        int poisoned = 0;
+        foreach (byte[] key in accounts.GetAllKeys().ToList())
+        {
+            if (key.Length <= CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength + sizeof(ulong)) continue;
+            if ((key[CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength] & ~CommitmentKeyLayout.ExactRowFlag) != 2) continue;
+
+            accounts.PutSpan(key, malformed.AsSpan(0, length));
+            poisoned++;
+        }
+
+        Assert.That(poisoned, Is.GreaterThan(0));
+        AccountProof expected = _chain.ExpectedProof(_accounts[3], Blocks);
+        AccountProof? actual = null;
+        Assert.That(() => { actual = ProveFromArchive(_accounts[3], Blocks); }, Throws.Nothing.Or.InstanceOf<StateUnavailableException>(),
+            "a commitment that does not parse is a corrupt cache entry: the resolver rebuilds from rows or refuses, and never lets the decoding error reach the visitor, which would swallow it and hand back a truncated proof as success");
+        if (actual is not null) Assert.That(actual.Proof, Is.EqualTo(expected.Proof));
+    }
+
+    [Test]
+    public void The_reclaimer_deletes_nothing_under_a_layout_it_cannot_validate()
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+        CommitmentDepthPolicy other = new(CommitmentDepthPolicy.MinIntervalLog2 + 1);
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofFineEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        CommitmentMetadata metadata = new(_historyColumns, other);
+        metadata.TryRaiseFineFromEpoch(1);
+        using CommitmentReclaimer reclaimer = new(_historyColumns, other, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+
+        reclaimer.ReclaimNow(CancellationToken.None);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.True,
+            "rows written under another layout are not this node's to delete: with the discard flag off the build refuses them, and the reclaimer has to refuse just the same rather than run ahead of that check");
+    }
+
+    [Test]
+    public void Per_block_rows_a_walk_wrote_into_a_demoted_epoch_are_swept_again_when_it_finishes()
+    {
+        _policy = EpochPolicy;
+        _fineEpochs = 1;
+        new CommitmentMetadata(_historyColumns, _policy).TryRaiseFineFromEpoch(1);
+        new CommitmentMetadata(_historyColumns, _policy).TryRaiseDemotedThroughEpoch(1);
+
+        BuildCommitments();
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.True,
+            "the walk needs its per-block rows as the series its root fold reads, so it writes them even below the fine floor");
+
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.ResweepDemotionFrom(0);
+        _reclaimer!.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.False,
+                "a walk that wrote into an epoch the reclaimer had already demoted lowers the demotion cursor back to its start when it finishes, so those rows do not outlive every later pass");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.True);
+        }
+    }
+
+    [Test]
+    public void A_prefix_with_many_oversized_keys_splits_instead_of_streaming_them_all()
+    {
+        Address[] cluster = AddressesSharingPrefix(_accounts[3], nibbles: 2, count: HistoryRowScanner.MaxStreamedKeys + 4).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (Address address in cluster) block.SetBalance(address, 777);
+        });
+
+        _chain.PublishWatermark();
+        BuildCommitments(maxRowsPerPartition: 1);
+
+        AssertProofMatchesTheTrie(cluster[0], Blocks + 1);
     }
 
     private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)
@@ -1157,8 +1214,8 @@ public class ArchiveProofTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
-                Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+            Assert.That(actual.Proof,
+                Is.EqualTo(expected.Proof),
                 $"the account path proven for {address} at block {block} must be the one the full trie holds");
             Assert.That(actual.Balance, Is.EqualTo(expected.Balance), "the proven account must be the account of that block");
             Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
@@ -1169,8 +1226,8 @@ public class ArchiveProofTests
             {
                 Assert.That(actual.StorageProofs![i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()),
                     $"slot {storageKeys[i]} must hold its block-{block} value");
-                Assert.That(actual.StorageProofs[i].Proof!.Select(static item => item.ToHexString()),
-                    Is.EqualTo(expected.StorageProofs![i].Proof!.Select(static item => item.ToHexString())),
+                Assert.That(actual.StorageProofs[i].Proof,
+                    Is.EqualTo(expected.StorageProofs![i].Proof),
                     $"the storage path proven for slot {storageKeys[i]} at block {block} must be the one the full trie holds");
             }
         }

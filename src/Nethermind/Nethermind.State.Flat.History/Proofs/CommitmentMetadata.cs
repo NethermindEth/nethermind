@@ -45,9 +45,14 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     {
         if (_storageTrieDepths.TryGet(accountPath, out int depth)) return depth;
 
-        depth = _storages.ReadStorageTrieDepth(accountPath);
-        _storageTrieDepths.Set(accountPath, depth);
-        return depth;
+        lock (_depthWriteLock)
+        {
+            if (_storageTrieDepths.TryGet(accountPath, out depth)) return depth;
+
+            depth = _storages.ReadStorageTrieDepth(accountPath);
+            _storageTrieDepths.Set(accountPath, depth);
+            return depth;
+        }
     }
 
     public int NoteStorageTrieDepth(in ValueHash256 accountPath, int depth)
@@ -157,6 +162,14 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     public ulong DemotedThroughEpoch => ReadEpoch(DemotedThroughEpochKey);
 
     public bool TryRaiseDemotedThroughEpoch(ulong epoch) => TryRaiseEpoch(DemotedThroughEpochKey, epoch);
+
+    public void LowerDemotedThroughEpoch(ulong epoch)
+    {
+        lock (_lock)
+        {
+            if (epoch < ReadEpoch(DemotedThroughEpochKey)) WriteEpoch(DemotedThroughEpochKey, epoch);
+        }
+    }
 
     public bool TryGetWalkVerified(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkVerifiedKey, out fromInclusive, out toInclusive);
 

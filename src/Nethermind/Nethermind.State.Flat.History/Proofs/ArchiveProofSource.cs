@@ -57,9 +57,10 @@ public sealed class ArchiveProofSource(
     internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
-        ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows);
+        AccountProofCollector? collector = visitor as AccountProofCollector;
+        ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows, collector?.CancellationToken ?? default);
         ulong minEpoch = metadata.DroppedThroughEpoch;
-        ArchiveProofTrieStore store = visitor is AccountProofCollector collector && !_nodeCache.TryGet(stateId.StateRoot, out _)
+        ArchiveProofTrieStore store = collector is not null && !_nodeCache.TryGet(stateId.StateRoot, out _)
             ? CreatePrefetchedStore(collector, stateId.BlockNumber, budget, minEpoch)
             : CreateAccountStore(stateId.BlockNumber, budget, minEpoch);
         PatriciaTree tree = new(store, logManager);
@@ -99,12 +100,16 @@ public sealed class ArchiveProofSource(
     }
 
     private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget, ulong minEpoch) =>
-        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy) { MinEpoch = minEpoch }, block, budget, _fanOut, _nodeCache);
+        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy) { MinEpoch = minEpoch, MinEpochSource = DroppedThrough, FineMinEpochSource = DemotedThrough }, block, budget, _fanOut, _nodeCache);
 
     private HistoricalTrieNodeBuilder CreateStorageBuilder(in ValueHash256 accountPath, ulong block, ResolutionBudget budget, ulong minEpoch) =>
         new(
-            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots) { MinEpoch = minEpoch },
+            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots) { MinEpoch = minEpoch, MinEpochSource = DroppedThrough, FineMinEpochSource = DemotedThrough },
             block, budget, _fanOut, _nodeCache);
+
+    private ulong DroppedThrough() => metadata.DroppedThroughEpoch;
+
+    private ulong DemotedThrough() => metadata.DemotedThroughEpoch;
 
     private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget, ulong minEpoch) =>
         new(

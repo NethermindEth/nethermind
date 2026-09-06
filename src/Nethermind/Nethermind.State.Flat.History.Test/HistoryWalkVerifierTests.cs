@@ -265,6 +265,29 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void A_corrupt_slot_at_the_anchor_of_a_quiet_contract_fails_a_range_that_starts_above_genesis()
+    {
+        UInt256[] slots = [1, 2, 3];
+        byte[][] v1 = [[0x01], [0x02], [0x03]];
+        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, i == 1 ? [0xEE] : v1[i]);
+        }
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = headers.Roots[0];
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(1, 1, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Does.Contain((1UL, HistoryWalkMismatchKind.StorageRoot)),
+            "a range that starts above genesis rebuilds each contract's storage at its first block from rows; that rebuilt root has to be checked against the account row there, or a corrupt slot written at the anchor of a contract that never moves again passes the walk");
+    }
+
+    [Test]
     public void A_corrupted_slot_row_inside_a_split_storage_trie_is_still_caught()
     {
         UInt256[] slots = [1, 2, 3];

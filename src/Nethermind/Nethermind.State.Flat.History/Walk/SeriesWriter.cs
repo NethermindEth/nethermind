@@ -24,14 +24,8 @@ internal sealed class SeriesWriter(IColumnsDb<FlatHistoryColumns> history) : IDi
     public void WriteWhole(in SeriesKey key, ulong block, ReadOnlySpan<byte> rlp)
     {
         byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(rlp.Length));
-        try
-        {
-            Write(key, block, row.AsSpan(0, ParentRowCodec.EncodeWholeNode(block, rlp, row)));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(row);
-        }
+        Write(key, block, row.AsSpan(0, ParentRowCodec.EncodeWholeNode(block, rlp, row)));
+        ArrayPool<byte>.Shared.Return(row);
     }
 
     public void WriteEmpty(in SeriesKey key, ulong block) => Write(key, block, _rowBuffer.AsSpan(0, ParentRowCodec.EncodeEmpty(block, _rowBuffer)));

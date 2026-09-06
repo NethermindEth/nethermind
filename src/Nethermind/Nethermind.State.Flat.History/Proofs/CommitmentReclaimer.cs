@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -18,7 +19,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     private readonly CommitmentStore _accounts = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
     private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly ILogger _logger = logManager.GetClassLogger<CommitmentReclaimer>();
-    private readonly SemaphoreSlim _wakeSignal = new(0, 1);
+    private readonly ManualResetEventSlim _wake = new(false);
     private readonly CancellationTokenSource _cts = new();
     private Thread? _loop;
     private bool _started;
@@ -61,6 +62,8 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     internal void ReclaimNow(CancellationToken token)
     {
+        if (!LayoutReady()) return;
+
         while (RunOnePass(token, yieldBetweenChunks: false))
         {
         }
@@ -68,12 +71,26 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     private void Wake()
     {
+        if (Volatile.Read(ref _disposed) == 0) _wake.Set();
+    }
+
+    public void ResweepDemotionFrom(ulong epoch)
+    {
+        metadata.LowerDemotedThroughEpoch(epoch);
+        Wake();
+    }
+
+    private bool LayoutReady()
+    {
         try
         {
-            _wakeSignal.Release();
+            metadata.EnsureLayout(policy, settings.DiscardMismatchedLayout, _logger);
+            return true;
         }
-        catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException)
+        catch (InvalidConfigurationException e)
         {
+            if (_logger.IsWarn) _logger.Warn($"Archive proof commitment reclaim is not running: {e.Message}");
+            return false;
         }
     }
 
@@ -84,7 +101,10 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         {
             try
             {
-                _wakeSignal.Wait(token);
+                _wake.Wait(token);
+                _wake.Reset();
+                if (!LayoutReady()) return;
+
                 while (RunOnePass(token, yieldBetweenChunks: true))
                 {
                 }
@@ -302,6 +322,6 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         _cts.Cancel();
         _loop?.Join();
         _cts.Dispose();
-        _wakeSignal.Dispose();
+        _wake.Dispose();
     }
 }

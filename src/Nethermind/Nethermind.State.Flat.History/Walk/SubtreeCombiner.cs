@@ -32,6 +32,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
         publisher.Publish(from, current, emitter);
         emitter?.CompleteBlock();
 
+        observer?.OnAnchor(from, current);
         bool observing = observer is not null && (!observer.ObservesEveryBlock || observer.OnBlock(from, current));
         ulong observed = from;
         while (children.TryAdvance(out ulong block))

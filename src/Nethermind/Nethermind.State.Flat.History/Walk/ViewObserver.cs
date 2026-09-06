@@ -7,6 +7,10 @@ internal abstract class ViewObserver
 {
     public virtual bool ObservesEveryBlock => false;
 
+    public virtual void OnAnchor(ulong block, in NodeView view)
+    {
+    }
+
     public virtual bool OnBlock(ulong block, in NodeView view) => true;
 
     public virtual void OnChanged(ulong block, in NodeView view)

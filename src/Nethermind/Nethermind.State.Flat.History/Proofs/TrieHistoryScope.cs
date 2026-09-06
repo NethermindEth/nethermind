@@ -20,6 +20,10 @@ internal abstract class TrieHistoryScope(
 
     public ulong MinEpoch { get; init; }
 
+    public Func<ulong>? MinEpochSource { get; init; }
+
+    public Func<ulong>? FineMinEpochSource { get; init; }
+
     protected virtual ulong? ProbeStartEpoch => null;
 
     public virtual void NoteRootLastBlock(ulong block)
@@ -50,7 +54,9 @@ internal abstract class TrieHistoryScope(
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = WriteCommitmentPrefix(prefix, path, exact);
-        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget, MinEpoch, ProbeStartEpoch, bounded);
+        ulong minEpoch = MinEpochSource?.Invoke() ?? MinEpoch;
+        if (exact && FineMinEpochSource is not null) minEpoch = Math.Max(minEpoch, FineMinEpochSource());
+        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget, minEpoch, ProbeStartEpoch, bounded);
     }
 
     public void EnumerateLeaves(in TreePath prefix, ulong block, ResolutionBudget budget, List<TrieLeaf> leaves)
@@ -59,60 +65,83 @@ internal abstract class TrieHistoryScope(
         Span<byte> upper = stackalloc byte[MaxRowKeyLength + 1];
         int boundLength = WriteScopedBounds(prefix, lower, upper);
         upper[boundLength] = 0x00;
-        int upperLength = boundLength + 1;
+        ReadOnlySpan<byte> bound = upper[..(boundLength + 1)];
 
         int keyLength = RowKeyLength - sizeof(ulong);
         Span<byte> cursor = stackalloc byte[MaxRowKeyLength + 1];
         lower[..boundLength].CopyTo(cursor);
         int cursorLength = boundLength;
-        Span<byte> seek = stackalloc byte[MaxRowKeyLength];
+        Span<byte> found = stackalloc byte[MaxRowKeyLength];
+        Span<byte> value = stackalloc byte[LeafValueBuffer];
+        Span<byte> owner = stackalloc byte[MaxRowKeyLength];
 
+        bool haveRow = false;
+        int foundLength = 0;
+        int valueLength = 0;
         while (true)
         {
-            using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..upperLength]))
+            if (!haveRow)
             {
-                if (!view.MoveNext()) return;
-
-                budget.ChargeRow();
-                ReadOnlySpan<byte> rowKey = view.CurrentKey;
-                if (rowKey.Length != RowKeyLength)
-                {
-                    cursorLength = Advance(cursor, rowKey);
-                    continue;
-                }
-
-                rowKey[..keyLength].CopyTo(seek);
-                ulong rowBlock = rowFormat.DecodeSuffixBlock(rowKey[keyLength..]);
-                ReadOnlySpan<byte> storedValue = view.CurrentValue;
-                if (rowBlock <= block && BelongsToScope(rowKey))
-                {
-                    Collect(seek[..keyLength], rowBlock, storedValue, block, leaves);
-                    cursorLength = SkipKey(cursor, seek[..keyLength]);
-                    continue;
-                }
+                if (!SeekRow(cursor[..cursorLength], bound, budget, found, out foundLength, value, out valueLength)) return;
             }
 
-            if (!BelongsToScope(seek[..keyLength]))
+            haveRow = false;
+            if (foundLength != RowKeyLength)
             {
-                cursorLength = SkipKey(cursor, seek[..keyLength]);
+                cursorLength = Advance(cursor, found[..foundLength]);
                 continue;
             }
 
-            rowFormat.EncodeSuffixBlock(seek[keyLength..], block);
-            using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..upperLength]))
+            ReadOnlySpan<byte> keyPart = found[..keyLength];
+            if (!BelongsToScope(found[..foundLength]))
             {
-                if (!atBlock.MoveNext()) return;
-
-                budget.ChargeRow();
-                ReadOnlySpan<byte> found = atBlock.CurrentKey;
-                if (found.Length == RowKeyLength && found[..keyLength].SequenceEqual(seek[..keyLength]))
-                {
-                    Collect(seek[..keyLength], rowFormat.DecodeSuffixBlock(found[keyLength..]), atBlock.CurrentValue, block, leaves);
-                }
+                cursorLength = SkipKey(cursor, keyPart);
+                continue;
             }
 
-            cursorLength = SkipKey(cursor, seek[..keyLength]);
+            ulong rowBlock = rowFormat.DecodeSuffixBlock(found[keyLength..foundLength]);
+            if (rowBlock <= block)
+            {
+                Collect(keyPart, rowBlock, value[..valueLength], block, leaves);
+                cursorLength = SkipKey(cursor, keyPart);
+                continue;
+            }
+
+            Span<byte> seek = cursor[..RowKeyLength];
+            keyPart.CopyTo(seek);
+            rowFormat.EncodeSuffixBlock(seek[keyLength..], block);
+            keyPart.CopyTo(owner);
+            if (!SeekRow(seek, bound, budget, found, out foundLength, value, out valueLength)) return;
+
+            if (foundLength == RowKeyLength && found[..keyLength].SequenceEqual(owner[..keyLength]))
+            {
+                Collect(owner[..keyLength], rowFormat.DecodeSuffixBlock(found[keyLength..foundLength]), value[..valueLength], block, leaves);
+                cursorLength = SkipKey(cursor, owner[..keyLength]);
+                continue;
+            }
+
+            haveRow = true;
         }
+    }
+
+    private const int LeafValueBuffer = 512;
+
+    private bool SeekRow(ReadOnlySpan<byte> from, ReadOnlySpan<byte> bound, ResolutionBudget budget, Span<byte> key, out int keyLength, Span<byte> value, out int valueLength)
+    {
+        if (!rows.TryGetCeiling(from, bound, key, out keyLength, value, out valueLength)) return false;
+
+        budget.ChargeRow();
+        if (valueLength <= value.Length) return true;
+
+        using ISortedView view = rows.GetViewBetween(from, bound);
+        if (!view.MoveNext()) return false;
+
+        ReadOnlySpan<byte> stored = view.CurrentValue;
+        valueLength = stored.Length;
+        if (valueLength > value.Length) throw new StateUnavailableException($"A history row value of {valueLength} bytes exceeds the {value.Length} bytes a leaf can carry.");
+
+        stored.CopyTo(value);
+        return true;
     }
 
     private void Collect(scoped ReadOnlySpan<byte> keyPart, ulong rowBlock, scoped ReadOnlySpan<byte> storedValue, ulong block, List<TrieLeaf> leaves)

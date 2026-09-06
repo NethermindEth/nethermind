@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.History.Walk;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -25,7 +26,7 @@ internal sealed class HistoricalTrieNodeBuilder
         _budget = budget;
         _fanOut = fanOut;
         _cache = cache;
-        _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut) };
+        _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut), CancellationToken = budget.CancellationToken };
     }
 
     public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
@@ -218,7 +219,20 @@ internal sealed class HistoricalTrieNodeBuilder
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
                 byte[]? child = children[index];
-                views[index] = child is null ? NodeView.Empty : NodeViews.FromRlp(child);
+                if (child is null)
+                {
+                    views[index] = NodeView.Empty;
+                    continue;
+                }
+
+                try
+                {
+                    views[index] = NodeViews.FromRlp(child);
+                }
+                catch (Exception e) when (e is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+                {
+                    return null;
+                }
             }
 
             NodeView composed = NodeViews.Combine(views);

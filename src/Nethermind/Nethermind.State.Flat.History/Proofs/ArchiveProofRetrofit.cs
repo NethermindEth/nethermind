@@ -32,6 +32,8 @@ public sealed class ArchiveProofRetrofit(
 
     public void PruneBelow(ulong headBlock) => reclaimer.PruneBelow(headBlock);
 
+    public void ResweepDemotionFrom(ulong block) => reclaimer.ResweepDemotionFrom(policy.Epoch(block));
+
     public ulong FirstBlockToBuild(ulong headBlock)
     {
         if (settings.RecentEpochs <= 0) return 0;

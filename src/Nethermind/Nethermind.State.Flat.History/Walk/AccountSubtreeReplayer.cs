@@ -39,14 +39,15 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             foreach (ValueHash256 path in rows.StreamedPaths)
             {
                 HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, replayedUpTo, to, token);
-                ValueHash256 startRoot = Keccak.EmptyTreeHash.ValueHash256;
+                StreamedAccount stream = new(path, cursor, hasRow: false, Keccak.EmptyTreeHash.ValueHash256);
+                streams.Add(stream);
                 if (cursor.TryReadStart(out _, out byte[] start) && start.Length > 0)
                 {
                     AccountRowRlp.Set(state, path, start);
-                    startRoot = HistoryRowScanner.StorageRootOf(start);
+                    stream.LastRoot = HistoryRowScanner.StorageRootOf(start);
                 }
 
-                streams.Add(new StreamedAccount(path, cursor, cursor.MoveNext(), startRoot));
+                stream.HasRow = cursor.MoveNext();
             }
 
             foreach (AccountRowRef row in rows.Start)
