@@ -17,31 +17,38 @@ namespace Nethermind.Serialization.Rlp
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            ReadOnlySpan<byte> rlp = decoderContext.Data;
+            int position = decoderContext.Position;
+
+            if (rlp[position] == Rlp.EmptyListByte)
             {
-                decoderContext.ReadByte();
+                decoderContext.Position = position + 1;
                 return null;
             }
 
-            int logEntryLength = decoderContext.ReadSequenceLength();
-            decoderContext.GuardLimit(logEntryLength, RlpLimit);
-            int logEntryCheck = decoderContext.Position + logEntryLength;
-            Address address = decoderContext.DecodeAddress();
-            int topicsLength = decoderContext.ReadSequenceLength();
-            int topicsCheck = decoderContext.Position + topicsLength;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int logEntryLength);
+            Rlp.GuardLimit(logEntryLength, rlp.Length - position, RlpLimit);
+            int logEntryCheck = position + logEntryLength;
+
+            position = RlpHelpers.DecodeAddress(rlp, position, allowNull: false, out Address? address);
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int topicsLength);
+            int topicsCheck = position + topicsLength;
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
-            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
+            Rlp.GuardLimit(topicCount, rlp.Length - position, RlpLimit.L4);
+
             Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
-                topics[i] = decoderContext.DecodeKeccak();
+                position = RlpHelpers.DecodeKeccak(rlp, position, out topics[i]);
             }
+
+            decoderContext.Position = position;
             decoderContext.Check(topicsCheck);
 
             byte[] data = decoderContext.DecodeByteArray();
             decoderContext.Check(logEntryCheck);
 
-            return new LogEntry(address, data, topics);
+            return new LogEntry(address!, data, topics);
         }
 
         public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -54,24 +55,31 @@ namespace Nethermind.Serialization.Rlp
 
         protected override BlockInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            ReadOnlySpan<byte> rlp = decoderContext.Data;
+            int position = decoderContext.Position;
+
+            if (rlp[position] == Rlp.EmptyListByte)
             {
-                decoderContext.ReadByte();
+                decoderContext.Position = position + 1;
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
 
-            Hash256? blockHash = decoderContext.DecodeKeccakOrNull();
-            bool wasProcessed = decoderContext.DecodeBool();
-            UInt256 totalDifficulty = decoderContext.DecodeUInt256();
+            position = RlpHelpers.DecodeKeccakOrNull(rlp, position, out Hash256? blockHash);
+            position = RlpHelpers.DecodeBool(rlp, position, out bool wasProcessed);
+            position = RlpHelpers.DecodeUInt256(rlp, position, -1, out UInt256 totalDifficulty);
 
             BlockMetadata metadata = BlockMetadata.None;
             // if we hadn't reached the end of the stream, assume we have metadata to decode
-            if (decoderContext.Position != lastCheck)
+            if (position != lastCheck)
             {
-                metadata = (BlockMetadata)decoderContext.DecodeUInt();
+                position = RlpHelpers.DecodeUInt(rlp, position, out uint rawMetadata);
+                metadata = (BlockMetadata)rawMetadata;
             }
+
+            decoderContext.Position = position;
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {

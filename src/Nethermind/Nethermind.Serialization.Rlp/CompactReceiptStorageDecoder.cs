@@ -21,16 +21,20 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            ReadOnlySpan<byte> rlp = decoderContext.Data;
+            int position = decoderContext.Position;
+
+            if (rlp[position] == Rlp.EmptyListByte)
             {
-                decoderContext.ReadByte();
+                decoderContext.Position = position + 1;
                 return null;
             }
 
             TxReceipt txReceipt = new();
-            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int receiptLength);
+            int receiptEnd = position + receiptLength;
 
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            position = RlpHelpers.DecodeByteArray(rlp, position, null, -1, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -40,11 +44,14 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = decoderContext.DecodeAddressOrNull();
-            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
+            position = RlpHelpers.DecodeAddress(rlp, position, allowNull: true, out Address? sender);
+            txReceipt.Sender = sender;
+            position = RlpHelpers.DecodeULong(rlp, position, out ulong gasUsedTotal);
+            txReceipt.GasUsedTotal = gasUsedTotal;
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int lastCheck = sequenceLength + decoderContext.Position;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
+            decoderContext.Position = position;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);

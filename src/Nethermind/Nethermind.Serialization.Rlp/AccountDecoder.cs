@@ -24,22 +24,57 @@ namespace Nethermind.Serialization.Rlp
 
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref RlpReader context)
         {
-            context.SkipLength();
-            context.SkipItems(2);
+            ReadOnlySpan<byte> data = context.Data;
+            int position = SkipToHashes(data, context.Position);
 
-            Hash256 storageRoot = DecodeStorageRoot(ref context);
-            Hash256 codeHash = DecodeCodeHash(ref context);
+            position = DecodeStorageRoot(data, position, out Hash256 storageRoot);
+            context.Position = DecodeCodeHash(data, position, out Hash256 codeHash);
 
             return (codeHash, storageRoot);
         }
 
         public Hash256 DecodeStorageRootOnly(ref RlpReader context)
         {
-            context.SkipLength();
-            context.SkipItems(2);
-            Hash256 storageRoot = DecodeStorageRoot(ref context);
+            ReadOnlySpan<byte> data = context.Data;
+            context.Position = DecodeStorageRoot(data, SkipToHashes(data, context.Position), out Hash256 storageRoot);
             return storageRoot;
         }
+
+        /// <summary>Reads the storage root straight out of an account payload.</summary>
+        /// <remarks>
+        /// Saves the caller an <see cref="RlpReader"/> whose only job would be to carry a cursor for one
+        /// call. The reader is a ~40-byte ref struct that is address-exposed once passed by reference,
+        /// so constructing one is a real run of stores.
+        /// </remarks>
+        public Hash256 DecodeStorageRootOnly(ReadOnlySpan<byte> accountRlp)
+        {
+            DecodeStorageRoot(accountRlp, SkipToHashes(accountRlp, 0), out Hash256 storageRoot);
+            return storageRoot;
+        }
+
+        /// <inheritdoc cref="TryDecodeStruct(ref RlpReader, out AccountStruct)"/>
+        /// <remarks><inheritdoc cref="DecodeStorageRootOnly(ReadOnlySpan{byte})" path="/remarks"/></remarks>
+        public bool TryDecodeStruct(ReadOnlySpan<byte> accountRlp, out AccountStruct account)
+        {
+            int position = RlpHelpers.ReadSequenceLength(accountRlp, 0, out int length);
+            if (length == 1)
+            {
+                account = AccountStruct.TotallyEmpty;
+                return false;
+            }
+
+            position = RlpHelpers.DecodeULong(accountRlp, position, out ulong nonce);
+            position = RlpHelpers.DecodeUInt256(accountRlp, position, -1, out UInt256 balance);
+            position = DecodeStorageRootStruct(accountRlp, position, out ValueHash256 storageRoot);
+            DecodeCodeHashStruct(accountRlp, position, out ValueHash256 codeHash);
+
+            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            return true;
+        }
+
+        /// <summary>Skips the sequence header, the nonce and the balance.</summary>
+        private static int SkipToHashes(ReadOnlySpan<byte> data, int position)
+            => RlpHelpers.SkipItems(data, RlpHelpers.SkipLength(data, position), 2);
 
         public override void Encode<TWriter>(ref TWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -166,8 +201,10 @@ namespace Nethermind.Serialization.Rlp
 
             ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
-            Hash256 storageRoot = DecodeStorageRoot(ref decoderContext);
-            Hash256 codeHash = DecodeCodeHash(ref decoderContext);
+            ReadOnlySpan<byte> data = decoderContext.Data;
+            int position = DecodeStorageRoot(data, decoderContext.Position, out Hash256 storageRoot);
+            decoderContext.Position = DecodeCodeHash(data, position, out Hash256 codeHash);
+
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
                 return new(nonce, balance);
@@ -176,69 +213,52 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private Hash256 DecodeStorageRoot(ref RlpReader reader)
+        private int DecodeStorageRoot(ReadOnlySpan<byte> data, int position, out Hash256 storageRoot)
         {
-            Hash256 storageRoot;
-            if (_slimFormat && reader.IsNextItemEmptyByteArray())
+            if (IsSlimEmpty(data, position))
             {
-                reader.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
-            }
-            else
-            {
-                storageRoot = reader.DecodeKeccak();
+                return position + 1;
             }
 
-            return storageRoot;
+            return RlpHelpers.DecodeKeccak(data, position, out storageRoot);
         }
 
-        private Hash256 DecodeCodeHash(ref RlpReader reader)
+        private int DecodeCodeHash(ReadOnlySpan<byte> data, int position, out Hash256 codeHash)
         {
-            Hash256 codeHash;
-            if (_slimFormat && reader.IsNextItemEmptyByteArray())
+            if (IsSlimEmpty(data, position))
             {
-                reader.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;
-            }
-            else
-            {
-                codeHash = reader.DecodeKeccak();
+                return position + 1;
             }
 
-            return codeHash;
+            return RlpHelpers.DecodeKeccak(data, position, out codeHash);
         }
 
-        private ValueHash256 DecodeStorageRootStruct(ref RlpReader reader)
+        private int DecodeStorageRootStruct(ReadOnlySpan<byte> data, int position, out ValueHash256 storageRoot)
         {
-            ValueHash256 storageRoot;
-            if (_slimFormat && reader.IsNextItemEmptyByteArray())
+            if (IsSlimEmpty(data, position))
             {
-                reader.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash.ValueHash256;
-            }
-            else
-            {
-                storageRoot = reader.DecodeValueKeccakNonNull();
+                return position + 1;
             }
 
-            return storageRoot;
+            return RlpHelpers.DecodeValueKeccakNonNull(data, position, out storageRoot);
         }
 
-        private ValueHash256 DecodeCodeHashStruct(ref RlpReader reader)
+        private int DecodeCodeHashStruct(ReadOnlySpan<byte> data, int position, out ValueHash256 codeHash)
         {
-            ValueHash256 codeHash;
-            if (_slimFormat && reader.IsNextItemEmptyByteArray())
+            if (IsSlimEmpty(data, position))
             {
-                reader.ReadByte();
                 codeHash = Keccak.OfAnEmptyString.ValueHash256;
-            }
-            else
-            {
-                codeHash = reader.DecodeValueKeccakNonNull();
+                return position + 1;
             }
 
-            return codeHash;
+            return RlpHelpers.DecodeValueKeccakNonNull(data, position, out codeHash);
         }
+
+        private bool IsSlimEmpty(ReadOnlySpan<byte> data, int position)
+            => _slimFormat && data[position] == Rlp.EmptyByteArrayByte;
 
         public bool TryDecodeStruct(ref RlpReader decoderContext, out AccountStruct account)
         {
@@ -251,8 +271,10 @@ namespace Nethermind.Serialization.Rlp
 
             ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
-            ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
-            ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);
+            ReadOnlySpan<byte> data = decoderContext.Data;
+            int position = DecodeStorageRootStruct(data, decoderContext.Position, out ValueHash256 storageRoot);
+            decoderContext.Position = DecodeCodeHashStruct(data, position, out ValueHash256 codeHash);
+
             account = new AccountStruct(nonce, balance, storageRoot, codeHash);
             return true;
         }
