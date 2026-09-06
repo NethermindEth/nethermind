@@ -21,10 +21,12 @@
     <PackageVersion Include="DnsClient" Version="1.8.0" />
     <PackageVersion Include="DynamicExpresso.Core" Version="2.19.3" />
     <PackageVersion Include="FastEnum" Version="2.0.7" />
+    <PackageVersion Include="Fody" Version="6.9.3" />
     <PackageVersion Include="Google.Protobuf" Version="3.35.1" />
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.35.1" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.82.0" />
+    <PackageVersion Include="InlineIL.Fody" Version="1.10.2" />
     <PackageVersion Include="JetBrains.Profiler.Api" Version="1.4.11" />
     <PackageVersion Include="KubernetesClient" Version="19.0.2" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
@@ -54,6 +56,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.400" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.10.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.3.3" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.1.0" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.6.0" />
