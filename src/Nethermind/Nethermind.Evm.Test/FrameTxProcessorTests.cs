@@ -153,17 +153,42 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_FrameCreatesAndSelfDestructsContractInSameTx_DeletesTheCreatedAccount()
     {
-        byte[] childInitCode = Prepare.EvmCode.PushData(Beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        UInt256 endowment = 3;
+        byte[] childInitCode = Prepare.EvmCode.PushData(Recipient).Op(Instruction.SELFDESTRUCT).Done;
+        byte[] salt = new byte[32];
+        Address child = ContractAddress.From(Observer, salt, childInitCode);
+
+        _stateProvider.CreateAccount(Recipient, 1);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Create2(childInitCode, salt, endowment).Op(Instruction.POP).Op(Instruction.STOP).Done, endowment);
+
+        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer)));
+
+        Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
+        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1 + endowment), "the endowed child was created and its self-destruct transferred the balance, so a vacuous pass where the CREATE2 never ran is ruled out");
+        Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+    }
+
+    [Test]
+    public void CallAndRestore_FrameSelfDestructsSameTxContract_DoesNotLeakTheDestroyMarkAcrossTheRestore()
+    {
+        byte[] childInitCode = Prepare.EvmCode.PushData(Recipient).Op(Instruction.SELFDESTRUCT).Done;
         byte[] salt = new byte[32];
         Address child = ContractAddress.From(Observer, salt, childInitCode);
 
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.Create2(childInitCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
 
-        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer)));
+        TransactionResult result = CallAndRestore(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer)));
+        Assert.That(result.TransactionExecuted, Is.True, "the CallAndRestore run executes the self-destructing frame");
 
-        Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
-        Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+        _stateProvider.CreateAccount(child, 0);
+        _stateProvider.Set(new StorageCell(child, 0), [7]);
+        _stateProvider.Commit(Spec);
+
+        AssertStorage(child, 0, 7, "CallAndRestore runs with Commit|Restore, so the frame destroy must journal rather than take the un-committed O(1) mark; otherwise the destroyed-this-round set survives the restore and silently drops this later write to the same address");
     }
 
     [Test]
@@ -224,6 +249,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.False, "a frame transaction whose only frame is a reverting POST_TX approves no payer, so it is rejected");
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction), "the empty destroy-list snapshot restore on the POST_TX-revert path must not throw before the never-set-a-payer rejection is reached");
+        Assert.That(result.ErrorDescription, Does.Contain("never set a payer"), "rejection is the payer gate reached after the destroy-list rewind, not an earlier well-formedness pre-check");
     }
 
     [Test]

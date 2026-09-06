@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -519,8 +520,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // EIP-6780: finalize committed frames' self-destructs.
         if (accessTracker.DestroyList.Count > 0)
         {
-            bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
+            bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) && !opts.HasFlag(ExecutionOptions.Restore);
             bool removeSelfdestructBurn = spec.IsEip8246Enabled;
+            Debug.Assert(removeSelfdestructBurn && spec.GasCosts.DestroyRefund == 0,
+                "frame-tx self-destruct finalization assumes EIP-8246 (balance kept, no burn log) and a zero post-EIP-3529 destroy refund, so it emits no burn log, adds no refund and needs no canonical ordering");
             foreach (Address toBeDestroyed in accessTracker.DestroyList)
             {
                 UInt256 destroyedBalance = removeSelfdestructBurn ? WorldState.GetBalance(toBeDestroyed) : default;
