@@ -242,6 +242,35 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Child_receives_input_across_memory_boundaries(
+            [Values(0, 31, 1023, 1024)] int inputOffset,
+            [Values(0, 1, 32, 64)] int inputLength, [Values] bool traced)
+        {
+            byte[] data = new byte[64];
+            for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
+            byte[] childCode = Prepare.EvmCode
+                .Op(Instruction.CALLDATASIZE).PushData(0).PushData(0).Op(Instruction.CALLDATACOPY)
+                .Op(Instruction.CALLDATASIZE).PushData(0).Op(Instruction.RETURN).Done;
+            TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+            TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+            byte[] parentCode = Prepare.EvmCode.StoreDataInMemory(inputOffset, data)
+                .CALL(50_000, TestItem.AddressC, 0, (UInt256)inputOffset, (UInt256)inputLength, 2048, (UInt256)inputLength)
+                .Op(Instruction.POP).RETURN(2048, (UInt256)inputLength).Done;
+            AssertSuccessfulOutput(parentCode, data.AsSpan(0, inputLength).ToArray(), traced);
+        }
+
+        private void AssertSuccessfulOutput(byte[] code, byte[] expected, bool traced)
+        {
+            TestAllTracerWithOutput tracer = new OutputCopyTracer(traced);
+            Execute(tracer, code);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.Error, Is.Null);
+                Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
         public void Create_init_code_survives_reverted_frame_reuse()
         {
             byte[] initCode = Prepare.EvmCode.Revert(0, 0).Done;

@@ -38,7 +38,7 @@ public class OpcodeChainBenchmarks
     private CodeInfo _code = null!;
     private byte[] _input = new byte[96];
 
-    [Params("Arithmetic", "AddMod", "MulMod", "AddModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("Arithmetic", "AddMod", "MulMod", "AddModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -56,7 +56,7 @@ public class OpcodeChainBenchmarks
         _vm = _processingScope.Resolve<IVirtualMachine>();
         _stateScope = _state.BeginScope(IWorldState.PreGenesis);
         _state.CreateAccount(Address.Zero, UInt256.One);
-        if (Chain is "CallReturn" or "CallRevert")
+        if (Chain is "CallReturn" or "CallRevert" or "CallInput")
         {
             _state.CreateAccount(TestItem.AddressC, UInt256.One);
             byte[] childCode = [(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH0,
@@ -85,7 +85,7 @@ public class OpcodeChainBenchmarks
         if (_vm.OpCodeCount != ExecutedOpcodeCount || !output.Span.SequenceEqual(expected.ToBigEndian()))
             throw new InvalidOperationException($"Invalid {Chain} chain output or opcode count.");
 
-        int warmupTransactions = Chain is "CallReturn" or "CallRevert" ? 1_000 : 100_000;
+        int warmupTransactions = Chain is "CallReturn" or "CallRevert" or "CallInput" ? 1_000 : 100_000;
         for (int i = 0; i < warmupTransactions; i++) ExecuteContract();
         CodeInfo chain = _code;
         _code = new CodeInfo(new byte[] { (byte)Instruction.STOP });
@@ -167,8 +167,9 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.DUP1, (byte)Instruction.PUSH1, 64, (byte)Instruction.MSTORE8,
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP], 12),
                 // Includes the three opcodes executed by the child frame.
-                "CallReturn" or "CallRevert" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
-                    (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+                "CallReturn" or "CallRevert" or "CallInput" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
+                    .. (Chain == "CallInput" ? new byte[] { (byte)Instruction.PUSH1, 32 } : new byte[] { (byte)Instruction.PUSH0 }),
+                    (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
                     (byte)Instruction.PUSH20, .. TestItem.AddressC.Bytes, (byte)Instruction.PUSH2, 0xff, 0xff,
                     (byte)Instruction.CALL, (byte)Instruction.POP], 12),
                 _ => throw new ArgumentOutOfRangeException(nameof(Chain))

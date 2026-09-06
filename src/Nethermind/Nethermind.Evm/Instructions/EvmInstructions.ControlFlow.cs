@@ -216,13 +216,12 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.ReturnData = returnData.ToArray();
+        vm.ReturnData = vm.VmState.Memory.LoadMemoryAfterGas(in position, in length).ToArray();
 
         return EvmExceptionType.Revert;
         // Jump forward to be unpredicted by the branch predictor.

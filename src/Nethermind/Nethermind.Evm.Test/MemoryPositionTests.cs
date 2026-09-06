@@ -32,6 +32,21 @@ public class MemoryPositionTests(bool tracing) : VirtualMachineTestsBase
     private const string LowerLimb = "0x0000000000000000000000000000000000000000000000010000000000000000";
 
     [Test]
+    public void Empty_return_ignores_an_unaddressable_position(
+        [Values(Instruction.RETURN, Instruction.REVERT)] Instruction instruction)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(HighLimb).Op(instruction).Done;
+
+        TestAllTracerWithOutput tracer = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(instruction == Instruction.REVERT ? TransactionSubstate.Revert : null));
+            Assert.That(tracer.ReturnValue, Is.Empty);
+        }
+    }
+
+    [Test]
     public void Memory_opcode_preserves_gas_and_stack_failure_order(
         [Values(Instruction.MLOAD, Instruction.MSTORE, Instruction.MSTORE8)] Instruction instruction,
         [Values(0, 1, 2)] int depth, [Values(2UL, 3UL, 5UL, 6UL)] ulong availableGas)
