@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Proofs;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -58,8 +59,28 @@ public sealed class ArchiveProofSource(
     {
         ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows);
         ulong minEpoch = metadata.DroppedThroughEpoch;
-        PatriciaTree tree = new(CreateAccountStore(stateId.BlockNumber, budget, minEpoch), logManager);
+        ArchiveProofTrieStore store = visitor is AccountProofCollector collector
+            ? CreatePrefetchedStore(collector, stateId.BlockNumber, budget, minEpoch)
+            : CreateAccountStore(stateId.BlockNumber, budget, minEpoch);
+        PatriciaTree tree = new(store, logManager);
         tree.Accept(visitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+    }
+
+    private ArchiveProofTrieStore CreatePrefetchedStore(AccountProofCollector collector, ulong block, ResolutionBudget budget, ulong minEpoch)
+    {
+        HistoricalTrieNodeBuilder accounts = CreateAccountBuilder(block, budget, minEpoch);
+        ValueHash256 identity = collector.HashedAddress;
+        HistoricalTrieNodeBuilder storage = CreateStorageBuilder(identity, block, budget, minEpoch);
+        ArchiveProofTrieStore storageStore = new(storage, storageResolverFactory: null);
+
+        HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work = [];
+        accounts.CollectPrefetch(identity, work);
+        foreach (ValueHash256 slot in collector.HashedStorageKeys) storage.CollectPrefetch(slot, work);
+        HistoricalTrieNodeBuilder.Prefetch([.. work], accounts.FanOutOptions);
+
+        return new ArchiveProofTrieStore(
+            accounts,
+            accountPath => accountPath == identity ? storageStore : new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null));
     }
 
     private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget, ulong minEpoch) =>

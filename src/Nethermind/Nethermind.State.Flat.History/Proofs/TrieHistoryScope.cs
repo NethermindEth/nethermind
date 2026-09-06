@@ -69,7 +69,7 @@ internal abstract class TrieHistoryScope(
 
         while (true)
         {
-            using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..upperLength], ReadFlags.HintCacheMiss))
+            using (ISortedView view = rows.GetViewBetween(cursor[..cursorLength], upper[..upperLength]))
             {
                 if (!view.MoveNext()) return;
 
@@ -99,7 +99,7 @@ internal abstract class TrieHistoryScope(
             }
 
             rowFormat.EncodeSuffixBlock(seek[keyLength..], block);
-            using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..upperLength], ReadFlags.HintCacheMiss))
+            using (ISortedView atBlock = rows.GetViewBetween(seek[..RowKeyLength], upper[..upperLength]))
             {
                 if (!atBlock.MoveNext()) return;
 

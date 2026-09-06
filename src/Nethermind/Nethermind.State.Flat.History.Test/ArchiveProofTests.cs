@@ -943,6 +943,35 @@ public class ArchiveProofTests
         }
     }
 
+    [Test]
+    public void A_proof_reads_the_rows_of_its_path_and_nothing_twice()
+    {
+        _policy = EpochPolicy;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
+        });
+
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => ProveFromArchive(_accounts[3], 300, maxScannedRows: 80), Throws.Nothing,
+                "an account proof resolves every node of its path from commitments once; the levels are fetched together and a rebuilt subtree publishes its nodes, so no level is read a second time on the way down");
+            Assert.That(() => ProveFromArchive(quiet, 300, maxScannedRows: 96, slots[..4]), Throws.Nothing,
+                "the same for a contract with four slots; before the prefetch, the subtree publish and the same-epoch guard this needed a third more rows");
+        }
+    }
+
     private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)
     {
         int identityOffset = CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength;
