@@ -38,11 +38,8 @@ public class ArrayPoolSpanTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(16)]
-    public void Length_should_return_requested_size(int length)
+    [Test]
+    public void Length_should_return_requested_size([Values(0, 1, 7, 16)] int length)
     {
         using ArrayPoolSpan<int> span = new(length);
         Assert.That(span.Length, Is.EqualTo(length));

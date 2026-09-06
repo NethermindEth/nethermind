@@ -49,10 +49,8 @@ public class PersistedSnapshotCompactorTests
     /// here flag mis-cached keys, missed bound refresh after <c>MoveNext</c>, or
     /// destruct-barrier/slot-bound mismatches in <c>MergeEntries</c>.
     /// </summary>
-    [TestCase(8)]
-    [TestCase(16)]
-    [TestCase(32)]
-    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots(int n)
+    [Test]
+    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots([Values(8, 16, 32)] int n)
     {
         // CompactSize=4. n is a power of 2 in {8, 16, 32}, so n & -n == n: block n's natural
         // window covers the whole (0, n] range and DoCompactSnapshot triggers a single merge.
@@ -750,9 +748,8 @@ public class PersistedSnapshotCompactorTests
     /// runs for every cursor address. Newest-wins on Account / first-non-empty on Address
     /// preimage / TryAdd on SD must all hold after the staged DenseByteIndex round-trips.
     /// </summary>
-    [TestCase(40)]
-    [TestCase(120)]
-    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips(int accountCount)
+    [Test]
+    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips([Values(40, 120)] int accountCount)
     {
         using FlatTestContainer tier = new(
             arenaFileSizeBytes: 256 * 1024,

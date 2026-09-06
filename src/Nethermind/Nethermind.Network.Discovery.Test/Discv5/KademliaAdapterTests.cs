@@ -79,9 +79,8 @@ public class KademliaAdapterTests
         Assert.That(result, Is.EqualTo(new[] { returned }));
     }
 
-    [TestCase(-1)]
-    [TestCase(257)]
-    public void GetNodesAtDistances_ShouldRejectInvalidDistance(int distance)
+    [Test]
+    public void GetNodesAtDistances_ShouldRejectInvalidDistance([Values(-1, 257)] int distance)
     {
         KademliaAdapter adapter = CreateAdapter();
 
@@ -124,9 +123,8 @@ public class KademliaAdapterTests
         _kademlia.DidNotReceive().IterateNodes();
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryGetKnownNode_ShouldReturnExactVerificationState(bool recordIsVerified)
+    [Test]
+    public void TryGetKnownNode_ShouldReturnExactVerificationState([Values] bool recordIsVerified)
     {
         Node current = CreateNode(TestItem.PublicKeyA, 1);
         Node target = CreateNode(TestItem.PublicKeyB, 2);

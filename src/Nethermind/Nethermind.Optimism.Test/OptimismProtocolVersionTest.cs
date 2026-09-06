@@ -102,11 +102,8 @@ public class OptimismProtocolVersionTest
         Assert.That(testCase.Right.CompareTo(testCase.Left), Is.EqualTo(testCase.Expected * -1));
     }
 
-    [TestCase(4)]
-    [TestCase(6)]
-    [TestCase(9)]
-    [TestCase(10)]
-    public void OptimismProtocolVersionV0_BuildLengthIs8(int buildLength)
+    [Test]
+    public void OptimismProtocolVersionV0_BuildLengthIs8([Values(4, 6, 9, 10)] int buildLength)
     {
         byte[] build = new byte[buildLength];
 
@@ -147,10 +144,8 @@ public class OptimismProtocolVersionTest
         Assert.That(read, Throws.TypeOf<OptimismProtocolVersion.ParseException>());
     }
 
-    [TestCase(1)]
-    [TestCase(5)]
-    [TestCase(byte.MaxValue)]
-    public void OptimismProtocolVersion_Throws_Unknown_Version(byte version)
+    [Test]
+    public void OptimismProtocolVersion_Throws_Unknown_Version([Values(1, 5, byte.MaxValue)] byte version)
     {
         byte[] bytes = new byte[32];
         bytes[0] = version;

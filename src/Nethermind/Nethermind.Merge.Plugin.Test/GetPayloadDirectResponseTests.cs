@@ -232,9 +232,8 @@ public class GetPayloadDirectResponseTests
         Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[direct.Count]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    [TestCase(5)]
-    [TestCase(6)]
-    public async Task Json_rpc_envelope_matches_plain_dto_semantically(int version)
+    [Test]
+    public async Task Json_rpc_envelope_matches_plain_dto_semantically([Values(5, 6)] int version)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         byte[] expected = version == 5
@@ -280,9 +279,8 @@ public class GetPayloadDirectResponseTests
     public void CanBeStreamable_is_true(Type type, bool expected) =>
         Assert.That(GetCanBeStreamable(type), Is.EqualTo(expected));
 
-    [TestCase(5)]
-    [TestCase(6)]
-    public void Direct_response_ssz_matches_plain_dto(int version)
+    [Test]
+    public void Direct_response_ssz_matches_plain_dto([Values(5, 6)] int version)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(2, 0, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         ArrayBufferWriter<byte> expected = new();
@@ -302,9 +300,8 @@ public class GetPayloadDirectResponseTests
         Assert.That(actual.WrittenSpan.ToArray(), Is.EqualTo(expected.WrittenSpan.ToArray()));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task ExecutionPayload_materialization_depends_on_path(bool sszPath)
+    [Test]
+    public async Task ExecutionPayload_materialization_depends_on_path([Values] bool sszPath)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 0, withdrawals: false, requests: true, BalKind.None, slotNumber: null);
         CountingGetPayloadV5DirectResponse response = new(block, UInt256.One, blobsBundle, executionRequests!, shouldOverrideBuilder: false);
@@ -344,9 +341,8 @@ public class GetPayloadDirectResponseTests
         Assert.That(transactionNode.GetValue<string>(), Is.EqualTo(expectedRlp.ToHexString(true)));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Encoded_transactions_fast_path_matches_reencoding_path(bool includeV6Fields)
+    [Test]
+    public async Task Encoded_transactions_fast_path_matches_reencoding_path([Values] bool includeV6Fields)
     {
         Transaction[] transactions =
         [

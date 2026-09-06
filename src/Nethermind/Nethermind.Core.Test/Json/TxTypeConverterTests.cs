@@ -14,12 +14,8 @@ namespace Nethermind.Core.Test.Json
         [TestCaseSource(typeof(TxTypeSource), nameof(TxTypeSource.Any))]
         public void Test_roundtrip(TxType arg) => TestConverter(arg, static (before, after) => before.Equals(after), new TxTypeConverter());
 
-        [TestCase("null")]
-        [TestCase("1")]
-        [TestCase("true")]
-        [TestCase("{}")]
-        [TestCase("[]")]
-        public void Rejects_non_string_tokens(string json)
+        [Test]
+        public void Rejects_non_string_tokens([Values("null", "1", "true", "{}", "[]")] string json)
         {
             JsonSerializerOptions options = new();
             options.Converters.Add(new TxTypeConverter());

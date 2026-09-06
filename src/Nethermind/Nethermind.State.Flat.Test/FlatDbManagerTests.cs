@@ -161,9 +161,8 @@ public class FlatDbManagerTests
         Assert.That(result, Is.False);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public async Task DisposeAsync_CallsFlushOnce(int disposeCalls)
+    [Test]
+    public async Task DisposeAsync_CallsFlushOnce([Values(1, 2)] int disposeCalls)
     {
         _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(CreateStateId(10));
 
@@ -173,10 +172,9 @@ public class FlatDbManagerTests
         _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
+    [Test]
     public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedBeforeFlushOnDispose(
-        bool processExitAlreadyCancelled)
+        [Values] bool processExitAlreadyCancelled)
     {
         (FlatDbManager manager, StateId snapshotTo) =
             CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);

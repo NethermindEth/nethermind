@@ -904,11 +904,8 @@ public class FastHeadersSyncTests
 
     // Hand-picked shapes miss combinations: the trailing-null-after-a-gap bug needed two conditions
     // at once. Enumerate every null pattern instead and assert the invariants rather than outcomes.
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    public async Task Every_response_shape_becomes_a_dependency_or_is_requeued(int requestSize)
+    [Test]
+    public async Task Every_response_shape_becomes_a_dependency_or_is_requeued([Values(1, 2, 3, 4)] int requestSize)
     {
         for (int mask = 0; mask < 1 << requestSize; mask++)
         {

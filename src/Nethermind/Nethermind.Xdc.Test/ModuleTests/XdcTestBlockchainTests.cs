@@ -25,15 +25,12 @@ internal class XdcTestBlockchainTests
     public void TearDown() =>
         _blockchain?.Dispose();
 
-    [TestCase(typeof(IXdcRpcModule))]
-    [TestCase(typeof(IXdcExtendedEthRpcModule))]
-    [TestCase(typeof(IXdcMasternodeEthRpcModule))]
-    public void RpcModulesResolveFromTheContainer(Type moduleType) =>
+    [Test]
+    public void RpcModulesResolveFromTheContainer([Values(typeof(IXdcRpcModule), typeof(IXdcExtendedEthRpcModule), typeof(IXdcMasternodeEthRpcModule))] Type moduleType) =>
         Assert.That(_blockchain.Container.Resolve(moduleType), Is.Not.Null);
 
-    [TestCase(180)]
-    [TestCase(91)]
-    public async Task SetupXdcChainAndValidateAllHeaders(int count)
+    [Test]
+    public async Task SetupXdcChainAndValidateAllHeaders([Values(180, 91)] int count)
     {
         //Shorten the epoch length so we can run the test faster
         _blockchain.ChangeReleaseSpec((c) =>

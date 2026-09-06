@@ -21,9 +21,8 @@ namespace Nethermind.Xdc.Test;
 [TestFixture]
 public class XdcStateSyncTest : StateSyncFeedTestsBase
 {
-    [TestCase(0)]
-    [TestCase(2)]
-    public async Task RunStateSyncRounds_WithMultiTargetPivot_SyncsAllTargetsBeforeFinalizing(int gapBlockCount)
+    [Test]
+    public async Task RunStateSyncRounds_WithMultiTargetPivot_SyncsAllTargetsBeforeFinalizing([Values(0, 2)] int gapBlockCount)
     {
         RemoteDbContext remote = new(_logManager);
 

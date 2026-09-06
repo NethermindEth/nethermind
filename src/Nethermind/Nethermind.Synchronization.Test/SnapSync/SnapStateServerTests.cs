@@ -384,9 +384,8 @@ public class SnapStateServerTests
         Assert.That(result.Count, Is.EqualTo(1));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TestNoState(bool withLastNStateTracker)
+    [Test]
+    public void TestNoState([Values] bool withLastNStateTracker)
     {
         ILastNStateRootTracker? lastNStateTracker = null;
         if (withLastNStateTracker)

@@ -268,9 +268,8 @@ public partial class EngineModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list(bool blockAccessListsEnabled)
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list([Values] bool blockAccessListsEnabled)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(
             blockAccessListsEnabled ? Amsterdam.Instance : Prague.Instance);

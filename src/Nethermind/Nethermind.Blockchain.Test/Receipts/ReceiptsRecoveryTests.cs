@@ -71,9 +71,8 @@ public class ReceiptsRecoveryTests
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void TryRecover_should_restore_missing_transaction_hash(int missingHashIndex)
+    [Test]
+    public void TryRecover_should_restore_missing_transaction_hash([Values(0, 1)] int missingHashIndex)
     {
         Transaction[] transactions =
         [

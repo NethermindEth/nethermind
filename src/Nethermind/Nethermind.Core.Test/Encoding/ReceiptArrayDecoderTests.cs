@@ -13,9 +13,8 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class ReceiptArrayDecoderTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Legacy_missing_receipt_is_preserved_for_migration(bool compactEncoding)
+        [Test]
+        public void Legacy_missing_receipt_is_preserved_for_migration([Values] bool compactEncoding)
         {
             byte[] encoded = compactEncoding
                 ? [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte]
@@ -47,9 +46,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(decoder.Decode(in encodedSpan), Is.Empty);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Normal_decoder_stops_at_first_legacy_missing_receipt(bool compactEncoding)
+        [Test]
+        public void Normal_decoder_stops_at_first_legacy_missing_receipt([Values] bool compactEncoding)
         {
             TxReceipt first = Build.A.Receipt.WithLogs().TestObject;
             TxReceipt afterGap = Build.A.Receipt.WithLogs().TestObject;
@@ -103,10 +101,8 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
-        [TestCase(56)]
-        [TestCase(256)]
-        [TestCase(65536)]
-        public void Compact_storage_length_matches_bytes_written_at_sequence_boundaries(int contentLength)
+        [Test]
+        public void Compact_storage_length_matches_bytes_written_at_sequence_boundaries([Values(56, 256, 65536)] int contentLength)
         {
             TxReceipt[] receipts = new TxReceipt[contentLength];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);

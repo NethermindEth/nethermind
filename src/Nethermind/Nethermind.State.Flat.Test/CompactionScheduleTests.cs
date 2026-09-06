@@ -74,9 +74,8 @@ public class CompactionScheduleTests
         Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Constructor_ConfiguredOffset_TakesPrecedenceOverStoredValue(bool regenerateFlag)
+    [Test]
+    public void Constructor_ConfiguredOffset_TakesPrecedenceOverStoredValue([Values] bool regenerateFlag)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(5));
@@ -89,9 +88,8 @@ public class CompactionScheduleTests
         Assert.That(stored, Is.EqualTo(5), "configured offset should not modify the stored offset");
     }
 
-    [TestCase(1_000_000L)]
-    [TestCase(int.MaxValue - 1L)]
-    public void Constructor_StoredLargePositiveValue_KeptAsIs(long stored)
+    [Test]
+    public void Constructor_StoredLargePositiveValue_KeptAsIs([Values(1_000_000L, int.MaxValue - 1L)] long stored)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(stored));
@@ -116,9 +114,8 @@ public class CompactionScheduleTests
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 
-    [TestCase(-1L)]
-    [TestCase(-100L)]
-    public void Constructor_StoredNegative_Regenerates(long badStored)
+    [Test]
+    public void Constructor_StoredNegative_Regenerates([Values(-1L, -100L)] long badStored)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(badStored));

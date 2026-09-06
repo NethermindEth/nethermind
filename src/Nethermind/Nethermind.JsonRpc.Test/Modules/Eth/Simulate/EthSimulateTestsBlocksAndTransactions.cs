@@ -650,9 +650,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
     // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode(bool validation)
+    [Test]
+    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode([Values] bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 

@@ -41,9 +41,8 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
         }
 
-        [TestCase(0)]
-        [TestCase(-1)]
-        public async Task Start_rejects_non_positive_peer_update_interval(int interval)
+        [Test]
+        public async Task Start_rejects_non_positive_peer_update_interval([Values(0, -1)] int interval)
         {
             await using Context ctx = new();
             ctx.NetworkConfig.PeersUpdateInterval = interval;
@@ -392,13 +391,10 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [TestCase(true, ConnectionDirection.In)]
-        [TestCase(false, ConnectionDirection.In)]
-        [TestCase(true, ConnectionDirection.Out)]
-        [TestCase(false, ConnectionDirection.Out)]
+        [Test]
         [NonParallelizable]
-        public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
-            ConnectionDirection firstDirection)
+        public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once([Values] bool shouldLose,
+            [Values(ConnectionDirection.In, ConnectionDirection.Out)] ConnectionDirection firstDirection)
         {
             await using Context ctx = new();
 

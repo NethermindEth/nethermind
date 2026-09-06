@@ -147,9 +147,8 @@ internal class DelegatedAccountFilterTest
         Assert.That(result, Is.EqualTo(expected));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Accept_AuthorityHasPendingTransaction_ReturnsDelegatorHasPendingTx(bool useBlobPool)
+    [Test]
+    public void Accept_AuthorityHasPendingTransaction_ReturnsDelegatorHasPendingTx([Values] bool useBlobPool)
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool);

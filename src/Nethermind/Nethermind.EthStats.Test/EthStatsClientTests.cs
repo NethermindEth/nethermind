@@ -23,11 +23,8 @@ namespace Nethermind.EthStats.Test
             Assert.That(ethClient.BuildUrl(), Is.EqualTo(expectedUrl));
         }
 
-        [TestCase("http://test:://")]
-        [TestCase("ftp://localhost")]
-        [TestCase("http:/")]
-        [TestCase("localhost")]
-        public void Incorrect_url_should_throw_exception(string url)
+        [Test]
+        public void Incorrect_url_should_throw_exception([Values("http://test:://", "ftp://localhost", "http:/", "localhost")] string url)
         {
             EthStatsClient ethClient = new(url, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             Assert.Throws<ArgumentException>(() => ethClient.BuildUrl());

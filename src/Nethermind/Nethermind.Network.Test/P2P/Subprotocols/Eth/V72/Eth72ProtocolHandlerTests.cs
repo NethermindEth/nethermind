@@ -485,9 +485,8 @@ public class Eth72ProtocolHandlerTests
         Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<SubprotocolException>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void should_accept_non_blob_announcement_and_ignore_cell_mask(bool hasCellMask)
+    [Test]
+    public void should_accept_non_blob_announcement_and_ignore_cell_mask([Values] bool hasCellMask)
     {
         Hash256 hash = HashFromInt(1);
         _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
@@ -1044,9 +1043,8 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void cancelled_pooled_processing_should_release_unprocessed_prehashes(bool rescheduleSucceeds)
+    [Test]
+    public void cancelled_pooled_processing_should_release_unprocessed_prehashes([Values] bool rescheduleSucceeds)
     {
         Transaction[] txs =
         [
@@ -1134,9 +1132,8 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement(bool wrongSize)
+    [Test]
+    public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement([Values] bool wrongSize)
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -3510,9 +3507,8 @@ public class Eth72ProtocolHandlerTests
         AssertCustodyRequest(peer.CellRequests[0], hash, custodyMask);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void registry_scheduler_rejection_should_not_dispose_registry(bool rejectCustodyUpdate)
+    [Test]
+    public void registry_scheduler_rejection_should_not_dispose_registry([Values] bool rejectCustodyUpdate)
     {
         BlobCustodyTracker custodyTracker = new();
         ManualTimerFactory timerFactory = new();

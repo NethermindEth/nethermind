@@ -110,10 +110,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        public void FromHexString_large_even_length_matches_expected_bytes(int byteLength)
+        [Test]
+        public void FromHexString_large_even_length_matches_expected_bytes([Values(32, 64, 128)] int byteLength)
         {
             string hex = CreateHexString(byteLength);
 
@@ -401,17 +399,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(4)]
-        [TestCase(8)]
-        [TestCase(16)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(512)]
-        public void Invalid_utf8_hex_conversion_fails(int length)
+        [Test]
+        public void Invalid_utf8_hex_conversion_fails([Values(1, 2, 4, 8, 16, 32, 64, 128, 256, 512)] int length)
         {
             byte[] input = new byte[length];
             byte[] hex = new byte[length * 2];
@@ -1086,9 +1075,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(20)]
-        [TestCase(32)]
-        public void FastHash64_CacheBitWindowsAreDistributed(int length)
+        [Test]
+        public void FastHash64_CacheBitWindowsAreDistributed([Values(20, 32)] int length)
         {
             const int count = 4096;
             byte[] input = new byte[length];
@@ -1226,13 +1214,8 @@ namespace Nethermind.Core.Test
         /// All-zero input at exact vector-width boundaries — every byte should be counted.
         /// Catches off-by-one bugs where the last SIMD chunk is skipped.
         /// </summary>
-        [TestCase(16)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(512)]
-        public void CountZeros_all_zeros_exact_vector_multiples(int length)
+        [Test]
+        public void CountZeros_all_zeros_exact_vector_multiples([Values(16, 32, 64, 128, 256, 512)] int length)
         {
             byte[] data = new byte[length];
             Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(length));
@@ -1242,13 +1225,8 @@ namespace Nethermind.Core.Test
         /// All non-zero input — result should be zero. Ensures no false positives
         /// from SIMD comparison logic.
         /// </summary>
-        [TestCase(16)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(512)]
-        public void CountZeros_no_zeros(int length)
+        [Test]
+        public void CountZeros_no_zeros([Values(16, 32, 64, 128, 256, 512)] int length)
         {
             byte[] data = new byte[length];
             Array.Fill(data, (byte)0xFF);

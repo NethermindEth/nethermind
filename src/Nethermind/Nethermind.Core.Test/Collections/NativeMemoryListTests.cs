@@ -63,10 +63,8 @@ public class NativeMemoryListTests
         Assert.That(list[0], Is.EqualTo(99));
     }
 
-    [TestCase(0)]
-    [TestCase(2)]
-    [TestCase(4)]
-    public void Insert_RemoveAt_at_various_indices(int index)
+    [Test]
+    public void Insert_RemoveAt_at_various_indices([Values(0, 2, 4)] int index)
     {
         using NativeMemoryList<int> list = new(8);
         list.AddRange(stackalloc int[] { 0, 1, 2, 3, 4 });
@@ -276,10 +274,8 @@ public class NativeMemoryListTests
     // buffer is rented from ArrayPool<T>.Shared (pinned) rather than NativeMemory.Alloc.
     // The list must behave identically regardless of which strategy was used; verify all
     // mutating + read paths with a single end-to-end exercise.
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(64)]
-    public void Sub_threshold_capacity_round_trips(int capacity)
+    [Test]
+    public void Sub_threshold_capacity_round_trips([Values(8, 32, 64)] int capacity)
     {
         using NativeMemoryList<byte> list = new(capacity);
         Assert.That(list.Count, Is.EqualTo(0));
@@ -346,9 +342,8 @@ public class NativeMemoryListTests
     // Regression for an issue where the (capacity, count) ctor would zero-clear `count` elements
     // against a buffer sized for `capacity` — heap overwrite when count > capacity on the native
     // path (no pool overallocation).
-    [TestCase(-1)]
-    [TestCase(5)]
-    public void Ctor_starting_count_out_of_range_throws(int badCount)
+    [Test]
+    public void Ctor_starting_count_out_of_range_throws([Values(-1, 5)] int badCount)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => { using NativeMemoryList<int> _ = new(4, badCount); });
         Assert.Throws<ArgumentOutOfRangeException>(() => CtorRef(badCount));

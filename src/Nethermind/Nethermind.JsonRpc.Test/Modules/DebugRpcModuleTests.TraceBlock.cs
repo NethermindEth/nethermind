@@ -373,10 +373,8 @@ public partial class DebugRpcModuleTests
         ];
     }
 
-    [TestCase(1)]
-    [TestCase(100)]
-    [TestCase(1000)]
-    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(int traceCount)
+    [Test]
+    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer([Values(1, 100, 1000)] int traceCount)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
         for (int i = 0; i < traceCount; i++)
@@ -406,9 +404,8 @@ public partial class DebugRpcModuleTests
             $"Streamed JSON differs from serializer output for {traceCount} traces");
     }
 
-    [TestCase("debug_traceBlockByNumber")]
-    [TestCase("debug_traceBlockByHash")]
-    public async Task Debug_traceBlock_returns_error_for_genesis(string method)
+    [Test]
+    public async Task Debug_traceBlock_returns_error_for_genesis([Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
         using Context context = await Context.Create();
 
@@ -428,10 +425,8 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
-    [TestCase("debug_traceBlock")]
-    [TestCase("debug_traceBlockByNumber")]
-    [TestCase("debug_traceBlockByHash")]
-    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json(string method)
+    [Test]
+    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json([Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
         using Context context = await Context.Create();
         await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));

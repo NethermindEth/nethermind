@@ -60,12 +60,8 @@ public class TreePathTests
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
-    [TestCase(1)]
-    [TestCase(11)]
-    [TestCase(20)]
-    [TestCase(40)]
-    [TestCase(41)]
-    public void TestAppendArrayDivided(int partition)
+    [Test]
+    public void TestAppendArrayDivided([Values(1, 11, 20, 40, 41)] int partition)
     {
         byte[] nibbles = new byte[64];
         for (int i = 0; i < 64; i++)
@@ -133,13 +129,8 @@ public class TreePathTests
         Assert.That(path.Span.ToHexString(), Is.EqualTo(expectedHashHex));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(63)]
-    [TestCase(64)]
-    public void TestToNibble(int nibbleLength)
+    [Test]
+    public void TestToNibble([Values(0, 1, 2, 3, 63, 64)] int nibbleLength)
     {
         byte[] nibbles = new byte[nibbleLength];
         for (int i = 0; i < nibbles.Length; i++)
@@ -154,14 +145,8 @@ public class TreePathTests
         Assert.That(result, Is.EqualTo(nibbles).AsCollection);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(20)]
-    [TestCase(63)]
-    [TestCase(64)]
-    public void TestEncodePathMatchesNibbleSpan(int nibbleLength)
+    [Test]
+    public void TestEncodePathMatchesNibbleSpan([Values(0, 1, 2, 3, 20, 63, 64)] int nibbleLength)
     {
         byte[] nibbles = new byte[nibbleLength];
         for (int i = 0; i < nibbles.Length; i++)
@@ -290,12 +275,8 @@ public class TreePathTests
         Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
     }
 
-    [TestCase("")]
-    [TestCase("01")]
-    [TestCase("0001020304")]
-    [TestCase("000102030405")]
-    [TestCase("00010203040506")]
-    public void TestRoundtripWith4Byte(string nibbleHex)
+    [Test]
+    public void TestRoundtripWith4Byte([Values("", "01", "0001020304", "000102030405", "00010203040506")] string nibbleHex)
     {
         byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
         TreePath original = TreePath.FromNibble(nibbles);
@@ -307,12 +288,8 @@ public class TreePathTests
         Assert.That(decoded, Is.EqualTo(original));
     }
 
-    [TestCase("")]
-    [TestCase("01")]
-    [TestCase("000102030405060708")]
-    [TestCase("000102030405060708090a0b0c0d0e")]
-    [TestCase("000102030405")]
-    public void TestRoundtripWith8Byte(string nibbleHex)
+    [Test]
+    public void TestRoundtripWith8Byte([Values("", "01", "000102030405060708", "000102030405060708090a0b0c0d0e", "000102030405")] string nibbleHex)
     {
         byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
         TreePath original = TreePath.FromNibble(nibbles);

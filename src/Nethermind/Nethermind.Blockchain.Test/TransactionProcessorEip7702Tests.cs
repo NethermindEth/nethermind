@@ -340,10 +340,8 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
-    [TestCase(1ul)]
-    [TestCase(10ul)]
-    [TestCase(99ul)]
-    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(ulong count)
+    [Test]
+    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected([Values(1ul, 10ul, 99ul)] ulong count)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -494,9 +492,8 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.VeryLow));
     }
 
-    [TestCase(2)]
-    [TestCase(1)]
-    public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyLastInstanceIsUsed(int expectedStoredValue)
+    [Test]
+    public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyLastInstanceIsUsed([Values(2, 1)] int expectedStoredValue)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -969,9 +966,8 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(txTracer.AccessList?.Select(static a => a.Address), Is.SupersetOf(shouldCountAsAccessed));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Execute_AuthorityAccountExistsOrNot_NonceIsIncrementedByOne(bool accountExists)
+    [Test]
+    public void Execute_AuthorityAccountExistsOrNot_NonceIsIncrementedByOne([Values] bool accountExists)
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -1054,9 +1050,8 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Execute_EXTCODESIZEOnDelegatedThatTriggersOptimization_ReturnsZeroIfDelegated(bool isDelegated)
+    [Test]
+    public void Execute_EXTCODESIZEOnDelegatedThatTriggersOptimization_ReturnsZeroIfDelegated([Values] bool isDelegated)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;

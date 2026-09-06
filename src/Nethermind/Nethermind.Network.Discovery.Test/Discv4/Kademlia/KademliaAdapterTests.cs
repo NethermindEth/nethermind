@@ -774,11 +774,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
         }
 
-        [TestCase(MsgType.Pong)]
-        [TestCase(MsgType.Neighbors)]
-        [TestCase(MsgType.EnrResponse)]
+        [Test]
         [CancelAfter(10000)]
-        public async Task OnIncomingMsg_unsolicited_response_should_not_create_session_stats(MsgType msgType)
+        public async Task OnIncomingMsg_unsolicited_response_should_not_create_session_stats([Values(MsgType.Pong, MsgType.Neighbors, MsgType.EnrResponse)] MsgType msgType)
         {
             DiscoveryMsg response = CreateUnsolicitedResponse(msgType);
 

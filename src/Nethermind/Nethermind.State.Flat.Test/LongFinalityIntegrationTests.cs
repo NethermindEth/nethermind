@@ -267,9 +267,8 @@ public class LongFinalityIntegrationTests
         Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
     }
 
-    [TestCase(10)]
-    [TestCase(100)]
-    public void ManySnapshots_PersistAndQuery(int snapshotCount)
+    [Test]
+    public void ManySnapshots_PersistAndQuery([Values(10, 100)] int snapshotCount)
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024);
         SnapshotRepository repo = tier.Repository;

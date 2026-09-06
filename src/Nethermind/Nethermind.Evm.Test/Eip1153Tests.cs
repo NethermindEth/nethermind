@@ -122,12 +122,8 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     /// Testing transient data store/load from different locations
     /// </summary>
     /// <param name="loadLocation">Location</param>
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    public void tload_after_tstore_from_different_locations(int loadLocation)
+    [Test]
+    public void tload_after_tstore_from_different_locations([Values(2, 3, 4, 5, 6)] int loadLocation)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInTransientStorage(1, 8)

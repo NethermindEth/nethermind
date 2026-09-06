@@ -44,9 +44,8 @@ namespace Nethermind.Evm.Test
             Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
         }
 
-        [TestCase("60006000F0")]
-        [TestCase("60006000F5")]
-        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode)
+        [Test]
+        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit([Values("60006000F0", "60006000F5")] string createCode)
         {
             string dataLengthHex = (Spec.MaxInitCodeSize + 1).ToString("X");
             Instruction dataPush = Instruction.PUSH1 + (byte)(dataLengthHex.Length / 2 - 1);

@@ -102,9 +102,8 @@ namespace Nethermind.Synchronization.Test
             iLogger.Received(1).Info("Old Receipts          0 /         65 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Ancient_bodies_and_receipts_are_not_reported_until_feed_finishes_Initialization(bool setBarriers)
+        [Test]
+        public void Ancient_bodies_and_receipts_are_not_reported_until_feed_finishes_Initialization([Values] bool setBarriers)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();

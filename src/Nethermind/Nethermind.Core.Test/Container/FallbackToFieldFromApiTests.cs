@@ -29,9 +29,8 @@ public class FallbackToFieldFromApiTests
         Assert.That(container.Resolve<TargetService>(), Is.Not.Null);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ThrowExceptionIfTargetIsAlsoRegistered(bool allowRedundantRegistrations)
+    [Test]
+    public void ThrowExceptionIfTargetIsAlsoRegistered([Values] bool allowRedundantRegistrations)
     {
         ContainerBuilder containerBuilder = new();
         containerBuilder.AddSingleton<Api>();
@@ -51,9 +50,8 @@ public class FallbackToFieldFromApiTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void OnlyRegisterFieldDirectlyDeclared(bool directlyDeclaredOnly)
+    [Test]
+    public void OnlyRegisterFieldDirectlyDeclared([Values] bool directlyDeclaredOnly)
     {
         ContainerBuilder containerBuilder = new();
         containerBuilder.AddSingleton<Api2>();

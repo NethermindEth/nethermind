@@ -46,17 +46,15 @@ public class SnappyTests
         Assert.That(bytes.Length, Is.GreaterThan(2.9 * MemorySizes.MiB));
     }
 
-    [TestCase("block.go.snappy")]
-    [TestCase("block.py.snappy")]
-    public void Can_load_compressed_test_file(string compressedFileName)
+    [Test]
+    public void Can_load_compressed_test_file([Values("block.go.snappy", "block.py.snappy")] string compressedFileName)
     {
         byte[] bytes = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", compressedFileName)));
         Assert.That(bytes.Length, Is.GreaterThan(70 * MemorySizes.KiB));
     }
 
-    [TestCase("block.go.snappy")]
-    [TestCase("block.py.snappy")]
-    public void Zero_netty_p2p_handler_can_decompress_compressed_file(string compressedFileName)
+    [Test]
+    public void Zero_netty_p2p_handler_can_decompress_compressed_file([Values("block.go.snappy", "block.py.snappy")] string compressedFileName)
     {
         const byte packetType = 0x05;
         byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(_uncompressedTestFileName));

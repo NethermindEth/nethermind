@@ -115,11 +115,8 @@ public class JsonRpcSocketsClientTests
             Assert.That(sent, Is.EqualTo(received));
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(10)]
-        [TestCase(50)]
-        public async Task Can_send_multiple_messages(int messageCount)
+        [Test]
+        public async Task Can_send_multiple_messages([Values(1, 2, 10, 50)] int messageCount)
         {
             static async Task<int> CountNumberOfMessages(Socket socket)
             {
@@ -181,9 +178,8 @@ public class JsonRpcSocketsClientTests
             Assert.That(received, Is.EqualTo(sent));
         }
 
-        [TestCase(1)]
-        [TestCase(5)]
-        public async Task CanHandleMessageConcurrently(int concurrencyLevel)
+        [Test]
+        public async Task CanHandleMessageConcurrently([Values(1, 5)] int concurrencyLevel)
         {
             using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
 
@@ -351,11 +347,8 @@ public class JsonRpcSocketsClientTests
         private static string CreateJsonRequestWithoutVersion(int id, string method, string paramsJson = "[]") =>
             $"{{\"id\":{id},\"method\":\"{method}\",\"params\":{paramsJson}}}";
 
-        [TestCase(10)]
-        [TestCase(63)]
-        [TestCase(1024)]
-        [TestCase(1024000)]
-        public async Task Fuzz_messages_integrity(int bufferSize)
+        [Test]
+        public async Task Fuzz_messages_integrity([Values(10, 63, 1024, 1024000)] int bufferSize)
         {
             async Task<int> ReadMessages(Socket socket, IList<byte[]> receivedMessages)
             {
@@ -545,10 +538,7 @@ public class JsonRpcSocketsClientTests
     public class UsingWebSockets
     {
         [Test]
-        [TestCase(2)]
-        [TestCase(10)]
-        [TestCase(50)]
-        public async Task Can_send_multiple_messages(int messageCount)
+        public async Task Can_send_multiple_messages([Values(2, 10, 50)] int messageCount)
         {
             using CancellationTokenSource cts = new();
 
@@ -575,10 +565,8 @@ public class JsonRpcSocketsClientTests
             Assert.That(sent, Is.EqualTo(received));
         }
 
-        [TestCase(2)]
-        [TestCase(10)]
-        [TestCase(50)]
-        public async Task Can_send_collections(int elements)
+        [Test]
+        public async Task Can_send_collections([Values(2, 10, 50)] int elements)
         {
             using CancellationTokenSource cts = new();
 
@@ -596,11 +584,9 @@ public class JsonRpcSocketsClientTests
             Assert.That(server.Result, Is.EqualTo(1));
         }
 
-        [TestCase(1_000)]
-        [TestCase(5_000)]
-        [TestCase(10_000)]
+        [Test]
         [Ignore("Feature does not work correctly")]
-        public async Task Stops_on_limited_body_size(int maxByteCount)
+        public async Task Stops_on_limited_body_size([Values(1_000, 5_000, 10_000)] int maxByteCount)
         {
             using CancellationTokenSource cts = new();
 

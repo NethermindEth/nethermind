@@ -36,9 +36,8 @@ public class CompositeTxTracerTests
         Assert.That(tracer.IsCancelled, Is.True);
     }
 
-    [TestCase(typeof(CompositeTxTracer))]
-    [TestCase(typeof(CancellationTxTracer))]
-    public void Wrapping_tracer_implements_every_meaningful_default_interface_member(Type wrapperType)
+    [Test]
+    public void Wrapping_tracer_implements_every_meaningful_default_interface_member([Values(typeof(CompositeTxTracer), typeof(CancellationTxTracer))] Type wrapperType)
     {
         string[] convenienceForwarders = ["get_IsTracing", "ReportStackPush", "ReportMemoryChange"];
 

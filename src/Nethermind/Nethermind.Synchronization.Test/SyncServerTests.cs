@@ -213,9 +213,8 @@ public class SyncServerTests
         Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
     }
 
-    [TestCase(10000000)]
-    [TestCase(20000000)]
-    public void Fake_total_difficulty_from_peer_does_not_trick_the_node(long ttd)
+    [Test]
+    public void Fake_total_difficulty_from_peer_does_not_trick_the_node([Values(10000000, 20000000)] long ttd)
     {
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         Context ctx = CreateMergeContext(9, (UInt256)ttd);

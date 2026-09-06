@@ -328,22 +328,16 @@ public class AbiTests
     public void Test_fixed_exception(int length, int precision) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiFixed(length, precision));
 
-    [TestCase(0)]
-    [TestCase(7)]
-    [TestCase(264)]
-    public void Test_int_exception(int length) =>
+    [Test]
+    public void Test_int_exception([Values(0, 7, 264)] int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiInt(length));
 
-    [TestCase(0)]
-    [TestCase(7)]
-    [TestCase(264)]
-    public void Test_uint_exception(int length) =>
+    [Test]
+    public void Test_uint_exception([Values(0, 7, 264)] int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
 
-    [TestCase("uint64[abc]")]
-    [TestCase("bytes32[xyz]")]
-    [TestCase("address[!@#]")]
-    public void Test_invalid_array_syntax_exception(string type) =>
+    [Test]
+    public void Test_invalid_array_syntax_exception([Values("uint64[abc]", "bytes32[xyz]", "address[!@#]")] string type) =>
         Assert.Throws<ArgumentException>(() => System.Text.Json.JsonSerializer.Deserialize<AbiType>($"\"{type}\""));
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -401,9 +395,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(staticTuple));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_tuple([Values(AbiEncodingStyle.IncludeSignature, AbiEncodingStyle.None)] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.DynamicBytes, AbiType.Address, AbiType.DynamicBytes);
 
@@ -468,9 +461,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(staticTuple));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Tuple_with_inner_dynamic_tuple([Values(AbiEncodingStyle.IncludeSignature, AbiEncodingStyle.None)] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
 
@@ -483,9 +475,8 @@ public class AbiTests
     }
 
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_tuple_with_inner_dynamic_tuple([Values(AbiEncodingStyle.IncludeSignature, AbiEncodingStyle.None)] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.DynamicBytes, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
 
@@ -649,9 +640,8 @@ public class AbiTests
         Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, signature, []));
     }
 
-    [TestCase(AbiEncodingStyle.None)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    public void Empty_tuple_roundtrips(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Empty_tuple_roundtrips([Values(AbiEncodingStyle.None, AbiEncodingStyle.Packed)] AbiEncodingStyle encodingStyle)
     {
         AbiSignature signature = new("f", new AbiTuple());
         ValueTuple value = new();
@@ -679,9 +669,8 @@ public class AbiTests
         Assert.That(decoded[0], Is.EqualTo(value));
     }
 
-    [TestCase(AbiEncodingStyle.None)]
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    public void Should_wrap_out_of_range_decode_error(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Should_wrap_out_of_range_decode_error([Values(AbiEncodingStyle.None, AbiEncodingStyle.IncludeSignature)] AbiEncodingStyle encodingStyle)
     {
         AbiSignature signature = new("f", AbiType.Bool);
 

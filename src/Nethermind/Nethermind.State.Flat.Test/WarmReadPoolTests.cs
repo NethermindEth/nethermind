@@ -12,9 +12,8 @@ namespace Nethermind.State.Flat.Test;
 [Parallelizable(ParallelScope.All)]
 public class WarmReadPoolTests
 {
-    [TestCase(0)]
-    [TestCase(-1)]
-    public void Ctor_rejects_non_positive_concurrency(int concurrency) =>
+    [Test]
+    public void Ctor_rejects_non_positive_concurrency([Values(0, -1)] int concurrency) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => new WarmReadPool(concurrency));
 
     // pool capacity, requested workers, jobs

@@ -11,9 +11,8 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class ChainLevelDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode)
+    [Test]
+    public void Can_do_roundtrip([Values] bool valueDecode)
     {
         BlockInfo blockInfo = new(TestItem.KeccakA, 1);
         blockInfo.WasProcessed = true;

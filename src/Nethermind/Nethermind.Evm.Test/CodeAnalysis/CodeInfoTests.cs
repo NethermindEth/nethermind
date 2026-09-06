@@ -133,39 +133,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(3)]
-        [TestCase(4)]
-        [TestCase(5)]
-        [TestCase(6)]
-        [TestCase(7)]
-        [TestCase(8)]
-        [TestCase(9)]
-        [TestCase(10)]
-        [TestCase(11)]
-        [TestCase(12)]
-        [TestCase(13)]
-        [TestCase(14)]
-        [TestCase(15)]
-        [TestCase(16)]
-        [TestCase(17)]
-        [TestCase(18)]
-        [TestCase(19)]
-        [TestCase(20)]
-        [TestCase(21)]
-        [TestCase(22)]
-        [TestCase(23)]
-        [TestCase(24)]
-        [TestCase(25)]
-        [TestCase(26)]
-        [TestCase(27)]
-        [TestCase(28)]
-        [TestCase(29)]
-        [TestCase(30)]
-        [TestCase(31)]
-        [TestCase(32)]
-        public void PushNJumpdest_Over10k(int n)
+        [Test]
+        public void PushNJumpdest_Over10k([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32)] int n)
         {
             byte[] code = new byte[10_001];
 

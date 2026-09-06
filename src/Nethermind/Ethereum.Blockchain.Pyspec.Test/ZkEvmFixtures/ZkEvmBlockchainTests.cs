@@ -89,9 +89,8 @@ public class StatelessSchemaTests
     private const ulong BlockNumber = 30_000_000;
     private const ulong Timestamp = 2_000_000_000;
 
-    [TestCase(InputDecoder.CurrentForkSchemaId)]
-    [TestCase(InputDecoder.AmsterdamSchemaId)]
-    public void Revision_1_schema_roundtrips(ushort schemaId)
+    [Test]
+    public void Revision_1_schema_roundtrips([Values(InputDecoder.CurrentForkSchemaId, InputDecoder.AmsterdamSchemaId)] ushort schemaId)
     {
         byte[] encoded = schemaId == InputDecoder.AmsterdamSchemaId
             ? EncodeInput(new SszExecutionPayloadAmsterdam(), schemaId)
@@ -252,22 +251,16 @@ public class StatelessSchemaTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void Schema_prefix_must_be_two_bytes(int length)
+    [Test]
+    public void Schema_prefix_must_be_two_bytes([Values(0, 1)] int length)
     {
         byte[] encoded = new byte[length];
 
         Assert.That(() => InputDecoder.Decode(encoded), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    [TestCase(0x0000)]
-    [TestCase(0x0002)]
-    [TestCase(0x1001)]
-    [TestCase(0x1401)]
-    [TestCase(0x1502)]
-    [TestCase(0x1601)]
-    public void Unsupported_schema_id_is_rejected(int schemaId)
+    [Test]
+    public void Unsupported_schema_id_is_rejected([Values(0x0000, 0x0002, 0x1001, 0x1401, 0x1502, 0x1601)] int schemaId)
     {
         byte[] encoded = new byte[sizeof(ushort)];
         BinaryPrimitives.WriteUInt16BigEndian(encoded, (ushort)schemaId);
@@ -294,10 +287,8 @@ public class StatelessSchemaTests
         }
     }
 
-    [TestCase(BlockchainIds.Mainnet)]
-    [TestCase(BlockchainIds.Sepolia)]
-    [TestCase(BlockchainIds.Gnosis)]
-    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule(ulong chainId)
+    [Test]
+    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule([Values(BlockchainIds.Mainnet, BlockchainIds.Sepolia, BlockchainIds.Gnosis)] ulong chainId)
     {
         IForkAwareSpecProvider baseProvider = chainId switch
         {
