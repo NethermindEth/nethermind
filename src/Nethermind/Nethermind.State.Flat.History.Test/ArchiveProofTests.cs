@@ -967,8 +967,8 @@ public class ArchiveProofTests
         {
             Assert.That(() => ProveFromArchive(_accounts[3], 300, maxScannedRows: 80), Throws.Nothing,
                 "an account proof resolves every node of its path from commitments once; the levels are fetched together and a rebuilt subtree publishes its nodes, so no level is read a second time on the way down");
-            Assert.That(() => ProveFromArchive(quiet, 300, maxScannedRows: 112, slots[..4]), Throws.Nothing,
-                "the same for a contract with four slots, whose storage levels are probed once the account leaf is reached; before this the proof needed 128 rows");
+            Assert.That(() => ProveFromArchive(quiet, 300, maxScannedRows: 96, slots[..4]), Throws.Nothing,
+                "the same for a contract with four slots, whose storage levels are probed once, when the account leaf is reached; before this the proof needed 128 rows");
         }
     }
 

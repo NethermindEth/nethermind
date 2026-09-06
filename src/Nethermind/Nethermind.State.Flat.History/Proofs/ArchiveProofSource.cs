@@ -78,14 +78,16 @@ public sealed class ArchiveProofSource(
         HistoricalTrieNodeBuilder.Prefetch([.. work], accounts.FanOutOptions);
 
         IReadOnlyList<ValueHash256> slots = collector.HashedStorageKeys;
+        bool storagePrefetched = false;
         return new ArchiveProofTrieStore(
             accounts,
             accountPath =>
             {
                 if (accountPath != identity) return new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null);
 
-                if (slots.Count > 0)
+                if (slots.Count > 0 && !storagePrefetched)
                 {
+                    storagePrefetched = true;
                     storage.PrefetchOne(TreePath.Empty);
                     HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> deeper = [];
                     foreach (ValueHash256 slot in slots) storage.CollectPrefetch(slot, deeper, fromDepth: 1);

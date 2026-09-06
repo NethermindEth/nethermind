@@ -33,9 +33,9 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]>[] _storageProofItems;
         private readonly CancellationToken _cancellationToken;
 
-        public ValueHash256 HashedAddress { get; }
+        public ValueHash256 HashedAddress => new(_fullAccountPath.ToPackedByteArray());
 
-        public IReadOnlyList<ValueHash256> HashedStorageKeys { get; }
+        public IReadOnlyList<ValueHash256> HashedStorageKeys => _fullStoragePaths.Select(static path => new ValueHash256(path.ToPackedByteArray())).ToArray();
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
@@ -48,10 +48,7 @@ namespace Nethermind.State.Proofs
 
         private AccountProofCollector(ReadOnlySpan<byte> hashedAddress, IEnumerable<ValueHash256>? keccakStorageKeys, int length, byte[][]? storageKeys)
         {
-            ValueHash256[] hashedStorageKeys = keccakStorageKeys?.ToArray() ?? [];
-            keccakStorageKeys = hashedStorageKeys;
-            HashedAddress = new ValueHash256(hashedAddress);
-            HashedStorageKeys = hashedStorageKeys;
+            keccakStorageKeys ??= [];
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
@@ -107,20 +104,16 @@ namespace Nethermind.State.Proofs
                 StorageProofs = new StorageProof[storageKeys.Count],
                 Address = _address = address ?? throw new ArgumentNullException(nameof(address))
             };
-            HashedAddress = ValueKeccak.Compute(_address.Bytes);
-            _fullAccountPath = Nibbles.FromBytes(HashedAddress.Bytes);
+            _fullAccountPath = Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
             _fullStoragePaths = new Nibble[storageKeys.Count][];
             _storageProofItems = new List<byte[]>[storageKeys.Count];
-            ValueHash256[] hashedStorageKeys = new ValueHash256[storageKeys.Count];
-            HashedStorageKeys = hashedStorageKeys;
 
             byte[] keyBuffer = new byte[32];
             int j = 0;
             foreach (UInt256 storageKey in storageKeys)
             {
                 storageKey.ToBigEndian(keyBuffer);
-                hashedStorageKeys[j] = ValueKeccak.Compute(keyBuffer);
-                _fullStoragePaths[j] = Nibbles.FromBytes(hashedStorageKeys[j].Bytes);
+                _fullStoragePaths[j] = Nibbles.FromBytes(ValueKeccak.Compute(keyBuffer).Bytes);
                 _storageProofItems[j] = [];
                 _accountProof.StorageProofs![j] = new StorageProof
                 {
