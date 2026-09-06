@@ -266,16 +266,70 @@ namespace Nethermind.Core.Test
         [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
         public void Common_input_lengths_match_known_hash(int inputLength, string expected)
         {
-            byte[] input = new byte[inputLength];
+            byte[] input = FilledInput(inputLength);
             byte[] output = new byte[32];
-            for (int i = 0; i < input.Length; i++)
-            {
-                input[i] = (byte)(i * 37 + 11);
-            }
 
             KeccakHash.ComputeHash(input, output);
 
             Assert.That(output.ToHexString(), Is.EqualTo(expected));
+        }
+
+        // The sponge squeezes a single block, so it can only serve an output that fits the rate,
+        // STATE_SIZE - 2 * size. Larger sizes used to be accepted: at 100 the rate is zero and the absorb
+        // loop never advanced, and above that it is negative and the state was indexed backwards.
+        [TestCase(0)]
+        [TestCase(67)]
+        [TestCase(100)]
+        [TestCase(137)]
+        [TestCase(201)]
+        public void Unsupported_output_sizes_are_rejected(int outputLength)
+        {
+            byte[] input = new byte[200];
+            byte[] output = new byte[outputLength];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => KeccakHash.ComputeHash(input, output), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(() => KeccakHash.Create(outputLength), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // UpdateFinalTo squeezes from that same single block, so it is bounded by the sponge's rate
+        // rather than by MAX_HASH_SIZE. 66 is the widest hash and so carries the narrowest rate, 68.
+        [Test]
+        public void Incremental_output_wider_than_the_rate_is_rejected()
+        {
+            byte[] input = new byte[300];
+
+            KeccakHash atRate = KeccakHash.Create(66);
+            atRate.Update(input);
+            KeccakHash overRate = KeccakHash.Create(66);
+            overRate.Update(input);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => atRate.UpdateFinalTo(new byte[68]), Throws.Nothing);
+                Assert.That(() => overRate.UpdateFinalTo(new byte[69]), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // The 20- and 32-byte inputs take ComputeHash's sub-rate fast paths, which write the terminator at
+        // stateBytes[input.Length] without comparing it against the rate. That is only safe because the rate
+        // is at least 68, which the widest output, 66, exercises at its tightest.
+        [Test]
+        public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(
+            [Values(20, 32, 300)] int inputLength,
+            [Values(1, 32, 64, 66)] int outputLength)
+        {
+            byte[] input = FilledInput(inputLength);
+
+            byte[] oneShot = new byte[outputLength];
+            KeccakHash.ComputeHash(input, oneShot);
+
+            KeccakHash incremental = KeccakHash.Create(outputLength);
+            incremental.Update(input);
+
+            Assert.That(incremental.Hash, Is.EqualTo(oneShot));
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
@@ -1415,6 +1469,17 @@ namespace Nethermind.Core.Test
         {
             public Memory<byte> Memory => data;
             public void Dispose() { }
+        }
+
+        private static byte[] FilledInput(int length)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            return input;
         }
 
         private static FieldInfo GetRemainderCacheField()
