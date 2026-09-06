@@ -12,7 +12,7 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.Trie
 {
     [DebuggerStepThrough]
-    public static class Nibbles
+    public static partial class Nibbles
     {
         private const int StackAllocLengthLimit = 255;
 
@@ -126,16 +126,10 @@ namespace Nethermind.Trie
             }
 
             // Process any remaining bytes that were not handled by SIMD.
-            for (int i = processed; i < bytes.Length; i++)
-            {
-                // We use Unsafe here as we have verified all the bounds above and also only go to length
-                // However the loop doesn't start a 0 and the nibbles span access is complex (rather than just i)
-                // so the Jit can't work out if the bounds checks and their if+exceptions can be eliminated.
-                // Because of this using regular array style access causes 3 bounds checks to be inserted.
-                int value = Unsafe.Add(ref MemoryMarshal.GetReference(bytes), i);
-                Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2) = (byte)(value >> 4);
-                Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2 + 1) = (byte)(value & 15);
-            }
+            ExpandNibbles(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), processed),
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), processed * 2),
+                bytes.Length - processed);
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentException() => throw new ArgumentException("Nibbles length must be twice the bytes length");
