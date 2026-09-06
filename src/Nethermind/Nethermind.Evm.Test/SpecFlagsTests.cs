@@ -20,30 +20,40 @@ namespace Nethermind.Evm.Test;
 /// The zkEVM guest is compiled ahead of time, so every reachable handler specialization is emitted
 /// while one runs. A fork rule that holds a single value across the range of forks the guest serves
 /// can be a constant, which folds the branch reading it and drops the specialization behind the
-/// untaken side. This test recomputes which rules qualify and fails when the checked-in file
+/// untaken side. Rules that vary but take the same value on every fork in the range move together,
+/// so one reads the spec and the others follow its flag, which drops the pairings the range never
+/// produces. This test recomputes which rules qualify for each and fails when the checked-in file
 /// disagrees - which is what happens when a fork is added, or when the range below is moved.
 /// </remarks>
 public class SpecFlagsTests
 {
-    /// <summary>Oldest fork the guest serves. Raise it to drop older forks and fold more rules.</summary>
     private const string ResourceName = "SpecFlags.zkevm.cs";
 
+    /// <summary>Oldest fork the guest serves. Raise it to drop older forks and fold more rules.</summary>
     private const string Floor = nameof(Osaka);
 
     /// <summary>Newest fork the guest serves, or null to serve every fork descended from the floor.</summary>
     private static readonly string? Max = nameof(Amsterdam);
 
-    /// <summary>Each rule the opcode table branches on, and how it reads from a spec.</summary>
-    private static readonly (string Rule, Func<IReleaseSpec, bool> Read)[] Rules =
+    /// <summary>
+    /// Each rule the opcode table branches on: the spec property the generated file must read it
+    /// from, and the same read as a delegate for evaluating it on a fork.
+    /// </summary>
+    /// <remarks>Extension properties are spelled out because <c>nameof</c> rejects extension members (CS9316).</remarks>
+    private static readonly (string Rule, string Property, Func<IReleaseSpec, bool> Read)[] Rules =
     [
-        ("Eip150", static s => s.Use63Over64Rule),
-        ("Eip158", static s => s.ClearEmptyAccountWhenTouched),
-        ("Eip2780", static s => s.IsEip2780Enabled),
-        ("Eip2929", static s => s.UseHotAndColdStorage),
-        ("Eip3860", static s => s.IsEip3860Enabled),
-        ("Eip7708", static s => s.IsEip7708Enabled),
-        ("Eip8037", static s => s.IsEip8037Enabled),
-        ("Eip8038", static s => s.IsEip8038Enabled),
+        ("Eip150", "Use63Over64Rule", static s => s.Use63Over64Rule),
+        ("Eip158", "ClearEmptyAccountWhenTouched", static s => s.ClearEmptyAccountWhenTouched),
+        ("Eip2200", "UseNetGasMeteringWithAStipendFix", static s => s.UseNetGasMeteringWithAStipendFix),
+        ("Eip2780", nameof(IReleaseSpec.IsEip2780Enabled), static s => s.IsEip2780Enabled),
+        ("Eip2929", "UseHotAndColdStorage", static s => s.UseHotAndColdStorage),
+        ("Eip3860", nameof(IReleaseSpec.IsEip3860Enabled), static s => s.IsEip3860Enabled),
+        ("Eip6780", "SelfdestructOnlyOnSameTransaction", static s => s.SelfdestructOnlyOnSameTransaction),
+        ("Eip7708", nameof(IReleaseSpec.IsEip7708Enabled), static s => s.IsEip7708Enabled),
+        ("Eip8037", nameof(IReleaseSpec.IsEip8037Enabled), static s => s.IsEip8037Enabled),
+        ("Eip8038", nameof(IReleaseSpec.IsEip8038Enabled), static s => s.IsEip8038Enabled),
+        ("Eip8246", "RemoveSelfdestructBurn", static s => s.RemoveSelfdestructBurn),
+        ("NetGasMetering", "UseNetGasMetering", static s => s.UseNetGasMetering),
     ];
 
     [Test]
@@ -68,24 +78,43 @@ public class SpecFlagsTests
         List<NamedReleaseSpec> range = ForkRange();
         string source = GeneratedSource();
 
+        HashSet<string> declared = Regex
+            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)")
+            .Select(static m => m.Groups["rule"].Value).ToHashSet();
         Dictionary<string, bool> constants = Regex
-            .Matches(source, @"public const bool Const(?<rule>Eip\w+) = (?<value>true|false);")
+            .Matches(source, @"public const bool Const(?<rule>\w+) = (?<value>true|false);")
             .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["value"].Value == "true");
         HashSet<string> folded = Regex
-            .Matches(source, @"public static bool (?<rule>Eip\w+)\(IReleaseSpec spec\) => Const\k<rule>;")
+            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)(?: where T\w+ : struct, IFlag)? => Const\k<rule>;")
             .Select(static m => m.Groups["rule"].Value).ToHashSet();
-        HashSet<string> validated = Regex
-            .Matches(source, @"Check\(spec\.\w+, Const(?<rule>Eip\w+),")
-            .Select(static m => m.Groups["rule"].Value).ToHashSet();
+        Dictionary<string, string> reads = Regex
+            .Matches(source, @"public static bool (?<rule>\w+)(?:<T\w+>)?\(IReleaseSpec spec\)(?: where T\w+ : struct, IFlag)? => spec\.(?<property>\w+);")
+            .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["property"].Value);
+        Dictionary<string, string> derived = Regex
+            .Matches(source, @"public static bool (?<rule>\w+)<T(?<anchor>\w+)>\(IReleaseSpec spec\) where T\k<anchor> : struct, IFlag => T\k<anchor>\.IsActive;")
+            .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["anchor"].Value);
+        Dictionary<string, string> checkedProperties = Regex
+            .Matches(source, @"Check\(spec\.(?<property>\w+), Const(?<rule>\w+),")
+            .ToDictionary(static m => m.Groups["rule"].Value, static m => m.Groups["property"].Value);
+        Dictionary<string, (string Property, string AnchorProperty, string Anchor)> followed = Regex
+            .Matches(source, @"Follows\(spec\.(?<property>\w+), spec\.(?<anchorProperty>\w+), ""(?<rule>[^""]+)"", ""(?<anchor>[^""]+)""\)")
+            .ToDictionary(
+                static m => m.Groups["rule"].Value,
+                static m => (m.Groups["property"].Value, m.Groups["anchorProperty"].Value, m.Groups["anchor"].Value));
 
         StringBuilder wrong = new();
 
-        // Everything below walks Rules, so a constant with no entry there would go unexamined - the
-        // one way the generated file could drift while this test still passed.
-        Assert.That(constants.Keys.Except(Rules.Select(static r => r.Rule)), Is.Empty,
-            "A folded constant with no entry in Rules is never checked against the fork graph.");
+        // Everything below walks Rules, so a rule the file declares, or names as an anchor, but Rules
+        // lacks would go unexamined.
+        Assert.That(declared.Concat(constants.Keys).Concat(derived.Values).Except(Rules.Select(static r => r.Rule)), Is.Empty,
+            "A rule in the generated file with no entry in Rules is never checked against the fork graph.");
 
-        foreach ((string rule, Func<IReleaseSpec, bool> read) in Rules)
+        Dictionary<string, string> properties = Rules.ToDictionary(static r => r.Rule, static r => r.Property);
+        Dictionary<string, string> values = Rules.ToDictionary(
+            static r => r.Rule,
+            r => string.Concat(range.Select(f => r.Read(f) ? '1' : '0')));
+
+        foreach ((string rule, string property, Func<IReleaseSpec, bool> read) in Rules)
         {
             bool value = read(range[0]);
             bool invariant = range.TrueForAll(f => read(f) == value);
@@ -98,18 +127,56 @@ public class SpecFlagsTests
                 continue;
             }
 
-            if (!invariant) continue;
+            if (invariant)
+            {
+                if (constants[rule] != value)
+                    wrong.AppendLine($"{rule} is declared {constants[rule]} but is {value} across {Describe(range)}.");
+                if (!folded.Contains(rule))
+                    wrong.AppendLine($"{rule} declares a constant but its body does not return it, so nothing folds.");
+                if (!checkedProperties.TryGetValue(rule, out string? checkedProperty))
+                    wrong.AppendLine($"{rule} is folded but Validate skips it, so an out-of-range block runs against a rule that does not describe it.");
+                else if (checkedProperty != property)
+                    wrong.AppendLine($"Validate checks {rule} against spec.{checkedProperty}, but the rule reads spec.{property}.");
+                continue;
+            }
 
-            if (constants[rule] != value)
-                wrong.AppendLine($"{rule} is declared {constants[rule]} but is {value} across {Describe(range)}.");
-            if (!folded.Contains(rule))
-                wrong.AppendLine($"{rule} declares a constant but its body does not return it, so nothing folds.");
-            if (!validated.Contains(rule))
-                wrong.AppendLine($"{rule} is folded but Validate skips it, so an out-of-range block runs against a rule that does not describe it.");
+            List<string> peers = Rules
+                .Select(static r => r.Rule)
+                .Where(r => r != rule && values[r] == values[rule])
+                .ToList();
+
+            if (derived.TryGetValue(rule, out string? anchor))
+            {
+                if (!peers.Contains(anchor))
+                    wrong.AppendLine($"{rule} follows {anchor} but does not move with it across {Describe(range)}; read it from the spec.");
+                else if (derived.ContainsKey(anchor))
+                    wrong.AppendLine($"{rule} follows {anchor}, which follows another rule itself; follow the one that reads the spec.");
+                if (!followed.TryGetValue(Display(rule), out (string Property, string AnchorProperty, string Anchor) pairing))
+                    wrong.AppendLine($"{rule} follows {anchor} but Validate does not check that they agree, so an out-of-range block runs against a pairing that was never compiled.");
+                else if (pairing.Anchor != Display(anchor) || pairing.Property != property || pairing.AnchorProperty != properties[anchor])
+                    wrong.AppendLine($"Validate checks {rule} as spec.{pairing.Property} following {pairing.Anchor} as spec.{pairing.AnchorProperty}; the rule reads spec.{property} and follows {anchor}, spec.{properties[anchor]}.");
+                continue;
+            }
+
+            if (!reads.TryGetValue(rule, out string? readProperty))
+                wrong.AppendLine($"{rule} varies across {Describe(range)} but neither reads the spec nor follows another rule.");
+            else if (readProperty != property)
+                wrong.AppendLine($"{rule} reads spec.{readProperty}; the opcode table's rule is spec.{property}.");
+
+            // This rule reads the spec, so a peer that also reads it compiles pairings the range never produces.
+            foreach (string peer in peers)
+            {
+                if (!derived.ContainsKey(peer) && string.CompareOrdinal(rule, peer) < 0)
+                    wrong.AppendLine($"{rule} and {peer} move together across {Describe(range)}; make one follow the other.");
+            }
         }
 
         Assert.That(wrong.ToString(), Is.Empty, "SpecFlags.zkevm.cs disagrees with the fork graph; move it and Floor/Max together.");
     }
+
+    /// <summary>The name Validate reports a rule under: <c>EIP-150</c> for <c>Eip150</c>.</summary>
+    private static string Display(string rule) =>
+        rule.StartsWith("Eip", StringComparison.Ordinal) ? $"EIP-{rule.AsSpan(3)}" : rule;
 
     /// <summary>Forks at or descended from <see cref="Floor"/>, capped at <see cref="Max"/>.</summary>
     /// <remarks>
