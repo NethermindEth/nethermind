@@ -13,12 +13,13 @@ namespace Nethermind.Consensus.Test.Stateless;
 
 public class HashKeyedNodeStorageTests
 {
+    // The first node is the empty tree, which the constructor seeds whether the witness carries it or not.
     private static readonly byte[][] Nodes =
     [
         [0x80],
         [0xc1, 0x80],
         [0xf8, 0x44, 0x01, 0x02, 0x03],
-        [.. new byte[64]]
+        new byte[64]
     ];
 
     private static readonly ValueHash256 UnknownHash = ValueKeccak.Compute("not in the witness");
