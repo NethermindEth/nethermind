@@ -76,11 +76,10 @@ namespace Nethermind.Serialization.Rlp
             position = RlpHelpers.DecodeULong(rlp, position, out ulong gasUsedTotal);
             txReceipt.GasUsedTotal = gasUsedTotal;
 
-            // Bloom construction interns the empty instance inside the reader, so it stays there.
-            decoderContext.Position = position;
-            txReceipt.Bloom = decoderContext.DecodeBloomOrNull();
+            position = RlpHelpers.DecodeBloomOrNull(rlp, position, out Bloom? bloom);
+            txReceipt.Bloom = bloom;
 
-            position = RlpHelpers.ReadSequenceLength(rlp, decoderContext.Position, out int logsLength);
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int logsLength);
             int lastCheck = position + logsLength;
             decoderContext.Position = position;
             List<LogEntry> logEntries = [];

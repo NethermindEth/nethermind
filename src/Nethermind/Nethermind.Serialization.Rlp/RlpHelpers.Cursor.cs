@@ -529,6 +529,25 @@ internal static partial class RlpHelpers
         return DecodeByteArraySpan(data, position, RlpLimit.Bloom, -1, out bloomBytes);
     }
 
+    /// <summary>Decodes a bloom, interning <see cref="Bloom.Empty"/>.</summary>
+    /// <returns>The position past the item.</returns>
+    public static int DecodeBloomOrNull(ReadOnlySpan<byte> data, int position, out Bloom? bloom)
+    {
+        position = DecodeBloomSpan(data, position, out ReadOnlySpan<byte> bloomBytes);
+        bloom = bloomBytes.Length == 0 ? null : CreateBloom(bloomBytes);
+        return position;
+    }
+
+    public static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)
+    {
+        if (bloomBytes.Length != Bloom.ByteLength)
+        {
+            throw new RlpException("Incorrect bloom RLP");
+        }
+
+        return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
+    }
+
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowAddressDecode(int prefix, int position, int dataLength)
         => throw new RlpException(

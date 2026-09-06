@@ -18,8 +18,6 @@ namespace Nethermind.Serialization.Rlp;
 
 public ref struct RlpReader
 {
-    private const int AddressRlpPrefix = Rlp.EmptyByteArrayByte + Address.Size;
-
     private readonly Memory<byte> _memory;
 
     // Packed rather than two bools: constructing a reader is hot, and a 1-byte store is the most
@@ -193,18 +191,8 @@ public ref struct RlpReader
 
     public Hash256? DecodeZeroPrefixKeccak()
     {
-        int prefix = PeekByte();
-        if (prefix == Rlp.EmptyByteArrayByte)
-        {
-            ReadByte();
-            return null;
-        }
-
-        ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-        Span<byte> keccakBytes = stackalloc byte[Hash256.Size];
-        keccakBytes.Clear();
-        theSpan.CopyTo(keccakBytes[(Hash256.Size - theSpan.Length)..]);
-        return new Hash256(keccakBytes);
+        Position = RlpHelpers.DecodeZeroPrefixKeccak(Data, Position, out Hash256? keccak);
+        return keccak;
     }
 
     public Hash256 DecodeZeroPrefixKeccakNonNull() => DecodeZeroPrefixKeccak() ?? ThrowNullDecodedValue<Hash256>();
@@ -340,27 +328,17 @@ public ref struct RlpReader
     public Bloom DecodeBloom()
     {
         ReadOnlySpan<byte> bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
-        return CreateBloom(bloomBytes);
+        return RlpHelpers.CreateBloom(bloomBytes);
     }
 
     public Bloom? DecodeBloomOrNull()
     {
-        Position = RlpHelpers.DecodeBloomSpan(Data, Position, out ReadOnlySpan<byte> bloomBytes);
-        return bloomBytes.Length == 0 ? null : CreateBloom(bloomBytes);
+        Position = RlpHelpers.DecodeBloomOrNull(Data, Position, out Bloom? bloom);
+        return bloom;
     }
 
     public Bloom DecodeBloomNonNull() =>
         DecodeBloomOrNull() ?? ThrowNullDecodedValue<Bloom>();
-
-    private static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)
-    {
-        if (bloomBytes.Length != Bloom.ByteLength)
-        {
-            throw new RlpException("Incorrect bloom RLP");
-        }
-
-        return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
-    }
 
     public void DecodeBloomStructRef(out BloomStructRef bloom) =>
         DecodeBloomStructRef(out bloom, out _);
@@ -942,7 +920,7 @@ public ref struct RlpReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool ReadAddressPrefix(bool allowNull)
     {
-        if (!TryReadFixedSizePrefix(AddressRlpPrefix, allowNull, out bool hasValue, out int prefix))
+        if (!TryReadFixedSizePrefix(RlpHelpers.AddressRlpPrefix, allowNull, out bool hasValue, out int prefix))
         {
             ThrowAddressDecodeException(prefix);
         }
