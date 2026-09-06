@@ -31,8 +31,11 @@ public static class BackgroundTaskTypeId<T>
 }
 
 /// <summary>
-/// Resolves the ids handed out by <see cref="BackgroundTaskTypeId{T}"/> back to type names for diagnostics.
+/// Resolves the ids handed out by <see cref="BackgroundTaskTypeId{T}"/> back to names for diagnostics.
 /// </summary>
+/// <remarks>
+/// Names are resolved once per type, at registration, so that rendering a stats line is a plain array read.
+/// </remarks>
 public static class BackgroundTaskTypeRegistry
 {
     /// <remarks>
@@ -42,6 +45,8 @@ public static class BackgroundTaskTypeRegistry
     public const int MaxTaskTypes = 64;
 
     private static readonly Type?[] Types = new Type?[MaxTaskTypes];
+    private static readonly string?[] Names = new string?[MaxTaskTypes];
+    private static readonly Lock RegisterLock = new();
     private static int _lastId = -1;
 
     internal static int Register(Type type)
@@ -49,10 +54,27 @@ public static class BackgroundTaskTypeRegistry
         int id = Interlocked.Increment(ref _lastId);
         Debug.Assert(id < MaxTaskTypes, $"More than {MaxTaskTypes} background task types; raise {nameof(MaxTaskTypes)} or the extra ones go unreported.");
 
-        if ((uint)id < MaxTaskTypes)
+        if ((uint)id >= MaxTaskTypes) return id;
+
+        // Registration happens once per type, from a static constructor on first schedule
+        lock (RegisterLock)
         {
-            // Published so a concurrent GetName sees either the type or nothing, never a torn slot
-            Volatile.Write(ref Types[id], type);
+            string name = type.Name;
+            for (int other = 0; other < MaxTaskTypes; other++)
+            {
+                // Simple names are not unique — eth/62 and eth/66 both declare a GetBlockHeadersMessage —
+                // so a collision qualifies both this type and the one it collides with
+                if (Types[other] is Type candidate && candidate.Name == name)
+                {
+                    name = type.FullName!;
+                    Volatile.Write(ref Names[other], candidate.FullName);
+                }
+            }
+
+            Types[id] = type;
+            // Ordered after the type's name is resolved, and after the writes above, so a concurrent
+            // GetName sees either a fully resolved name or nothing
+            Volatile.Write(ref Names[id], name);
         }
 
         return id;
@@ -61,24 +83,5 @@ public static class BackgroundTaskTypeRegistry
     /// <summary>
     /// Name to report <paramref name="id"/> under, or <c>null</c> if no type has claimed it.
     /// </summary>
-    /// <remarks>
-    /// Simple names are not unique — eth/62 and eth/66 both have a <c>GetBlockHeadersMessage</c> — so a
-    /// name shared with another registered type is qualified. Only the ambiguous ones pay for it.
-    /// </remarks>
-    public static string? GetName(int id)
-    {
-        Type? type = (uint)id < MaxTaskTypes ? Volatile.Read(ref Types[id]) : null;
-        if (type is null) return null;
-
-        for (int other = 0; other < MaxTaskTypes; other++)
-        {
-            Type? candidate = Volatile.Read(ref Types[other]);
-            if (candidate is not null && candidate != type && candidate.Name == type.Name)
-            {
-                return type.FullName;
-            }
-        }
-
-        return type.Name;
-    }
+    public static string? GetName(int id) => (uint)id < MaxTaskTypes ? Volatile.Read(ref Names[id]) : null;
 }

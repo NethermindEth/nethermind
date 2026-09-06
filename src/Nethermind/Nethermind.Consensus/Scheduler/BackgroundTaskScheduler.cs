@@ -88,6 +88,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             return;
         }
 
+        long depth;
         lock (_blockProcessingLock)
         {
             if (_disposed)
@@ -95,16 +96,19 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 return;
             }
 
-            if (_activeBlockProcessingBranches++ == 0)
+            if (_activeBlockProcessingBranches++ != 0)
             {
-                long depth = Volatile.Read(ref _queueCount);
-                if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth} [{FormatStats()}]");
-                // Signal that block processing is in progress so StartChannel can async-wait
-                _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                // On block processing, cancel the block process CTS so running tasks can exit quickly
-                _blockProcessorCancellationTokenSource.Cancel();
+                return;
             }
+
+            depth = Volatile.Read(ref _queueCount);
+            // Signal that block processing is in progress so StartChannel can async-wait
+            _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // On block processing, cancel the block process CTS so running tasks can exit quickly
+            _blockProcessorCancellationTokenSource.Cancel();
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth} [{FormatStats()}]");
     }
 
     private void BranchProcessorOnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
@@ -320,7 +324,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         {
             if (BackgroundTaskTypeRegistry.GetName(id) is string name)
             {
-                stats[name] = Volatile.Read(ref _stats[id]);
+                // Accumulate: two ids resolving to one name must merge, never replace one another
+                stats[name] = (stats.TryGetValue(name, out int existing) ? existing : 0) + Volatile.Read(ref _stats[id]);
             }
         }
 
