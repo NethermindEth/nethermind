@@ -18,6 +18,9 @@ public sealed partial class KeccakHash
     private const int STATE_SIZE = 200;
     private const int STATE_LANES = STATE_SIZE / sizeof(ulong);
     private const int HASH_DATA_AREA = 136;
+    // The sponge squeezes once, so the output has to fit the rate: size <= GetRoundSize(size), i.e.
+    // size <= STATE_SIZE / 3. Covers every standard Keccak width; 512 bits is the widest at 64 bytes.
+    private const int MAX_HASH_SIZE = STATE_SIZE / 3;
     private const int ROUNDS = 24;
 
     private static readonly ulong[] RoundConstants =
@@ -59,13 +62,12 @@ public sealed partial class KeccakHash
 
     private KeccakHash(int size)
     {
-        // Verify the size
-        if (size <= 0 || size > STATE_SIZE)
+        if ((uint)(size - 1) >= MAX_HASH_SIZE)
         {
-            throw new ArgumentException($"Invalid Keccak hash size. Must be between 0 and {STATE_SIZE}.");
+            ThrowInvalidHashSize(nameof(size), size);
         }
 
-        _roundSize = STATE_SIZE == size ? HASH_DATA_AREA : checked(STATE_SIZE - (2 * size));
+        _roundSize = GetRoundSize(size);
         _remainderLength = 0;
         HashSize = size;
     }
@@ -125,8 +127,8 @@ public sealed partial class KeccakHash
     [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
-        if ((uint)(output.Length - 1) >= STATE_SIZE)
-            ThrowInvalidOutputSize(output.Length);
+        if ((uint)(output.Length - 1) >= MAX_HASH_SIZE)
+            ThrowInvalidHashSize(nameof(output), output.Length);
 
         int inputLength = input.Length;
         // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
@@ -405,7 +407,7 @@ public sealed partial class KeccakHash
 
     private static partial void KeccakF(Span<ulong> st);
 
-    // Callers bound hashSize to [1, STATE_SIZE], so the arithmetic cannot overflow.
+    // Callers bound hashSize to [1, MAX_HASH_SIZE], so the rate is always at least hashSize bytes.
     private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
 
     private byte[] GenerateHash()
@@ -553,8 +555,8 @@ public sealed partial class KeccakHash
     private static void ThrowHashingComplete() => throw new CryptographicException("Keccak hash is complete.");
 
     [DoesNotReturn]
-    private static void ThrowInvalidOutputSize(int length) => throw new ArgumentOutOfRangeException(
-        nameof(length), length, $"Must be between 1 and {STATE_SIZE}.");
+    private static void ThrowInvalidHashSize(string paramName, int size) => throw new ArgumentOutOfRangeException(
+        paramName, size, $"Keccak hash size must be between 1 and {MAX_HASH_SIZE}.");
 
     [InlineArray(STATE_LANES)]
     private struct KeccakState

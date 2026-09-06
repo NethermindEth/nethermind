@@ -278,6 +278,47 @@ namespace Nethermind.Core.Test
             Assert.That(output.ToHexString(), Is.EqualTo(expected));
         }
 
+        // The sponge squeezes a single block, so it can only serve an output that fits the rate,
+        // STATE_SIZE - 2 * size. Larger sizes used to be accepted: at 100 the rate is zero and the absorb
+        // loop never advanced, and above that it is negative and the state was indexed backwards.
+        [TestCase(0)]
+        [TestCase(67)]
+        [TestCase(100)]
+        [TestCase(137)]
+        [TestCase(201)]
+        public void Unsupported_output_sizes_are_rejected(int outputLength)
+        {
+            byte[] input = new byte[200];
+            byte[] output = new byte[outputLength];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => KeccakHash.ComputeHash(input, output), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(() => KeccakHash.Create(outputLength), Throws.InstanceOf<ArgumentException>());
+            }
+        }
+
+        [TestCase(1)]
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(66)]
+        public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(int outputLength)
+        {
+            byte[] input = new byte[300];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            byte[] oneShot = new byte[outputLength];
+            KeccakHash.ComputeHash(input, oneShot);
+
+            KeccakHash incremental = KeccakHash.Create(outputLength);
+            incremental.Update(input);
+
+            Assert.That(incremental.Hash, Is.EqualTo(oneShot));
+        }
+
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
         public void Sanity_check(string hexString, string expected)
         {
