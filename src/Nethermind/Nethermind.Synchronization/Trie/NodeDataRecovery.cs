@@ -105,9 +105,20 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
     private async Task<byte[]?> FetchRlp(Hash256 rootHash, Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)
     {
         using ArrayPoolList<Task<byte[]?>> tasks = Enumerable.Range(0, ConcurrentAttempt)
-            .Select(_ =>
+            .Select(_ => Attempt())
+            .ToPooledList(ConcurrentAttempt);
+
+        return await Wait.AnyWhere(
+            result => result is not null,
+            tasks);
+
+        // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
+        // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
+        async Task<byte[]?> Attempt()
+        {
+            try
             {
-                return peerPool.AllocateAndRun(async (peer) =>
+                return await peerPool.AllocateAndRun(async (peer) =>
                 {
                     if (peer == null) return null;
                     try
@@ -127,12 +138,17 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
                     return null;
                 }, NodePeerStrategy, AllocationContexts.State, cancellationToken);
-            })
-            .ToPooledList(ConcurrentAttempt);
-
-        return await Wait.AnyWhere(
-            result => result is not null,
-            tasks);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Error recovering node {hash} {ex}");
+                return null;
+            }
+        }
     }
 
     private async Task<byte[]?> RecoverNodeFromPeer(ISyncPeer syncPeer, Hash256 rootHash, Hash256? address, TreePath treePath, Hash256 hash, CancellationToken cancellationToken)

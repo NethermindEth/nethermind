@@ -40,12 +40,27 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
 
         if (_logger.IsDebug) _logger.Debug($"Recovering code {codeHash}");
 
-        try
+        using ArrayPoolList<Task<byte[]?>> concurrentAttempts = new(ConcurrentAttempt);
+        for (int i = 0; i < ConcurrentAttempt; i++)
         {
-            using ArrayPoolList<Task<byte[]?>> concurrentAttempts = new(ConcurrentAttempt);
-            for (int i = 0; i < ConcurrentAttempt; i++)
+            concurrentAttempts.Add(Attempt());
+        }
+
+        byte[]? recovered = await Wait.AnyWhere(static result => result is not null, concurrentAttempts);
+        if (recovered is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to recover code {codeHash}");
+        }
+
+        return recovered;
+
+        // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
+        // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
+        async Task<byte[]?> Attempt()
+        {
+            try
             {
-                concurrentAttempts.Add(peerPool.AllocateAndRun(async (PeerInfo peer) =>
+                return await peerPool.AllocateAndRun(async (PeerInfo peer) =>
                 {
                     try
                     {
@@ -64,27 +79,18 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
                     }
                     return null;
-                }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token));
+                }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
             }
-
-            byte[]? recovered = await Wait.AnyWhere(static result => result is not null, concurrentAttempts);
-            if (recovered is null)
+            catch (OperationCanceledException)
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to recover code {codeHash}");
+                return null;
             }
-
-            return recovered;
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
-        catch (Exception ex)
-        {
-            // Recovery is best effort and the caller blocks on it while reading code, so degrade to a
-            // miss and let the caller report the missing code rather than this failure.
-            if (_logger.IsWarn) _logger.Warn($"Error recovering code {codeHash} {ex}");
-            return null;
+            catch (Exception ex)
+            {
+                // Best effort, and the caller blocks on this while reading code.
+                if (_logger.IsWarn) _logger.Warn($"Error recovering code {codeHash} {ex}");
+                return null;
+            }
         }
     }
 

@@ -45,10 +45,21 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
         try
         {
-            Task<IOwnedReadOnlyList<(TreePath, byte[])>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
-                .Select((_) =>
+            Task<IOwnedReadOnlyList<(TreePath, byte[])>?>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
+                .Select((_) => Attempt())
+                .ToArray();
+
+            return await Wait.AnyWhere(
+                result => result is not null,
+                concurrentAttempts);
+
+            // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
+            // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
+            async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Attempt()
+            {
+                try
                 {
-                    return peerPool.AllocateAndRun(async (peer) =>
+                    return await peerPool.AllocateAndRun(async (peer) =>
                         {
                             if (peer == null) return null;
                             try
@@ -71,12 +82,17 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                             }
                             return null;
                         }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
-                })
-                .ToArray();
-
-            return await Wait.AnyWhere(
-                result => result is not null,
-                concurrentAttempts);
+                }
+                catch (OperationCanceledException)
+                {
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
+                    return null;
+                }
+            }
         }
         catch (OperationCanceledException)
         {

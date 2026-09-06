@@ -209,10 +209,13 @@ public class RecoveryTests
     private void SetupPeers(PeerInfo[] peers)
     {
         _syncPeerPool.InitializedPeers.Returns(peers);
+        int allocated = -1;
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
-            SyncPeerAllocation alloc = new(peers[0], allocationContexts);
+            // Hand the peers out in turn, so a multi-peer case allocates more than just the first.
+            PeerInfo peer = peers[Interlocked.Increment(ref allocated) % peers.Length];
+            SyncPeerAllocation alloc = new(peer, allocationContexts);
             return alloc;
         });
     }
@@ -276,6 +279,21 @@ public class RecoveryTests
         SetupThrowingAllocation();
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
         Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task recovers_code_when_one_allocation_throws()
+    {
+        // A single faulted attempt must not discard the siblings that are about to succeed.
+        int allocations = 0;
+        _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
+        _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(c => Interlocked.Increment(ref allocations) == 1
+                ? throw new InvalidOperationException("peer pool unavailable")
+                : new SyncPeerAllocation(_peerEth67, (AllocationContexts)c[1]));
+
+        byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256);
+        Assert.That(response, Is.EqualTo(_nodeRlp));
     }
 
     private void SetupThrowingAllocation()
