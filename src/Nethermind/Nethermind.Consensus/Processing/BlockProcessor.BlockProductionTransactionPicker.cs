@@ -101,10 +101,22 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
-                if (expectedNonce != currentTx.Nonce)
+                // EIP-8250 moves a keyed transaction's replay protection to NONCE_MANAGER; both arms read the state
+                // built up so far, so either also skips a candidate whose domain an earlier one in this block consumed.
+                if (KeyedNonceManager.UsesKeyedNonce(currentTx))
                 {
-                    return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
+                    {
+                        return args.Set(TxAction.Skip, "Invalid nonce sequence");
+                    }
+                }
+                else
+                {
+                    ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                    if (expectedNonce != currentTx.Nonce)
+                    {
+                        return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    }
                 }
 
                 // A frame transaction's fees are paid by the frame that approves payment, which need not

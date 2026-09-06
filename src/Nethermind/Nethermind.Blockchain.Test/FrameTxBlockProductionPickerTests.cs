@@ -5,13 +5,17 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Test;
@@ -21,6 +25,39 @@ public class FrameTxBlockProductionPickerTests
 {
     private const ulong AccountNonce = 5;
 
+    // Eip8141Prototype leaves EIP-8250 off, and both the validator and the processor reject nonce_keys there.
+    private static readonly IReleaseSpec KeyedNonceSpec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+
+    private static BlockProcessor.BlockProductionTransactionPicker CreatePicker(IReleaseSpec? spec = null)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec ?? Eip8141Prototype.Instance);
+        return new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
+    }
+
+    private static IReadOnlyStateProvider StateWithAccountNonce()
+    {
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
+        return state;
+    }
+
+    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, ulong executionGasLimit, ulong stateGasLimit) => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = 1,
+        Nonce = nonce,
+        NonceKeys = nonceKeys,
+        SenderAddress = TestItem.AddressA,
+        Frames =
+        [
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                executionGasLimit, stateGasLimit, UInt256.Zero, default),
+        ],
+        FrameSignatures = [],
+        GasPrice = 1,
+        DecodedMaxFeePerGas = 1,
+    };
+
     [TestCase(TxType.EIP1559, AccountNonce, BlockProcessor.TxAction.Skip, "Sender is contract",
         TestName = "Contract sender and no funds skip an ordinary transaction")]
     [TestCase(TxType.FrameTx, AccountNonce, BlockProcessor.TxAction.Add, null,
@@ -29,13 +66,11 @@ public class FrameTxBlockProductionPickerTests
         TestName = "The account nonce still gates a frame transaction")]
     public void Sender_account_checks(TxType txType, ulong nonce, BlockProcessor.TxAction expectedAction, string? expectedReason)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
-        BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker();
 
-        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        IReadOnlyStateProvider state = StateWithAccountNonce();
         state.HasCode(TestItem.AddressA).Returns(true);
         state.GetCode(TestItem.AddressA).Returns(new byte[] { 0x60, 0x00 });
-        state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
         state.GetBalance(TestItem.AddressA).Returns(UInt256.Zero);
 
         Transaction tx = Build.A.Transaction
@@ -70,26 +105,10 @@ public class FrameTxBlockProductionPickerTests
         ulong cumulativeStateGas,
         BlockProcessor.TxAction expectedAction)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
-        BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
-        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
-        state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker();
+        IReadOnlyStateProvider state = StateWithAccountNonce();
 
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = 1,
-            Nonce = AccountNonce,
-            SenderAddress = TestItem.AddressA,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
-                    executionGasLimit: 500_000, stateGasLimit: 500_000, UInt256.Zero, default),
-            ],
-            FrameSignatures = [],
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
-        };
+        Transaction tx = FrameTx(AccountNonce, nonceKeys: null, executionGasLimit: 500_000, stateGasLimit: 500_000);
         Block block = Build.A.Block.WithGasLimit(1_000_000).TestObject;
 
         BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
@@ -106,26 +125,10 @@ public class FrameTxBlockProductionPickerTests
     [Test]
     public void Execution_headroom_is_measured_from_cumulative_execution_not_the_block_maximum()
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
-        BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
-        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
-        state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker();
+        IReadOnlyStateProvider state = StateWithAccountNonce();
 
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = 1,
-            Nonce = AccountNonce,
-            SenderAddress = TestItem.AddressA,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
-                    executionGasLimit: 500_000, stateGasLimit: 0, UInt256.Zero, default),
-            ],
-            FrameSignatures = [],
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
-        };
+        Transaction tx = FrameTx(AccountNonce, nonceKeys: null, executionGasLimit: 500_000, stateGasLimit: 0);
         Block block = Build.A.Block.WithGasLimit(1_000_000).TestObject;
 
         BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
@@ -137,5 +140,77 @@ public class FrameTxBlockProductionPickerTests
             cumulativeBlockStateGas: 600_000);
 
         Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
+    }
+
+    // EIP-8250 moves a keyed transaction's replay protection into NONCE_MANAGER, so nonce_seq is
+    // unrelated to the sender's account nonce; only the [0] set still means the account nonce.
+    [TestCase(false, BlockProcessor.TxAction.Skip, TestName = "The account-nonce domain still gates on the account nonce")]
+    [TestCase(true, BlockProcessor.TxAction.Add, TestName = "A keyed nonce domain is not gated on the account nonce")]
+    public void Keyed_nonce_frame_transaction_is_not_gated_on_the_account_nonce(bool keyedDomain, BlockProcessor.TxAction expectedAction)
+    {
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(KeyedNonceSpec);
+        using KeyedNonceStateScope scope = KeyedNonceState();
+
+        // A fresh sequence, which the account nonce of 5 cannot coincide with.
+        Transaction tx = FrameTx(nonce: 0, keyedDomain ? [UInt256.One] : [UInt256.Zero], executionGasLimit: 100_000, stateGasLimit: 0);
+        Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
+
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
+            block, tx, new HashSet<Transaction>(), scope.State, block.GasUsed, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(args.Action, Is.EqualTo(expectedAction));
+            // Pins the negative control to the nonce gate: the earlier Skip exits would report otherwise.
+            Assert.That(args.Reason, expectedAction == BlockProcessor.TxAction.Skip
+                ? Is.EqualTo($"Invalid nonce - expected {AccountNonce}")
+                : Is.Empty.Or.Null);
+        }
+    }
+
+    /// <summary>Overlapping key sets do not compete in the pool, so both are current at head and both are offered;
+    /// only the picker reading the block's evolving state stops the second.</summary>
+    [Test]
+    public void A_keyed_candidate_is_skipped_once_this_block_consumed_one_of_its_keys()
+    {
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(KeyedNonceSpec);
+        using KeyedNonceStateScope scope = KeyedNonceState();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
+        HashSet<Transaction> inBlock = [];
+
+        Transaction first = FrameTx(nonce: 0, [UInt256.One], executionGasLimit: 100_000, stateGasLimit: 0);
+        BlockProcessor.AddingTxEventArgs firstArgs = picker.CanAddTransaction(
+            block, first, inBlock, scope.State, block.GasUsed, 0);
+        Assert.That(firstArgs.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
+
+        inBlock.Add(first);
+        KeyedNonceManager.ConsumeNonceSet(scope.State, TestItem.AddressA, [UInt256.One], nonceSeq: 0);
+
+        // Shares key 1 with the transaction already in the block, so its set can no longer be consumed.
+        Transaction second = FrameTx(nonce: 0, [UInt256.One, (UInt256)2], executionGasLimit: 100_000, stateGasLimit: 0);
+        BlockProcessor.AddingTxEventArgs secondArgs = picker.CanAddTransaction(
+            block, second, inBlock, scope.State, block.GasUsed, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondArgs.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(secondArgs.Reason, Is.EqualTo("Invalid nonce sequence"));
+        }
+    }
+
+    private static KeyedNonceStateScope KeyedNonceState()
+    {
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(TestItem.AddressA, UInt256.Zero, AccountNonce);
+        state.CreateAccount(Eip8250Constants.NonceManagerAddress, UInt256.Zero, 1);
+        state.Commit(KeyedNonceSpec);
+        state.CommitTree(0);
+        return new KeyedNonceStateScope(state, scope);
+    }
+
+    private readonly record struct KeyedNonceStateScope(IWorldState State, IDisposable Scope) : IDisposable
+    {
+        public void Dispose() => Scope.Dispose();
     }
 }
