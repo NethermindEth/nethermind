@@ -406,6 +406,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         yield return Instruction.CALLDATASIZE;
         yield return Instruction.PREVRANDAO;
         yield return Instruction.RETURNDATASIZE;
+        yield return Instruction.SELFBALANCE;
         yield return Instruction.GASPRICE;
         yield return Instruction.COINBASE;
         yield return Instruction.TIMESTAMP;
@@ -484,7 +485,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
         code[depth * 2] = (byte)opcode;
         code.AsSpan(depth * 2 + 1).Fill(0xa5);
-        ulong cost = opcode is >= Instruction.PUSH1 and <= Instruction.DUP16 ? GasCostOf.VeryLow : GasCostOf.Base;
+        ulong cost = opcode == Instruction.SELFBALANCE ? GasCostOf.SelfBalance
+            : opcode is >= Instruction.PUSH1 and <= Instruction.DUP16 ? GasCostOf.VeryLow : GasCostOf.Base;
         ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         // PrepareTx retains the activation on this shared fixture; change only this execution's header.
