@@ -85,8 +85,7 @@ public class OpcodeChainBenchmarks
         if (_vm.OpCodeCount != ExecutedOpcodeCount || !output.Span.SequenceEqual(expected.ToBigEndian()))
             throw new InvalidOperationException($"Invalid {Chain} chain output or opcode count.");
 
-        int warmupTransactions = Chain is "CallReturn" or "CallRevert" or "CallInput" ? 1_000 : 100_000;
-        for (int i = 0; i < warmupTransactions; i++) ExecuteContract();
+        for (int i = 0; i < 100_000; i++) ExecuteContract();
         CodeInfo chain = _code;
         _code = new CodeInfo(new byte[] { (byte)Instruction.STOP });
         // Advance the periodic table refresh after warming the selected workload's instruction bodies.
