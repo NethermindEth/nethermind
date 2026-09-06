@@ -20,6 +20,8 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Benchmarks.Scheduler;
 
+internal readonly struct BenchmarkRequest : IBackgroundTaskRequest<BenchmarkRequest>;
+
 /// <summary>
 /// Benchmarks the throughput of the BackgroundTaskScheduler under concurrent task
 /// scheduling with periodic block-processing pauses — the scenario that caused
@@ -75,7 +77,7 @@ public class BackgroundTaskSchedulerBenchmarks
             int batchSize = Capacity / 2;
             for (int i = 0; i < batchSize; i++)
             {
-                bool accepted = scheduler.TryScheduleTask(i, (_, token) =>
+                bool accepted = scheduler.TryScheduleTask(default(BenchmarkRequest), (_, token) =>
                 {
                     Interlocked.Increment(ref totalExecuted);
                     return Task.CompletedTask;
@@ -120,7 +122,7 @@ public class BackgroundTaskSchedulerBenchmarks
         int totalTasks = (Capacity / 2) * BlockProcessingCycles;
         for (int i = 0; i < totalTasks; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(i, (_, _) =>
+            bool accepted = scheduler.TryScheduleTask(default(BenchmarkRequest), (_, _) =>
             {
                 Interlocked.Increment(ref totalExecuted);
                 return Task.CompletedTask;

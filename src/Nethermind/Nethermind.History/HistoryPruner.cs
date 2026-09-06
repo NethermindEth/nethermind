@@ -32,6 +32,8 @@ namespace Nethermind.History;
 
 public class HistoryPruner : IHistoryPruner
 {
+    private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>;
+
     private const int LockWaitTimeoutMs = 100;
     private const ulong SlotsPerEpoch = 32;
 
@@ -244,7 +246,7 @@ public class HistoryPruner : IHistoryPruner
                         TimeSpan? pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
                             ? TimeSpan.FromSeconds(_historyConfig.PruningTimeoutSeconds)
                             : null;
-                        if (!_backgroundTaskScheduler.TryScheduleTask(1,
+                        if (!_backgroundTaskScheduler.TryScheduleTask(default(HistoryPrunerRequest),
                                 (_, backgroundTaskToken) =>
                                 {
                                     try
@@ -259,7 +261,7 @@ public class HistoryPruner : IHistoryPruner
                                     }
 
                                     return Task.CompletedTask;
-                                }, timeout: pruningTimeout, source: "HistoryPruner"))
+                                }, timeout: pruningTimeout))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");

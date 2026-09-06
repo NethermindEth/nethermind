@@ -48,7 +48,7 @@ public class ProtocolHandlerBaseTests
         public Task StartTimeoutCheck() => CheckProtocolInitTimeout();
         public void SimulateLateInitMessage() => ReceivedProtocolInitMsg(new AckMessage());
         public void ScheduleBackgroundTask(Func<int, CancellationToken, ValueTask> backgroundTask) =>
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(1, backgroundTask, "test");
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(1, backgroundTask);
         public void ScheduleSyncServeTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, Task<TestResponseMessage>> syncServe) =>
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
         public void ScheduleSyncServeValueTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> syncServe) =>
@@ -64,7 +64,8 @@ public class ProtocolHandlerBaseTests
     {
         public Task ScheduledTask { get; private set; } = Task.CompletedTask;
 
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             ScheduledTask = fulfillFunc(request, cancellationToken);
             return true;
@@ -73,7 +74,8 @@ public class ProtocolHandlerBaseTests
 
     private sealed class NoopBackgroundTaskScheduler : IBackgroundTaskScheduler
     {
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null) => true;
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq> => true;
     }
 
     private sealed class TestRequestMessage : P2PMessage

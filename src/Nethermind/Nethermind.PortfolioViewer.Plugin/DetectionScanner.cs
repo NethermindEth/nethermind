@@ -54,7 +54,8 @@ public sealed class DetectionScanner(
     private void Grow(string key) => _active.AddOrUpdate(key, BaseChunkBlocks, static (_, c) => Math.Min(c * 2, MaxChunkBlocks));
     private void Shrink(string key) => _active.AddOrUpdate(key, MinChunkBlocks, static (_, c) => Math.Max(c / 2, MinChunkBlocks));
 
-    private readonly record struct DetectRequest(long ChainId, Address Account);
+    private readonly record struct DetectRequest(long ChainId, Address Account)
+        : IBackgroundTaskRequest<DetectRequest>;
 
     private static string Key(long chainId, Address account) => chainId + ":" + account.ToString().ToLowerInvariant();
 
@@ -73,7 +74,7 @@ public sealed class DetectionScanner(
 
     private void Schedule(DetectRequest req)
     {
-        if (!scheduler.TryScheduleTask(req, RunChunkAsync, ChunkTimeout, "portfolio-viewer-detection"))
+        if (!scheduler.TryScheduleTask(req, RunChunkAsync, ChunkTimeout))
         {
             // scheduler queue is full — give up this chain; the client re-triggers on its next poll
             _active.TryRemove(Key(req.ChainId, req.Account), out _);

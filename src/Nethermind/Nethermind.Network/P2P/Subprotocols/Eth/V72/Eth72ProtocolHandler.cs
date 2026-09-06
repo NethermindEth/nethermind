@@ -262,7 +262,7 @@ public class Eth72ProtocolHandler(
                     ClaimedCellsResponse response = new(cellsMessage, sentRequest);
                     // Cell proof verification is too expensive for the network thread;
                     // failures disconnect the peer via the background task wrapper.
-                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(response, _handleCells!, nameof(CellsMessage72)))
+                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(response, _handleCells!))
                     {
                         // Scheduler saturated or shutting down: release the in-flight reservation and
                         // park the request for a later retry.
@@ -834,8 +834,7 @@ public class Eth72ProtocolHandler(
 
                     if (BackgroundTaskScheduler.TryScheduleBackgroundTask(
                         new TransactionsRequest(transactions, currentIdx),
-                        HandleSlow,
-                        "Transactions"))
+                        HandleSlow))
                     {
                         isTransferred = true;
                     }
