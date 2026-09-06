@@ -370,7 +370,7 @@ public partial class BlockAccessListManager
             BalTxProcessorFactory txProcessorFactory)
         {
             IWorldState worldState = stateProvider;
-            if (parallel)
+            if (ExecutionFlags.ParallelExecution && parallel)
             {
                 _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager);
                 worldState = _balWorldState;

@@ -32,7 +32,7 @@ public partial class BlockProcessor
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
-        private readonly IncrementalValidationWorkItem _incrementalValidationWorkItem = new();
+        private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
@@ -54,7 +54,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = ExecutionFlags.ParallelExecution && !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
@@ -128,7 +128,7 @@ public partial class BlockProcessor
                 gasResults[i].Reset();
             }
 
-            IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
+            IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
