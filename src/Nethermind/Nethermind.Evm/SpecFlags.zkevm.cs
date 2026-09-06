@@ -6,7 +6,6 @@
 // To change the range, move the Floor and Max constants in SpecFlagsTests and rerun it.
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm;
