@@ -240,11 +240,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         Metrics.FlatHistoryWatermark = (long)persistedHead.BlockNumber;
 
         // Only once the new marker and watermark are durable: losing this leaves an orphan marker, whereas losing
-        // the marker the watermark names would fail the crossing walk's connect.
-        if (hasWatermark)
+        // the marker the watermark names would fail the crossing walk's connect. An orphan is also the acceptable
+        // outcome of a failure here; aborting the caller's persist over it is not, and a retry could not redo it.
+        if (!hasWatermark) return;
+        try
         {
             using IColumnsWriteBatch<FlatHistoryColumns> cleanup = _history.StartWriteBatch();
             HistoryAvailability.UnmarkBlock(new HistoryColumnBatches(cleanup).AvailableBlocks, watermark);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
     }
 
@@ -258,10 +264,19 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         if (_availability.TryGetGlobalFloor(out ulong floor))
         {
-            if (_captureFromBlock < floor && _logger.IsInfo) _logger.Info(
-                $"Flat history starts at block {floor}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the floor " +
-                "was published there (a sync pivot, or an earlier setting) and never moves; resync the flatHistory database " +
-                "to start lower.");
+            if (_captureFromBlock < floor)
+            {
+                // A pivot publishes watermark == floor and the watermark only grows, so a watermark still below the
+                // floor can only mean the configured block was lowered after publishing it.
+                bool lowered = !_availability.TryGetWatermark(out ulong captured) || captured < floor;
+                if (lowered && _logger.IsWarn) _logger.Warn(
+                    $"FlatDb.HistoryRetentionSinceBlock was lowered to {_captureFromBlock}, but the floor was published at {floor} and never " +
+                    "moves, so history still starts there. Resync the flatHistory database to start lower.");
+                else if (!lowered && _logger.IsInfo) _logger.Info(
+                    $"Flat history starts at block {floor}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the floor " +
+                    "was published there (a sync pivot, or an earlier setting) and never moves; resync the flatHistory database " +
+                    "to start lower.");
+            }
 
             if (_captureFromBlock > floor)
             {
@@ -437,14 +452,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 "closed. Resync the flatHistory database to start from this pivot.");
         }
 
-        // Nothing prunes below a since-block floor, so rows a higher pivot would leave behind would stay forever.
-        if (_captureFromBlock > 0 && hasFloor && hasWatermark && currentWatermark > currentFloor)
-        {
-            throw new InvalidOperationException(
-                $"Cannot seed the flat history floor at pivot {pivotBlock}: this since-block database already holds history " +
-                $"from block {currentFloor} to {currentWatermark}, which nothing would reclaim below the new floor. Resync the " +
-                "flatHistory database to start from this pivot.");
-        }
+        // Nothing prunes below a since-block floor, so the rows this pivot leaves behind stay until the database is
+        // wiped. Refusing instead would strand the sync: FinalizeSync cannot be retried in-process.
+        if (_captureFromBlock > 0 && hasFloor && hasWatermark && currentWatermark > currentFloor && _logger.IsWarn) _logger.Warn(
+            $"Flat history captured from block {currentFloor} to {currentWatermark} is unreachable from pivot {pivotBlock} on: it sits " +
+            "below the new floor, and nothing reclaims it in this mode. Resync the flatHistory database to free the space.");
 
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
         {

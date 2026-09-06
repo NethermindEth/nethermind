@@ -826,17 +826,22 @@ public class HistoryWriterTests
     }
 
     [Test]
-    public void Since_block_seed_pivot_above_captured_history_is_refused()
+    public void Since_block_seed_pivot_above_captured_history_moves_the_floor_to_the_pivot()
     {
-        (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 1);
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 1);
         writer.SeedGenesis([], StateAt(0).StateRoot);
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
         writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
         writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        Assert.That(() => writer.SeedPivot(10, StateAt(10).StateRoot), Throws.InvalidOperationException,
-            "the rows between the floor and the watermark would sit below the new floor forever, with nothing to reclaim them");
+        writer.SeedPivot(10, StateAt(10).StateRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(10UL), "the sync must complete; a refusal here cannot be retried");
+            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "the rows already captured sit below the new floor and fail closed");
+        }
     }
 
     [Test]

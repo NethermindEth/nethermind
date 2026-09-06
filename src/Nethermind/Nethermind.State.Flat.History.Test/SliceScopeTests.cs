@@ -378,6 +378,8 @@ public class SliceScopeTests
     private (HistoryAvailability Availability, HistoryWriter Writer, HistoryWindowPruner Pruner) CreateWriterAndPruner(
         ulong retentionBlocks, string? sliceAddresses, HistoryScopeGate? gate = null, int passBudgetSeconds = 30, ulong sinceBlock = 0)
     {
+        if (sinceBlock > 0 && retentionBlocks > 0) throw new ArgumentException("a since-block and a rolling window cannot both be set; the module refuses that pairing");
+
         FlatDbConfig config = new()
         {
             HistoryEnabled = true,
