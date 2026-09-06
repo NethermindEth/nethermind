@@ -2072,21 +2072,16 @@ public ref partial struct EvmStack
     /// <see cref="EnsureDepth"/>.
     /// </summary>
     /// <remarks>Same reasoning as <see cref="Pop1Peek32BytesUnchecked()"/>.</remarks>
-    /// <param name="a">The first popped value, from the slot two words above the returned one.</param>
-    /// <param name="b">The second popped value, from the slot one word above the returned one.</param>
     /// <returns>Reference to the new top slot.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [UnscopedRef]
-    internal ref byte Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b)
+    internal ref byte Pop2Peek32BytesUnchecked()
     {
         Debug.Assert(Head >= 3, "Caller must establish the depth before popping unchecked");
         nuint head = (nuint)Head;
         Head = (nint)(head - 2);
-        ref byte topRef = ref Unsafe.Add(ref _stack, (nint)((head - 3) * WordSize));
-        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out b);
-        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * WordSize), out a);
-        return ref topRef;
+        return ref Unsafe.Add(ref _stack, (nint)((head - 3) * WordSize));
     }
 
     /// <summary>
