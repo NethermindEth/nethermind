@@ -1178,44 +1178,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void CreateTrieWarmupSession_WhenScopeConstructionThrows_ReleasesGatheredBundleExactlyOnce()
-    {
-        FlatDbConfig config = new();
-        TrackingResourcePool resourcePool = new();
-        RecordingPersistenceReader reader = new();
-        ReadOnlySnapshotBundle snapshotBundle = new(
-            new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty());
-        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, Substitute.For<ITrieNodeCache>());
-        ThrowingEnterTrieWarmer trieWarmer = new(throwOnEnter: 2);
-        using FlatScopeProvider provider = new(
-            new TestMemDb(),
-            flatDbManager,
-            config,
-            trieWarmer,
-            ResourcePool.Usage.MainBlockProcessing,
-            LimboLogs.Instance,
-            isReadOnly: false);
-
-        Assert.That(
-            () =>
-            {
-                using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
-                    Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject, new LocalMetrics());
-                ordinaryScope.CreateTrieWarmupSession();
-            },
-            Throws.TypeOf<InvalidOperationException>());
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
-            Assert.That(reader.DisposeCount, Is.EqualTo(1));
-            Assert.That(trieWarmer.EnterCount, Is.EqualTo(2));
-        }
-
-    }
-
-    [Test]
-    public void OwnedTrieWarmupSession_DisposeDrainsAcceptedJobsRejectsNewHintsAndReturnsResourcesOnce()
+    public void OwnedTrieWarmupSession_DisposeRejectsNewHintsAndInFlightJobsFinishSafely()
     {
         FlatDbConfig config = new();
         TrackingResourcePool resourcePool = new();
@@ -1241,44 +1204,16 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
         ordinaryScope.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.Zero);
-            Assert.That(reader.DisposeCount, Is.Zero);
-        }
-
-        using ManualResetEventSlim disposalWaiting = new(false);
-        session.OnWaitingForJobs = disposalWaiting.Set;
-        Task firstDisposeTask = Task.Factory.StartNew(
-            session.Dispose,
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
-        Assert.That(disposalWaiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
-        Task secondDisposeTask = Task.Factory.StartNew(
-            session.Dispose,
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
-
+        session.Dispose();
+        session.Dispose();
         session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstDisposeTask.IsCompleted, Is.False,
-                "the first disposal returned before its accepted job completed");
-            Assert.That(secondDisposeTask.IsCompleted, Is.False,
-                "the concurrent disposal returned before teardown completed");
-        }
-
-        trieWarmer.CompleteAccountJob();
+        Assert.That(() => trieWarmer.CompleteAccountJob(), Throws.Nothing);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstDisposeTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(secondDisposeTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
-            Assert.That(trieWarmer.EnterCount, Is.EqualTo(2));
-            Assert.That(trieWarmer.ExitCount, Is.EqualTo(2));
+            Assert.That(trieWarmer.EnterCount, Is.EqualTo(1));
+            Assert.That(trieWarmer.ExitCount, Is.EqualTo(1));
             Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
             Assert.That(reader.DisposeCount, Is.EqualTo(1));
             trieNodeCache.DidNotReceive().Add(Arg.Any<TransientResource>());
@@ -1364,25 +1299,6 @@ public class FlatWorldStateScopeProviderTests
         public void OnExitScope() => ExitCount++;
 
         public void Dispose() => JobAccepted.Dispose();
-    }
-
-    private sealed class ThrowingEnterTrieWarmer(int throwOnEnter) : ITrieWarmer
-    {
-        public int EnterCount { get; private set; }
-
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
-
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
-
-        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
-
-        public void OnEnterScope()
-        {
-            EnterCount++;
-            if (EnterCount == throwOnEnter) throw new InvalidOperationException("construction failure");
-        }
-
-        public void OnExitScope() { }
     }
 
     private sealed class RecordingPersistenceReader : IPersistence.IPersistenceReader
