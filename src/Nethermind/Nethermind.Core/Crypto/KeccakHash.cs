@@ -84,12 +84,14 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
-    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into a sponge that is still all-zero.</summary>
+    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into a fresh sponge.</summary>
     /// <returns>What is left of <paramref name="input"/>: fewer than <paramref name="roundSize"/> bytes,
     /// already XORed into the state.</returns>
-    /// <remarks>Requires <paramref name="state"/> all-zero and at least <paramref name="roundSize"/> bytes
-    /// of <paramref name="input"/> on entry; the guest arm writes the first block rather than XORing it,
-    /// so a caller that resumes a used sponge would get a wrong digest there and a right one on the host.
+    /// <remarks>Requires at least <paramref name="roundSize"/> bytes of <paramref name="input"/> and the
+    /// capacity lanes of <paramref name="state"/> zero. Its rate lanes must be zero too, except at a
+    /// 136-byte rate, where the guest arm writes the first block rather than XORing it and so may be
+    /// handed them undefined — which is what lets <see cref="InitializeState"/> skip them there, and what
+    /// makes a caller resuming a used sponge get a wrong digest on the guest and a right one on the host.
     /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
     /// more in register pressure than it saves, so the host form is the plain loop. See
     /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
@@ -157,6 +159,9 @@ public sealed partial class KeccakHash
         Span<ulong> state = stateBuffer;
         Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
+        // The guest's InitializeState leaves the rate lanes undefined for exactly the one branch below
+        // that reaches AbsorbMessageIntoZeroState at a 136-byte rate; adding or reordering a branch here
+        // has to keep that predicate true.
         if (input.Length == Address.Size)
         {
             // Hashing Address, 20 bytes which is uint+Vector128

@@ -77,7 +77,10 @@ public sealed partial class KeccakHash
     /// spelling, and the same alignment reasoning — the state is a <c>MemoryMarshal.AsBytes</c> of a
     /// <c>Span&lt;ulong&gt;</c>, hence ulong-aligned and safe to reinterpret, while the block is a
     /// caller-supplied span with no such guarantee, hence <c>ReadUnaligned</c>. A rate of any other width
-    /// falls back to <see cref="XorVectors"/> — into an all-zero state, an XOR is a write.</remarks>
+    /// falls back to <see cref="XorVectors"/> — into an all-zero state, an XOR is a write. The one thing
+    /// not shared is that sibling's <c>!Vector128.IsHardwareAccelerated</c> gate, which is there because
+    /// <see cref="XorVectors"/> is compiled for the host as well; this file is not, and riscv64 has no
+    /// vector width, so on the only target that reaches here the gate would be a constant.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
     {
