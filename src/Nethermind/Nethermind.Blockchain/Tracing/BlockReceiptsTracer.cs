@@ -20,7 +20,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
     // EIP-8141: reported by the transaction processor before MarkAsSuccess/MarkAsFailed and
-    // attached to the receipt of the current frame transaction, then cleared.
+    // attached to the current frame transaction's receipt; reset at the start of every tx trace.
     private Address? _frameTxPayer;
     private TxFrameReceipt[]? _frameTxReceipts;
 
@@ -178,9 +178,6 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
                 // successful; the status a caller sees has to be derived from the frames instead.
                 txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(_frameTxReceipts);
             }
-
-            _frameTxPayer = null;
-            _frameTxReceipts = null;
         }
 
         return txReceipt;
@@ -383,6 +380,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         CurrentTx = tx;
+        // Cleared per tx: BuildFailedReceipt rebuilds a failing tx's log set from _frameTxReceipts
+        // regardless of tx type, so a frame receipt reported for one tx must not survive into the next.
+        _frameTxPayer = null;
+        _frameTxReceipts = null;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
         return _currentTxTracer;
     }
