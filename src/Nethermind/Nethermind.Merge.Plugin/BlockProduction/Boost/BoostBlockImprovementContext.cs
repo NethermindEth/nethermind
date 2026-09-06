@@ -59,6 +59,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
+            // Block before fees, for the same reason as in BlockImprovementContext.
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
