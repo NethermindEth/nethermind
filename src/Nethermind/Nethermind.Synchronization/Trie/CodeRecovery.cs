@@ -37,6 +37,10 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
     public async Task<byte[]?> Recover(ValueHash256 codeHash, CancellationToken cancellationToken = default)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource(RecoveryTimeout);
+        // Read once. A losing attempt still between Allocate and its request would otherwise read
+        // the token after the winner returned and disposed the source, and be blamed for the
+        // ObjectDisposedException that follows.
+        CancellationToken token = cts.Token;
 
         if (_logger.IsDebug) _logger.Debug($"Recovering code {codeHash}");
 
@@ -64,7 +68,7 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
                 {
                     try
                     {
-                        byte[]? result = await RecoverFromPeer(peer.SyncPeer, codeHash, cts.Token);
+                        byte[]? result = await RecoverFromPeer(peer.SyncPeer, codeHash, token);
                         if (result is not null) return result;
 
                         if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
@@ -79,7 +83,7 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
                     }
                     return null;
-                }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
+                }, SnapPeerStrategy, AllocationContexts.Snap, token);
             }
             catch (OperationCanceledException)
             {

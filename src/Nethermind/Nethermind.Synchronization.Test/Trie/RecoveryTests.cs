@@ -285,6 +285,15 @@ public class RecoveryTests
     public async Task recovers_code_when_one_allocation_throws()
     {
         // A single faulted attempt must not discard the siblings that are about to succeed.
+        // The surviving attempts must resolve asynchronously, otherwise every attempt is already
+        // complete when Wait.AnyWhere runs and it is enumeration order that decides which is seen first.
+        _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                await Task.Yield();
+                return (IByteArrayList)new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp });
+            });
+
         int allocations = 0;
         _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
