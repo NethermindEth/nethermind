@@ -14,6 +14,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -216,6 +217,96 @@ public class SnapProviderTests
         retried.Dispose();
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);
+    }
+
+    // Regression for #13155: a storage range that keeps coming back empty (no slots, no proof) was re-queued at the
+    // next pivot forever. A geth peer answers exactly like that for an account that has no storage at the requested
+    // root, so the same account was asked for at every new pivot with no way out. After a streak that outlives the
+    // feed's own pivot refreshes the account must be re-proven at the current pivot instead of being re-requested.
+    [TestCase(1)]
+    [TestCase(3)]
+    public void AddStorageRange_EmptyResponseStreak_HandsTheAccountsToRefreshInsteadOfRetryingForever(int accountCount)
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        PathWithAccount[] accounts = new PathWithAccount[accountCount];
+        for (int i = 0; i < accountCount; i++)
+        {
+            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+            progressTracker.EnqueueAccountStorage(accounts[i]);
+        }
+
+        DrainAccountRangePartition(progressTracker);
+
+        for (int attempt = 0; attempt < SnapProvider.MaxConsecutiveEmptyStorageResponses; attempt++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? batch);
+            Assert.That(batch!.StorageRangeRequest, Is.Not.Null, $"attempt {attempt}: below the streak limit the range is simply offered again");
+            Assert.That(batch.StorageRangeRequest!.Accounts.Count, Is.EqualTo(accountCount));
+
+            batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
+            Assert.That(snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse), Is.EqualTo(AddRangeResult.ExpiredRootHash));
+            snapProvider.ReleaseRequest(batch, responseHandled: true);
+            batch.Dispose();
+        }
+
+        for (int i = 0; i < accountCount; i++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? next);
+            Assert.That(next!.AccountsToRefreshRequest, Is.Not.Null,
+                "after the streak the account must be re-proven at the current pivot, not requested as a storage range again");
+            Assert.That(accounts.Select(static a => a.Path), Does.Contain(next!.AccountsToRefreshRequest!.Paths[0].PathAndAccount!.Path));
+            progressTracker.ReportAccountRefreshFinished();
+            next.Dispose();
+        }
+
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "no storage range may be left queued behind the refreshes");
+    }
+
+    // Regression for #13155, second half: when the re-proven account turns out to have no storage at the pivot any
+    // more, there is nothing to fetch. Queueing its storage again would only draw the same empty responses.
+    [Test]
+    public void RefreshAccounts_AccountNoLongerHasStorage_DropsTheStorageRange()
+    {
+        (ISnapStateServer server, Hash256 root) = BuildSnapServerFromEntries(
+        [
+            (TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject),
+            (TestItem.KeccakB, Build.An.Account.WithBalance(2).TestObject),
+            (TestItem.KeccakC, Build.An.Account.WithBalance(3).TestObject),
+        ]);
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(root)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        // Discovered at an older pivot with storage; the storage has since been emptied.
+        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        progressTracker.EnqueueAccountRefresh(stale, ValueKeccak.Zero, Keccak.MaxValue);
+
+        progressTracker.IsFinished(out SnapSyncBatch? refresh);
+        Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+        Assert.That(refresh.AccountsToRefreshRequest!.RootHash, Is.EqualTo(root));
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            server.GetAccountRanges(root, stale.Path, stale.Path.IncrementPath(), 4000, CancellationToken.None);
+        refresh.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
+
+        Assert.That(snapProvider.RefreshAccounts(refresh.AccountsToRefreshRequest, refresh.AccountsToRefreshResponse), Is.EqualTo(AddRangeResult.OK));
+        snapProvider.ReleaseRequest(refresh, responseHandled: true);
+        refresh.Dispose();
+
+        Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
+        Assert.That(next, Is.Null);
     }
 
     [TestCase(nameof(SnapSyncBatch.AccountRangeRequest))]

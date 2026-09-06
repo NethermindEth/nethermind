@@ -65,6 +65,10 @@ namespace Nethermind.Synchronization
         [Description("Synced bytecodes via SNAP Sync")]
         public static long SnapSyncedCodes;
 
+        [CounterMetric]
+        [Description("Storage ranges handed to an account refresh after a streak of empty responses during SNAP Sync")]
+        public static long SnapStorageRangesRefreshedAfterEmptyResponses;
+
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]
