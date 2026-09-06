@@ -15,11 +15,6 @@ public sealed partial class Address
             && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))
             && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref a, 16)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
 
-    // Always 20 bytes, so skip the length-dispatching FastHash and use the
-    // dedicated 20-byte hasher — the dominant Dictionary/FrozenSet probe on zkVM.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal partial int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
-
     // A precompile lives at a low address (top 16 bytes zero), so its trailing number
     // IS the membership key. Returns that number when the top 16 bytes are zero, or -1
     // otherwise — lets IReleaseSpec.IsPrecompile swap a FrozenSet hash+probe for a bitmask.

@@ -234,8 +234,11 @@ namespace Nethermind.Core
         /// ILC lowers a <c>callvirt</c> on this sealed type's <see cref="GetHashCode"/> override to a vtable
         /// dispatch rather than resolving it statically, so a caller on a hash-table probe path — chiefly
         /// <see cref="AddressAsKey.GetHashCode"/> — pays an out-of-line call it cannot inline through.
+        /// An address is always 20 bytes, so the body skips the length-dispatching <see cref="SpanExtensions.FastHash"/>
+        /// for the dedicated 20-byte hasher.
         /// </remarks>
-        internal partial int GetHashCodeNonVirtual();
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
 
         public static bool operator ==(Address? a, Address? b)
         {
