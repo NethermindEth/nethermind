@@ -37,9 +37,10 @@ public class CodeInfoRepository : ICodeInfoRepository
     private readonly CodeInfo?[] _localPrecompileArray;
 
     /// <summary>Highest precompile number the index array covers.</summary>
-    /// <remarks>0x100 is RIP-7212, the highest Ethereum registers, so the array covers every in-tree
-    /// chain's low run in 2 KB — sparsely: mainnet fills 18 of the 257 slots. The cap is what stops a
-    /// distant registration, as Taiko's at 0x10001, from sizing the array to itself.</remarks>
+    /// <remarks>Fixed at 0x100 — RIP-7212, the highest Ethereum registers — rather than derived from what
+    /// the chain registers, so that a distant one, as Taiko's at 0x10001, cannot size the array to itself.
+    /// 2 KB of references covers every number an in-tree chain indexes, sparsely: mainnet fills 18 of the
+    /// 257 slots, and anything outside the range falls back to the dictionary.</remarks>
     private const int MaxIndexedNumber = 0x100;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
