@@ -302,11 +302,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
                         // Refund the remaining gas from the completed call frame (success path).
                         TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
-                        ulong gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
 
                         // Process contract creation calls differently from regular calls.
                         if (isCreate)
                         {
+                            ulong gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
                             PrepareCreateData(previousState, ref previousCallOutput);
                             HandleCreate(
                                 in callResult,
@@ -1286,19 +1286,10 @@ public partial class VirtualMachine<TGasPolicy>(
             }
         }
 
-        // If there is previous call output, update the memory cost and save the output.
+        // CALL already expanded this range; returned output is clipped to the requested length.
         if (previousCallOutput.Length > 0)
         {
-            // Use a local variable for the destination to simplify passing it by reference.
-            UInt256 localPreviousDest = previousCallOutputDestination;
-
-            // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, ref vmState.Memory))
-            {
-                goto OutOfGas;
-            }
-
-            vmState.Memory.SaveAfterGas(in localPreviousDest, previousCallOutput);
+            vmState.Memory.SaveAfterGas(in previousCallOutputDestination, previousCallOutput);
         }
 
         // Dispatch the bytecode interpreter.
@@ -1316,10 +1307,6 @@ public partial class VirtualMachine<TGasPolicy>(
     Empty:
         // Return an empty CallResult if there is no machine code to execute.
         return CallResult.Empty();
-
-    OutOfGas:
-        // Return an out-of-gas CallResult if updating the memory cost fails.
-        return new(EvmExceptionType.OutOfGas);
     }
 
     /// <summary>Runs the frame's bytecode through the opcode dispatch loop.</summary>

@@ -202,9 +202,10 @@ namespace Nethermind.Evm.Test
             .Op(Instruction.RETURN)
             .Done;
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Child_output_copy_preserves_memory_beyond_returned_bytes(bool revert)
+        [Test]
+        public void Child_output_copy_preserves_memory_beyond_returned_bytes(
+            [Values] bool revert, [Values(0, 31, 1023, 1024)] int outputOffset,
+            [Values(0, 1, 8, 64)] int requestedLength, [Values] bool traced)
         {
             Address target = TestItem.AddressC;
             Prepare childBuilder = Prepare.EvmCode
@@ -217,19 +218,27 @@ namespace Nethermind.Evm.Test
 
             byte[] dirtyWord = Enumerable.Repeat((byte)0xff, EvmPooledMemory.WordSize).ToArray();
             byte[] parentCode = Prepare.EvmCode
-                .MSTORE(0, dirtyWord)
-                .CALL(50_000, target, 0, 0, 0, 0, 8)
+                .MSTORE((UInt256)outputOffset, dirtyWord)
+                .CALL(50_000, target, 0, 0, 0, (UInt256)outputOffset, (UInt256)requestedLength)
                 .Op(Instruction.POP)
-                .RETURN(0, 8)
+                .RETURN((UInt256)outputOffset, 8)
                 .Done;
 
-            TestAllTracerWithOutput tracer = Execute(parentCode);
+            TestAllTracerWithOutput tracer = new OutputCopyTracer(traced);
+            Execute(tracer, parentCode);
+            byte[] expected = Enumerable.Repeat((byte)0xff, 8).ToArray();
+            for (int i = 0; i < Math.Min(3, requestedLength); i++) expected[i] = (byte)(i + 1);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tracer.Error, Is.Null);
-                Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { 1, 2, 3, 0xff, 0xff, 0xff, 0xff, 0xff }));
+                Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
             }
+        }
+
+        private sealed class OutputCopyTracer(bool traced) : TestAllTracerWithOutput
+        {
+            public override bool IsTracingInstructions => traced;
         }
 
         [Test]
