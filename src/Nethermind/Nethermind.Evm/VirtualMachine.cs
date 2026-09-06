@@ -206,7 +206,7 @@ public partial class VirtualMachine<TGasPolicy>(
         using FrameCleanupScope _ = new(this, vmState);
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
-        ReadOnlySpan<byte> previousCallOutput = ReadOnlySpan<byte>.Empty;
+        nuint previousCallOutputLength = 0;
 
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
@@ -247,7 +247,7 @@ public partial class VirtualMachine<TGasPolicy>(
                     {
                         callResult = ExecuteCall<TTracingInst>(
                             _previousCallResult,
-                            previousCallOutput,
+                            previousCallOutputLength,
                             _previousCallOutputDestination);
                     }
                     else
@@ -258,14 +258,14 @@ public partial class VirtualMachine<TGasPolicy>(
                     // If the call did not finish with a return, set up the next call frame and continue.
                     if (!callResult.IsReturn)
                     {
-                        PrepareNextCallFrame(in callResult, ref previousCallOutput);
+                        PrepareNextCallFrame(in callResult, ref previousCallOutputLength);
                         continue;
                     }
 
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
                         if (terminate)
                         {
                             _currentState = null;
@@ -312,7 +312,7 @@ public partial class VirtualMachine<TGasPolicy>(
                         if (isCreate)
                         {
                             ulong gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
-                            PrepareCreateData(previousState, ref previousCallOutput);
+                            PrepareCreateData(previousState, ref previousCallOutputLength);
                             HandleCreate(
                                 in callResult,
                                 previousState,
@@ -322,7 +322,7 @@ public partial class VirtualMachine<TGasPolicy>(
                         else
                         {
                             // Process a standard call return.
-                            previousCallOutput = HandleRegularReturn<TTracingInst>(in callResult, previousState);
+                            previousCallOutputLength = HandleRegularReturn<TTracingInst>(in callResult, previousState);
                         }
 
                         // Commit the changes from the completed call frame if execution was successful.
@@ -354,7 +354,7 @@ public partial class VirtualMachine<TGasPolicy>(
                             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
                         }
                         // Revert state changes for the previous call frame when a revert condition is signaled.
-                        HandleRevert(previousState, callResult, ref previousCallOutput);
+                        HandleRevert(previousState, callResult, ref previousCallOutputLength);
                     }
                 }
 #pragma warning restore IDE0063
@@ -372,7 +372,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
             // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutputLength, out bool shouldExit);
             if (shouldExit)
             {
                 _currentState = null;
@@ -416,29 +416,30 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ReadOnlySpan<byte> previousCallOutput)
+    protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref nuint previousCallOutputLength)
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes.ToArray();
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
-        previousCallOutput = ReadOnlySpan<byte>.Empty;
+        previousCallOutputLength = 0;
     }
 
-    protected ReadOnlySpan<byte> HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
+    protected nuint HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
         where TTracingInst : struct, IFlag
     {
         ReturnDataBuffer = callResult.Output;
         _previousCallResult = callResult.PrecompileSuccess.HasValue
             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
             : StatusCode.SuccessBytes;
-        ReadOnlySpan<byte> previousCallOutput = ReturnDataBuffer.Span[..Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength)];
+        nuint previousCallOutputLength = (nuint)Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength);
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
         if (previousState.IsPrecompile)
         {
             // parity induced if else for vmtrace
             if (TTracingInst.IsActive)
             {
-                _txTracer.ReportMemoryChange(_previousCallOutputDestination, in previousCallOutput);
+                ReadOnlySpan<byte> output = ReturnDataBuffer.Span[..(int)previousCallOutputLength];
+                _txTracer.ReportMemoryChange(_previousCallOutputDestination, in output);
             }
         }
 
@@ -447,7 +448,7 @@ public partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
 
-        return previousCallOutput;
+        return previousCallOutputLength;
     }
     /// <summary>
     /// Handles the code deposit for a contract creation operation.
@@ -588,10 +589,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// The result of the call that triggered the revert, containing output data and flags
     /// indicating precompile success.
     /// </param>
-    /// <param name="previousCallOutput">
-    /// A reference to the output data buffer that will be updated with the reverted call's output.
+    /// <param name="previousCallOutputLength">
+    /// The bounded number of reverted output bytes to copy into parent memory.
     /// </param>
-    protected void HandleRevert(VmState<TGasPolicy> previousState, in CallResult callResult, ref ReadOnlySpan<byte> previousCallOutput)
+    protected void HandleRevert(VmState<TGasPolicy> previousState, in CallResult callResult, ref nuint previousCallOutputLength)
     {
         // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
@@ -605,7 +606,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         _previousCallResult = StatusCode.FailureBytes;
 
-        previousCallOutput = ReturnDataBuffer.Span[..Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength)];
+        previousCallOutputLength = (nuint)Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength);
 
         // Record the output destination address for subsequent operations.
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
@@ -626,14 +627,14 @@ public partial class VirtualMachine<TGasPolicy>(
     /// A type parameter representing tracing instructions. It must be a struct implementing <see cref="IFlag"/>.
     /// </typeparam>
     /// <param name="failure">The exception that caused the failure during execution.</param>
-    /// <param name="previousCallOutput">
-    /// A reference to the previous call's output; it will be reset upon failure.
+    /// <param name="previousCallOutputLength">
+    /// The pending output copy length, reset upon failure.
     /// </param>
     /// <returns>
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, string? substateError, scoped ref ReadOnlySpan<byte> previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, string? substateError, scoped ref nuint previousCallOutputLength, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -690,7 +691,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
-        previousCallOutput = ReadOnlySpan<byte>.Empty;
+        previousCallOutputLength = 0;
 
         PopAndRestoreParentState();
         if (failedCreate && childCreateStateGasCharged)
@@ -807,10 +808,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="callResult">
     /// The result object from the current call, which contains the state to be executed next.
     /// </param>
-    /// <param name="previousCallOutput">
-    /// A reference to the buffer holding the previous call's output, which is cleared in preparation for the new call.
+    /// <param name="previousCallOutputLength">
+    /// The pending memory-copy length, cleared before entering the new frame.
     /// </param>
-    protected void PrepareNextCallFrame(in CallResult callResult, ref ReadOnlySpan<byte> previousCallOutput)
+    protected void PrepareNextCallFrame(in CallResult callResult, ref nuint previousCallOutputLength)
     {
         // Push the current execution state onto the state stack so it can be restored later.
         _stateStack.Push(_currentState);
@@ -821,8 +822,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
 
-        // Clear the previous call output, preparing for new output data in the next call frame.
-        previousCallOutput = ReadOnlySpan<byte>.Empty;
+        previousCallOutputLength = 0;
     }
 
     /// <summary>
@@ -833,14 +833,14 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="callResult">
     /// The result object that contains the exception type and any output data from the failed call.
     /// </param>
-    /// <param name="previousCallOutput">
-    /// A reference to the previous call's output, which is reset on exception.
+    /// <param name="previousCallOutputLength">
+    /// The pending output copy length, reset on exception.
     /// </param>
     /// <returns>
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    protected TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ReadOnlySpan<byte> previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref nuint previousCallOutputLength, out bool shouldExit)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -877,7 +877,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
-        previousCallOutput = ReadOnlySpan<byte>.Empty;
+        previousCallOutputLength = 0;
 
         PopAndRestoreParentState();
         if (failedCreate && childCreateStateGasCharged)
@@ -1218,8 +1218,8 @@ public partial class VirtualMachine<TGasPolicy>(
     /// An optional read-only memory buffer containing the output of a previous call; if provided, its bytes
     /// will be pushed onto the stack for further processing.
     /// </param>
-    /// <param name="previousCallOutput">
-    /// Output from the previous call used for updating the memory state.
+    /// <param name="previousCallOutputLength">
+    /// The bounded number of return bytes to copy into parent memory.
     /// </param>
     /// <param name="previousCallOutputDestination">
     /// The memory destination address where the previous call's output should be stored.
@@ -1235,7 +1235,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [SkipLocalsInit]
     protected unsafe CallResult ExecuteCall<TTracingInst>(
         ReadOnlyMemory<byte>? previousCallResult,
-        ReadOnlySpan<byte> previousCallOutput,
+        nuint previousCallOutputLength,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
     {
@@ -1289,9 +1289,9 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         // CALL already expanded this range; returned output is clipped to the requested length.
-        if (previousCallOutput.Length > 0)
+        if (previousCallOutputLength > 0)
         {
-            vmState.Memory.SaveAfterGas(in previousCallOutputDestination, previousCallOutput);
+            vmState.Memory.SaveAfterGas(in previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
         }
 
         // Dispatch the bytecode interpreter.

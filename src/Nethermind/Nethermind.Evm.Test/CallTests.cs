@@ -221,12 +221,20 @@ namespace Nethermind.Evm.Test
                 .MSTORE((UInt256)outputOffset, dirtyWord)
                 .CALL(50_000, target, 0, 0, 0, (UInt256)outputOffset, (UInt256)requestedLength)
                 .Op(Instruction.POP)
-                .RETURN((UInt256)outputOffset, 8)
+                .Op(Instruction.RETURNDATASIZE)
+                .MSTORE((UInt256)(outputOffset + 11))
+                .RETURNDATACOPY((UInt256)(outputOffset + 8), 0, 3)
+                .RETURN((UInt256)outputOffset, 43)
                 .Done;
 
             TestAllTracerWithOutput tracer = new OutputCopyTracer(traced);
             Execute(tracer, parentCode);
-            byte[] expected = Enumerable.Repeat((byte)0xff, 8).ToArray();
+            byte[] expected = new byte[43];
+            expected.AsSpan(0, 8).Fill(0xff);
+            expected[8] = 1;
+            expected[9] = 2;
+            expected[10] = 3;
+            expected[42] = 3;
             for (int i = 0; i < Math.Min(3, requestedLength); i++) expected[i] = (byte)(i + 1);
 
             using (Assert.EnterMultipleScope())
