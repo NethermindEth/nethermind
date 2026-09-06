@@ -49,6 +49,45 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>Packs <c>2 * count</c> nibble bytes, high nibble first, into <paramref name="count"/> bytes.</summary>
+        /// <remarks>
+        /// SWAR, the inverse of <see cref="ExpandNibbles"/>: eight nibble bytes come in as one word, the
+        /// high/low pair of each output byte is folded into the low byte of its 16-bit lane, and the four
+        /// lane bytes are gathered into a single 32-bit write. Byte-wide accesses are among the most
+        /// expensive memory operations in the zkVM cost model.
+        /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes, each in <c>0..15</c>,
+        /// and that <paramref name="bytes"/> has room for <paramref name="count"/>. The range matters more
+        /// here than in the scalar form: a wider source byte spills out of its lane and the gather step
+        /// then ORs the spill into the neighbouring output byte, where the scalar form truncates locally.
+        /// Little-endian only, for the reason given at <see cref="ExpandNibbles"/>; the host keeps the
+        /// plain loop in <c>Nibbles.std.cs</c>.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
+        {
+            ref ulong masks = ref MemoryMarshal.GetArrayDataReference(ExpandMasks);
+            ulong m16 = masks;
+            ulong m8 = Unsafe.Add(ref masks, 1);
+            int i = 0;
+            for (; i + sizeof(uint) <= count; i += sizeof(uint))
+            {
+                ulong v = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref nibbles, i * 2));
+                // Each 16-bit lane ends up holding one output byte: its high nibble shifted up, its low
+                // nibble brought down from the next source byte.
+                ulong packed = ((v & m8) << 4) | ((v >> 8) & m8);
+                // Gather lanes 0..3 into the low four bytes.
+                packed = (packed | (packed >> 8)) & m16;
+                packed |= packed >> 16;
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, i), (uint)packed);
+            }
+
+            for (; i < count; i++)
+            {
+                Unsafe.Add(ref bytes, i) =
+                    (byte)((Unsafe.Add(ref nibbles, i * 2) << 4) | Unsafe.Add(ref nibbles, i * 2 + 1));
+            }
+        }
+
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         /// <remarks>Word-at-a-time: the BCL scalar fallback compares byte by byte, and no vector
         /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit,
