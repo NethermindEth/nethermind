@@ -101,9 +101,16 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                // EIP-8250 keeps a keyed transaction's replay protection in NONCE_MANAGER, so its nonce_seq
-                // says nothing about the account nonce; the pool applies the same carve-out at admission.
-                if (!KeyedNonceManager.UsesKeyedNonce(currentTx))
+                // EIP-8250 moves a keyed transaction's replay protection to NONCE_MANAGER; both arms read the state
+                // built up so far, so either also skips a candidate whose domain an earlier one in this block consumed.
+                if (KeyedNonceManager.UsesKeyedNonce(currentTx))
+                {
+                    if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
+                    {
+                        return args.Set(TxAction.Skip, "Invalid nonce sequence");
+                    }
+                }
+                else
                 {
                     ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                     if (expectedNonce != currentTx.Nonce)

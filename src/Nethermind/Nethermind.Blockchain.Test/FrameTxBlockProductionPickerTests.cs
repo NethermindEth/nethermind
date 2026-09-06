@@ -5,13 +5,17 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Test;
@@ -21,9 +25,12 @@ public class FrameTxBlockProductionPickerTests
 {
     private const ulong AccountNonce = 5;
 
-    private static BlockProcessor.BlockProductionTransactionPicker CreatePicker()
+    // Eip8141Prototype leaves EIP-8250 off, and both the validator and the processor reject nonce_keys there.
+    private static readonly IReleaseSpec KeyedNonceSpec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+
+    private static BlockProcessor.BlockProductionTransactionPicker CreatePicker(IReleaseSpec? spec = null)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec ?? Eip8141Prototype.Instance);
         return new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
     }
 
@@ -141,15 +148,15 @@ public class FrameTxBlockProductionPickerTests
     [TestCase(true, BlockProcessor.TxAction.Add, TestName = "A keyed nonce domain is not gated on the account nonce")]
     public void Keyed_nonce_frame_transaction_is_not_gated_on_the_account_nonce(bool keyedDomain, BlockProcessor.TxAction expectedAction)
     {
-        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker();
-        IReadOnlyStateProvider state = StateWithAccountNonce();
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(KeyedNonceSpec);
+        using KeyedNonceStateScope scope = KeyedNonceState();
 
         // A fresh sequence, which the account nonce of 5 cannot coincide with.
         Transaction tx = FrameTx(nonce: 0, keyedDomain ? [UInt256.One] : [UInt256.Zero], executionGasLimit: 100_000, stateGasLimit: 0);
         Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
 
         BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
-            block, tx, new HashSet<Transaction>(), state, block.GasUsed, 0);
+            block, tx, new HashSet<Transaction>(), scope.State, block.GasUsed, 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -159,5 +166,51 @@ public class FrameTxBlockProductionPickerTests
                 ? Is.EqualTo($"Invalid nonce - expected {AccountNonce}")
                 : Is.Empty.Or.Null);
         }
+    }
+
+    /// <summary>Overlapping key sets do not compete in the pool, so both are current at head and both are offered;
+    /// only the picker reading the block's evolving state stops the second.</summary>
+    [Test]
+    public void A_keyed_candidate_is_skipped_once_this_block_consumed_one_of_its_keys()
+    {
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(KeyedNonceSpec);
+        using KeyedNonceStateScope scope = KeyedNonceState();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
+        HashSet<Transaction> inBlock = [];
+
+        Transaction first = FrameTx(nonce: 0, [UInt256.One], executionGasLimit: 100_000, stateGasLimit: 0);
+        BlockProcessor.AddingTxEventArgs firstArgs = picker.CanAddTransaction(
+            block, first, inBlock, scope.State, block.GasUsed, 0);
+        Assert.That(firstArgs.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
+
+        inBlock.Add(first);
+        KeyedNonceManager.ConsumeNonceSet(scope.State, TestItem.AddressA, [UInt256.One], nonceSeq: 0);
+
+        // Shares key 1 with the transaction already in the block, so its set can no longer be consumed.
+        Transaction second = FrameTx(nonce: 0, [UInt256.One, (UInt256)2], executionGasLimit: 100_000, stateGasLimit: 0);
+        BlockProcessor.AddingTxEventArgs secondArgs = picker.CanAddTransaction(
+            block, second, inBlock, scope.State, block.GasUsed, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondArgs.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(secondArgs.Reason, Is.EqualTo("Invalid nonce sequence"));
+        }
+    }
+
+    private static KeyedNonceStateScope KeyedNonceState()
+    {
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(TestItem.AddressA, UInt256.Zero, AccountNonce);
+        state.CreateAccount(Eip8250Constants.NonceManagerAddress, UInt256.Zero, 1);
+        state.Commit(KeyedNonceSpec);
+        state.CommitTree(0);
+        return new KeyedNonceStateScope(state, scope);
+    }
+
+    private readonly record struct KeyedNonceStateScope(IWorldState State, IDisposable Scope) : IDisposable
+    {
+        public void Dispose() => Scope.Dispose();
     }
 }
