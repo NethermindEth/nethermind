@@ -1563,6 +1563,7 @@ namespace Nethermind.Trie
         // Allow faster forward child iteration by not re-skipping items on each child seek
         public ref struct ChildIterator(TrieNode node)
         {
+            private ReadOnlySpan<byte> _nodeRlp;
             private int _position;
             private int? _currentStreamIndex;
 
@@ -1580,16 +1581,20 @@ namespace Nethermind.Trie
                     childOrRef = data;
                     if (childOrRef is null)
                     {
-                        ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
+                        // The cursor is only meaningful against the buffer it was measured on, and
+                        // ReadRlp() can hand back a different one once WriteRlp swaps the node's array.
+                        ReadOnlySpan<byte> nodeRlp;
                         int position;
                         if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
                         {
+                            nodeRlp = _nodeRlp;
                             int toSkip = i - _currentStreamIndex.Value;
                             position = RlpHelpers.SkipItems(nodeRlp, _position, toSkip);
                             _currentStreamIndex += toSkip;
                         }
                         else
                         {
+                            nodeRlp = _nodeRlp = rlp.AsSpan();
                             position = RlpHelpers.SkipLength(nodeRlp, 0);
                             if (node.IsExtension)
                             {
