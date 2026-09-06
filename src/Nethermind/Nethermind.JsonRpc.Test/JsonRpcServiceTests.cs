@@ -94,6 +94,18 @@ public class JsonRpcServiceTests
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Malformed typed argument");
         yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Empty string for non-trailing required argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """[null,false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Null for non-trailing required argument");
+        yield return new TestCaseData(
             nameof(IEthRpcModule.eth_feeHistory),
             """[{},"latest"]""",
             "missing value for required argument 2",
@@ -549,6 +561,15 @@ public class JsonRpcServiceTests
         AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
     }
 
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "EmptyStringNonTrailing")]
+    [TestCase("eth_getBlockByNumber", new object?[] { null, false }, "missing value for required argument 0", TestName = "NullNonTrailing")]
+    public void MissingRequiredArgument_NonTrailingMarker_ReturnsInvalidParams(string method, object?[] parameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
+        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+    }
+
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
     public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(
         string method,
@@ -678,7 +699,43 @@ public class JsonRpcServiceTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
-        AssertJsonRpcError(response, ErrorCodes.InternalError);
+        JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InternalError);
+        // Covers the second error.data producer, JsonRpcService.ReturnErrorResponse, which the module-invocation
+        // path in Error_data_does_not_leak_stack_trace_or_build_paths never reaches.
+        AssertErrorDataWithoutStackTrace(errorResponse);
+    }
+
+    // error.data reaches unauthenticated callers, so it must not carry the stack trace: our release builds
+    // render frames with the build machine's absolute source paths and expose the internal call graph.
+    [TestCase(ErrorCodes.InternalError, TestName = "InternalErrorArm")]
+    [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParamsArm")]
+    public void Error_data_does_not_leak_stack_trace_or_build_paths(int expectedCode)
+    {
+        Exception thrown = expectedCode == ErrorCodes.InternalError
+            ? new InvalidOperationException("Stack empty.")
+            : new ArgumentException("bad argument");
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode);
+
+        AssertErrorDataWithoutStackTrace(response, thrown.GetType(), thrown.Message);
+    }
+
+    private static void AssertErrorDataWithoutStackTrace(JsonRpcErrorResponse response, Type? expectedType = null, string? expectedMessage = null)
+    {
+        string data = response.Error!.Data?.ToString() ?? string.Empty;
+        Assert.Multiple(() =>
+        {
+            // Still actionable: the caller learns what went wrong.
+            if (expectedType is not null) Assert.That(data, Does.Contain(expectedType.FullName!), data);
+            if (expectedMessage is not null) Assert.That(data, Does.Contain(expectedMessage), data);
+            // But nothing about where our source lives or how the call got there.
+            Assert.That(data, Does.Not.Contain("   at "), data);
+            Assert.That(data, Does.Not.Contain(".cs:line"), data);
+            Assert.That(data, Does.Not.Contain("Nethermind.JsonRpc.JsonRpcService"), data);
+        });
     }
 
     private static IEnumerable<TestCaseData> OutOfMemoryPools()

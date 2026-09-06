@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -63,13 +64,27 @@ public class EstimateGasTracer : TxTracer
         public ulong GasLeft { get; set; }
         public int NestingLevel { get; set; } = nestingLevel;
 
+        // Above this the 64/63 step no longer fits in a ulong; the value is only advisory (GasEstimator.CheckFunds),
+        // so saturate instead of letting the (ulong) cast throw.
+        private const ulong MaxScalableGas = ulong.MaxValue / 64 * 63;
+
         private ulong MaxGasNeeded
         {
             get
             {
-                ulong maxGasNeeded = GasOnStart + ExtraGasPressure - GasLeft + GasUsageFromChildren;
+                // Saturating on purpose: the 64/63 factor is applied NestingLevel times per frame and the children's
+                // figure is already scaled, so it compounds with call depth and exceeds ulong a few hundred frames
+                // deep. This getter runs inside VirtualMachine.ExecuteTransaction's try block, where an
+                // OverflowException is treated as an EVM frame failure (HandleFailure -> ReportActionError) and
+                // unbalances the action stack ("Stack empty."). It must never throw.
+                ulong maxGasNeeded = GasOnStart.SaturatingAdd(ExtraGasPressure).SaturatingSub(GasLeft).SaturatingAdd(GasUsageFromChildren);
                 for (int i = 0; i < NestingLevel; i++)
                 {
+                    if (maxGasNeeded > MaxScalableGas)
+                    {
+                        return ulong.MaxValue;
+                    }
+
                     maxGasNeeded = (ulong)Math.Ceiling(maxGasNeeded * 64m / 63);
                 }
 
@@ -77,7 +92,7 @@ public class EstimateGasTracer : TxTracer
             }
         }
 
-        public ulong AdditionalGasRequired => MaxGasNeeded - (GasOnStart - GasLeft);
+        public ulong AdditionalGasRequired => MaxGasNeeded.SaturatingSub(GasOnStart - GasLeft);
         public ulong ExtraGasPressure { get; set; }
     }
 
@@ -165,7 +180,8 @@ public class EstimateGasTracer : TxTracer
                 current.GasLeft = gasLeft.Value;
             }
 
-            _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
+            GasAndNesting parent = _currentGasAndNesting.Peek();
+            parent.GasUsageFromChildren = parent.GasUsageFromChildren.SaturatingAdd(current.AdditionalGasRequired);
             _currentNestingLevel--;
 
             if (_currentNestingLevel == -1)

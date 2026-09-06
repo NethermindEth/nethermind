@@ -30,6 +30,7 @@ namespace Nethermind.JsonRpc;
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
+    private const int MaxReportedExceptionChainDepth = 8;
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
@@ -88,7 +89,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         };
 
         if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(rpcRequest, ex)}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : GetExceptionText(ex), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
     // Formatting the request parses and stringifies its params, which for engine_newPayload is a
@@ -556,7 +557,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction),
 
             TargetParameterCountException or ArgumentException =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), in request.IdRef, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction),
@@ -573,7 +574,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), in request.IdRef, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, description, null, in request.IdRef, returnAction),
@@ -593,10 +594,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(request, ex)}", ex);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), in request.IdRef, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", GetExceptionText(ex), in request.IdRef, returnAction);
         }
-
-        static string GetExceptionText(Exception ex) => (ex as TargetInvocationException)?.InnerException?.ToString() ?? ex.ToString();
 
         static string GetInsufficientBalanceMessage(Exception ex) =>
             (ex as InsufficientBalanceException ?? ex.InnerException as InsufficientBalanceException)!.Message;
@@ -607,8 +606,27 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
             // can investigate whether it's a legitimate pruning gap or a deeper issue.
             if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
-            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), in request.IdRef, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction);
         }
+    }
+
+    /// <summary>Renders an exception chain for <c>error.data</c> without exposing its stack trace.</summary>
+    /// <remarks>
+    /// <c>error.data</c> is returned to unauthenticated callers, and <see cref="Exception.ToString"/> embeds the
+    /// stack trace, which these builds render with the build machine's absolute source paths and with the internal
+    /// call graph. Only the chain's types and messages are reported here; the full trace is written to the node log.
+    /// </remarks>
+    private static string GetExceptionText(Exception ex)
+    {
+        StringBuilder text = new();
+        Exception? current = (ex as TargetInvocationException)?.InnerException ?? ex;
+        for (int depth = 0; current is not null && depth < MaxReportedExceptionChainDepth; current = current.InnerException, depth++)
+        {
+            if (text.Length != 0) text.Append(" ---> ");
+            text.Append(current.GetType()).Append(": ").Append(current.Message);
+        }
+
+        return text.ToString();
     }
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)

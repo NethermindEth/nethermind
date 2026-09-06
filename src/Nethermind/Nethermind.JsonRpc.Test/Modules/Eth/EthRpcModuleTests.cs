@@ -3033,4 +3033,11 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Eth_getBlockByNumber_with_empty_string_block_parameter_returns_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "", false);
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"missing value for required argument 0"},"id":67}"""));
+    }
 }
