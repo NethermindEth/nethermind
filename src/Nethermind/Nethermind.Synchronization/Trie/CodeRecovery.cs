@@ -79,6 +79,13 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
         {
             return null;
         }
+        catch (Exception ex)
+        {
+            // Recovery is best effort and the caller blocks on it while reading code, so degrade to a
+            // miss and let the caller report the missing code rather than this failure.
+            if (_logger.IsWarn) _logger.Warn($"Error recovering code {codeHash} {ex}");
+            return null;
+        }
     }
 
     private async Task<byte[]?> RecoverFromPeer(ISyncPeer peer, ValueHash256 codeHash, CancellationToken token)

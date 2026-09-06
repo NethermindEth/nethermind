@@ -82,6 +82,12 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         {
             return null;
         }
+        catch (Exception ex)
+        {
+            // Never fault the sibling recovery racing this one in PathNodeRecovery.
+            if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
+            return null;
+        }
     }
 
     private async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> RecoverFromPeer(

@@ -49,42 +49,57 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         }
 
         ArrayPoolList<(TreePath, byte[])> recoveredNodes = new(1);
-        do
+        try
         {
-            // In case of deeper node that already exist.
-            byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
-            nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
-
-            if (nodeRlp is null)
+            do
             {
-                if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
-                return null;
-            }
+                // In case of deeper node that already exist.
+                byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
+                nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
 
-            recoveredNodes.Add((currentPath, nodeRlp));
+                if (nodeRlp is null)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
+                    recoveredNodes.Dispose();
+                    return null;
+                }
 
-            TrieNode? node = new(NodeType.Unknown, nodeRlp);
-            node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
+                recoveredNodes.Add((currentPath, nodeRlp));
 
-            if (node.IsBranch)
-            {
-                int childIndex = queryPath[currentPath.Length];
-                currentHash = node.GetChildHash(childIndex);
-                currentPath.AppendMut(childIndex);
-            }
-            else if (node.IsExtension)
-            {
-                currentHash = node.GetChildHash(1);
-                currentPath = currentPath.Append(node.Key);
-            }
-            else if (node.IsLeaf)
-            {
-                break;
-            }
+                TrieNode? node = new(NodeType.Unknown, nodeRlp);
+                node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
 
-        } while (currentHash is not null);
+                if (node.IsBranch)
+                {
+                    int childIndex = queryPath[currentPath.Length];
+                    currentHash = node.GetChildHash(childIndex);
+                    currentPath.AppendMut(childIndex);
+                }
+                else if (node.IsExtension)
+                {
+                    currentHash = node.GetChildHash(1);
+                    currentPath = currentPath.Append(node.Key);
+                }
+                else if (node.IsLeaf)
+                {
+                    break;
+                }
 
-        return recoveredNodes;
+            } while (currentHash is not null);
+
+            return recoveredNodes;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // Never fault the sibling recovery racing this one in PathNodeRecovery.
+            // The abandoned rental is GC-reclaimable, so it is not worth a finally to return it.
+            if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
+            return null;
+        }
     }
 
     private async Task<byte[]?> FetchRlp(Hash256 rootHash, Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)

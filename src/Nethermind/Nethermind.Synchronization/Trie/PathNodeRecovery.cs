@@ -48,5 +48,12 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
         {
             return null;
         }
+        catch (Exception ex)
+        {
+            // Recovery is best effort and the caller blocks on it while reading the trie, so degrade to
+            // a failed recovery and let the caller report the missing node rather than this failure.
+            if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
+            return null;
+        }
     }
 }

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -233,6 +234,55 @@ public class RecoveryTests
             await Task.Delay(Timeout.Infinite, token);
             return SyncPeerAllocation.FailedAllocation;
         }
+    }
+
+    [Test]
+    public async Task recovers_via_snap_when_node_data_recovery_throws()
+    {
+        // Wait.AnyWhere surfaces the first task to complete, so a faulting recovery used to discard the
+        // result of the sibling racing it.
+        INodeStorage throwingNodeStorage = Substitute.For<INodeStorage>();
+        throwingNodeStorage.Get(Arg.Any<Hash256?>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>())
+            .Returns<byte[]?>(_ => throw new InvalidOperationException("node storage unavailable"));
+
+        PathNodeRecovery recovery = new(
+            new NodeDataRecovery(_syncPeerPool, throwingNodeStorage, LimboLogs.Instance),
+            _snapRecovery,
+            LimboLogs.Instance);
+
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(recovery, _peerEth67);
+        Assert.That(response![0].Item1, Is.EqualTo(_path));
+        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
+    }
+
+    [Test]
+    public async Task cannot_recover_code_when_allocation_throws()
+    {
+        SetupThrowingAllocation();
+        byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task cannot_recover_path_when_allocation_throws([Values("snap", "nodeData", "composite")] string recoveryKind)
+    {
+        IPathRecovery recovery = recoveryKind switch
+        {
+            "snap" => _snapRecovery,
+            "nodeData" => _nodeDataDataRecovery,
+            _ => new PathNodeRecovery(_nodeDataDataRecovery, _snapRecovery, LimboLogs.Instance),
+        };
+
+        SetupThrowingAllocation();
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
+        Assert.That(response, Is.Null);
+    }
+
+    private void SetupThrowingAllocation()
+    {
+        _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
+        _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<SyncPeerAllocation>(_ => throw new InvalidOperationException("peer pool unavailable"));
     }
 
     private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
