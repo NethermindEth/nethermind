@@ -16,7 +16,8 @@ public sealed class CommitmentEmitter : IDisposable
 {
     public const int DefaultMaxOpenWindowNodes = 200_000;
     public const int WalkMaxOpenWindowNodes = 50_000;
-    private const int ExactBranchCacheEntries = 1 << 18;
+    private const int TipExactBranchEntries = 1 << 18;
+    private const int WalkExactBranchEntries = 1 << 10;
     public const int StorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
@@ -38,7 +39,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
-    private readonly ClockCache<NodePathKey, bool> _exactBranches = new(ExactBranchCacheEntries);
+    private readonly ClockCache<NodePathKey, bool> _exactBranches;
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
@@ -53,8 +54,9 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _retainedFloor;
     private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, bool respectFloors)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, bool respectFloors)
     {
+        _exactBranches = new ClockCache<NodePathKey, bool>(exactBranchEntries);
         _respectFloors = respectFloors;
         _history = history;
         _policy = policy;
@@ -66,10 +68,10 @@ public sealed class CommitmentEmitter : IDisposable
     }
 
     public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes, respectFloors: false);
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries, respectFloors: false);
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes, respectFloors: true);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, respectFloors: true);
 
     public CommitmentDepthPolicy Policy => _policy;
 
