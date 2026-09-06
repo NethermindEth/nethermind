@@ -385,6 +385,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         yield return Instruction.CALLER;
         yield return Instruction.CALLVALUE;
         yield return Instruction.CALLDATASIZE;
+        yield return Instruction.PREVRANDAO;
         yield return Instruction.GASPRICE;
         yield return Instruction.COINBASE;
         yield return Instruction.TIMESTAMP;
