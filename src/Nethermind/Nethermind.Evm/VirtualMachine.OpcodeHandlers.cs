@@ -641,6 +641,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpShift : struct, EvmInstructions.IOpShift
         where TTracingInst : struct, IFlag
     {
+        // ShiftCore's x86 Vector128 paired pop/push path retains its own checks and fallible status.
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -689,7 +689,6 @@ public static partial class EvmInstructions
         // Deduct the base gas cost for reading gas.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) goto OutOfGas;
 
-
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
         return stack.PushUInt64<TTracingInst, OnFlag>(TGasPolicy.GetRemainingGas(in gas));
         // Jump forward to be unpredicted by the branch predictor.

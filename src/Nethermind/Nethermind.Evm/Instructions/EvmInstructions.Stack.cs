@@ -144,6 +144,7 @@ public static partial class EvmInstructions
             }
             if (remainingCode <= Size)
             {
+                // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
                 programCounter += Size;
                 return EvmExceptionType.None;
             }

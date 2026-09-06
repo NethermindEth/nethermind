@@ -342,15 +342,24 @@ public class EthereumGasPolicyTests
             Is.EqualTo((0UL, 50L, 30L, 20L, 10L)));
     }
 
-    [Test]
-    public void CreateAvailableFromIntrinsic_returns_out_of_gas_when_gas_limit_below_intrinsic()
+    [TestCase(29_999UL, false, 0UL)]
+    [TestCase(30_000UL, false, 0UL)]
+    [TestCase(213_599UL, false, 0UL)]
+    [TestCase(213_600UL, true, 0UL)]
+    [TestCase(213_601UL, true, 1UL)]
+    public void CreateAvailableFromIntrinsic_checks_execution_and_state_gas(ulong gasLimit, bool expectedSuccess, ulong expectedRemaining)
     {
         EthereumGasPolicy intrinsic = new() { Value = 30_000, StateReservoir = 183_600 };
 
-        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(30_000, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available), Is.False);
+        bool success = EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available);
 
-        Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(0UL));
-        Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.EqualTo(0L));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.EqualTo(expectedSuccess));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(expectedRemaining));
+            Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.Zero);
+            Assert.That(EthereumGasPolicy.GetStateGasUsed(in available), Is.EqualTo(expectedSuccess ? intrinsic.StateReservoir : 0));
+        }
     }
 
     [Test]

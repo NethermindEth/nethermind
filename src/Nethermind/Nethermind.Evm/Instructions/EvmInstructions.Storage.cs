@@ -55,7 +55,6 @@ public static partial class EvmInstructions
         // If storage tracing is enabled, record the operation.
         if (vm.IsTracingOpLevelStorage)
         {
-
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
         }
 
@@ -106,7 +105,6 @@ public static partial class EvmInstructions
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
         if (vm.IsTracingOpLevelStorage)
         {
-
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
             vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
