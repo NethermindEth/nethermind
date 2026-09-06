@@ -51,6 +51,8 @@ public class XdcStateSyncPivot(
     }
 
     public void UpdateHeaderForcefully() { }
+
+    public void UpdateHeaderAfterFailureStreak() { }
     public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
     public ulong Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0UL).SaturatingSub(_pivotHeader?.Number ?? 0UL);
     public bool CanFinalize(BlockHeader pivot)

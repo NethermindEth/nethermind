@@ -134,7 +134,7 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
-        public void UpdatePivot() => _pivot.UpdateHeaderForcefully();
+        public void UpdatePivot() => _pivot.UpdateHeaderAfterFailureStreak();
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {

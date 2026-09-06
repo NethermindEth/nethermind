@@ -247,6 +247,22 @@ public class ProgressTrackerTests
         Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
+    // SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through this call. It must land on the
+    // rate-limited failure-streak path, not on UpdateHeaderForcefully, which the state sync round start uses and
+    // which moves on every single block.
+    [Test]
+    public void UpdatePivot_uses_the_rate_limited_failure_streak_path()
+    {
+        IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+        SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 };
+        using ProgressTracker progressTracker = new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
+
+        progressTracker.UpdatePivot();
+
+        pivot.Received(1).UpdateHeaderAfterFailureStreak();
+        pivot.DidNotReceive().UpdateHeaderForcefully();
+    }
+
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;

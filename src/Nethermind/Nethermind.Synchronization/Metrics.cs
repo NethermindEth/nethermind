@@ -69,6 +69,14 @@ namespace Nethermind.Synchronization
         [Description("Storage ranges handed to an account refresh after a streak of empty responses during SNAP Sync")]
         public static long SnapStorageRangesRefreshedAfterEmptyResponses;
 
+        [CounterMetric]
+        [Description("State sync pivot updates forced by a streak of unusable range responses")]
+        public static long ForcedStatePivotUpdates;
+
+        [CounterMetric]
+        [Description("Forced state sync pivot updates skipped because the head had not moved far enough to be worth invalidating in-flight ranges")]
+        public static long ForcedStatePivotUpdatesSuppressed;
+
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]

@@ -11,6 +11,17 @@ public interface IStateSyncPivot
 {
     BlockHeader? GetPivotHeader();
     void UpdateHeaderForcefully();
+
+    /// <summary>
+    /// Moves the pivot in response to a streak of unusable range responses, but only when the head has moved
+    /// at least <see cref="Blockchain.Synchronization.ISyncConfig.StateMinDistanceFromHead"/> blocks past it.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="UpdateHeaderForcefully"/>, which serves callers that need the newest state root, this
+    /// path pays for the move by invalidating every in-flight and queued range, so it is rate-limited by chain
+    /// progress to stop a fast chain turning the failure response into a self-sustaining livelock.
+    /// </remarks>
+    void UpdateHeaderAfterFailureStreak();
     ConcurrentHashSet<Hash256> UpdatedStorages { get; }
     ulong Diff { get; }
     /// <summary>Returns <c>true</c> if state sync can be finalized at <paramref name="pivot"/>.</summary>
