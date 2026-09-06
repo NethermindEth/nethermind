@@ -151,6 +151,7 @@ jobs:
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           # Single-processor legs: the paths behind RuntimeInformation.IsSingleProcessor run only there.
+          - { runner: ubuntu-latest, project: Nethermind.Core.Test, chunk: '', processors: 1 }
           - { runner: ubuntu-latest, project: Nethermind.Evm.Test, chunk: '', processors: 1 }
           - { runner: ubuntu-latest, project: Nethermind.Merge.Plugin.Test, chunk: '', processors: 1 }
           - { runner: ubuntu-latest, project: Nethermind.State.Test, chunk: '', processors: 1 }
