@@ -52,6 +52,8 @@ BFLAT_REFS := \
 dotnet-build:
 	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
 
+# ILC embeds every manifest resource of every input assembly and the guest reads none, so resource
+# bytes in the image are dead weight (6.9 MB of chainspecs once rode along) - fail the build instead.
 build: dotnet-build
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
@@ -67,10 +69,16 @@ build: dotnet-build
 		--no-globalization \
 		--nostdlibrefs \
 		--substitution $(SRC_DIR)/substitutions.xml \
+		--map $(SRC_DIR)/Program.map.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
 		$(ISA_GATES) \
 		$(SRC_DIR)/Program.cs
+	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
+	rm -f $(GUEST_DIR)/Program.map.xml; \
+	if [ -z "$$len" ]; then echo "error: could not read __embedded_resourcedata from the ILC map" >&2; exit 1; fi; \
+	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
+	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
 		rm -f $(GUEST_DIR)/Program
@@ -88,7 +96,8 @@ clean:
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.o \
-		$(GUEST_DIR)/Program.patched
+		$(GUEST_DIR)/Program.patched \
+		$(GUEST_DIR)/Program.map.xml
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
 .PHONY: \
