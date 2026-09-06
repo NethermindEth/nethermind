@@ -7,7 +7,10 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -232,7 +235,7 @@ public sealed class SnapshotBundle : IDisposable
     // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
     // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
     // spinning forever (the target has no whole-bundle lease deferring that release).
-    internal TransientResource? TryLeaseTransientResource()
+    private TransientResource? TryLeaseTransientResource()
     {
         SpinWait spinWait = default;
         while (true)
@@ -571,12 +574,52 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
+        in StateId baseState,
+        ITrieWarmer trieWarmer,
+        ILogManager logManager)
+    {
+        ReadOnlySnapshotBundle? readOnlySnapshotBundle = null;
+        TransientResource? transientResource = null;
+        try
+        {
+            readOnlySnapshotBundle = _readOnlySnapshotBundle.TryLease()
+                ? _readOnlySnapshotBundle
+                : throw new ObjectDisposedException(nameof(SnapshotBundle));
+            transientResource = TryLeaseTransientResource()
+                ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
+
+            FlatTrieWarmupSession session = new(
+                baseState,
+                readOnlySnapshotBundle,
+                transientResource,
+                _trieNodeCache,
+                trieWarmer,
+                logManager);
+            readOnlySnapshotBundle = null;
+            transientResource = null;
+            return session;
+        }
+        finally
+        {
+            transientResource?.ReleaseLease();
+            readOnlySnapshotBundle?.Dispose();
+        }
+    }
+
     /// <summary>
-    /// Leases the stable read-only bundle independently of the transient resource.
+    /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
     /// </summary>
-    /// <returns>The leased bundle, or <see langword="null"/> when this bundle is fully disposed.</returns>
-    internal ReadOnlySnapshotBundle? TryLeaseReadOnlySnapshotBundle() =>
-        _readOnlySnapshotBundle.TryLease() ? _readOnlySnapshotBundle : null;
+    /// <remarks>
+    /// Warmer jobs race scope disposal by design; the managed fallout is caught in the warmer, but a read that is
+    /// already inside the persistence reader when the last lease is released would touch a freed native RocksDB
+    /// snapshot and crash the process. Holding a lease per in-flight traversal defers that release until the job ends.
+    /// </remarks>
+    /// <returns><c>false</c> when the bundle is already fully disposed; the caller must skip the traversal.</returns>
+    internal bool TryLeaseReadOnlyBundle() => _readOnlySnapshotBundle.TryLease();
+
+    /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
+    internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
