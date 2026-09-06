@@ -38,7 +38,7 @@ public class OpcodeChainBenchmarks
     private CodeInfo _code = null!;
     private byte[] _input = new byte[96];
 
-    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "CallData", "CallDataPartial", "CallDataMissing", "Context", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("Arithmetic", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -140,6 +140,7 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.CALLDATALOAD, (byte)Instruction.POP], 3),
                 "Context" => ([(byte)Instruction.CALLER, (byte)Instruction.POP,
                     (byte)Instruction.CALLDATASIZE, (byte)Instruction.POP, (byte)Instruction.TIMESTAMP, (byte)Instruction.POP], 6),
+                "ReturnDataSize" => ([(byte)Instruction.RETURNDATASIZE, (byte)Instruction.POP], 2),
                 "PrevRandao" => ([(byte)Instruction.PREVRANDAO, (byte)Instruction.POP], 2),
                 "Memory" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE,
                     (byte)Instruction.PUSH0, (byte)Instruction.MLOAD, (byte)Instruction.POP], 6),

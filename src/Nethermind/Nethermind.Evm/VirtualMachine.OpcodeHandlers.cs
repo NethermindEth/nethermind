@@ -876,8 +876,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct ReturnDataSizeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        public static bool UsesVm => true;
+        public static int StackGrowth => 1;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionReturnDataSize<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody ? stack.PushUInt32<TTracingInst, OffFlag>((uint)vm.ReturnDataBuffer.Length)
+                : EvmInstructions.InstructionReturnDataSize<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     private readonly struct ReturnDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
