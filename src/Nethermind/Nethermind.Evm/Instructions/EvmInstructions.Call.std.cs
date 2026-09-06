@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -31,6 +32,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        Debug.Assert(vm.ReturnData is null, "Inline precompiles continue the current opcode chain.");
         if (TTracingInst.IsActive || vm.IsTracingActions || !vm.CanExecutePrecompileCallDirectly(precompile, codeSource))
         {
             result = default;
@@ -50,7 +52,6 @@ public static partial class EvmInstructions
         {
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
             vm.ReturnDataBuffer = default;
-            vm.ReturnData = null;
             result = stack.PushZero<TTracingInst, OnFlag>();
             return true;
         }
@@ -60,7 +61,6 @@ public static partial class EvmInstructions
             TGasPolicy.ClearExecutionGas(ref childGas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
             vm.ReturnDataBuffer = default;
-            vm.ReturnData = null;
             result = stack.PushZero<TTracingInst, OnFlag>();
             return true;
         }
@@ -85,7 +85,6 @@ public static partial class EvmInstructions
             }
         }
 
-        vm.ReturnData = null;
         result = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
         return true;
     }

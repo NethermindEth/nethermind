@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -92,8 +93,7 @@ public static partial class EvmInstructions
             goto StaticCallViolation;
         }
 
-        // Reset the return data buffer as contract creation does not use previous return data.
-        vm.ReturnData = null;
+        Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
         ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
 

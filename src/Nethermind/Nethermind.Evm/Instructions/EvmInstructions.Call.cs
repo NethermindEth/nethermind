@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -102,8 +103,7 @@ public static partial class EvmInstructions
     {
         vm.MetricsCounters.IncrementCalls();
 
-        // Clear previous return data.
-        vm.ReturnData = null;
+        Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
 
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
@@ -271,7 +271,6 @@ public static partial class EvmInstructions
                 state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
             vm.MetricsCounters.IncrementEmptyCalls();
-            vm.ReturnData = null;
             return EvmExceptionType.None;
         }
 
