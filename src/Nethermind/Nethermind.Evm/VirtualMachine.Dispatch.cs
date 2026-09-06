@@ -274,11 +274,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             goto Exit;
 
         if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0)
-        {
-            state.OpCodeCount = opCodeCount;
-            state.FinalProgramCounter = pc;
-            return EvmExceptionType.None;
-        }
+            goto Exit;
 
         // Keep the target in a real local so InlineIL can place it above the outgoing arguments.
         IL.EnsureLocal(in next);

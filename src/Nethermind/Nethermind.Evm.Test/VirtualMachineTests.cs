@@ -250,36 +250,54 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(1023, true, 1)]
-    [TestCase(1024, false, 1)]
-    [TestCase(1024, true, 2)]
-    [TestCase(2048, true, 3)]
+    [TestCase(1023, true, 1, Instruction.JUMPDEST)]
+    [TestCase(1024, false, 1, Instruction.JUMPDEST)]
+    [TestCase(1024, true, 2, Instruction.JUMPDEST)]
+    [TestCase(2048, true, 3, Instruction.JUMPDEST)]
+    [TestCase(1023, true, 1, Instruction.RETURNDATASIZE)]
+    [TestCase(1024, false, 1, Instruction.RETURNDATASIZE)]
+    [TestCase(1024, true, 2, Instruction.RETURNDATASIZE)]
+    [TestCase(2048, true, 3, Instruction.RETURNDATASIZE)]
     public void Cancellation_is_polled_before_the_first_opcode_and_each_complete_1024_opcode_batch(
         int continuingOpcodeCount,
         bool appendStop,
-        int expectedPollCount)
+        int expectedPollCount,
+        Instruction opcode)
     {
-        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
-        Array.Fill(code, (byte)Instruction.JUMPDEST);
-        if (appendStop)
-            code[^1] = (byte)Instruction.STOP;
+        byte[] code = CreateCancellationCode(continuingOpcodeCount, appendStop, opcode);
         CountingCancellationTracer tracer = new();
 
         Execute(tracer, code);
 
-        Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(continuingOpcodeCount + (appendStop ? 1 : 0)));
+        }
     }
 
-    [Test]
-    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode()
+    [TestCase(Instruction.JUMPDEST)]
+    [TestCase(Instruction.RETURNDATASIZE)]
+    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode(Instruction opcode)
     {
-        byte[] code = new byte[1025];
-        Array.Fill(code, (byte)Instruction.JUMPDEST);
-        code[^1] = (byte)Instruction.STOP;
+        byte[] code = CreateCancellationCode(1024, true, opcode);
         CountingCancellationTracer tracer = new(cancelAtPoll: 2);
 
         Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
         Assert.That(tracer.PollCount, Is.EqualTo(2));
+    }
+
+    private static byte[] CreateCancellationCode(int continuingOpcodeCount, bool appendStop, Instruction opcode)
+    {
+        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
+        for (int i = 0; i < continuingOpcodeCount; i++)
+            code[i] = (byte)(opcode == Instruction.RETURNDATASIZE && (i & 1) == 0 ? Instruction.POP : opcode);
+        if (opcode == Instruction.RETURNDATASIZE)
+            code[0] = (byte)opcode;
+        if (appendStop)
+            code[^1] = (byte)Instruction.STOP;
+        return code;
     }
 
     private static IEnumerable<TestCaseData> FixedCostOpcodeGasCases()
