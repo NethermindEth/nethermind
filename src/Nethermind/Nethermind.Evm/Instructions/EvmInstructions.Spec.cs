@@ -20,7 +20,7 @@ public static partial class EvmInstructions
 
     internal readonly struct AccessSpec<Eip2929, Eip8038> : IAccessSpec
         where Eip2929 : struct, IFlag
-        where Eip8038 : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
@@ -44,7 +44,7 @@ public static partial class EvmInstructions
         where Eip150 : struct, IFlag
         where Eip158 : struct, IFlag
         where Eip2780 : struct, IFlag
-        where Eip8038 : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
     {
         public static bool UseHotAndColdStorage => Eip2929.IsActive;
         public static bool ClearEmptyAccountWhenTouched => Eip158.IsActive;
@@ -77,7 +77,7 @@ public static partial class EvmInstructions
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag
         where Eip3860 : struct, IFlag
-        where Eip8038 : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
     {
         public static bool UseHotAndColdStorage => Eip2929.IsActive;
         public static bool IsEip3860Enabled => Eip3860.IsActive;
@@ -108,7 +108,7 @@ public static partial class EvmInstructions
         where Eip158 : struct, IFlag
         where Eip6780 : struct, IFlag
         where Eip8246 : struct, IFlag
-        where Eip8038 : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
     {
         public static bool UseShanghaiDDosProtection => Eip150.IsActive;
         public static bool ClearEmptyAccountWhenTouched => Eip158.IsActive;
