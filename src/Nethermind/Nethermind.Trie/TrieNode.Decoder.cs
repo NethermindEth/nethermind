@@ -154,6 +154,7 @@ namespace Nethermind.Trie
                 private byte _element0;
             }
 
+            [SkipLocalsInit]
             public static CappedArray<byte> RlpEncodeBranch(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? pool, bool canBeParallel)
             {
                 Metrics.IncrementTreeNodeRlpEncodings();
@@ -165,17 +166,15 @@ namespace Nethermind.Trie
                 Span<byte> resultSpan;
                 int position;
 
-                // The children have to be measured before they can be written, because the sequence
-                // header carries their length and CappedArray has no offset to write it backwards into.
-                // Measuring means walking all sixteen children twice - resolving each one, decoding the
-                // old RLP to find the next - which is the whole of GetChildrenRlpLengthForBranch. Where
-                // there is nothing else to gain from the walk, write the children into a scratch buffer
-                // instead and copy them in behind the header: one bounded copy for a whole pass. On a
-                // host with AVX-512 the measuring pass also collects full branches for batched hashing,
-                // which is worth more than the walk costs, so that target keeps it.
-                if (Avx512F.VL.IsSupported || UseParallel(canBeParallel, item))
+                // The sequence header carries the children's length and CappedArray has no offset to write
+                // it backwards into, so the length has to be known before the children can go in. Writing
+                // them into a scratch buffer and copying them in behind the header trades the measuring
+                // walk for one bounded copy. On a host with AVX-512 that walk also collects full branches
+                // for batched hashing (HashPreparedBranches), which is worth more than the walk costs.
+                bool useParallel = UseParallel(canBeParallel, item);
+                if (Avx512F.VL.IsSupported || useParallel)
                 {
-                    contentLength = valueRlpLength + (UseParallel(canBeParallel, item)
+                    contentLength = valueRlpLength + (useParallel
                         ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel)
                         : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));
                     sequenceLength = Rlp.LengthOfSequence(contentLength);
