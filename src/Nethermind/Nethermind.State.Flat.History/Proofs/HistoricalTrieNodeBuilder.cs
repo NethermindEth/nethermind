@@ -35,16 +35,11 @@ internal sealed class HistoricalTrieNodeBuilder
 
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 
-        byte[]? rlp = ResolveRlp(path, _fanOut > 1);
+        byte[]? rlp = _scope.IsComposed(path.Length) || _scope.HasCommitmentRows(path.Length) ? ResolveRlp(path, _fanOut > 1) : null;
         if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
-        TrieNode? rebuilt = RebuildNode(path, _fanOut > 1);
-        rlp = rebuilt?.FullRlp.ToArray();
-        if (rebuilt is not null && rlp is not null && ValueKeccak.Compute(rlp) == expected)
-        {
-            PublishSubtree(rebuilt);
-            return Publish(expected, rlp);
-        }
+        rlp = RebuildRlp(path, _fanOut > 1);
+        if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         throw new StateUnavailableException(
             $"The node at {path} as of block {_block} rebuilt to {(rlp is null ? "nothing" : ValueKeccak.Compute(rlp).ToString())} instead of the " +
@@ -100,7 +95,7 @@ internal sealed class HistoricalTrieNodeBuilder
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true)
     {
-        if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren);
+        if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren, allowRebuild);
         if (!_scope.HasCommitmentRows(path.Length)) return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
 
         if (_scope.MayHaveExactRows(path.Length))
@@ -196,17 +191,25 @@ internal sealed class HistoricalTrieNodeBuilder
         }
     }
 
-    private byte[]? Compose(in TreePath path, bool parallelChildren)
+    private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild)
     {
         byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
         if (parallelChildren)
         {
             TreePath parent = path;
-            RunFanOut(index => children[index] = ResolveRlp(parent.Append(index), parallelChildren: false));
+            RunFanOut(index => children[index] = ResolveRlp(parent.Append(index), parallelChildren: false, allowRebuild));
         }
         else
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index] = ResolveRlp(path.Append(index), parallelChildren: false);
+            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index] = ResolveRlp(path.Append(index), parallelChildren: false, allowRebuild);
+        }
+
+        if (!allowRebuild)
+        {
+            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            {
+                if (children[index] is null) return null;
+            }
         }
 
         NodeView[] views = new NodeView[BranchRlp.ChildCount];
@@ -295,12 +298,14 @@ internal sealed class HistoricalTrieNodeBuilder
         }
     }
 
-    private byte[]? RebuildRlp(in TreePath path, bool parallelChildren) => RebuildNode(path, parallelChildren)?.FullRlp.ToArray();
-
-    private TrieNode? RebuildNode(in TreePath path, bool parallelChildren)
+    private byte[]? RebuildRlp(in TreePath path, bool parallelChildren)
     {
         List<TrieLeaf> leaves = parallelChildren && path.Length == 0 ? EnumerateLeavesByChild(path) : EnumerateLeaves(path);
-        return SparseTrieBuilder.Build(leaves, path);
+        TrieNode? node = SparseTrieBuilder.Build(leaves, path);
+        if (node is null) return null;
+
+        PublishSubtree(node);
+        return node.FullRlp.ToArray();
     }
 
     private List<TrieLeaf> EnumerateLeaves(in TreePath path)

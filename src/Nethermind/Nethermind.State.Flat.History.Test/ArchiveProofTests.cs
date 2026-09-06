@@ -972,6 +972,37 @@ public class ArchiveProofTests
         }
     }
 
+    [Test]
+    public void A_rebuilt_subtree_serves_the_levels_below_it()
+    {
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2, 2, 2, 0, 0, 1, 1);
+        Address[] cluster = AddressesSharingPrefix(_accounts[3], nibbles: 4, count: 3).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (Address address in cluster) block.SetBalance(address, 777);
+        });
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        Assert.That(() => ProveFromArchive(cluster[0], Blocks + 1, maxScannedRows: 36), Throws.Nothing,
+            "three accounts sharing four nibbles put the leaf two levels below the checkpoint depth; the rebuild above them publishes every node it built, so the descent does not scan the same range again for each level");
+    }
+
+    private static IEnumerable<Address> AddressesSharingPrefix(Address anchor, int nibbles, int count)
+    {
+        ValueHash256 anchorPath = Keccak.Compute(anchor.Bytes).ValueHash256;
+        for (int seed = 0; count > 0; seed++)
+        {
+            Address candidate = new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[12..]);
+            ValueHash256 path = Keccak.Compute(candidate.Bytes).ValueHash256;
+            if (!path.Bytes[..(nibbles / 2)].SequenceEqual(anchorPath.Bytes[..(nibbles / 2)])) continue;
+
+            count--;
+            yield return candidate;
+        }
+    }
+
     private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)
     {
         int identityOffset = CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength;

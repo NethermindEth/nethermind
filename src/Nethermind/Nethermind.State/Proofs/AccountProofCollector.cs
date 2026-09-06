@@ -33,9 +33,21 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]>[] _storageProofItems;
         private readonly CancellationToken _cancellationToken;
 
-        public ValueHash256 HashedAddress => new(_fullAccountPath.ToPackedByteArray());
+        public ValueHash256 HashedAddress => Pack(_fullAccountPath);
 
-        public IReadOnlyList<ValueHash256> HashedStorageKeys => _fullStoragePaths.Select(static path => new ValueHash256(path.ToPackedByteArray())).ToArray();
+        public ValueHash256[] GetHashedStorageKeys()
+        {
+            ValueHash256[] keys = new ValueHash256[_fullStoragePaths.Length];
+            for (int i = 0; i < keys.Length; i++) keys[i] = Pack(_fullStoragePaths[i]);
+            return keys;
+        }
+
+        private static ValueHash256 Pack(Nibble[] nibbles)
+        {
+            Span<byte> bytes = stackalloc byte[Hash256.Size];
+            for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(((byte)nibbles[2 * i] << 4) | (byte)nibbles[2 * i + 1]);
+            return new ValueHash256(bytes);
+        }
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
@@ -104,7 +116,7 @@ namespace Nethermind.State.Proofs
                 StorageProofs = new StorageProof[storageKeys.Count],
                 Address = _address = address ?? throw new ArgumentNullException(nameof(address))
             };
-            _fullAccountPath = Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+            _fullAccountPath = Nibbles.FromBytes(ValueKeccak.Compute(_address.Bytes).Bytes);
             _fullStoragePaths = new Nibble[storageKeys.Count][];
             _storageProofItems = new List<byte[]>[storageKeys.Count];
 
