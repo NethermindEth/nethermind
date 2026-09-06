@@ -222,34 +222,38 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
-#if ZK_EVM
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
             {
-                storage.Value.Commit();
-            }
-#else
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
-            using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-            {
-                if (blockCommitter.TryRequestConcurrencyQuota())
-                {
-                    commitTask.Add(Task.Factory.StartNew((ctx) =>
-                    {
-                        StorageTree st = (StorageTree)ctx;
-                        st.Commit();
-                        blockCommitter.ReturnConcurrencyQuota();
-                    }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-                }
-                else
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
                 {
                     storage.Value.Commit();
                 }
             }
+            else
+            {
+                // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
+                // may make it worst. Always check on mainnet.
+                using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+                {
+                    if (blockCommitter.TryRequestConcurrencyQuota())
+                    {
+                        commitTask.Add(Task.Factory.StartNew((ctx) =>
+                        {
+                            StorageTree st = (StorageTree)ctx;
+                            st.Commit();
+                            blockCommitter.ReturnConcurrencyQuota();
+                        }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
+                    }
+                    else
+                    {
+                        storage.Value.Commit();
+                    }
+                }
 
-            Task.WaitAll(commitTask.AsSpan());
-#endif
+                Task.WaitAll(commitTask.AsSpan());
+            }
+
             _backingStateTree.Commit();
             _storages.Clear();
         }
