@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -807,6 +808,38 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Since_block_below_floor_persists_keep_only_the_latest_marker()
+    {
+        (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 5);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasMarker(0), Is.True, "the genesis marker stays, the seed step keys its idempotency on it");
+            Assert.That(HasMarker(1), Is.False, "nothing connects at a marker below the watermark, and nothing would prune it later");
+            Assert.That(HasMarker(2), Is.True, "the first real walk connects here");
+        }
+    }
+
+    [Test]
+    public void Since_block_seed_pivot_above_captured_history_is_refused()
+    {
+        (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 1);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        Assert.That(() => writer.SeedPivot(10, StateAt(10).StateRoot), Throws.InvalidOperationException,
+            "the rows between the floor and the watermark would sit below the new floor forever, with nothing to reclaim them");
+    }
+
+    [Test]
     public void Since_block_over_history_captured_without_a_floor_is_refused()
     {
         (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 1000);
@@ -1504,6 +1537,13 @@ public class HistoryWriterTests
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return (writer, reader);
+    }
+
+    private bool HasMarker(ulong block)
+    {
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks).KeyExists(key);
     }
 
     private static StateId StateAt(ulong blockNumber)

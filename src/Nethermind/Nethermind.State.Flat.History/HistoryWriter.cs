@@ -99,10 +99,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             _availability.VerifyFormat();
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
+            bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
+            if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
-            else if (config.HistoryRetention == HistoryRetentionMode.None && _availability.TryGetGlobalFloor(out ulong floor))
+            else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
-                Metrics.FlatHistoryFloor = (long)floor;
                 if (_logger.IsInfo) _logger.Info(
                     $"Flat history starts at block {floor}: a floor published on this database stays, HistoryRetention=None never lowers one, so reads below it keep failing closed.");
             }
@@ -160,7 +161,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (target < _captureFromBlock)
         {
-            AdvanceWatermarkWithoutRows(persistedHead);
+            AdvanceWatermarkWithoutRows(persistedHead, hasWatermark, watermark);
             return false;
         }
 
@@ -224,12 +225,15 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// <summary>Below the first block to keep nothing is captured, but the watermark still follows every persisted
     /// head with its marker, as durably as a capture: the first real walk connects at the previous persist like any
     /// other (capturing the few blocks between that marker and the floor too; they sit unreadable below it), and
-    /// readers below the floor already fail closed.</summary>
-    private void AdvanceWatermarkWithoutRows(in StateId persistedHead)
+    /// readers below the floor already fail closed. Only the latest marker is kept: nothing connects at an older one
+    /// and nothing prunes below a since-block floor. Genesis stays, the seed step keys on it.</summary>
+    private void AdvanceWatermarkWithoutRows(in StateId persistedHead, bool hasWatermark, ulong watermark)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
         {
-            HistoryAvailability.MarkBlock(new HistoryColumnBatches(batch).AvailableBlocks, persistedHead.BlockNumber, persistedHead.StateRoot, _formatVersion);
+            IWriteBatch availableBlocks = new HistoryColumnBatches(batch).AvailableBlocks;
+            if (hasWatermark && watermark > 0) HistoryAvailability.UnmarkBlock(availableBlocks, watermark);
+            HistoryAvailability.MarkBlock(availableBlocks, persistedHead.BlockNumber, persistedHead.StateRoot, _formatVersion);
         }
 
         _availability.PublishWatermark(persistedHead.BlockNumber, _formatVersion);
@@ -248,9 +252,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         if (_availability.TryGetGlobalFloor(out ulong floor))
         {
-            if (_captureFromBlock < floor && _logger.IsInfo) _logger.Info(
+            if (_captureFromBlock < floor && _logger.IsWarn) _logger.Warn(
                 $"Flat history starts at block {floor}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the floor " +
-                $"was published there (a sync pivot, or an earlier setting) and never moves.");
+                $"was published there (a sync pivot, or an earlier setting) and never moves. Set FlatDb.HistoryRetentionSinceBlock " +
+                $"to {floor} to match it, or resync the flatHistory database to start lower.");
 
             if (_captureFromBlock > floor)
             {
@@ -260,7 +265,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                     $"below it. Set FlatDb.HistoryRetentionSinceBlock back to {floor}, or resync the flatHistory database.", -1);
             }
 
-            Metrics.FlatHistoryFloor = (long)floor;
             return;
         }
 
@@ -417,13 +421,23 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 $"{currentFloor}, whose rows are already pruned. Resync the flatHistory database to start from this pivot.");
         }
 
-        if (_availability.TryGetWatermark(out ulong currentWatermark) && pivotBlock < currentWatermark)
+        bool hasWatermark = _availability.TryGetWatermark(out ulong currentWatermark);
+        if (hasWatermark && pivotBlock < currentWatermark)
         {
             throw new InvalidOperationException(
                 $"Cannot seed the flat history floor at pivot {pivotBlock}: it is inside the already-captured window, " +
                 $"whose watermark is {currentWatermark}. The snap sync replaced the live state the captured history above " +
                 "the pivot resolves through, so its as-of reads would answer from the pivot's state instead of failing " +
                 "closed. Resync the flatHistory database to start from this pivot.");
+        }
+
+        // Nothing prunes below a since-block floor, so rows a higher pivot would leave behind would stay forever.
+        if (_captureFromBlock > 0 && hasFloor && hasWatermark && currentWatermark > currentFloor)
+        {
+            throw new InvalidOperationException(
+                $"Cannot seed the flat history floor at pivot {pivotBlock}: this since-block database already holds history " +
+                $"from block {currentFloor} to {currentWatermark}, which nothing would reclaim below the new floor. Resync the " +
+                "flatHistory database to start from this pivot.");
         }
 
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
@@ -435,6 +449,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _availability.PublishWatermark(pivotBlock, _formatVersion);
         if (!hasFloor || pivotBlock >= currentFloor) _availability.PublishGlobalFloor(pivotBlock);
         _history.SyncWal();
+
+        if (_captureFromBlock > 0 && pivotBlock > _captureFromBlock && _logger.IsInfo) _logger.Info(
+            $"Flat history starts at the sync pivot {pivotBlock}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the node's state starts there.");
     }
 
     [SkipLocalsInit]

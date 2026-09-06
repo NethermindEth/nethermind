@@ -423,6 +423,14 @@ public sealed class HistoryAvailability
         if (stampFormat) batch.PutSpan(FormatVersionKey, [formatVersion]);
     }
 
+    /// <summary>Removes the per-block marker of <paramref name="block"/> from <paramref name="batch"/>.</summary>
+    public static void UnmarkBlock(IWriteBatch batch, ulong block)
+    {
+        Span<byte> key = stackalloc byte[BlockBytes];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        batch.Remove(key);
+    }
+
     /// <summary>
     /// Publishes the contiguous watermark (and stamps <paramref name="formatVersion"/>). Written outside the
     /// per-block capture batches so it advances only after the whole captured range is durable — a partial or
