@@ -152,7 +152,7 @@ jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
     if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.arch == 'arm64' && 'reproducible-benchmarks-arm' || 'ubuntu-latest' }}
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       arch: ${{ steps.resolve.outputs.arch }}
