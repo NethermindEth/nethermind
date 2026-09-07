@@ -136,8 +136,8 @@ internal sealed class EvmAdmissionGate
             }
 
             queueFull = _maxQueued > 0 && _queued >= _maxQueued;
-            double predictedWaitMs = QueuedWeightNoHeavierThan(weight) * _serviceTimeMs / Permits;
-            if (!queueFull && _budget > TimeSpan.Zero && predictedWaitMs <= _budget.TotalMilliseconds)
+            // A/B variant: no predicted-wait shedding; the queue is bounded by the budget and RequestQueueLimit only.
+            if (!queueFull && _budget > TimeSpan.Zero)
             {
                 // Stamped under the lock: with one constant budget every new deadline is then no earlier than any queued one,
                 // so expired waiters are always bucket heads and a timer armed only when the queue was empty is never due
