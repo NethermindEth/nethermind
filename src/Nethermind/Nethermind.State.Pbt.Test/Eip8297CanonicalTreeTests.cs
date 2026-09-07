@@ -452,7 +452,7 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[length]));
-            Assert.Throws<InvalidDataException>(() => PbtNodeCodec.Decode(encoding));
+            Assert.Throws<InvalidDataException>(() => new PbtNodeReader(encoding));
         }
     }
 
@@ -472,7 +472,7 @@ public class Eip8297CanonicalTreeTests
             Assert.Throws<ArgumentException>(() => batch.Set(default, default));
             Assert.Throws<ArgumentException>(() => batch.Delete(default));
             Assert.Throws<ArgumentException>(() => content.SetLeaf(default, default));
-            Assert.Throws<ArgumentException>(() => new PbtLeafNode(default, default(ValueHash256)));
+            Assert.Throws<ArgumentException>(() => PbtNodeCodec.EncodeLeaf(default, new byte[32]));
             Assert.That(batch.Count, Is.Zero);
             Assert.That(content.Leaves, Is.Empty);
         }
@@ -510,21 +510,146 @@ public class Eip8297CanonicalTreeTests
         byte[] key = new byte[keyLength];
         key[^1] = 1;
         byte[] value = Value(7);
-        PbtLeafNode leaf = new(new PbtFullKey(key), value);
+        PbtNodeReader leaf = new(PbtNodeCodec.EncodeLeaf(new PbtFullKey(key), value));
 
         int prefixBitCount = prefixLength * 8;
         byte[] prefixBytes = new byte[prefixLength];
-        PbtBitPrefix prefix = new(prefixBytes, prefixBitCount);
         ValueHash256 left = new(Hash([0, .. key, .. value]));
         ValueHash256 right = new(Value(8));
-        PbtBranchNode branch = new(prefix, left, right);
+        PbtNodeReader branch = new(PbtNodeCodec.EncodeBranch(prefixBytes, prefixBitCount, left, right));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(leaf.Hash.Bytes.ToArray(), Is.EqualTo(Hash([0, .. key, .. value])), "leaf");
-            Assert.That(branch.Hash.Bytes.ToArray(), Is.EqualTo(Hash(
+            Assert.That(PbtNodeCodec.Hash(leaf).Bytes.ToArray(), Is.EqualTo(Hash([0, .. key, .. value])), "leaf");
+            Assert.That(PbtNodeCodec.Hash(branch).Bytes.ToArray(), Is.EqualTo(Hash(
                 [1, (byte)(prefixBitCount >> 8), (byte)prefixBitCount, .. prefixBytes, .. left.Bytes, .. right.Bytes])), "branch");
         }
+    }
+
+    [TestCase(true, 1)]
+    [TestCase(true, 66)]
+    [TestCase(false, 0)]
+    [TestCase(false, 5)]
+    [TestCase(false, 8)]
+    [TestCase(false, 257)]
+    [TestCase(false, ushort.MaxValue)]
+    public void Node_reader_borrows_fields_and_preserves_encoding_and_hash(bool leaf, int length)
+    {
+        byte[] field = new byte[leaf ? length : (length + 7) / 8];
+        field.AsSpan().Fill(0xA0);
+        if (!leaf && length % 8 != 0) field[^1] &= (byte)(0xFF << (8 - length % 8));
+        byte[] value = Value(7);
+        ValueHash256 left = new(Value(8));
+        ValueHash256 right = new(Value(9));
+        byte[] expected = leaf
+            ? [0, (byte)(length >> 8), (byte)length, .. field, .. value]
+            : [1, (byte)(length >> 8), (byte)length, .. field, .. left.Bytes, .. right.Bytes];
+        byte[] encoding = leaf
+            ? PbtNodeCodec.EncodeLeaf(new PbtFullKey(field), value)
+            : PbtNodeCodec.EncodeBranch(field, length, left, right);
+        byte[] backing = new byte[encoding.Length + 11];
+        encoding.CopyTo(backing, 7);
+        PbtNodeReader reader = new(backing.AsSpan(7, encoding.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.IsLeaf, Is.EqualTo(leaf));
+            Assert.That(reader.Encoding.ToArray(), Is.EqualTo(expected));
+            Assert.That(reader.Encoding.Overlaps(backing.AsSpan(), out int offset), Is.True);
+            Assert.That(offset, Is.EqualTo(-7));
+            Assert.That(PbtNodeCodec.Hash(reader).Bytes.ToArray(), Is.EqualTo(Hash(leaf ? [0, .. field, .. value] : expected)));
+            if (leaf)
+            {
+                Assert.That(reader.Key.ToArray(), Is.EqualTo(field));
+                Assert.That(reader.Value.ToArray(), Is.EqualTo(value));
+                Assert.That(reader.Key.Overlaps(backing.AsSpan()), Is.True);
+                Assert.That(reader.Value.Overlaps(backing.AsSpan()), Is.True);
+            }
+            else
+            {
+                Assert.That(reader.PrefixBitCount, Is.EqualTo(length));
+                Assert.That(reader.Prefix.ToArray(), Is.EqualTo(field));
+                if (length != 0) Assert.That(reader.Prefix.Overlaps(backing.AsSpan()), Is.True);
+                Assert.That(reader.LeftHash, Is.EqualTo(left));
+                Assert.That(reader.RightHash, Is.EqualTo(right));
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(MalformedNodeEncodings))]
+    public void Node_reader_rejects_malformed_encodings(byte[] encoding) =>
+        Assert.Throws<InvalidDataException>(() => new PbtNodeReader(encoding));
+
+    private static IEnumerable<TestCaseData> MalformedNodeEncodings()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("Node_reader_rejects_empty");
+        yield return new TestCaseData(Bytes.FromHexString("02")).SetName("Node_reader_rejects_unknown_tag");
+        yield return new TestCaseData(Bytes.FromHexString("0000")).SetName("Node_reader_rejects_truncated_header");
+        foreach (int length in new[] { 0, 67 })
+        {
+            byte[] invalidLeaf = new byte[3 + length + 32];
+            invalidLeaf[2] = (byte)length;
+            yield return new TestCaseData(invalidLeaf).SetName($"Node_reader_rejects_invalid_leaf_length_{length}");
+        }
+        byte[] leaf = PbtNodeCodec.EncodeLeaf(new PbtFullKey(Bytes.FromHexString("A0")), Value(1));
+        yield return new TestCaseData(leaf[..^1]).SetName("Node_reader_rejects_truncated_leaf");
+        yield return new TestCaseData((byte[])[.. leaf, 0]).SetName("Node_reader_rejects_trailing_leaf_bytes");
+        byte[] branch = PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 5, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+        yield return new TestCaseData(branch[..^1]).SetName("Node_reader_rejects_truncated_branch");
+        yield return new TestCaseData((byte[])[.. branch, 0]).SetName("Node_reader_rejects_trailing_branch_bytes");
+        byte[] badPadding = (byte[])branch.Clone();
+        badPadding[3] |= 1;
+        yield return new TestCaseData(badPadding).SetName("Node_reader_rejects_prefix_padding");
+        foreach (int offset in new[] { 4, 36 })
+        {
+            byte[] emptyChild = (byte[])branch.Clone();
+            emptyChild.AsSpan(offset, 32).Clear();
+            yield return new TestCaseData(emptyChild).SetName($"Node_reader_rejects_empty_child_{offset}");
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Node_reader_rejects_default_and_wrong_kind_access(int kind)
+    {
+        byte[] encoding = kind == 1
+            ? PbtNodeCodec.EncodeLeaf(new PbtFullKey(Bytes.FromHexString("A0")), Value(1))
+            : PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            PbtNodeReader reader = kind == 0 ? default : new(encoding);
+            if (kind == 0) _ = reader.Encoding.Length;
+            else if (kind == 1) _ = reader.PrefixBitCount;
+            else _ = reader.Key.Length;
+        });
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Node_reader_construction_and_field_access_do_not_allocate(bool leaf)
+    {
+        byte[] encoding = leaf
+            ? PbtNodeCodec.EncodeLeaf(new PbtFullKey(Bytes.FromHexString("A0")), Value(1))
+            : PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 5, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+        int expected = ReadNodeFields(encoding);
+        for (int index = 0; index < 1000; index++) _ = ReadNodeFields(encoding);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int checksum = 0;
+        for (int index = 0; index < 1000; index++) checksum += ReadNodeFields(encoding);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checksum, Is.EqualTo(expected * 1000));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    private static int ReadNodeFields(byte[] encoding)
+    {
+        PbtNodeReader reader = new(encoding);
+        return reader.Encoding.Length + (reader.IsLeaf
+            ? reader.Key[0] + reader.Value[0]
+            : reader.PrefixBitCount + reader.Prefix[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0]);
     }
 
     [Test]
@@ -1183,12 +1308,12 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 rootAfterUpdate = TrieUpdater.UpdateRoot(store, root, Batch(
             (deleteKeyBytes, null), (setKeyBytes, Value(2))));
 
-        PbtLeafNode expectedLeaf = new(new PbtFullKey(setKeyBytes), Value(2));
+        byte[] expectedLeaf = PbtNodeCodec.EncodeLeaf(new PbtFullKey(setKeyBytes), Value(2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootAfterUpdate, Is.EqualTo(expectedLeaf.Hash));
+            Assert.That(rootAfterUpdate, Is.EqualTo(PbtNodeCodec.Hash(new PbtNodeReader(expectedLeaf))));
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(1));
-            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(PbtNodeCodec.Encode(expectedLeaf)));
+            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(expectedLeaf));
         }
     }
 

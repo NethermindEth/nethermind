@@ -67,7 +67,7 @@ public static class PbtNodeGroupCodec
             uint bit = 1u << location.Position;
             if ((availability & bit) != 0) throw new InvalidDataException("Duplicate node position in group.");
             ReadOnlySpan<byte> encoding = record.Encoding.Span;
-            PbtNode node = PbtNodeCodec.Decode(encoding);
+            PbtNodeReader node = new(encoding);
             ValidateNodePath(node, record.Path);
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
@@ -123,7 +123,7 @@ public static class PbtNodeGroupCodec
             if (encoding.IsEmpty) continue;
             if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0)
                 throw new InvalidDataException("The group contains a reserved node position.");
-            PbtNode node = PbtNodeCodec.Decode(encoding);
+            PbtNodeReader node = new(encoding);
             ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
@@ -162,13 +162,12 @@ public static class PbtNodeGroupCodec
     internal static void ValidateNodeEncoding(PbtNodePath path, ReadOnlySpan<byte> encoding)
     {
         if (encoding.IsEmpty) throw new InvalidDataException("A PBT snapshot node encoding cannot be empty.");
-        PbtNodeCodec.ValidateExact(encoding);
-        ValidateNodePath(PbtNodeCodec.Decode(encoding), path);
+        ValidateNodePath(new PbtNodeReader(encoding), path);
     }
 
-    private static void ValidateNodePath(PbtNode node, PbtNodePath path)
+    private static void ValidateNodePath(PbtNodeReader node, PbtNodePath path)
     {
-        if (node is PbtLeafNode leaf && !PbtNodePath.FromKey(leaf.Key, path.BitDepth).Equals(path))
+        if (node.IsLeaf && !PbtNodePath.FromKey(new PbtFullKey(node.Key), path.BitDepth).Equals(path))
             throw new InvalidDataException("PBT leaf does not match its group position.");
     }
 

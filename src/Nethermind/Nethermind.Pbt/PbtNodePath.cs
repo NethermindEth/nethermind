@@ -64,15 +64,17 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
         return new PbtNodePath(path, bitDepth);
     }
 
-    internal PbtNodePath Append(PbtBitPrefix prefix, int direction)
+    internal PbtNodePath Append(PbtBitPrefix prefix, int direction) => Append(prefix.Bytes, prefix.BitCount, direction);
+
+    internal PbtNodePath Append(ReadOnlySpan<byte> prefix, int bitCount, int direction)
     {
         if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
-        int depth = checked(BitDepth + prefix.BitCount + 1);
+        int depth = checked(BitDepth + bitCount + 1);
         if (depth > PbtFullKey.MaxLength * 8) throw new ArgumentOutOfRangeException(nameof(prefix));
         Span<byte> path = stackalloc byte[(depth + 7) >> 3];
         path.Clear();
         Path.CopyTo(path);
-        PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, path, BitDepth);
+        PbtBitPrefix.CopyBits(prefix, 0, bitCount, path, BitDepth);
         if (direction != 0)
         {
             int bit = depth - 1;

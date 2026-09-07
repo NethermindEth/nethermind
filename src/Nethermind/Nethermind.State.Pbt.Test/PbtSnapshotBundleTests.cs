@@ -89,13 +89,13 @@ public class PbtSnapshotBundleTests
         else changes.Set(key, new ValueHash256(Value(2)));
         ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(store, root, changes);
 
-        PbtLeafNode expectedLeaf = new(key, Value(2));
+        byte[] expectedLeaf = PbtNodeCodec.EncodeLeaf(key, Value(2));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetLeaf(key), Is.EqualTo(flatValue));
             Assert.That(bundle.PendingLeafMutations(), Is.EquivalentTo(new[] { new KeyValuePair<PbtFullKey, ValueHash256?>(key, flatValue) }));
-            Assert.That(updatedRoot, Is.EqualTo(delete ? default : expectedLeaf.Hash));
-            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(delete ? null : PbtNodeCodec.Encode(expectedLeaf)));
+            Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.Hash(new PbtNodeReader(expectedLeaf))));
+            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(delete ? null : expectedLeaf));
         }
     }
 
@@ -280,7 +280,7 @@ public class PbtSnapshotBundleTests
     {
         ValueHash256 left = new(Value(marker));
         ValueHash256 right = new(Value((byte)(marker + 32)));
-        return PbtNodeCodec.Encode(new PbtBranchNode(new PbtBitPrefix([], 0), left, right));
+        return PbtNodeCodec.EncodeBranch([], 0, left, right);
     }
 
     private static byte[] EncodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)

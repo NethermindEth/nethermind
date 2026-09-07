@@ -226,7 +226,7 @@ public class ImportPbtFromPreimageFlatTests
             PbtFullKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();
-            staleNodes.SetNode(groupKey, PbtNodeCodec.Encode(new PbtLeafNode(staleNodeKey, TestItem.KeccakA.Bytes)));
+            staleNodes.SetNode(groupKey, PbtNodeCodec.EncodeLeaf(staleNodeKey, TestItem.KeccakA.Bytes));
             using RefCountingMemory? payload = staleNodes.GetNodeGroup(groupKey);
             staging.SetNodeGroup(groupKey, payload);
             staging.Commit();

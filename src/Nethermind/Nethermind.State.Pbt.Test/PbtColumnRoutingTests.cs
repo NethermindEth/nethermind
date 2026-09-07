@@ -22,7 +22,7 @@ public class PbtColumnRoutingTests
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         PbtNodePath node = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-        byte[] nodeEncoding = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value));
+        byte[] nodeEncoding = PbtNodeCodec.EncodeLeaf(leaf, value.Bytes);
 
         using PbtNodeGroupStore store = new();
         store.SetNode(node, nodeEncoding);

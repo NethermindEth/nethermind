@@ -14,7 +14,6 @@ public static class TrieUpdater
 {
     private const int FullSortThreshold = PbtFourLevelGroupGeometry.BoundarySlots;
     private static readonly PbtNodePath RootPath = new([], 0);
-    private static readonly PbtBitPrefix EmptyPrefix = new([], 0);
 
     /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
     /// <remarks>
@@ -50,8 +49,8 @@ public static class TrieUpdater
     {
         if (operations.IsEmpty) return currentRoot;
         using GroupMutationFrame group = new(store, RootPath, metrics);
-        PbtNode? root = group.Take(RootPath, allowAbsent: true);
-        Subtree result = FoldMutations(store, metrics, group, new(root, RootPath), operations, plan);
+        Subtree root = group.Take(RootPath, allowAbsent: true);
+        Subtree result = FoldMutations(store, metrics, group, root, operations, plan);
         ValueHash256 hash = Place(group, result, PbtFourLevelGroupGeometry.RootPosition, 0);
         group.Flush();
         return hash;
@@ -69,14 +68,15 @@ public static class TrieUpdater
         current = Resolve(ownerGroup, current);
         if (operations.IsEmpty) return current;
 
-        if (current.Node is not PbtBranchNode)
+        if (current.IsEmpty || current.Reader.IsLeaf)
         {
-            PbtLeafNode? leaf = (PbtLeafNode?)current.Node;
+            bool hasLeaf = !current.IsEmpty;
+            PbtFullKey leafKey = hasLeaf ? new(current.Reader.Key) : default;
             int setCount = 0;
             for (int index = 0; index < operations.Length; index++)
             {
                 PbtWriteOperation operation = operations[index];
-                if (leaf is not null && operation.Key.Equals(leaf.Key))
+                if (hasLeaf && operation.Key.Equals(leafKey))
                 {
                     if (operation.Kind == PbtWriteOperationKind.Delete)
                     {
@@ -84,7 +84,7 @@ public static class TrieUpdater
                     }
                     else
                     {
-                        current = new(new PbtLeafNode(operation.Key, operation.Value), current.Path);
+                        current = new(PbtNodeCodec.EncodeLeaf(operation.Key, operation.Value.Bytes), current.Path);
                     }
                 }
                 else if (operation.Kind == PbtWriteOperationKind.Set)
@@ -147,7 +147,7 @@ public static class TrieUpdater
         using GroupMutationFrame group = new(store, PbtNodePath.FromKey(operations[0].Key, depth), metrics);
         Subtree result = FoldBoundary(store, metrics, group, current, operations, plan);
         group.Flush();
-        return result;
+        return result.PreserveBeyond(group);
     }
 
     private static Subtree FoldBoundary(
@@ -192,7 +192,7 @@ public static class TrieUpdater
                 int position = 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
                 ValueHash256 leftHash = Place(group, left, position - width, branchPath.BitDepth + 1);
                 ValueHash256 rightHash = Place(group, right, position - 1, branchPath.BitDepth + 1);
-                boundaries[slot] = new(new PbtBranchNode(EmptyPrefix, leftHash, rightHash), branchPath);
+                boundaries[slot] = new(PbtNodeCodec.EncodeBranch([], 0, leftHash, rightHash), branchPath);
             }
         }
 
@@ -204,21 +204,21 @@ public static class TrieUpdater
     {
         if (current.IsEmpty) return;
         int boundaryDepth = depth + PbtFourLevelGroupGeometry.LevelsPerGroup;
-        if (current.Node is null && current.Path!.BitDepth == boundaryDepth)
+        if (current.Encoding.IsEmpty && current.Path!.BitDepth == boundaryDepth)
         {
             boundaries[BoundarySlot(current.Path.Path, depth)] = current;
             return;
         }
 
         current = Resolve(group, current);
-        if (current.Node is PbtLeafNode leaf)
+        if (!current.IsEmpty && current.Reader.IsLeaf)
         {
-            boundaries[BoundarySlot(leaf.Key, depth)] = current;
+            boundaries[BoundarySlot(current.Reader.Key, depth)] = current;
             return;
         }
 
-        PbtBranchNode branch = (PbtBranchNode)current.Node!;
-        int branchDepth = current.Path!.BitDepth + branch.Prefix.BitCount;
+        PbtNodeReader branch = current.Reader;
+        int branchDepth = current.Path!.BitDepth + branch.PrefixBitCount;
         if (branchDepth >= boundaryDepth)
         {
             int slot = 0;
@@ -228,13 +228,13 @@ public static class TrieUpdater
             return;
         }
 
-        Decompose(group, new(branch.LeftHash, current.Path.Append(branch.Prefix, 0)), depth, boundaries);
-        Decompose(group, new(branch.RightHash, current.Path.Append(branch.Prefix, 1)), depth, boundaries);
+        Decompose(group, new(branch.LeftHash, current.Path.Append(branch.Prefix, branch.PrefixBitCount, 0)), depth, boundaries);
+        Decompose(group, new(branch.RightHash, current.Path.Append(branch.Prefix, branch.PrefixBitCount, 1)), depth, boundaries);
     }
 
     private static BucketPlan EstablishRangeKnowledge(Subtree current, Span<PbtWriteOperation> operations, BucketPlan plan, TrieUpdaterMetrics? metrics)
     {
-        bool validatePrefixes = current.Node is not PbtBranchNode && !plan.PrefixesValidated;
+        bool validatePrefixes = (current.IsEmpty || current.Reader.IsLeaf) && !plan.PrefixesValidated;
         if (!validatePrefixes && !plan.Precalculated.IsEmpty)
         {
             int mask = plan.Precalculated[0];
@@ -250,17 +250,18 @@ public static class TrieUpdater
     private static int FindBranchDepth(Subtree current, PbtFullKey firstKey, BucketPlan plan)
     {
         int branchDepth = plan.BranchDepth;
-        if (current.Node is PbtLeafNode leaf)
+        if (!current.IsEmpty && current.Reader.IsLeaf)
         {
-            int difference = leaf.Key.FirstDifferingBit(firstKey, plan.Depth);
-            if (difference == Math.Min(leaf.Key.BitLength, firstKey.BitLength))
+            PbtFullKey leafKey = new(current.Reader.Key);
+            int difference = leafKey.FirstDifferingBit(firstKey, plan.Depth);
+            if (difference == Math.Min(leafKey.BitLength, firstKey.BitLength))
                 throw new ArgumentException("Tree keys must be prefix-free.", "operations");
             branchDepth = Math.Min(branchDepth, difference);
         }
-        else if (current.Node is PbtBranchNode branch)
+        else if (!current.IsEmpty)
         {
             int prefixStart = current.Path!.BitDepth;
-            branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(branch.Prefix, firstKey, prefixStart));
+            branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Reader.Prefix, current.Reader.PrefixBitCount, firstKey, prefixStart));
         }
         return branchDepth;
     }
@@ -295,36 +296,37 @@ public static class TrieUpdater
     }
 
     private static Subtree CreateLeaf(PbtWriteOperation operation) =>
-        new(new PbtLeafNode(operation.Key, operation.Value), null);
+        new(PbtNodeCodec.EncodeLeaf(operation.Key, operation.Value.Bytes), null);
 
     private static Subtree Resolve(GroupMutationFrame group, Subtree subtree) =>
-        subtree.IsEmpty || subtree.Node is not null ? subtree : new(group.Take(subtree.Path!)!, subtree.Path);
+        subtree.IsEmpty || !subtree.Encoding.IsEmpty ? subtree : group.Take(subtree.Path!, hash: subtree.Hash);
 
     private static ValueHash256 Place(GroupMutationFrame group, Subtree subtree, int position, int depth)
     {
         if (subtree.IsEmpty) return default;
         // Folding only moves a subtree along its own path, so equal depths imply equal paths.
-        if (subtree.Node is null && depth == subtree.Path!.BitDepth) return subtree.Hash;
+        if (subtree.Encoding.IsEmpty && depth == subtree.Path!.BitDepth) return subtree.Hash;
         subtree = Resolve(group, subtree);
-        PbtNode node = subtree.Node!;
-        if (node is PbtBranchNode branch && depth != subtree.Path!.BitDepth)
+        PbtNodeReader branch = subtree.Reader;
+        if (!branch.IsLeaf && depth != subtree.Path!.BitDepth)
         {
             int pathDepth = subtree.Path.BitDepth;
-            int bitCount = pathDepth + branch.Prefix.BitCount - depth;
-            byte[] prefix = new byte[PbtBitPrefix.ByteCount(bitCount)];
+            int bitCount = pathDepth + branch.PrefixBitCount - depth;
+            byte[] encoding = PbtNodeCodec.CreateBranchEncoding(bitCount, branch.LeftHash, branch.RightHash);
+            Span<byte> prefix = encoding.AsSpan(3, PbtBitPrefix.ByteCount(bitCount));
             int pathBits = Math.Max(0, pathDepth - depth);
             PbtBitPrefix.CopyBits(subtree.Path.Path, Math.Min(depth, pathDepth), pathBits, prefix, 0);
             int prefixOffset = Math.Max(0, depth - pathDepth);
-            PbtBitPrefix.CopyBits(branch.Prefix.Bytes, prefixOffset, bitCount - pathBits, prefix, pathBits);
-            node = new PbtBranchNode(PbtBitPrefix.TakeOwnership(prefix, bitCount), branch.LeftHash, branch.RightHash);
+            PbtBitPrefix.CopyBits(branch.Prefix, prefixOffset, bitCount - pathBits, prefix, pathBits);
+            subtree = new(encoding, subtree.Path);
         }
-        group.Store(position, node);
-        return node.Hash;
+        group.Store(position, subtree);
+        return subtree.Hash;
     }
 
     private static int PrefixBit(Subtree subtree, int bit) => bit < subtree.Path!.BitDepth
         ? (subtree.Path.Path[bit >> 3] >> (7 - (bit & 7))) & 1
-        : ((PbtBranchNode)subtree.Node!).Prefix.GetBit(bit - subtree.Path.BitDepth);
+        : GetBit(subtree.Reader.Prefix, bit - subtree.Path.BitDepth);
 
     private static PbtNodePath BoundaryPath(PbtNodePath groupKey, int slot, int level)
     {
@@ -340,11 +342,12 @@ public static class TrieUpdater
     /// <summary>A boundary occupant or an unplaced result, retaining the original path of a compressed prefix.</summary>
     private readonly struct Subtree
     {
-        internal Subtree(PbtNode? node, PbtNodePath? path)
+        internal Subtree(ReadOnlyMemory<byte> encoding, PbtNodePath? path, GroupMutationFrame? owner = null, ValueHash256 hash = default)
         {
-            Node = node;
+            Encoding = encoding;
             Path = path;
-            Hash = node?.Hash ?? default;
+            Owner = owner;
+            Hash = encoding.IsEmpty ? default : hash != default ? hash : PbtNodeCodec.Hash(new PbtNodeReader(encoding.Span));
         }
 
         internal Subtree(ValueHash256 hash, PbtNodePath path)
@@ -353,10 +356,17 @@ public static class TrieUpdater
             Path = path;
         }
 
-        internal PbtNode? Node { get; }
+        internal ReadOnlyMemory<byte> Encoding { get; }
+        internal PbtNodeReader Reader => new(Encoding.Span);
+        internal GroupMutationFrame? Owner { get; }
         internal PbtNodePath? Path { get; }
         internal ValueHash256 Hash { get; }
         internal bool IsEmpty => Hash == default;
+
+        /// <summary>Copies a result only when it borrows the departing frame's pooled payload.</summary>
+        internal Subtree PreserveBeyond(GroupMutationFrame frame) => ReferenceEquals(Owner, frame)
+            ? new(Encoding.ToArray(), Path, hash: Hash)
+            : this;
     }
 
     /// <summary>Range knowledge and producer buckets carried through one traversal frame.</summary>
@@ -517,11 +527,10 @@ public static class TrieUpdater
         return (value >> (4 - (groupDepth & 4))) & 0x0F;
     }
 
-    private static int MatchingPrefixBits(PbtBitPrefix prefix, PbtFullKey key, int keyOffset)
+    private static int MatchingPrefixBits(ReadOnlySpan<byte> prefixBytes, int prefixBitCount, PbtFullKey key, int keyOffset)
     {
         int available = key.BitLength - keyOffset;
-        int count = Math.Min(prefix.BitCount, available);
-        ReadOnlySpan<byte> prefixBytes = prefix.Bytes;
+        int count = Math.Min(prefixBitCount, available);
         ReadOnlySpan<byte> keyBytes = key.Bytes;
         int keyBitOffset = keyOffset & 7;
         int index = 0;
@@ -534,9 +543,11 @@ public static class TrieUpdater
             int difference = prefixBytes[index >> 3] ^ (keyByte & 0xFF);
             if (difference != 0) return index + BitOperations.LeadingZeroCount((uint)difference) - 24;
         }
-        while (index < count && prefix.GetBit(index) == key.GetBit(keyOffset + index)) index++;
+        while (index < count && GetBit(prefixBytes, index) == key.GetBit(keyOffset + index)) index++;
         return index;
     }
+
+    private static int GetBit(ReadOnlySpan<byte> bytes, int bit) => (bytes[bit >> 3] >> (7 - (bit & 7))) & 1;
 
     private readonly struct GroupFrameReader : IDisposable
     {
@@ -621,22 +632,22 @@ public static class TrieUpdater
         internal PbtNodePath GroupKey => _reader.GroupKey;
         internal int BitDepth => _reader.BitDepth;
 
-        internal PbtNode? Take(PbtNodePath path, bool allowAbsent = false)
+        internal Subtree Take(PbtNodePath path, bool allowAbsent = false, ValueHash256 hash = default)
         {
             int position = _reader.Position(path);
-            PbtNode? node = _nodes[position];
+            Subtree node = _nodes[position];
             if ((_changed & (1U << position)) == 0)
             {
                 ReadOnlyMemory<byte> encoding = _reader.GetEncoding(position);
-                if (!encoding.IsEmpty) node ??= PbtNodeCodec.Decode(encoding.Span);
+                if (!encoding.IsEmpty) node = new(encoding, path, this, hash);
             }
-            if (node is null && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
-            _nodes[position] = null;
+            if (node.IsEmpty && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
+            _nodes[position] = default;
             _changed |= 1U << position;
-            return node;
+            return node.IsEmpty ? default : new(node.Encoding, path, node.Owner, node.Hash);
         }
 
-        internal void Store(int position, PbtNode node)
+        internal void Store(int position, Subtree node)
         {
             _nodes[position] = node;
             _changed |= 1U << position;
@@ -655,8 +666,7 @@ public static class TrieUpdater
                 ReadOnlyMemory<byte> encoding = previous;
                 if ((_changed & (1U << position)) != 0)
                 {
-                    PbtNode? node = _nodes[position];
-                    encoding = node is null ? default : PbtNodeCodec.Encode(node);
+                    encoding = _nodes[position].Encoding;
                     if (!previous.Span.SequenceEqual(encoding.Span)) changedNodes++;
                 }
                 encodings[position] = encoding;
@@ -691,7 +701,7 @@ public static class TrieUpdater
         [InlineArray(PbtNodeGroupCodec.PositionCount)]
         private struct NodeBuffer
         {
-            private PbtNode? _element;
+            private Subtree _element;
         }
     }
 }

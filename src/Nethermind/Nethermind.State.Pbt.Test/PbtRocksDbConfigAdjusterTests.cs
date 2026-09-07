@@ -87,7 +87,7 @@ public class PbtRocksDbConfigAdjusterTests
         PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
         PbtFullKey key = new([0x80]);
         PbtNodePath path = new([], 0);
-        byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(key, new byte[ValueHash256.MemorySize]));
+        byte[] encoding = PbtNodeCodec.EncodeLeaf(key, new byte[ValueHash256.MemorySize]);
         StateId state = new(1, new ValueHash256([1]));
 
         using (ColumnsDb<PbtColumns> db = NewDb())

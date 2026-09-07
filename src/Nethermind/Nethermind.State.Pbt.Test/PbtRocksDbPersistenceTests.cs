@@ -37,7 +37,7 @@ public class PbtRocksDbPersistenceTests
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         PbtNodePath path = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-        byte[] node = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value));
+        byte[] node = PbtNodeCodec.EncodeLeaf(leaf, value.Bytes);
         StateId state = new(7, TestItem.KeccakB.ValueHash256);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, value, WriteFlags.None))
@@ -333,7 +333,7 @@ public class PbtRocksDbPersistenceTests
             TestItem.KeccakA.ValueHash256,
             WriteFlags.None);
         PbtFullKey nodeKey = new([0x80]);
-        WriteGroup(final, new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(nodeKey, TestItem.KeccakA.Bytes)));
+        WriteGroup(final, new PbtNodePath([], 0), PbtNodeCodec.EncodeLeaf(nodeKey, TestItem.KeccakA.Bytes));
 
         Assert.That(() => final.Commit(), Throws.TypeOf<IOException>());
         final.Dispose();
@@ -431,10 +431,10 @@ public class PbtRocksDbPersistenceTests
         return group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding) ? encoding.ToArray() : null;
     }
 
-    private static byte[] BranchNode(byte marker) => PbtNodeCodec.Encode(new PbtBranchNode(
-        new PbtBitPrefix([], 0),
+    private static byte[] BranchNode(byte marker) => PbtNodeCodec.EncodeBranch(
+        [], 0,
         new ValueHash256(Value(marker)),
-        new ValueHash256(Value((byte)(marker + 1)))));
+        new ValueHash256(Value((byte)(marker + 1))));
 
     private static byte[] Value(byte marker)
     {

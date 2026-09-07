@@ -82,7 +82,7 @@ public class PbtResourcePoolTests
     internal static RefCountingMemory CreateGroup(IRefCountingMemoryProvider memoryProvider, ValueHash256 hash)
     {
         PbtNodePath groupKey = new([], 0);
-        byte[] encoding = PbtNodeCodec.Encode(new PbtBranchNode(new PbtBitPrefix([], 0), hash, hash));
+        byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, hash, hash);
         BufferWriter writer = new(memoryProvider);
         try
         {

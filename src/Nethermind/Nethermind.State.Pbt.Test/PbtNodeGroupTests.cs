@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -21,7 +23,7 @@ public class PbtNodeGroupTests
     {
         byte[] value = new byte[32];
         PbtNodePath rootPath = new([], 0);
-        byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey([keyByte]), value));
+        byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtFullKey([keyByte]), value);
 
         byte[] payload = EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, encoding)]);
         PbtNodeGroupReader group = new(rootPath, payload);
@@ -56,7 +58,7 @@ public class PbtNodeGroupTests
             PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
             byte[] key = new byte[(path.BitDepth + 7) / 8 + 1];
             path.Path.CopyTo(key);
-            byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey(key), Value(1)));
+            byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtFullKey(key), Value(1));
             byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
             Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1));
 
@@ -82,11 +84,11 @@ public class PbtNodeGroupTests
         PbtNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
         PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, 0);
         byte[] key = new byte[(path.BitDepth + 7) / 8];
-        byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey(key), Value(1)));
+        byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtFullKey(key), Value(1));
         byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
         Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1));
 
-        byte[] shortEncoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey(key.AsSpan(0, key.Length - 1)), Value(1)));
+        byte[] shortEncoding = PbtNodeCodec.EncodeLeaf(new PbtFullKey(key.AsSpan(0, key.Length - 1)), Value(1));
         byte[] shortPayload = new byte[shortEncoding.Length + PbtNodeGroupCodec.TrailerLength];
         shortEncoding.CopyTo(shortPayload, 0);
         BinaryPrimitives.WriteUInt32LittleEndian(shortPayload.AsSpan(shortPayload.Length - sizeof(uint)), 1u);
@@ -107,7 +109,7 @@ public class PbtNodeGroupTests
     public void Encode_rejects_leaf_encoding_with_mismatched_record_path()
     {
         PbtNodePath recordPath = new([0], 1);
-        byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey([0x80]), new byte[32]));
+        byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtFullKey([0x80]), new byte[32]);
 
         Assert.Throws<InvalidDataException>(() => EncodeGroup(new PbtNodePath([], 0), [new PbtNodeRecord(recordPath, encoding)]));
     }
@@ -365,6 +367,94 @@ public class PbtNodeGroupTests
         Assert.That(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(3)), batch), Throws.TypeOf<InvalidDataException>());
     }
 
+    [TestCase("0000,0800", "0800", false, new[] { 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_group_root_handoff")]
+    [TestCase("0000,0080,0800", "0080,0800", false, new[] { 8, 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_nested_groups")]
+    [TestCase("0000,0080,0800", "0080,0800", true, new[] { 8, 4, 0 }, TestName = "Owned_subtree_survives_poisoned_nested_groups")]
+    [TestCase("0000,0008", "0080", false, new[] { 0 }, TestName = "Ancestor_borrowed_subtree_survives_child_frame_return")]
+    public void Returned_subtrees_survive_group_lease_release(string initialKeys, string deletedKeys, bool replaceSurvivor, int[] releasedDepths)
+    {
+        using PbtTreeHarness expected = new();
+        EipReferenceTree oracle = new();
+        List<(byte[] Key, byte[]? Value)> initial = [];
+        foreach (string key in initialKeys.Split(','))
+        {
+            byte[] keyBytes = Bytes.FromHexString(key);
+            initial.Add((keyBytes, Value(1)));
+            oracle.Insert(keyBytes, Value(1));
+        }
+        ValueHash256 root = expected.ApplyBatch(initial);
+        using PoisoningStore store = new(PbtNodeGroupStore.FromPhysicalPayloads(expected.PhysicalPayloads));
+        PbtWriteBatch batch = new();
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        foreach (string key in deletedKeys.Split(','))
+        {
+            byte[] keyBytes = Bytes.FromHexString(key);
+            batch.Delete(new PbtFullKey(keyBytes));
+            changes.Add((keyBytes, null));
+            oracle.Delete(keyBytes);
+        }
+        if (replaceSurvivor)
+        {
+            byte[] key = Bytes.FromHexString("0000");
+            batch.Set(new PbtFullKey(key), new ValueHash256(Value(2)));
+            changes.Add((key, Value(2)));
+            oracle.Insert(key, Value(2));
+        }
+        expected.ApplyBatch(changes);
+
+        ValueHash256 actualRoot = TrieUpdater.UpdateRoot(store, root, batch);
+
+        Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "leases are poisoned synchronously as frames exit, before parent placement");
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.Inner.ExportPhysicalPayloads());
+        IReadOnlyList<PbtNodeRecord> actualRecords = reopened.EnumerateRecords();
+        IReadOnlyList<PbtNodeRecord> expectedRecords = expected.Nodes;
+        Assert.That(actualRecords, Has.Count.EqualTo(expectedRecords.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            for (int index = 0; index < actualRecords.Count; index++)
+            {
+                Assert.That(actualRecords[index].Path.Encode(), Is.EqualTo(expectedRecords[index].Path.Encode()));
+                Assert.That(actualRecords[index].Encoding.ToArray(), Is.EqualTo(expectedRecords[index].Encoding.ToArray()));
+            }
+        }
+    }
+
+    private sealed class PoisoningStore(PbtNodeGroupStore inner) : IPbtStore, IDisposable
+    {
+        private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Create();
+        internal PbtNodeGroupStore Inner { get; } = inner;
+        internal List<int> ReleasedGroupDepths { get; } = [];
+
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+        {
+            using RefCountingMemory? payload = Inner.GetNodeGroup(groupKey);
+            if (payload is null) return null;
+            int length = payload.GetSpan().Length;
+            byte[] buffer = _pool.Rent(length);
+            payload.GetSpan().CopyTo(buffer);
+            return RefCountingMemory.OwningRocksDb(new PoisoningMemoryManager(_pool, buffer, length,
+                () => ReleasedGroupDepths.Add(groupKey.BitDepth)));
+        }
+
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => Inner.SetNodeGroup(groupKey, payload);
+        public void Dispose() => Inner.Dispose();
+    }
+
+    private sealed class PoisoningMemoryManager(ArrayPool<byte> pool, byte[] buffer, int length, Action onRelease) : MemoryManager<byte>
+    {
+        // Leave stale spans readable so a missing escape copy observes poison rather than relying on pool reuse timing.
+        public override Span<byte> GetSpan() => buffer.AsSpan(0, length);
+        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+        public override void Unpin() { }
+        protected override void Dispose(bool disposing)
+        {
+            buffer.AsSpan().Fill(0xFF);
+            pool.Return(buffer);
+            onRelease();
+        }
+    }
+
     private sealed class PublishingStore : IPbtStore, IDisposable
     {
         internal PbtNodeGroupStore Inner { get; } = new();
@@ -483,7 +573,7 @@ public class PbtNodeGroupTests
     }
 
     private static byte[] LeafEncoding(byte keyMarker, byte valueMarker) =>
-        PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey([keyMarker]), Value(valueMarker)));
+        PbtNodeCodec.EncodeLeaf(new PbtFullKey([keyMarker]), Value(valueMarker));
 
     private static byte[] Value(byte marker)
     {
