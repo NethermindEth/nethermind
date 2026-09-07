@@ -13,49 +13,35 @@ using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions
 {
     public static partial class SpanExtensions
     {
         private const ulong ShortInputDomain = 0xD6E8FEB86659FD93UL;
-        private const ulong SeedFoldMultiplier = 0x9E3779B97F4A7C15UL;
 
-        /// <summary>Installs the seed the hash mixers derive their lane multipliers from.</summary>
-        /// <param name="instanceRandom">The per-run seed.</param>
+        /// <summary>Installs the guest hash mixers' per-run seed.</summary>
+        /// <param name="seed">A private, cryptographically random 256-bit number.</param>
         /// <remarks>
-        /// A no-op on the host, which randomises its seed per process at start-up. The guest installs it
-        /// here rather than in a static initializer for two reasons: the seed comes from the payload, and
-        /// any static initializer gives the type a class constructor, after which every mixer call - the
-        /// hottest leaf in the guest - pays a class-initialisation check, a fence and a two-level static
-        /// load. Call once, before anything hashes a key.
+        /// It is important to use a cryptographically random number with entropy across all 256 bits
+        /// and keep it private. Predictable or known seeds allow deliberately colliding inputs.
+        /// Replace the entire seed independently between runs, before creating hash-keyed containers;
+        /// reseeding invalidates stored hashes. Not synchronised against concurrent hashing.
+        /// <para>
+        /// A no-op on the host, which seeds its hashes per process. The guest installs its seed at run
+        /// time to avoid a static constructor and its initialisation checks on hash calls.
+        /// These mixers are not cryptographic authentication functions.
+        /// </para>
         /// </remarks>
-        public static partial void SeedHashes(uint instanceRandom);
+        public static partial void SeedHashes(in UInt256 seed);
 
-        /// <summary>Installs the per-run seed a stateless payload commits to.</summary>
-        /// <param name="newPayloadRequestRoot">The SSZ root of the <c>NewPayloadRequest</c> being executed.</param>
-        /// <remarks>
-        /// EIP-8025 requires a guest that holds state in hash maps to mix <c>new_payload_request_root</c>
-        /// into its hash function. A guest has no entropy source, so with a compile-time seed every guest
-        /// of a given version buckets a given key identically for ever: a colliding key set can be found
-        /// offline against the published binary and replayed against every prover, turning constant-time
-        /// lookups linear. The root is computed before execution and differs per payload, so a set found
-        /// for one payload does not carry to the next. Folding its four words is enough to fill the
-        /// mixers' 32-bit seed because a merkle root is already pseudorandom.
-        /// </remarks>
-        public static void SeedHashes(in Crypto.ValueHash256 newPayloadRequestRoot)
+        /// <summary>Installs a 256-bit hash value as the guest hash mixers' seed.</summary>
+        /// <param name="seed">The full-width seed, subject to the requirements of <see cref="SeedHashes(in UInt256)"/>.</param>
+        public static void SeedHashes(in Crypto.ValueHash256 seed)
         {
-            ref byte root = ref Unsafe.As<Crypto.ValueHash256, byte>(ref Unsafe.AsRef(in newPayloadRequestRoot));
-
-            // Multiply between the words rather than folding them with a plain XOR, which cancels: any
-            // root whose four words repeat would fold to the same seed as any other such root, zero
-            // included.
-            ulong folded = Unsafe.ReadUnaligned<ulong>(ref root);
-            folded = (folded ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref root, 8))) * SeedFoldMultiplier;
-            folded = (folded ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref root, 16))) * SeedFoldMultiplier;
-            folded = (folded ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref root, 24))) * SeedFoldMultiplier;
-
-            SeedHashes((uint)(folded ^ (folded >> 32)));
+            ref readonly UInt256 words = ref Unsafe.As<Crypto.ValueHash256, UInt256>(ref Unsafe.AsRef(in seed));
+            SeedHashes(in words);
         }
 
         internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;

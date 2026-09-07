@@ -18,9 +18,7 @@ namespace Nethermind.Core.ZkEvm.Test.Extensions;
 /// <remarks>
 /// Windows and thresholds mirror <c>AssertHash64WindowsAreDistributed</c> in
 /// <c>Nethermind.Core.Test/BytesTests.cs</c>, because these hashes end up in the same bucketed caches.
-/// The counter sweep matters more than any single offset: the lane multiplies carry upward only, so a
-/// key whose entropy sits in the high half of a lane -- offset 4, 12, 20 or 28 -- is the shape that
-/// starves the low output bits.
+/// The counter sweep checks that entropy at every aligned offset reaches all bucket windows.
 /// </remarks>
 public class GuestMixerTests
 {
@@ -57,12 +55,7 @@ public class GuestMixerTests
         AssertWindowsAreDistributed(hashes, $"{length}-byte keys, entropy at offset {offset}");
     }
 
-    /// <remarks>
-    /// The tail read of a 20-byte key is the zero-extension of the same bytes in a 32-byte one, and
-    /// the unused lane contributes nothing, so before the lane multipliers were seeded per width the
-    /// two forms mixed to an identical value. <c>FastHash_ShortPaddingIncludesLength</c> in the host
-    /// suite names this property but exercises 8 against 9 bytes, which both take the CRC path.
-    /// </remarks>
+    /// <summary>Checks that width-specific seeds distinguish addresses from zero-padded words.</summary>
     [Test]
     public void Guest_mixer_separates_an_address_from_its_zero_padded_word()
     {

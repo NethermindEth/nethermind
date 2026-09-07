@@ -15,7 +15,7 @@ namespace Nethermind.Core;
 /// <see cref="UInt256.GetHashCode"/> is seeded by Nethermind.Numerics.Int256 itself: per process on the
 /// host, but from a compile-time constant in its guest build, where there is no entropy source. EIP-8025
 /// requires a guest's state containers to hash under a per-payload seed, so slot-keyed containers go
-/// through this instead, which reaches the seed <see cref="SpanExtensions.SeedHashes(uint)"/> installs.
+/// through this instead, which reaches the seed <see cref="SpanExtensions.SeedHashes(in UInt256)"/> installs.
 /// </remarks>
 public sealed class UInt256Comparer : IEqualityComparer<UInt256>
 {

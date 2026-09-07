@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 /// <summary>Installs the guest hash seed once for the whole assembly.</summary>
@@ -16,7 +17,8 @@ using NUnit.Framework;
 public class SeedGuestHashes
 {
     /// <summary>The seed a test process installs, standing in for a payload root.</summary>
-    public const uint Seed = 2098026241U;
+    public static readonly UInt256 Seed = new(0xAC320C7E23EBA0EFUL, 0x2E2473DDDBD55172UL,
+        0x0C564BCB0D425343UL, 0x21FAE39C24D6EB90UL);
 
     [OneTimeSetUp]
     public void SeedHashes() => SpanExtensions.SeedHashes(Seed);
