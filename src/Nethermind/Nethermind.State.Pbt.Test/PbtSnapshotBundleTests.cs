@@ -9,6 +9,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
@@ -17,6 +18,131 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotBundleTests
 {
+    [TestCase(null)]
+    [TestCase(0)]
+    [TestCase(1)]
+    public void PrewarmHints_AgreeAcrossOverloadsAndResetBetweenSnapshots(int? slotIndex)
+    {
+        using TrackingTransientPool pool = new();
+        using PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
+        UInt256? slot = slotIndex is null ? null : (UInt256)(uint)slotIndex.Value;
+        ValueAddress address = new(TestItem.AddressA.Bytes);
+        Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA, slot), Is.True);
+        Assert.That(bundle.ShouldQueuePrewarm(address, slot), Is.False);
+        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        Assert.That(bundle.ShouldQueuePrewarm(address, slot), Is.True);
+        Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA, slot), Is.False);
+        bundle.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.ShouldQueuePrewarm(address, slot), Is.False);
+            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA, slot), Is.False);
+            Assert.That(pool.ReturnCount, Is.EqualTo(2));
+            Assert.That(snapshot.Content.Leaves, Is.Empty);
+            Assert.That(snapshot.Content.NodeGroups, Is.Empty);
+        }
+        using PbtSnapshotBundle nextBundle = CreatePrewarmBundle(pool);
+        Assert.That(nextBundle.ShouldQueuePrewarm(address, slot), Is.True);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void RetiredPrewarmResource_IsNotRecycledUntilItsLastReaderReleases(bool dispose)
+    {
+        using TrackingTransientPool pool = new();
+        using PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
+        PbtTransientResource retired = pool.LastRented!;
+        Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
+        Assert.That(retired.TryAcquireLease(), Is.True);
+        try
+        {
+            if (dispose) bundle.Dispose();
+            else
+            {
+                using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+                Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
+            }
+            Assert.That(pool.ReturnCount, Is.Zero);
+            Assert.That(retired.ShouldPrewarm(TestItem.AddressA), Is.False);
+            using PbtSnapshotBundle concurrentBundle = CreatePrewarmBundle(pool);
+            Assert.That(pool.LastRented, Is.Not.SameAs(retired));
+            Assert.That(concurrentBundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
+            Assert.That(retired.ShouldPrewarm(TestItem.AddressB), Is.True);
+            Assert.That(concurrentBundle.ShouldQueuePrewarm(TestItem.AddressB), Is.True);
+        }
+        finally
+        {
+            retired.ReleaseLease();
+        }
+        Assert.That(pool.ReturnCount, Is.EqualTo(2));
+        using PbtSnapshotBundle nextBundle = CreatePrewarmBundle(pool);
+        Assert.That(pool.LastRented, Is.SameAs(retired));
+        Assert.That(nextBundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
+    }
+
+    [Test]
+    public void Dispose_ReturnsTransientOnceEvenWhenOtherCleanupThrows()
+    {
+        using TrackingTransientPool pool = new() { ThrowOnPendingReturn = true };
+        PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
+        Assert.Throws<IOException>(bundle.Dispose);
+        Assert.DoesNotThrow(bundle.Dispose);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.ReturnCount, Is.EqualTo(1));
+            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.False);
+        }
+    }
+
+    private static PbtSnapshotBundle CreatePrewarmBundle(IPbtResourcePool pool) => new(
+        new PbtSnapshotPooledList(0),
+        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtFullKey([0]), null)),
+        pool, PbtResourcePool.Usage.MainBlockProcessing);
+
+    private sealed class TrackingTransientPool : IPbtResourcePool, IDisposable
+    {
+        private readonly Stack<PbtTransientResource> _available = new();
+        private readonly List<PbtTransientResource> _resources = [];
+        public PbtTransientResource? LastRented { get; private set; }
+        public int ReturnCount { get; private set; }
+        public bool ThrowOnPendingReturn { get; init; }
+
+        public PbtTransientResource GetCachedResource(PbtResourcePool.Usage usage)
+        {
+            if (!_available.TryPop(out PbtTransientResource? resource))
+            {
+                resource = new PbtTransientResource();
+                _resources.Add(resource);
+            }
+            resource.OnRented(this, usage);
+            return LastRented = resource;
+        }
+
+        public void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource resource)
+        {
+            resource.Reset();
+            _available.Push(resource);
+            ReturnCount++;
+        }
+
+        public PbtSnapshotContent GetSnapshotContent(PbtResourcePool.Usage usage) => new();
+        public void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content) => content.Dispose();
+        public PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage) => new();
+        public void ReturnWriteBatchBuilder(PbtResourcePool.Usage usage, PbtWriteBatchBuilder builder) => builder.Dispose();
+        public PbtPendingFlatWrites GetPendingFlatWrites(PbtResourcePool.Usage usage) => new();
+        public void ReturnPendingFlatWrites(PbtResourcePool.Usage usage, PbtPendingFlatWrites pending)
+        {
+            pending.Reset();
+            pending.Dispose();
+            if (ThrowOnPendingReturn) throw new IOException("Pending return failed");
+        }
+
+        public void Dispose()
+        {
+            foreach (PbtTransientResource resource in _resources) resource.Dispose();
+        }
+    }
+
     [Test]
     public void LocalCanonicalWrites_OverrideSharedAndPersistedLeaves()
     {

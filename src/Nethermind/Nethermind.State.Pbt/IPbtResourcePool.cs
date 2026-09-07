@@ -15,6 +15,13 @@ public interface IPbtResourcePool
     /// </summary>
     void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content);
 
+    /// <summary>Rents an empty prewarm resource with its owner lease armed.</summary>
+    PbtTransientResource GetCachedResource(PbtResourcePool.Usage usage);
+
+    /// <summary>Returns an exclusively owned prewarm resource after its final lease is released.</summary>
+    /// <remarks>Use the original rental usage; the caller must not access the resource after returning it.</remarks>
+    void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource resource);
+
     /// <summary>Rents an empty write-through buffer for a bundle's in-flight block.</summary>
     PbtPendingFlatWrites GetPendingFlatWrites(PbtResourcePool.Usage usage);
 

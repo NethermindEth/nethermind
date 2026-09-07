@@ -20,6 +20,7 @@ public sealed class PbtSnapshotBundle(
     private PbtPendingFlatWrites? _pending = resourcePool.GetPendingFlatWrites(usage);
     private PbtWriteBatchBuilder? _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
     private readonly HashSet<AddressAsKey> _accountsAwaitingCode = [];
+    private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
@@ -285,6 +286,55 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
+    /// <summary>Records a prewarm hint, returning false for probable duplicates or a disposed bundle.</summary>
+    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null)
+    {
+        PbtTransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return false;
+        try
+        {
+            return transientResource.ShouldPrewarm(address, slot);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    /// <inheritdoc cref="ShouldQueuePrewarm(Address, UInt256?)"/>
+    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null)
+    {
+        PbtTransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return false;
+        try
+        {
+            return transientResource.ShouldPrewarm(address, slot);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    private PbtTransientResource? TryLeaseTransientResource()
+    {
+        SpinWait spinWait = default;
+        while (true)
+        {
+            if (Volatile.Read(ref _isDisposed)) return null;
+            PbtTransientResource transientResource = Volatile.Read(ref _transientResource);
+            if (transientResource.TryAcquireLease())
+            {
+                // A stale resource may already belong to another bundle after retirement and re-rental.
+                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
+                    && !Volatile.Read(ref _isDisposed))
+                    return transientResource;
+                transientResource.ReleaseLease();
+            }
+            spinWait.SpinOnce();
+        }
+    }
+
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         foreach (KeyValuePair<PbtFullKey, ValueHash256?> _ in WriteBatchBuilder.Leaves)
@@ -296,13 +346,15 @@ public sealed class PbtSnapshotBundle(
         _accountsAwaitingCode.Clear();
         Pending.Reset();
         PendingCode.Clear();
+        PbtTransientResource retired = _transientResource;
+        Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
+        retired.ReleaseLease();
         return snapshot;
     }
 
     public void Dispose()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _isDisposed, true)) return;
         _accountsAwaitingCode.Clear();
         PendingCode.Clear();
         PbtSnapshotContent? buffer = _writeBuffer;
@@ -325,7 +377,14 @@ public sealed class PbtSnapshotBundle(
             }
             finally
             {
-                readOnlyBundle.Dispose();
+                try
+                {
+                    _transientResource.ReleaseLease();
+                }
+                finally
+                {
+                    readOnlyBundle.Dispose();
+                }
             }
         }
     }

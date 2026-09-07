@@ -56,6 +56,17 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
 
+    /// <inheritdoc/>
+    public PbtTransientResource GetCachedResource(Usage usage)
+    {
+        PbtTransientResource resource = _categories[usage].GetCachedResource();
+        resource.OnRented(this, usage);
+        return resource;
+    }
+
+    /// <inheritdoc/>
+    public void ReturnCachedResource(Usage usage, PbtTransientResource resource) => _categories[usage].ReturnCachedResource(resource);
+
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
     /// Takes the width actually merged, never the configured compact size: a segment is also persisted
@@ -124,6 +135,9 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _writeBatchPool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
         private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
+        private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writeBatchBuilderPoolSize);
+        private long _lastCachedResourceCapacity = 1024;
+        private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
         private readonly PooledResourceLabel _pendingLabel = new(usage.ToString(), nameof(PbtPendingFlatWrites));
 
@@ -165,6 +179,27 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
             _writeBatchPool.Return(builder);
             Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
+        }
+
+        public PbtTransientResource GetCachedResource()
+        {
+            Metrics.PbtActivePooledResource.AddBy(_cachedResourceLabel, 1);
+            if (_cachedResourcePool.TryGet(out PbtTransientResource? resource))
+            {
+                Metrics.PbtCachedPooledResource[_cachedResourceLabel] = _cachedResourcePool.PooledItemCount;
+                return resource;
+            }
+
+            Metrics.PbtCreatedPooledResource.AddBy(_cachedResourceLabel, 1);
+            return new PbtTransientResource(Volatile.Read(ref _lastCachedResourceCapacity));
+        }
+
+        public void ReturnCachedResource(PbtTransientResource resource)
+        {
+            Metrics.PbtActivePooledResource.AddBy(_cachedResourceLabel, -1);
+            if (!_cachedResourcePool.Return(resource))
+                Volatile.Write(ref _lastCachedResourceCapacity, resource.Capacity);
+            Metrics.PbtCachedPooledResource[_cachedResourceLabel] = _cachedResourcePool.PooledItemCount;
         }
 
         public PbtPendingFlatWrites GetPendingFlatWrites()

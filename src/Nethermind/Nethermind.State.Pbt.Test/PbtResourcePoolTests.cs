@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -72,6 +74,125 @@ public class PbtResourcePoolTests
             Assert.That(rented.TryGetLeaf(keys[0], out _), Is.False);
         }
         _pool.ReturnWriteBatchBuilder(usage, rented);
+    }
+
+    [TestCase(null)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(42)]
+    public void PrewarmKeysAndOverloadsMatch(int? slotNumber)
+    {
+        Address address = TestItem.AddressA;
+        ValueAddress valueAddress = new(address.Bytes);
+        UInt256? slot = slotNumber is null ? null : (UInt256)slotNumber.Value;
+        ulong expected = slot is null
+            ? (ulong)((AddressAsKey)address).GetHashCode64()
+            : (ulong)new StorageCell(address, slot.Value).GetHashCode64();
+        using PbtTransientResource resource = new();
+        Assert.That(PbtTransientResource.PrewarmKey(address.Bytes, slot), Is.EqualTo(expected));
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
+        Assert.That(resource.ShouldPrewarm(valueAddress, slot), Is.False);
+        resource.Reset();
+        Assert.That(resource.ShouldPrewarm(valueAddress, slot), Is.True);
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.False);
+        if (slot is not null)
+            Assert.That(PbtTransientResource.PrewarmKey(address.Bytes, slot), Is.Not.EqualTo(PbtTransientResource.PrewarmKey(address.Bytes, null)));
+    }
+
+    [TestCase(PbtResourcePool.Usage.MainBlockProcessing)]
+    [TestCase(PbtResourcePool.Usage.ReadOnlyProcessingEnv)]
+    public void CachedResourceReturnWaitsForLastLeaseAndResets(PbtResourcePool.Usage usage)
+    {
+        PbtTransientResource resource = _pool.GetCachedResource(usage);
+        try
+        {
+            Assert.That(resource.ShouldPrewarm(TestItem.AddressA), Is.True);
+            Assert.That(resource.TryAcquireLease(), Is.True);
+            resource.ReleaseLease();
+            PbtTransientResource concurrentRental = _pool.GetCachedResource(usage);
+            try
+            {
+                Assert.That(concurrentRental, Is.Not.SameAs(resource));
+                Assert.That(resource.ShouldPrewarm(TestItem.AddressA), Is.False);
+            }
+            finally
+            {
+                concurrentRental.ReleaseLease();
+            }
+        }
+        finally
+        {
+            resource.ReleaseLease();
+        }
+        PbtTransientResource reused = _pool.GetCachedResource(usage);
+        try
+        {
+            Assert.That(reused, Is.SameAs(resource));
+            Assert.That(reused.ShouldPrewarm(TestItem.AddressA), Is.True);
+        }
+        finally
+        {
+            reused.ReleaseLease();
+            DrainCachedResources(usage, 2);
+        }
+    }
+
+    [Test]
+    public void CachedResourceCategoriesAreIsolated()
+    {
+        PbtTransientResource main = _pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing);
+        main.ReleaseLease();
+        PbtTransientResource readOnly = _pool.GetCachedResource(PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        try
+        {
+            Assert.That(readOnly, Is.Not.SameAs(main));
+        }
+        finally
+        {
+            readOnly.ReleaseLease();
+            DrainCachedResources(PbtResourcePool.Usage.MainBlockProcessing, 1);
+            DrainCachedResources(PbtResourcePool.Usage.ReadOnlyProcessingEnv, 1);
+        }
+    }
+
+    [Test]
+    public void OverflowDisposesBloomAndRetainsGrownCapacity()
+    {
+        PbtTransientResource resource = _pool.GetCachedResource(PbtResourcePool.Usage.Compact2);
+        long originalCapacity = resource.Capacity;
+        try
+        {
+            for (int slot = 0; slot < 2048; slot++) resource.ShouldPrewarm(TestItem.AddressA, (UInt256)slot);
+        }
+        finally
+        {
+            resource.ReleaseLease();
+        }
+        Assert.That(resource.Capacity, Is.GreaterThan(originalCapacity));
+        Assert.Throws<ObjectDisposedException>(() => resource.ShouldPrewarm(TestItem.AddressA));
+        PbtTransientResource replacement = _pool.GetCachedResource(PbtResourcePool.Usage.Compact2);
+        try
+        {
+            Assert.That(replacement, Is.Not.SameAs(resource));
+            Assert.That(replacement.Capacity, Is.EqualTo(resource.Capacity));
+            Assert.That(replacement.ShouldPrewarm(TestItem.AddressA), Is.True);
+        }
+        finally
+        {
+            replacement.ReleaseLease();
+        }
+    }
+
+    private void DrainCachedResources(PbtResourcePool.Usage usage, int count)
+    {
+        // The production pool retains resources for the node lifetime; this fixture owns that lifetime.
+        PbtTransientResource[] resources = new PbtTransientResource[count];
+        for (int index = 0; index < count; index++) resources[index] = _pool.GetCachedResource(usage);
+        foreach (PbtTransientResource resource in resources)
+        {
+            resource.ReleaseLease();
+            resource.Dispose();
+        }
     }
 
     [Test]
