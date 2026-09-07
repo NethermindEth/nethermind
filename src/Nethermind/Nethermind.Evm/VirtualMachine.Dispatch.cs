@@ -240,8 +240,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TOpcode.PushSize >= 0 && pc + TOpcode.PushSize >= stack.CodeLength)
                 return ExitCheckedOpcode(ref state, pc + TOpcode.PushSize, opCodeCount, EvmExceptionType.None);
 
-            // HasCheckedBody guarantees that Execute needs no further guards.
-            _ = TOpcode.Execute(ref stack, ref gas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
+            EvmExceptionType checkedResult = TOpcode.Execute(ref stack, ref gas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
+            Debug.Assert(checkedResult == EvmExceptionType.None, "HasCheckedBody must not fail after dispatch validates its preconditions.");
             exceptionType = EvmExceptionType.None;
         }
         else

@@ -412,6 +412,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    /// <remarks>
+    /// Reflection discovers checked-body families; opcode mappings are maintained by hand.
+    /// Update the mapping and boundary cases when registering another opcode to an existing family.
+    /// </remarks>
     [Test]
     public void Checked_opcode_bodies_have_boundary_cases()
     {

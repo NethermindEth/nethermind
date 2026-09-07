@@ -240,10 +240,7 @@ public static partial class EvmInstructions
 
         // Update memory cost for a 32-byte load.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
-        {
-            stack.Head--;
             goto OutOfGas;
-        }
 
         ref byte wordBytes = ref vmState.Memory.Load32BytesAfterGas(in result);
 
