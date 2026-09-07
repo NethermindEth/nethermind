@@ -137,7 +137,7 @@ public static class FrameTxSignatureValidator
 
         Result<byte[]> result = p256Precompile.Run(input.AsMemory(0, InputLength), spec);
         ArrayPool<byte>.Shared.Return(input);
-        return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
+        return result && result.Data is { Length: > 0 } || Fail(InvalidSignature, out error);
     }
 
     private static bool Fail(string message, out string? error)

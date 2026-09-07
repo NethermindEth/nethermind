@@ -257,14 +257,14 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             : _generatingBlockAccessList!.RecordReadAndGet(address);
 
     public void SetIndex(uint index)
-        => _generatingBlockAccessList.Index = index;
+        => _generatingBlockAccessList!.Index = index;
 
     public void IncrementIndex()
-        => _generatingBlockAccessList.Index++;
+        => _generatingBlockAccessList!.Index++;
 
     public void Clear()
     {
-        _generatingBlockAccessList.Clear();
+        _generatingBlockAccessList!.Clear();
         _systemAccountReadSuppressionDepth = 0;
         _hasLastReadCell = false;
         _lastReadStorageChanges = null;
@@ -356,13 +356,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     private bool GetCodeHashCurrent(Address address, [NotNullWhen(true)] out ValueHash256? hash)
     {
-        hash = null;
-        bool res = TryGetCodeChangeCurrent(address, out CodeChange? codeChange);
-        if (res)
+        if (TryGetCodeChangeCurrent(address, out CodeChange? codeChange))
         {
             hash = codeChange.Value.CodeHash;
+            return true;
         }
-        return res;
+        hash = null;
+        return false;
     }
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)

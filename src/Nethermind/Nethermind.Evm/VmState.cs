@@ -260,7 +260,7 @@ public class VmState<TGasPolicy> : IDisposable
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        byte[] dataStack = DataStack;
+        byte[]? dataStack = DataStack;
         if (dataStack is null)
         {
             DataStack = dataStack = AllocateStacks();
@@ -272,7 +272,7 @@ public class VmState<TGasPolicy> : IDisposable
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        byte[] dataStack = DataStack;
+        byte[]? dataStack = DataStack;
         if (dataStack is null)
         {
             DataStack = dataStack = AllocateStacks();
@@ -293,7 +293,7 @@ public class VmState<TGasPolicy> : IDisposable
     public Memory<byte> MemoryStacks(int count)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        byte[] dataStack = DataStack;
+        byte[]? dataStack = DataStack;
         if (dataStack is null)
         {
             DataStack = dataStack = AllocateStacks();

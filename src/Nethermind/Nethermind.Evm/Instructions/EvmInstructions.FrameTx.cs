@@ -98,7 +98,7 @@ public static unsafe partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (param > 0x11U) return EvmExceptionType.BadInstruction;
 
-        byte[][]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
+        byte[]?[]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
         {
             0x00 => stack.PushUInt32<TTracingInst>((uint)TxType.FrameTx),
