@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;

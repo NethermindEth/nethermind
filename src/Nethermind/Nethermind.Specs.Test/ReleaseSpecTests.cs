@@ -38,21 +38,19 @@ public class ReleaseSpecTests
             .Where(t => !t.IsAbstract && typeof(NamedReleaseSpec).IsAssignableFrom(t))
             .Select(t => new TestCaseData((IReleaseSpec)Activator.CreateInstance(t)!).SetArgDisplayNames(t.Name));
 
-    /// <summary>Every registered precompile must clear the shape guard, or membership cannot see it.</summary>
-    /// <remarks>Membership rejects any address whose top sixteen bytes are not all zero, which caps a
-    /// precompile number at <see cref="uint.MaxValue"/>. Nothing in-tree comes near it, but a registration
-    /// above it would resolve as an ordinary account and fail silently rather than loudly — the same class
-    /// of hole as the signed-index one, a boundary further out. Assert the invariant instead of trusting
-    /// it: a chain adding a precompile out of range trips this test.</remarks>
+    /// <summary>Every registered precompile has to be recognised, at every fork.</summary>
+    /// <remarks>Membership answers from the mask below 64, the set above it, and neither for an address
+    /// that fails the shape guard, so this sweeps all three branches across every set a fork can build.
+    /// The shape invariant itself is enforced where the set is built, which throws — asserting it here too
+    /// could not fail, since reading <c>Precompiles</c> would throw first.</remarks>
     [TestCaseSource(nameof(AllForks))]
-    public void Every_registered_precompile_clears_the_shape_guard(IReleaseSpec spec)
+    public void Every_registered_precompile_is_recognised(IReleaseSpec spec)
     {
         Assert.That(spec.Precompiles, Is.Not.Empty, "a sweep over an empty set would pass without checking anything");
 
         foreach (AddressAsKey key in spec.Precompiles)
         {
             Address address = key;
-            Assert.That(address.CouldBePrecompile(), Is.True, $"{address} cannot be reached by IsPrecompile");
             Assert.That(spec.IsPrecompile(address), Is.True, $"{address} is registered but not recognised");
         }
     }

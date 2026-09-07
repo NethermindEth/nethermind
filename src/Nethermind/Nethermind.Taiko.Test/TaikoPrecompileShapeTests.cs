@@ -34,13 +34,12 @@ public class TaikoPrecompileShapeTests
                 return new TestCaseData((ITaikoReleaseSpec)spec).SetArgDisplayNames(t.Name);
             });
 
-    /// <summary>Every registered precompile must clear the shape guard, or membership cannot see it.</summary>
-    /// <remarks>Membership rejects an address whose top sixteen bytes are not all zero, capping a
-    /// precompile number at <see cref="uint.MaxValue"/>. Taiko's sit far above the indexed run but well
-    /// inside that cap; a future registration above it would resolve as an ordinary account, silently, so
-    /// the invariant is asserted rather than assumed.</remarks>
+    /// <summary>Every registered precompile has to be recognised, at every Taiko fork.</summary>
+    /// <remarks>Taiko's two sit above the 64-bit mask and above the index array, so they are the in-tree
+    /// case for the set fallback; the shape invariant they also depend on is enforced where the set is
+    /// built, which throws before an assertion here could see it.</remarks>
     [TestCaseSource(nameof(TaikoForks))]
-    public void Every_registered_precompile_clears_the_shape_guard(ITaikoReleaseSpec taikoSpec)
+    public void Every_registered_precompile_is_recognised(ITaikoReleaseSpec taikoSpec)
     {
         IReleaseSpec spec = taikoSpec;
 
@@ -49,9 +48,7 @@ public class TaikoPrecompileShapeTests
 
         foreach (AddressAsKey key in spec.Precompiles)
         {
-            Address address = key;
-            Assert.That(address.CouldBePrecompile(), Is.True, $"{address} cannot be reached by IsPrecompile");
-            Assert.That(spec.IsPrecompile(address), Is.True, $"{address} is registered but not recognised");
+            Assert.That(spec.IsPrecompile(key), Is.True, $"{(Address)key} is registered but not recognised");
         }
     }
 }
