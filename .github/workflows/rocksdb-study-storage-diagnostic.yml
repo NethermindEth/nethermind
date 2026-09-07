@@ -85,7 +85,7 @@ jobs:
             fi
 
             if command -v findmnt >/dev/null 2>&1; then
-              mount_info="$(findmnt -T -- "${canonical}" -o TARGET,SOURCE,FSTYPE,OPTIONS 2>/dev/null || true)"
+              mount_info="$(findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS --target "${canonical}" 2>/dev/null || true)"
               if [[ -n "${mount_info}" ]]; then
                 echo "findmnt:"
                 printf '%s\n' "${mount_info}"
@@ -168,16 +168,3 @@ jobs:
           echo "configured_state=${containerd_state:-not present in process arguments}"
           [[ -n "${containerd_root}" ]] && probe_path "containerd configured root" "${containerd_root}"
           [[ -n "${containerd_state}" ]] && probe_path "containerd configured state" "${containerd_state}"
-
-          echo
-          echo "== deleted-open aggregate =="
-          if command -v lsof >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-            deleted_open="$(timeout 20s lsof -nP -Fpns +L1 2>/dev/null | awk '
-              /^p[0-9]+$/ { if (seen) count++; seen=1; next }
-              /^s[0-9]+$/ { bytes += substr($0, 2); next }
-              END { if (seen) count++; printf "count=%d bytes=%d\n", count + 0, bytes + 0 }
-            ' || true)"
-            echo "${deleted_open:-unavailable}"
-          else
-            echo "unavailable (lsof and timeout are required)"
-          fi
