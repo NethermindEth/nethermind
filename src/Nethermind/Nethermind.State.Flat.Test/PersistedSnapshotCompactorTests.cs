@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -48,7 +47,7 @@ public class PersistedSnapshotCompactorTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public async Task EnqueueAsync_FailedHandoff_ReturnsBatchToPool(bool channelClosed)
+    public async Task EnqueueAsync_FailedHandoff_ReturnsBatchToPool(bool disposed)
     {
         using FlatTestContainer tier = new();
         using CancellationTokenSource cancellation = new();
@@ -57,12 +56,12 @@ public class PersistedSnapshotCompactorTests
         pool.Rent(1).Returns(rented);
         using ArrayPoolList<StateId> batch = new(pool, 1) { new StateId(1, Keccak.EmptyTreeHash) };
 
-        if (channelClosed)
+        if (disposed)
             await tier.Compactor.DisposeAsync();
         else
             await cancellation.CancelAsync();
 
-        Type exceptionType = channelClosed ? typeof(ChannelClosedException) : typeof(OperationCanceledException);
+        Type exceptionType = disposed ? typeof(ObjectDisposedException) : typeof(OperationCanceledException);
         Assert.That(async () => await tier.Compactor.EnqueueAsync(batch, 0, cancellation.Token), Throws.InstanceOf(exceptionType));
         pool.Received(1).Return(rented, Arg.Any<bool>());
     }
