@@ -43,6 +43,7 @@ public sealed class RocksDbFeatureDataset
     public required byte[][] Keys { get; init; }
     public required byte[][] Values { get; init; }
     public required byte[][] MissingKeys { get; init; }
+    public required byte[][] MemtableKeys { get; init; }
 
     public byte[] MissingKey => MissingKeys[0];
 }
@@ -51,6 +52,7 @@ public static class RocksDbFeatureDatasetFactory
 {
     public const int EntryCount = 65_536;
     private const int MissingKeyCount = 1_024;
+    private const int MemtableKeyCount = 2_048;
     private const int StorageSlotsPerAddress = 64;
 
     public static RocksDbFeatureDataset Create(RocksDbFeatureDatasetKind kind)
@@ -86,12 +88,19 @@ public static class RocksDbFeatureDatasetFactory
             missingKeys[i] = CreateMissingKey(keyLength, i);
         }
 
+        byte[][] memtableKeys = new byte[MemtableKeyCount][];
+        for (int i = 0; i < memtableKeys.Length; i++)
+        {
+            memtableKeys[i] = CreateKey(kind, EntryCount + MissingKeyCount + i, keyLength);
+        }
+
         return new RocksDbFeatureDataset
         {
             DatabaseName = databaseName,
             Keys = keys,
             Values = values,
             MissingKeys = missingKeys,
+            MemtableKeys = memtableKeys,
         };
     }
 
@@ -220,6 +229,12 @@ internal static class RocksDbFeatureBenchmarkSupport
     }
 
     public static byte[][][] CreateMultiGetBatches(RocksDbFeatureDataset dataset)
+        => CreateMultiGetBatches(dataset.Keys, dataset.MissingKeys);
+
+    public static byte[][][] CreateMemtableBatches(RocksDbFeatureDataset dataset)
+        => CreateMultiGetBatches(dataset.MemtableKeys, dataset.MissingKeys);
+
+    private static byte[][][] CreateMultiGetBatches(byte[][] hitKeys, byte[][] missKeys)
     {
         byte[][][] batches = new byte[MultiGetBatchCount][][];
         for (int batchIndex = 0; batchIndex < batches.Length; batchIndex++)
@@ -227,8 +242,8 @@ internal static class RocksDbFeatureBenchmarkSupport
             byte[][] keys = new byte[MultiGetBatchSize][];
             for (int i = 0; i < keys.Length; i++)
             {
-                int keyIndex = (batchIndex * MultiGetBatchSize + i) * ReadStep % dataset.Keys.Length;
-                keys[i] = (i & 1) == 0 ? dataset.Keys[keyIndex] : dataset.MissingKeys[keyIndex % dataset.MissingKeys.Length];
+                int keyIndex = (batchIndex * MultiGetBatchSize + i) * ReadStep % hitKeys.Length;
+                keys[i] = (i & 1) == 0 ? hitKeys[keyIndex] : missKeys[keyIndex % missKeys.Length];
             }
 
             batches[batchIndex] = keys;
@@ -276,6 +291,7 @@ public class RocksDbFeatureBenchmarks
     private IReadOnlyKeyValueStore _store = null!;
     private RocksDbFeatureDataset _dataset = null!;
     private byte[][][] _multiGetBatches = null!;
+    private byte[][][] _memtableBatches = null!;
     private byte[] _rewriteValue = null!;
     private string _rootPath = null!;
     private int _readIndex;
@@ -299,6 +315,7 @@ public class RocksDbFeatureBenchmarks
     {
         _dataset = RocksDbFeatureDatasetFactory.Create(Dataset);
         _multiGetBatches = RocksDbFeatureBenchmarkSupport.CreateMultiGetBatches(_dataset);
+        _memtableBatches = RocksDbFeatureBenchmarkSupport.CreateMemtableBatches(_dataset);
         _rewriteValue = (byte[])_dataset.Values[0].Clone();
         _rootPath = Path.Combine(Path.GetTempPath(), "nethermind-rocksdb-feature", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_rootPath);
@@ -313,6 +330,10 @@ public class RocksDbFeatureBenchmarks
 
         _db.Flush();
         _db.Compact();
+        for (int i = 0; i < _dataset.MemtableKeys.Length; i++)
+        {
+            _db.Set(_dataset.MemtableKeys[i], _dataset.Values[i % _dataset.Values.Length], WriteFlags.DisableWAL);
+        }
     }
 
     [GlobalCleanup]
@@ -343,6 +364,17 @@ public class RocksDbFeatureBenchmarks
     {
         KeyValuePair<byte[], byte[]?>[] results = _db[_multiGetBatches[_multiGetIndex]];
         _multiGetIndex = (_multiGetIndex + 1) % _multiGetBatches.Length;
+
+        int checksum = 0;
+        for (int i = 0; i < results.Length; i++) checksum += results[i].Value?.Length ?? -1;
+        return checksum;
+    }
+
+    [Benchmark]
+    public int MultiGetMemtableResident()
+    {
+        KeyValuePair<byte[], byte[]?>[] results = _db[_memtableBatches[_multiGetIndex]];
+        _multiGetIndex = (_multiGetIndex + 1) % _memtableBatches.Length;
 
         int checksum = 0;
         for (int i = 0; i < results.Length; i++) checksum += results[i].Value?.Length ?? -1;
@@ -407,6 +439,14 @@ public static class RocksDbFeatureStandaloneRunner
             db.Compact();
             compactClock.Stop();
             ProcessSnapshot afterCompaction = Capture(process);
+
+            Stopwatch memtableClock = Stopwatch.StartNew();
+            for (int i = 0; i < dataset.MemtableKeys.Length; i++)
+            {
+                db.Set(dataset.MemtableKeys[i], dataset.Values[i % dataset.Values.Length], WriteFlags.DisableWAL);
+            }
+            memtableClock.Stop();
+            ProcessSnapshot afterMemtable = Capture(process);
             long diskBytes = DirectorySize(rootPath);
 
             Stopwatch readClock = Stopwatch.StartNew();
@@ -425,19 +465,22 @@ public static class RocksDbFeatureStandaloneRunner
                 beforeIngest.PrivateBytes,
                 afterFlush.PrivateBytes,
                 afterCompaction.PrivateBytes,
+                afterMemtable.PrivateBytes,
                 afterReads.PrivateBytes,
                 afterDispose.PrivateBytes);
             long peakWorkingSetBytes = Max(
                 beforeIngest.WorkingSetBytes,
                 afterFlush.WorkingSetBytes,
                 afterCompaction.WorkingSetBytes,
+                afterMemtable.WorkingSetBytes,
                 afterReads.WorkingSetBytes,
                 afterDispose.WorkingSetBytes);
 
             Console.WriteLine($"dataset={datasetKind} variant={variant} operations={operations} checksum={checksum} " +
                               $"ingest_ms={ingestClock.ElapsedMilliseconds} ingest_cpu_ms={CpuMilliseconds(afterFlush, beforeIngest):F2} " +
                               $"compact_ms={compactClock.ElapsedMilliseconds} compact_cpu_ms={CpuMilliseconds(afterCompaction, afterFlush):F2} " +
-                              $"read_ms={readClock.ElapsedMilliseconds} read_cpu_ms={CpuMilliseconds(afterReads, afterCompaction):F2} " +
+                              $"memtable_ms={memtableClock.ElapsedMilliseconds} memtable_cpu_ms={CpuMilliseconds(afterMemtable, afterCompaction):F2} " +
+                              $"read_ms={readClock.ElapsedMilliseconds} read_cpu_ms={CpuMilliseconds(afterReads, afterMemtable):F2} " +
                               $"dispose_ms={disposeClock.ElapsedMilliseconds} dispose_cpu_ms={(process.TotalProcessorTime - disposeCpuBefore).TotalMilliseconds:F2} " +
                               $"total_cpu_ms={CpuMilliseconds(afterDispose, beforeIngest):F2} " +
                               $"private_bytes_before={beforeIngest.PrivateBytes} private_bytes_after={afterReads.PrivateBytes} private_bytes_peak={peakPrivateBytes} " +
@@ -454,6 +497,7 @@ public static class RocksDbFeatureStandaloneRunner
     private static int RunReads(IReadOnlyKeyValueStore store, DbOnTheRocks db, RocksDbFeatureDataset dataset, int operations)
     {
         byte[][][] batches = RocksDbFeatureBenchmarkSupport.CreateMultiGetBatches(dataset);
+        byte[][][] memtableBatches = RocksDbFeatureBenchmarkSupport.CreateMemtableBatches(dataset);
         int checksum = 0;
         for (int i = 0; i < operations; i++)
         {
@@ -470,6 +514,12 @@ public static class RocksDbFeatureStandaloneRunner
             if ((i & 31) == 0)
             {
                 KeyValuePair<byte[], byte[]?>[] results = db[batches[i % batches.Length]];
+                for (int j = 0; j < results.Length; j++) checksum += results[j].Value?.Length ?? -1;
+            }
+
+            if ((i & 31) == 0)
+            {
+                KeyValuePair<byte[], byte[]?>[] results = db[memtableBatches[i % memtableBatches.Length]];
                 for (int j = 0; j < results.Length; j++) checksum += results[j].Value?.Length ?? -1;
             }
         }
