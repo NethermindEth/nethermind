@@ -60,45 +60,14 @@ namespace Nethermind.Serialization.Rlp
 
             position = decoderContext.Position;
 
-            if (position != headerCheck)
-            {
-                position = RlpHelpers.DecodeUInt256(rlp, position, out blockHeader.BaseFeePerGas);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.WithdrawalsRoot) = RlpHelpers.DecodeKeccak(rlp, position);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.BlobGasUsed) = RlpHelpers.DecodeULong(rlp, position);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.ExcessBlobGas) = RlpHelpers.DecodeULong(rlp, position);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.ParentBeaconBlockRoot) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.RequestsHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.BlockAccessListHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
-            }
-
-            if (position != headerCheck)
-            {
-                (position, blockHeader.SlotNumber) = RlpHelpers.DecodeULong(rlp, position);
-            }
+            if (position != headerCheck) position = RlpHelpers.DecodeUInt256(rlp, position, out blockHeader.BaseFeePerGas);
+            if (position != headerCheck) (position, blockHeader.WithdrawalsRoot) = RlpHelpers.DecodeKeccak(rlp, position);
+            if (position != headerCheck) (position, blockHeader.BlobGasUsed) = RlpHelpers.DecodeULong(rlp, position);
+            if (position != headerCheck) (position, blockHeader.ExcessBlobGas) = RlpHelpers.DecodeULong(rlp, position);
+            if (position != headerCheck) (position, blockHeader.ParentBeaconBlockRoot) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
+            if (position != headerCheck) (position, blockHeader.RequestsHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
+            if (position != headerCheck) (position, blockHeader.BlockAccessListHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
+            if (position != headerCheck) (position, blockHeader.SlotNumber) = RlpHelpers.DecodeULong(rlp, position);
 
             decoderContext.Position = position;
 
