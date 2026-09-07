@@ -143,6 +143,26 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void RunMaintenance_OnAClearedBase_HandsOutASyncBatchRatherThanOneAtTheCachedState()
+    {
+        StateId cached = _persistenceManager.GetCurrentPersistedStateId();
+        IPersistence.IPersistenceReader cleared = Substitute.For<IPersistence.IPersistenceReader>();
+        cleared.CurrentState.Returns(StateId.PreGenesis);
+        _persistence.CreateReader().Returns(cleared);
+        IPersistence.IWriteBatch batch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Arg.Any<WriteFlags>()).Returns(batch);
+
+        _persistenceManager.RunMaintenance(_ => { }, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cached, Is.EqualTo(Block0));
+            _persistence.Received(1).CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.None);
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "the cached id is stale after a clear; the batch must follow the base's own pointer or it is refused as applied on top of the wrong state");
+        }
+    }
+
+    [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
         // Gate passes (60+16=76 > 64) but GetFinalizedStateRootAt(16) is not configured → seed = null.

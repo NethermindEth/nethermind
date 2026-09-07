@@ -459,7 +459,8 @@ public class PersistenceManager(
         _persistenceLock.Wait(cancellationToken);
         try
         {
-            StateId current = GetCurrentPersistedStateId();
+            StateId current;
+            using (IPersistence.IPersistenceReader reader = persistence.CreateReader()) current = reader.CurrentState;
             StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
             using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(unchanged, unchanged);
             work(batch);
