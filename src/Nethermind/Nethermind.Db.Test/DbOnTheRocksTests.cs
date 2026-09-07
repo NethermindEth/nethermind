@@ -159,40 +159,46 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [Test]
-        public void FlatAccountInterpolationSst_RoundTripsAfterCompactionAndReopen()
+        [TestCase("Blocks")]
+        [TestCase("FlatAccount")]
+        [TestCase("FlatStorage")]
+        public void RocksDbFeatureSst_RoundTripsAfterCompactionAndReopen(string dbName)
         {
-            DbConfig config = new();
+            DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            string dbName = "FlatAccount";
-            byte[][] keys = new byte[64][];
-            byte[][] values = new byte[64][];
-
-            for (int i = 0; i < keys.Length; i++)
-            {
-                keys[i] = [0, (byte)i];
-                values[i] = new byte[128];
-                values[i].AsSpan().Fill((byte)i);
-            }
+            byte[][] keys = CreateSstKeys();
+            byte[][] values = new byte[keys.Length][];
 
             using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, configFactory, LimboLogs.Instance))
             {
-                for (int i = 0; i < keys.Length; i++)
+                for (int batch = 0; batch < 8; batch++)
                 {
-                    db.PutSpan(keys[i], values[i], WriteFlags.None);
+                    for (int i = batch; i < keys.Length; i += 8)
+                    {
+                        values[i] = CreateSstValue(i, batch);
+                        db.PutSpan(keys[i], values[i], WriteFlags.None);
+                    }
+
+                    db.Flush();
                 }
 
-                db.Flush();
-                Assert.That(Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories), Is.Not.Empty);
+                int flushedSstCount = Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories).Length;
+                Assert.That(flushedSstCount, Is.GreaterThan(1));
                 db.Compact();
+                int compactedSstCount = Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories).Length;
+                Assert.That(compactedSstCount, Is.LessThan(flushedSstCount));
                 AssertSstReads(db, keys, values);
 
-                byte[] replacement = [0xEE];
+                byte[] replacement = CreateSstValue(0, 8);
                 using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot();
                 db.PutSpan(keys[0], replacement, WriteFlags.None);
+                db.Flush();
 
-                Assert.That(snapshot.Get(keys[0]), Is.EqualTo(values[0]));
-                Assert.That(snapshot.Get([0xFF, 0xFF]), Is.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snapshot.Get(keys[0]), Is.EqualTo(values[0]));
+                    Assert.That(snapshot.Get(CreateMissingKey()), Is.Null);
+                }
 
                 values[0] = replacement;
             }
@@ -205,22 +211,73 @@ namespace Nethermind.Db.Test
         {
             for (int i = 0; i < keys.Length; i++)
             {
-                Assert.That(db.Get(keys[i]), Is.EqualTo(values[i]));
-                Assert.That(db.KeyExists(keys[i]), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(db.Get(keys[i]), Is.EqualTo(values[i]));
+                    Assert.That(db.KeyExists(keys[i]), Is.True);
+                }
             }
 
-            Assert.That(db.Get([0xFF, 0xFF]), Is.Null);
+            Assert.That(db.Get(CreateMissingKey()), Is.Null);
 
             int index = 0;
-            using ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween([0, 0], [0xFF, 0xFF]);
+            byte[] lowerBound = new byte[20];
+            byte[] upperBound = new byte[20];
+            upperBound.AsSpan().Fill(0xFF);
+            using ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(lowerBound, upperBound);
             while (view.MoveNext())
             {
-                Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[index]));
-                Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[index]));
+                if (index >= keys.Length) Assert.Fail("SST iterator returned more keys than were written.");
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[index]));
+                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[index]));
+                }
+
                 index++;
             }
 
             Assert.That(index, Is.EqualTo(keys.Length));
+        }
+
+        private static byte[][] CreateSstKeys()
+        {
+            byte[][] keys = new byte[2048][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                byte[] key = new byte[20];
+                key[0] = (byte)(i >> 8);
+                key[1] = (byte)i;
+                uint state = (uint)i + 0x9E3779B9u;
+                for (int j = 2; j < key.Length; j++)
+                {
+                    state = state * 1664525u + 1013904223u;
+                    key[j] = (byte)(state >> 24);
+                }
+
+                keys[i] = key;
+            }
+
+            return keys;
+        }
+
+        private static byte[] CreateSstValue(int keyIndex, int batch)
+        {
+            byte[] value = new byte[128];
+            for (int i = 0; i < value.Length; i++)
+            {
+                value[i] = (byte)(keyIndex + batch * 13 + i);
+            }
+
+            return value;
+        }
+
+        private static byte[] CreateMissingKey()
+        {
+            byte[] key = new byte[20];
+            key.AsSpan().Fill(0xFF);
+            return key;
         }
 
         [Test]
