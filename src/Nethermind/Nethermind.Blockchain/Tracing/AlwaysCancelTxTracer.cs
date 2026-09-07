@@ -83,7 +83,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new OperationCanceledException(ErrorMessage);
 

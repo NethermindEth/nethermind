@@ -11,10 +11,8 @@ namespace Nethermind.Evm.Test;
 [TestFixture(typeof(EthereumGasPolicy))]
 public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    [TestCase(0UL)]
-    [TestCase(1UL)]
-    [TestCase(1_000_000UL)]
-    public void FromULong_round_trips_remaining_gas(ulong value)
+    [Test]
+    public void FromULong_round_trips_remaining_gas([Values(0UL, 1UL, 1_000_000UL)] ulong value)
     {
         TGasPolicy gas = TGasPolicy.FromULong(value);
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(value));

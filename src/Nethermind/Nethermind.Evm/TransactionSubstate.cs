@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -126,7 +126,7 @@ public readonly ref struct TransactionSubstate
             if (span.Length < WordSize) return null;
 
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string panicReason))
+            if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string? panicReason))
             {
                 return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
             }

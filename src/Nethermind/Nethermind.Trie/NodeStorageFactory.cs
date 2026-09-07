@@ -15,7 +15,7 @@ public class NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogM
     private INodeStorage.KeyScheme? _currentKeyScheme = null;
     private readonly ILogger _logger = logManager.GetClassLogger<NodeStorageFactory>();
 
-    public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme!;
+    public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme;
 
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
