@@ -790,9 +790,11 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Prepared_partition_fold_matches_generic_and_consumes_producer_levels(bool persisted)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public void Prepared_partition_fold_matches_generic_and_consumes_producer_levels(bool persisted, bool accumulated)
     {
         PbtWriteBatch batch = new();
         EipReferenceTree oracle = new();
@@ -810,7 +812,15 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 initialRoot = persisted ? TrieUpdater.UpdateRoot(preparedStore, default, batch) : default;
         if (persisted) TrieUpdater.UpdateRoot(genericStore, default, batch);
         TrieUpdaterMetrics metrics = new();
-        ValueHash256 preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, PbtWriteBatchSet.Create(batch), metrics);
+        using PbtWriteBatchBuilder builder = new();
+        foreach (PbtWriteOperation operation in batch.Operations)
+        {
+            builder.SetLeaf(operation.Key, null);
+            builder.SetLeaf(operation.Key, operation.Value);
+        }
+        PbtWriteBatchSet prepared = accumulated ? builder.PrepareDrain() : PbtWriteBatchSet.Create(batch);
+        AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
+        ValueHash256 preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
         ValueHash256 genericRoot = TrieUpdater.UpdateRoot(genericStore, initialRoot, batch);
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(preparedStore.ExportPhysicalPayloads());
         using (Assert.EnterMultipleScope())

@@ -86,17 +86,13 @@ internal sealed class PbtWriteBatchSet
             counts[BucketOf(operation)]++;
         }
 
-        int[] partitionOffsets = new int[PartitionCount + 1];
         Span<int> next = stackalloc int[BucketCount];
         int total = 0;
         for (int bucket = 0; bucket < BucketCount; bucket++)
         {
-            if (bucket % (ShardsPerPartition * BucketsPerShard) == 0)
-                partitionOffsets[bucket / (ShardsPerPartition * BucketsPerShard)] = total;
             next[bucket] = total;
             total += counts[bucket];
         }
-        partitionOffsets[PartitionCount] = total;
 
         // Counting distribution groups shards without claiming complete-key sortedness.
         int bucketEnd = 0;
@@ -112,6 +108,23 @@ internal sealed class PbtWriteBatchSet
             }
         }
 
+        return CreateGrouped(operations, counts);
+    }
+
+    /// <summary>Accepts unique operations already ordered by partition, shard, and delete/set bucket.</summary>
+    internal static PbtWriteBatchSet CreateGrouped(PbtWriteOperation[] operations, ReadOnlySpan<int> counts)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(counts.Length, BucketCount);
+        int[] partitionOffsets = new int[PartitionCount + 1];
+        int total = 0;
+        for (int bucket = 0; bucket < BucketCount; bucket++)
+        {
+            if (bucket % (ShardsPerPartition * BucketsPerShard) == 0)
+                partitionOffsets[bucket / (ShardsPerPartition * BucketsPerShard)] = total;
+            total += counts[bucket];
+        }
+        partitionOffsets[PartitionCount] = total;
+        ArgumentOutOfRangeException.ThrowIfNotEqual(operations.Length, total);
         int levelCount = CountLevels(counts, partitionOffsets);
         int[] table = levelCount == 0 ? [] : new int[levelCount * LevelLength];
         if (levelCount != 0)
@@ -122,7 +135,7 @@ internal sealed class PbtWriteBatchSet
         return new(operations, table, partitionOffsets);
     }
 
-    private static int PartitionOf(PbtFullKey key) => key.Bytes[0] switch
+    internal static int PartitionOf(PbtFullKey key) => key.Length == 0 ? -1 : key.Bytes[0] switch
     {
         Eip8297KeyDerivation.AccountZone when key.Length >= Eip8297KeyDerivation.AccountKeyLength => (int)PbtPartition.Account,
         Eip8297KeyDerivation.CodeZone when key.Length >= Eip8297KeyDerivation.AccountKeyLength => (int)PbtPartition.Code,

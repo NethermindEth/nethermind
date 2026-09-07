@@ -7,6 +7,7 @@ using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
@@ -18,7 +19,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void LocalCanonicalWrites_OverrideSharedAndPersistedLeaves()
     {
-        PbtFullKey key = new([1]);
+        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
         ValueHash256 persisted = new(Value(1));
         ValueHash256 shared = new(Value(2));
         ValueHash256 local = new(Value(3));
@@ -39,9 +40,9 @@ public class PbtSnapshotBundleTests
     [TestCase(true)]
     public void Leaf_enumeration_preserves_optional_value_key_prefix(bool filtered)
     {
-        PbtFullKey matching = new(Bytes.FromHexString("a501"));
-        PbtFullKey other = new(Bytes.FromHexString("b502"));
-        PbtFullKey prefix = new(Bytes.FromHexString("a5"));
+        PbtFullKey matching = PbtStateKey.Storage(TestItem.AddressA, 1000);
+        PbtFullKey other = PbtStateKey.Storage(TestItem.AddressB, 1000);
+        PbtFullKey prefix = PbtStateKey.StoragePrefix(TestItem.AddressA);
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         sharedContent.SetLeaf(matching, new ValueHash256(Value(1)));
@@ -53,6 +54,7 @@ public class PbtSnapshotBundleTests
         PbtReadOnlySnapshotBundle readOnly = new(sharedSnapshots, new Reader(matching, null));
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
         List<PbtFullKey> expected = filtered ? [matching] : [matching, other];
+        expected.Sort();
         List<PbtFullKey> sharedKeys = [];
         foreach (KeyValuePair<PbtFullKey, ValueHash256> leaf in filtered ? readOnly.EnumerateLeaves(prefix) : readOnly.EnumerateLeaves())
             sharedKeys.Add(leaf.Key);
@@ -73,7 +75,7 @@ public class PbtSnapshotBundleTests
     [TestCase(true, true)]
     public void Trie_updates_leave_independently_staged_flat_entries_unchanged(bool leafExists, bool delete)
     {
-        PbtFullKey key = new(Bytes.FromHexString("80"));
+        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
         ValueHash256 flatValue = new(Value(9));
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
@@ -162,7 +164,7 @@ public class PbtSnapshotBundleTests
         };
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        PbtFullKey originalLeafKey = new([1]);
+        PbtFullKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtNodePath originalGroupKey = new([0x80], 4);
         byte[] originalGroup = EncodeGroup(originalGroupKey, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalGroupKey, 0), BranchEncoding(1))]);
         using RefCountingMemory originalPayload = Memory(originalGroup);
@@ -182,7 +184,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         Reader reader = new(new PbtFullKey([0]), null);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        PbtFullKey leafKey = new([1]);
+        PbtFullKey leafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtNodePath groupKey = new([], 0);
         byte[] original = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, BranchEncoding(1))]);
         using RefCountingMemory originalPayload = Memory(original);
@@ -199,7 +201,7 @@ public class PbtSnapshotBundleTests
     public void Updater_group_read_failure_preserves_prior_deltas_and_does_not_apply()
     {
         PbtResourcePool pool = new(new PbtConfig());
-        PbtFullKey originalLeafKey = new([1]);
+        PbtFullKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
         PbtNodePath originalNodePath = new([0x80], 4);
         byte[] originalNode = EncodeGroup(originalNodePath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalNodePath, 0), BranchEncoding(1))]);
@@ -214,6 +216,7 @@ public class PbtSnapshotBundleTests
         CountingStore store = new(bundle);
         Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(5)), changes));
 
+        bundle.CompleteLeafChanges();
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
         bool foundGroup = snapshot.Content.TryGetNodeGroup(originalNodePath, out RefCountingMemory? group);
         using RefCountingMemory? groupLease = group;
@@ -232,12 +235,14 @@ public class PbtSnapshotBundleTests
     [Test]
     public void CollectedSnapshot_ContainsCanonicalWritesAndRoot()
     {
-        PbtFullKey key = new([1]);
+        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
         ValueHash256 value = new(Value(2));
         ValueHash256 root = new(Value(3));
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtFullKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetLeaf(key, value);
+        Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root));
+        bundle.CompleteLeafChanges();
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         using (Assert.EnterMultipleScope())
         {
@@ -295,6 +300,7 @@ public class PbtSnapshotBundleTests
 
     private static void AssertSnapshotUnchanged(PbtSnapshotBundle bundle, PbtFullKey leafKey, PbtNodePath nodePath, byte[] node)
     {
+        bundle.CompleteLeafChanges();
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
         bool foundGroup = snapshot.Content.TryGetNodeGroup(nodePath, out RefCountingMemory? actual);
         using RefCountingMemory? actualLease = actual;

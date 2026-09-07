@@ -135,17 +135,17 @@ public class PbtWorldStateScopeTests
             Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
     }
 
-    [TestCase(7u)]
-    [TestCase(1000u)]
-    public async Task RootUpdates_PreservePartitionLeavesThroughRepeatedFoldsAndCommit(uint updatedSlot)
+    [TestCase(7u, false)]
+    [TestCase(1000u, false)]
+    [TestCase(1000u, true)]
+    public async Task RootUpdates_PreservePartitionLeavesThroughRepeatedFoldsAndCommit(uint updatedSlot, bool codeAfterAccount)
     {
         byte[] code = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * PbtKeyDerivation.CodeChunkSize];
         Array.Fill(code, (byte)0x01);
         Hash256 codeHash = Keccak.Compute(code);
         await using PbtTestContext ctx = new();
         using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
-            codeWriter.Set(codeHash.ValueHash256, code);
+        if (!codeAfterAccount) WriteCode();
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
             batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).WithCode(code).TestObject);
@@ -154,7 +154,10 @@ public class PbtWorldStateScopeTests
             storage.Set(1000, Bytes.FromHexString("cd"));
         }
 
+        if (codeAfterAccount) WriteCode();
+        Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(7), Is.EqualTo(Bytes.FromHexString("ab")));
         scope.UpdateRootHash();
+        Assert.That(scope.Bundle.PrepareLeafChanges().Count, Is.Zero);
         Dictionary<PbtFullKey, ValueHash256?> pending = new(scope.Bundle.PendingLeafMutations());
         Hash256 initialRoot = scope.RootHash;
         scope.UpdateRootHash();
@@ -170,7 +173,19 @@ public class PbtWorldStateScopeTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             storage.Set(updatedSlot, Bytes.FromHexString("ef"));
+        scope.Get(TestItem.AddressB);
+        PbtWriteBatchSet secondFold = scope.Bundle.PrepareLeafChanges();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondFold.Count, Is.EqualTo(1));
+            Assert.That(secondFold.Entries[0].Key, Is.EqualTo(PbtStateKey.Storage(TestItem.AddressA, updatedSlot)));
+        }
         scope.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.LastFoldMutationCount, Is.EqualTo(1));
+            Assert.That(scope.Bundle.PrepareLeafChanges().Count, Is.Zero);
+        }
         PbtFullKey updatedKey = PbtStateKey.Storage(TestItem.AddressA, updatedSlot);
         foreach ((PbtFullKey key, ValueHash256? value) in pending)
             if (!key.Equals(updatedKey)) Assert.That(scope.Bundle.GetLeaf(key), Is.EqualTo(value), key.Bytes.ToArray().ToHexString());
@@ -188,6 +203,134 @@ public class PbtWorldStateScopeTests
         {
             Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expectedLeaves));
             Assert.That(reopened.TreeRoot.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
+        }
+        void WriteCode()
+        {
+            using IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite();
+            codeWriter.Set(codeHash.ValueHash256, code);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Storage_clear_recreates_only_later_writes_across_folds(bool deleteAccount)
+    {
+        await using PbtTestContext ctx = new();
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storage.Set(1001, Bytes.FromHexString("ab"));
+        }
+        scope.UpdateRootHash();
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 2);
+            storage.Set(1000, Bytes.FromHexString("cd"));
+            if (deleteAccount)
+            {
+                batch.Set(TestItem.AddressA, null);
+                batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(2).TestObject);
+            }
+            else storage.Clear();
+            storage.Set(2000, Bytes.FromHexString("ef"));
+        }
+        AssertStorage();
+        scope.UpdateRootHash();
+        AssertStorage();
+        EipReferenceTree reference = new();
+        Dictionary<PbtFullKey, ValueHash256> expected = new(scope.Bundle.EnumerateLeaves());
+        foreach ((PbtFullKey key, ValueHash256 value) in expected) reference.Insert(key.Bytes, value.Bytes.ToArray());
+        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
+        scope.Commit(0);
+        IPbtDbManager manager = ctx.Manager;
+        using PbtSnapshotBundle reopened = manager.GatherBundle(new StateId(0, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expected));
+
+        void AssertStorage()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1001), Is.EqualTo(StorageTree.ZeroBytes));
+                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(StorageTree.ZeroBytes));
+                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(2000), Is.EqualTo(Bytes.FromHexString("ef")));
+                Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Storage(TestItem.AddressA, 1001)), Is.Null);
+                Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.Null);
+            }
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Parallel_storage_clears_preserve_other_accounts_pending_writes(bool foldBeforeClear)
+    {
+        await using PbtTestContext ctx = new();
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(16);
+        for (int index = 0; index < 16; index++)
+        {
+            Address address = TestItem.Addresses[index];
+            batch.Set(address, Build.An.Account.WithBalance(1).TestObject);
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
+            storage.Set(1000, Bytes.FromHexString("ab"));
+        }
+        if (foldBeforeClear) scope.UpdateRootHash();
+
+        Parallel.For(0, 16, index =>
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.Addresses[index], 128);
+            for (uint slot = 1001; slot < 1129; slot++)
+            {
+                if (index % 2 == 0 && slot % 16 == 0) storage.Clear();
+                storage.Set(slot, Bytes.FromHexString("cd"));
+            }
+        });
+        scope.UpdateRootHash();
+        for (int index = 0; index < 16; index++)
+        {
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.Addresses[index]);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(1000), Is.EqualTo(index % 2 == 0 ? StorageTree.ZeroBytes : Bytes.FromHexString("ab")));
+                Assert.That(storage.Get(1001), Is.EqualTo(index % 2 == 0 ? StorageTree.ZeroBytes : Bytes.FromHexString("cd")));
+                Assert.That(storage.Get(1128), Is.EqualTo(Bytes.FromHexString("cd")));
+            }
+        }
+        EipReferenceTree reference = new();
+        Dictionary<PbtFullKey, ValueHash256> expected = new(scope.Bundle.EnumerateLeaves());
+        foreach ((PbtFullKey key, ValueHash256 value) in expected) reference.Insert(key.Bytes, value.Bytes.ToArray());
+        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
+        scope.Commit(0);
+        IPbtDbManager manager = ctx.Manager;
+        using PbtSnapshotBundle reopened = manager.GatherBundle(new StateId(0, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expected));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Parallel_storage_writes_and_abandoned_scope_do_not_contaminate_reused_builder(bool foldBeforeAbandon)
+    {
+        await using PbtTestContext ctx = new();
+        using (PbtWorldStateScope abandoned = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = abandoned.StartWriteBatch(0);
+            Parallel.For(0, 32, index =>
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storage.Set((UInt256)(uint)(1000 + index), Bytes.FromHexString("ab"));
+            });
+            Assert.That(abandoned.Bundle.PrepareLeafChanges().Count, Is.EqualTo(32));
+            if (foldBeforeAbandon) abandoned.UpdateRootHash();
+            for (uint index = 0; index < 32; index++)
+                Assert.That(abandoned.CreateStorageTree(TestItem.AddressA).Get(1000 + index), Is.EqualTo(Bytes.FromHexString("ab")));
+        }
+        using PbtWorldStateScope reused = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reused.Bundle.PrepareLeafChanges().Count, Is.Zero);
+            Assert.That(reused.Bundle.EnumerateLeaves(), Is.Empty);
+            Assert.That(reused.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(StorageTree.ZeroBytes));
         }
     }
 

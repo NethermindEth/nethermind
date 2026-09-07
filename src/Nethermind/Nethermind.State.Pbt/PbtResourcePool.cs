@@ -52,6 +52,10 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnPendingFlatWrites(Usage usage, PbtPendingFlatWrites pending) => _categories[usage].ReturnPendingFlatWrites(pending);
 
+    public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage) => _categories[usage].GetWriteBatchBuilder();
+
+    public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
+
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
     /// Takes the width actually merged, never the configured compact size: a segment is also persisted
@@ -117,6 +121,8 @@ public class PbtResourcePool : IPbtResourcePool
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         // A scope holds one bundle for each builder, so these pools are equally sized.
+        private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _writeBatchPool = new(writeBatchBuilderPoolSize);
+        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
         private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
         private readonly PooledResourceLabel _pendingLabel = new(usage.ToString(), nameof(PbtPendingFlatWrites));
@@ -140,6 +146,25 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, -1);
             _snapshotPool.Return(content);
             Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
+        }
+
+        public PbtWriteBatchBuilder GetWriteBatchBuilder()
+        {
+            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
+            if (_writeBatchPool.TryGet(out PbtWriteBatchBuilder? builder))
+            {
+                Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
+                return builder;
+            }
+            Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
+            return new PbtWriteBatchBuilder();
+        }
+
+        public void ReturnWriteBatchBuilder(PbtWriteBatchBuilder builder)
+        {
+            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
+            _writeBatchPool.Return(builder);
+            Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
         }
 
         public PbtPendingFlatWrites GetPendingFlatWrites()

@@ -21,4 +21,10 @@ public interface IPbtResourcePool
     /// <inheritdoc cref="ReturnSnapshotContent"/>
     void ReturnPendingFlatWrites(PbtResourcePool.Usage usage, PbtPendingFlatWrites pending);
 
+    /// <summary>Rents an empty canonical leaf accumulator for one writable branch.</summary>
+    PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage);
+
+    /// <inheritdoc cref="ReturnSnapshotContent"/>
+    void ReturnWriteBatchBuilder(PbtResourcePool.Usage usage, PbtWriteBatchBuilder builder);
+
 }

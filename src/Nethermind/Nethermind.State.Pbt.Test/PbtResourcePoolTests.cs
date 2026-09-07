@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -14,6 +16,63 @@ public class PbtResourcePoolTests
 {
     private PbtResourcePool _pool = null!;
     [SetUp] public void SetUp() => _pool = new PbtResourcePool(new PbtConfig());
+
+    [TestCase(PbtResourcePool.Usage.MainBlockProcessing, false)]
+    [TestCase(PbtResourcePool.Usage.ReadOnlyProcessingEnv, true)]
+    public void Write_accumulator_drains_and_pool_return_discards_pending_changes(PbtResourcePool.Usage usage, bool parallel)
+    {
+        PbtWriteBatchBuilder builder = _pool.GetWriteBatchBuilder(usage);
+        PbtFullKey[] keys = new PbtFullKey[1536];
+        for (int index = 0; index < keys.Length; index++)
+        {
+            int partition = index / 512;
+            byte[] bytes = new byte[partition == 2 ? 66 : 34];
+            bytes[0] = partition == 2 ? (byte)0xFF : (byte)partition;
+            bytes[1] = (byte)(index / 2);
+            bytes[^1] = (byte)(index % 2);
+            keys[index] = new(bytes);
+        }
+        void Write(int index)
+        {
+            builder.SetLeaf(keys[index], TestItem.KeccakA.ValueHash256);
+            builder.SetLeaf(keys[index], null);
+            ValueHash256 value = index % 2 == 0 ? default : TestItem.KeccakB.ValueHash256;
+            builder.SetLeaf(keys[index], value);
+        }
+        if (parallel) Parallel.For(0, keys.Length, Write);
+        else for (int index = 0; index < keys.Length; index++) Write(index);
+
+        Dictionary<PbtFullKey, ValueHash256?> leaves = new(builder.Leaves);
+        PbtWriteBatchSet prepared = builder.PrepareDrain();
+        PbtWriteBatchSet generic = PbtWriteBatchSet.Create(leaves);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prepared.Count, Is.EqualTo(keys.Length));
+            Assert.That(prepared.Entries.ToArray(), Is.EqualTo(generic.Entries.ToArray()));
+            Assert.That(prepared.Precalculated.ToArray(), Is.EqualTo(generic.Precalculated.ToArray()));
+        }
+        prepared.Consume(out PbtWriteOperation[] operations, out _);
+        Array.Clear(operations);
+        Assert.That(builder.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
+        for (int index = 0; index < keys.Length; index++)
+        {
+            Assert.That(builder.TryGetLeaf(keys[index], out ValueHash256? value), Is.True);
+            Assert.That(value, Is.EqualTo(index % 2 == 0 ? null : (ValueHash256?)TestItem.KeccakB.ValueHash256));
+        }
+        builder.CompleteDrain();
+        Assert.That(builder.PrepareDrain().Count, Is.Zero);
+        builder.SetLeaf(keys[0], TestItem.KeccakA.ValueHash256);
+        Assert.That(builder.PrepareDrain().Count, Is.EqualTo(1));
+        _pool.ReturnWriteBatchBuilder(usage, builder);
+        PbtWriteBatchBuilder rented = _pool.GetWriteBatchBuilder(usage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rented, Is.SameAs(builder));
+            Assert.That(rented.PrepareDrain().Count, Is.Zero);
+            Assert.That(rented.TryGetLeaf(keys[0], out _), Is.False);
+        }
+        _pool.ReturnWriteBatchBuilder(usage, rented);
+    }
 
     [Test]
     public void ReturnedContent_IsRentedAgainAndReset()

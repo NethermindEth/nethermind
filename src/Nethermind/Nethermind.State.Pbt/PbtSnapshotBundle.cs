@@ -18,6 +18,7 @@ public sealed class PbtSnapshotBundle(
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private PbtPendingFlatWrites? _pending = resourcePool.GetPendingFlatWrites(usage);
+    private PbtWriteBatchBuilder? _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
@@ -40,9 +41,19 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
+    private PbtWriteBatchBuilder WriteBatchBuilder
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            return _writeBatchBuilder!;
+        }
+    }
+
     internal ValueHash256? GetLeaf(PbtFullKey key)
     {
-        if (WriteBuffer.TryGetLeaf(key, out ValueHash256? value)) return value;
+        if (WriteBatchBuilder.TryGetLeaf(key, out ValueHash256? value)) return value;
+        if (WriteBuffer.TryGetLeaf(key, out value)) return value;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].Content.TryGetLeaf(key, out value)) return value;
@@ -51,7 +62,15 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetLeaf(key);
     }
 
-    internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBuffer.SetLeaf(key, value);
+    internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBatchBuilder.SetLeaf(key, value);
+
+    internal PbtWriteBatchSet PrepareLeafChanges() => WriteBatchBuilder.PrepareDrain();
+
+    internal void CompleteLeafChanges()
+    {
+        foreach ((PbtFullKey key, ValueHash256? value) in WriteBatchBuilder.Leaves) WriteBuffer.SetLeaf(key, value);
+        WriteBatchBuilder.CompleteDrain();
+    }
 
     internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
 
@@ -80,7 +99,12 @@ public sealed class PbtSnapshotBundle(
     internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) =>
         WriteBuffer.SetCodeReference(codeHash, referenceCount);
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> PendingLeafMutations() => WriteBuffer.Leaves;
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> PendingLeafMutations()
+    {
+        foreach (KeyValuePair<PbtFullKey, ValueHash256?> entry in WriteBuffer.Leaves)
+            if (!WriteBatchBuilder.TryGetLeaf(entry.Key, out _)) yield return entry;
+        foreach (KeyValuePair<PbtFullKey, ValueHash256?> entry in WriteBatchBuilder.Leaves) yield return entry;
+    }
 
     internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => EnumerateLeavesCore(null);
 
@@ -95,6 +119,7 @@ public sealed class PbtSnapshotBundle(
         foreach ((PbtFullKey key, ValueHash256 value) in shared) visible[key] = value;
         for (int i = 0; i < snapshots.Count; i++) AddLeaves(visible, snapshots[i].Content, prefix);
         AddLeaves(visible, WriteBuffer, prefix);
+        WriteBatchBuilder.CopyLeavesTo(visible, prefix);
         foreach ((PbtFullKey key, ValueHash256? value) in visible)
         {
             if (value is not null) yield return new KeyValuePair<PbtFullKey, ValueHash256>(key, value.Value);
@@ -117,7 +142,7 @@ public sealed class PbtSnapshotBundle(
 
     internal void DeletePrefix(PbtFullKey prefix)
     {
-        foreach ((PbtFullKey key, _) in EnumerateLeaves(prefix)) WriteBuffer.SetLeaf(key, null);
+        foreach ((PbtFullKey key, _) in EnumerateLeaves(prefix)) SetLeaf(key, null);
     }
 
     public Account? GetAccount(Address address)
@@ -145,8 +170,6 @@ public sealed class PbtSnapshotBundle(
 
     internal void PromoteAccount(Address address, Account? account) => Pending.Accounts.TryAdd(address, account);
 
-    internal IEnumerable<KeyValuePair<AddressAsKey, Account?>> EnumeratePendingAccounts() => Pending.Accounts;
-
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value) => Pending.Slots[(address, slot)] = value;
 
     public void SelfDestruct(Address address)
@@ -161,6 +184,8 @@ public sealed class PbtSnapshotBundle(
 
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
+        foreach (KeyValuePair<PbtFullKey, ValueHash256?> _ in WriteBatchBuilder.Leaves)
+            throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
@@ -175,6 +200,8 @@ public sealed class PbtSnapshotBundle(
         _isDisposed = true;
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
+        PbtWriteBatchBuilder? builder = _writeBatchBuilder;
+        _writeBatchBuilder = null;
         PbtPendingFlatWrites? pending = _pending;
         _pending = null;
         try
@@ -185,7 +212,14 @@ public sealed class PbtSnapshotBundle(
         }
         finally
         {
-            readOnlyBundle.Dispose();
+            try
+            {
+                if (builder is not null) resourcePool.ReturnWriteBatchBuilder(usage, builder);
+            }
+            finally
+            {
+                readOnlyBundle.Dispose();
+            }
         }
     }
 }
