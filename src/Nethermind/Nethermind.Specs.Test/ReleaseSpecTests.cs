@@ -75,6 +75,17 @@ public class ReleaseSpecTests
         Assert.That(Address.FromNumber((UInt256)uint.MaxValue + 1).CouldBePrecompile(), Is.False);
     }
 
+    /// <summary>Bools on the interface that are not fork flags, so <see cref="EveryForkFlag"/> skips them.</summary>
+    /// <remarks>Excluded by name rather than by matching a naming convention, so a flag arriving under any
+    /// name — <c>IsRip7212Enabled</c>, or whatever the next one is called — is swept unless listed here.</remarks>
+    private static readonly FrozenSet<string> NotForkFlags = new[] { nameof(IReceiptSpec.ValidateReceipts) }.ToFrozenSet();
+
+    /// <summary>Flags the concrete spec derives rather than stores, mapped to the flag that drives them.</summary>
+    private static readonly Dictionary<string, string> FlagsDrivenByAnother = new()
+    {
+        [nameof(IReleaseSpec.BlockLevelAccessListsEnabled)] = nameof(IReleaseSpec.IsEip7928Enabled)
+    };
+
     /// <summary>Every fork flag on the interface, including the ones its base interfaces contribute.</summary>
     private static IEnumerable<TestCaseData> EveryForkFlag()
     {
@@ -86,8 +97,7 @@ public class ReleaseSpecTests
             foreach (PropertyInfo property in declaringType.GetProperties())
             {
                 if (property.PropertyType == typeof(bool)
-                    && property.Name.StartsWith("IsEip", StringComparison.Ordinal)
-                    && property.Name.EndsWith("Enabled", StringComparison.Ordinal)
+                    && !NotForkFlags.Contains(property.Name)
                     && seen.Add(property.Name))
                 {
                     yield return new TestCaseData(property).SetArgDisplayNames(property.Name);
@@ -112,20 +122,17 @@ public class ReleaseSpecTests
     /// <summary>An external spec that decorates another still compiles, and reports what it wraps.</summary>
     /// <remarks>The other half, and the reason the flags carry no <c>=&gt; false</c> defaults: a forwarding
     /// implementor that inherited one would report an enabled EIP as disabled. A flag that stops being
-    /// forwarded fails here instead of diverging on chain.</remarks>
+    /// forwarded, or is forwarded from a neighbouring flag, fails here instead of diverging on chain.</remarks>
     [TestCaseSource(nameof(EveryForkFlag))]
     public void Minimal_external_decorator_forwards_every_fork_flag(PropertyInfo flag)
     {
+        // Only the flag under test is switched on, so a line forwarding a neighbour reports false. Setting
+        // IsEip4844Enabled also switches IsEip1559Enabled on, leaving that one pair indistinguishable.
         ReleaseSpec enabled = new();
-        foreach (PropertyInfo property in typeof(ReleaseSpec).GetProperties())
-        {
-            if (property.PropertyType == typeof(bool) && property.CanWrite
-                && property.Name.StartsWith("IsEip", StringComparison.Ordinal)
-                && property.Name.EndsWith("Enabled", StringComparison.Ordinal))
-            {
-                property.SetValue(enabled, true);
-            }
-        }
+        PropertyInfo? driver = typeof(ReleaseSpec).GetProperty(FlagsDrivenByAnother.GetValueOrDefault(flag.Name, flag.Name));
+
+        Assert.That(driver?.CanWrite, Is.True, $"{flag.Name} has no writable flag behind it, so the sweep proves nothing");
+        driver!.SetValue(enabled, true);
 
         Assert.That(flag.GetValue(enabled), Is.True, $"{flag.Name} could not be switched on, so the sweep proves nothing");
         Assert.That(flag.GetValue(new MinimalExternalDecorator(enabled)), Is.True, $"{flag.Name} is not forwarded");
