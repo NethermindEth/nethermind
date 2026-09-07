@@ -127,7 +127,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return new CarryForwardCachingPersistence(cachedReader);
             })
-            ;
+            .AddSingleton<OrphanStorageSweep>()
+            .AddStep(typeof(StartFlatOrphanStorageSweep));
 
         if (!flatDbConfig.EnableLongFinality)
         {
@@ -143,10 +144,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
-
-        builder
-            .AddSingleton<OrphanStorageSweep>()
-            .AddStep(typeof(SweepFlatOrphanStorage));
 
         if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
         {
