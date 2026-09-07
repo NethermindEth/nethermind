@@ -22,6 +22,7 @@ public enum RocksDbFeatureDatasetKind
     Storage,
     Trie,
     Bytecode,
+    Blocks,
 }
 
 public enum RocksDbFeatureVariant
@@ -35,6 +36,24 @@ public enum RocksDbFeatureVariant
     Lz4,
     Format7,
     MemtableBatchLookup,
+}
+
+public static class RocksDbFeatureBenchmarkSelection
+{
+    private static RocksDbFeatureDatasetKind? _dataset;
+    private static RocksDbFeatureVariant? _variant;
+
+    public static void Configure(RocksDbFeatureDatasetKind? dataset, RocksDbFeatureVariant? variant)
+    {
+        _dataset = dataset;
+        _variant = variant;
+    }
+
+    public static IEnumerable<RocksDbFeatureDatasetKind> GetDatasetValues() =>
+        _dataset.HasValue ? [_dataset.Value] : Enum.GetValues<RocksDbFeatureDatasetKind>();
+
+    public static IEnumerable<RocksDbFeatureVariant> GetVariantValues() =>
+        _variant.HasValue ? [_variant.Value] : Enum.GetValues<RocksDbFeatureVariant>();
 }
 
 public sealed class RocksDbFeatureDataset
@@ -63,6 +82,7 @@ public static class RocksDbFeatureDatasetFactory
             RocksDbFeatureDatasetKind.Storage => ("FlatStorage", 52, 32),
             RocksDbFeatureDatasetKind.Trie => ("FlatStateNodes", 32, 400),
             RocksDbFeatureDatasetKind.Bytecode => (DbNames.Code, 32, 4_096),
+            RocksDbFeatureDatasetKind.Blocks => (DbNames.Blocks, 32, 1_024),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
 
@@ -152,6 +172,17 @@ public static class RocksDbFeatureDatasetFactory
             valueOffset += copyLength;
         }
 
+        if (kind == RocksDbFeatureDatasetKind.Blocks)
+        {
+            for (int offset = 0; offset < value.Length; offset += 128)
+            {
+                if (((index + offset / 128) & 3) != 0)
+                {
+                    value.AsSpan(offset, Math.Min(96, value.Length - offset)).Fill((byte)(0x20 + ((index + offset / 128) & 15)));
+                }
+            }
+        }
+
         return value;
     }
 
@@ -186,7 +217,7 @@ internal static class RocksDbFeatureBenchmarkSupport
         // The production flat layout composes FlatDb common options with each column's
         // specific options. Keep the same ordering so account's no-compression and
         // 4-KiB block settings, storage's LZ4 and 8-KiB blocks, and trie settings win.
-        if (dataset != RocksDbFeatureDatasetKind.Bytecode)
+        if (dataset is RocksDbFeatureDatasetKind.Account or RocksDbFeatureDatasetKind.Storage or RocksDbFeatureDatasetKind.Trie)
         {
             config.RocksDbOptions += config.FlatDbRocksDbOptions;
         }
@@ -204,6 +235,9 @@ internal static class RocksDbFeatureBenchmarkSupport
                 break;
             case RocksDbFeatureDatasetKind.Bytecode:
                 config.CodeDbAdditionalRocksDbOptions = options;
+                break;
+            case RocksDbFeatureDatasetKind.Blocks:
+                config.BlocksDbAdditionalRocksDbOptions = options;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(dataset), dataset, null);
@@ -260,7 +294,9 @@ internal static class RocksDbFeatureBenchmarkSupport
             "block_based_table_factory.index_block_search_type=kAuto;block_based_table_factory.uniform_cv_threshold=0.2;",
         RocksDbFeatureVariant.SeparatedKeyValue =>
             "block_based_table_factory.separate_key_value_in_data_block=true;",
-        RocksDbFeatureVariant.RibbonFilter when dataset != RocksDbFeatureDatasetKind.Bytecode =>
+        // Flat already uses ribbonfilter:10:3 and Code explicitly disables filters. Blocks
+        // inherits the global Bloom filter, so it is the meaningful Ribbon comparison.
+        RocksDbFeatureVariant.RibbonFilter when dataset == RocksDbFeatureDatasetKind.Blocks =>
             "block_based_table_factory.filter_policy=ribbonfilter:10:1;",
         RocksDbFeatureVariant.DataBlockBinaryHash when dataset == RocksDbFeatureDatasetKind.Bytecode =>
             "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;",
@@ -299,16 +335,17 @@ public class RocksDbFeatureBenchmarks
     private int _multiGetIndex;
     private int _rewriteOffset;
 
-    [Params(RocksDbFeatureDatasetKind.Account, RocksDbFeatureDatasetKind.Storage,
-        RocksDbFeatureDatasetKind.Trie, RocksDbFeatureDatasetKind.Bytecode)]
+    [ParamsSource(nameof(GetDatasetValues))]
     public RocksDbFeatureDatasetKind Dataset { get; set; }
 
-    [Params(RocksDbFeatureVariant.Baseline, RocksDbFeatureVariant.FlatAccountInterpolation,
-        RocksDbFeatureVariant.AutoIndexUniform, RocksDbFeatureVariant.SeparatedKeyValue,
-        RocksDbFeatureVariant.RibbonFilter, RocksDbFeatureVariant.DataBlockBinaryHash,
-        RocksDbFeatureVariant.Lz4, RocksDbFeatureVariant.Format7,
-        RocksDbFeatureVariant.MemtableBatchLookup)]
+    [ParamsSource(nameof(GetVariantValues))]
     public RocksDbFeatureVariant Variant { get; set; }
+
+    public static IEnumerable<RocksDbFeatureDatasetKind> GetDatasetValues() =>
+        RocksDbFeatureBenchmarkSelection.GetDatasetValues();
+
+    public static IEnumerable<RocksDbFeatureVariant> GetVariantValues() =>
+        RocksDbFeatureBenchmarkSelection.GetVariantValues();
 
     [GlobalSetup]
     public void Setup()
@@ -449,6 +486,7 @@ public static class RocksDbFeatureStandaloneRunner
             ProcessSnapshot afterMemtable = Capture(process);
             long diskBytes = DirectorySize(rootPath);
 
+            ProcessSnapshot beforeReads = Capture(process);
             Stopwatch readClock = Stopwatch.StartNew();
             int checksum = RunReads(store, db, dataset, operations);
             readClock.Stop();
@@ -461,18 +499,20 @@ public static class RocksDbFeatureStandaloneRunner
             disposeClock.Stop();
             ProcessSnapshot afterDispose = Capture(process);
 
-            long peakPrivateBytes = Max(
+            long privateBytesPhaseMax = Max(
                 beforeIngest.PrivateBytes,
                 afterFlush.PrivateBytes,
                 afterCompaction.PrivateBytes,
                 afterMemtable.PrivateBytes,
+                beforeReads.PrivateBytes,
                 afterReads.PrivateBytes,
                 afterDispose.PrivateBytes);
-            long peakWorkingSetBytes = Max(
+            long workingSetBytesPhaseMax = Max(
                 beforeIngest.WorkingSetBytes,
                 afterFlush.WorkingSetBytes,
                 afterCompaction.WorkingSetBytes,
                 afterMemtable.WorkingSetBytes,
+                beforeReads.WorkingSetBytes,
                 afterReads.WorkingSetBytes,
                 afterDispose.WorkingSetBytes);
 
@@ -480,11 +520,11 @@ public static class RocksDbFeatureStandaloneRunner
                               $"ingest_ms={ingestClock.ElapsedMilliseconds} ingest_cpu_ms={CpuMilliseconds(afterFlush, beforeIngest):F2} " +
                               $"compact_ms={compactClock.ElapsedMilliseconds} compact_cpu_ms={CpuMilliseconds(afterCompaction, afterFlush):F2} " +
                               $"memtable_ms={memtableClock.ElapsedMilliseconds} memtable_cpu_ms={CpuMilliseconds(afterMemtable, afterCompaction):F2} " +
-                              $"read_ms={readClock.ElapsedMilliseconds} read_cpu_ms={CpuMilliseconds(afterReads, afterMemtable):F2} " +
+                              $"read_ms={readClock.ElapsedMilliseconds} read_cpu_ms={CpuMilliseconds(afterReads, beforeReads):F2} " +
                               $"dispose_ms={disposeClock.ElapsedMilliseconds} dispose_cpu_ms={(process.TotalProcessorTime - disposeCpuBefore).TotalMilliseconds:F2} " +
                               $"total_cpu_ms={CpuMilliseconds(afterDispose, beforeIngest):F2} " +
-                              $"private_bytes_before={beforeIngest.PrivateBytes} private_bytes_after={afterReads.PrivateBytes} private_bytes_peak={peakPrivateBytes} " +
-                              $"working_set_bytes_before={beforeIngest.WorkingSetBytes} working_set_bytes_after={afterReads.WorkingSetBytes} working_set_bytes_peak={peakWorkingSetBytes} " +
+                              $"private_bytes_before={beforeIngest.PrivateBytes} private_bytes_after={afterReads.PrivateBytes} private_bytes_phase_max={privateBytesPhaseMax} " +
+                              $"working_set_bytes_before={beforeIngest.WorkingSetBytes} working_set_bytes_after={afterReads.WorkingSetBytes} working_set_bytes_phase_max={workingSetBytesPhaseMax} " +
                               $"disk_bytes={diskBytes}");
         }
         finally
@@ -502,9 +542,11 @@ public static class RocksDbFeatureStandaloneRunner
         for (int i = 0; i < operations; i++)
         {
             checksum += store.Get(dataset.Keys[i * 131 % dataset.Keys.Length])?.Length ?? 0;
-            checksum += store.Get(dataset.MissingKey)?.Length ?? -1;
+            checksum += store.Get(dataset.MissingKeys[i % dataset.MissingKeys.Length])?.Length ?? -1;
 
-            if ((i & 15) == 0)
+            // Point, batch, and scan operations are combined here for one process-level sample;
+            // the BDN methods measure each workload separately.
+            if ((i & 63) == 0)
             {
                 using ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(
                     dataset.Keys[dataset.Keys.Length / 4], dataset.Keys[dataset.Keys.Length * 3 / 4], ReadFlags.HintReadAhead);
@@ -513,13 +555,13 @@ public static class RocksDbFeatureStandaloneRunner
 
             if ((i & 31) == 0)
             {
-                KeyValuePair<byte[], byte[]?>[] results = db[batches[i % batches.Length]];
+                KeyValuePair<byte[], byte[]?>[] results = db[batches[(i / 32) % batches.Length]];
                 for (int j = 0; j < results.Length; j++) checksum += results[j].Value?.Length ?? -1;
             }
 
             if ((i & 31) == 0)
             {
-                KeyValuePair<byte[], byte[]?>[] results = db[memtableBatches[i % memtableBatches.Length]];
+                KeyValuePair<byte[], byte[]?>[] results = db[memtableBatches[(i / 32) % memtableBatches.Length]];
                 for (int j = 0; j < results.Length; j++) checksum += results[j].Value?.Length ?? -1;
             }
         }

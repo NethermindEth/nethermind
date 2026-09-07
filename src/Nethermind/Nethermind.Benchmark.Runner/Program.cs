@@ -56,7 +56,14 @@ namespace Nethermind.Benchmark.Runner
             }
 
             bool quickMode = args.Contains("--quick");
-            string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
+            if (args.Contains("--rocksdb-feature-benchmarks"))
+            {
+                RocksDbFeatureBenchmarkSelection.Configure(
+                    GetOptionalEnum<RocksDbFeatureDatasetKind>(args, "--rocksdb-feature-dataset"),
+                    GetOptionalEnum<RocksDbFeatureVariant>(args, "--rocksdb-feature-variant"));
+            }
+
+            string[] benchmarkArgs = RemoveFeatureArguments(args);
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
 
             List<Assembly> additionalJobAssemblies = [
@@ -108,6 +115,42 @@ namespace Nethermind.Benchmark.Runner
             }
 
             return defaultValue;
+        }
+
+        private static TEnum? GetOptionalEnum<TEnum>(string[] args, string name) where TEnum : struct, Enum
+        {
+            string? value = GetOptionalArgument(args, name);
+            if (value is null) return null;
+            if (Enum.TryParse(value, ignoreCase: true, out TEnum result)) return result;
+            throw new ArgumentException($"Unknown {name} value '{value}'.", name);
+        }
+
+        private static string? GetOptionalArgument(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == name) return args[i + 1];
+            }
+
+            return null;
+        }
+
+        private static string[] RemoveFeatureArguments(string[] args)
+        {
+            List<string> benchmarkArgs = [];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--quick" || args[i] == "--rocksdb-feature-benchmarks") continue;
+                if (args[i] is "--rocksdb-feature-dataset" or "--rocksdb-feature-variant")
+                {
+                    i++;
+                    continue;
+                }
+
+                benchmarkArgs.Add(args[i]);
+            }
+
+            return benchmarkArgs.ToArray();
         }
     }
 }
