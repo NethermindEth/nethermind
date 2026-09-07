@@ -92,22 +92,23 @@ public partial class VirtualMachine<TGasPolicy>(
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
+    private readonly ValueHash256 _chainId = ((UInt256)(specProvider ?? throw new ArgumentNullException(nameof(specProvider))).ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly VmStateStack<TGasPolicy> _stateStack = new(MaxCallDepth + 1);
 
-    protected IWorldState _worldState;
+    // These execution-scoped fields are initialized before opcode dispatch; current state is cleared between executions.
+    protected IWorldState _worldState = null!;
     private bool _shouldRestoreRipemdTouch;
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
 
-    private ICodeInfoRepository _codeInfoRepository;
+    private ICodeInfoRepository _codeInfoRepository = null!;
 
     private ReadOnlyMemory<byte> _returnDataBuffer;
-    protected VmState<TGasPolicy> _currentState;
+    protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
 
@@ -259,7 +260,7 @@ public partial class VirtualMachine<TGasPolicy>(
                         TransactionSubstate substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
                         if (terminate)
                         {
-                            _currentState = null;
+                            _currentState = null!;
                             return substate;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
@@ -275,7 +276,7 @@ public partial class VirtualMachine<TGasPolicy>(
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
-                    _currentState = null;
+                    _currentState = null!;
                     return substate;
                 }
 
@@ -366,7 +367,7 @@ public partial class VirtualMachine<TGasPolicy>(
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutputLength, out bool shouldExit);
             if (shouldExit)
             {
-                _currentState = null;
+                _currentState = null!;
                 return failSubstate;
             }
         }
@@ -382,7 +383,7 @@ public partial class VirtualMachine<TGasPolicy>(
             _currentState?.Dispose();
         }
 
-        _currentState = null;
+        _currentState = null!;
         while (_stateStack.Count != 0)
         {
             VmState<TGasPolicy> parent = _stateStack.Pop();
@@ -803,6 +804,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </param>
     protected void PrepareNextCallFrame(in CallResult callResult, ref nuint previousCallOutputLength)
     {
+        Debug.Assert(callResult.StateToExecute is not null, "A non-returning call result must carry its next frame.");
         // Push the current execution state onto the state stack so it can be restored later.
         _stateStack.Push(_currentState);
 
@@ -981,7 +983,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
         {
-            if (_logger.IsError) LogMissingDependency(precompile, (exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException)!);
+            if (_logger.IsError) LogMissingDependency(precompile, GetMissingDependencyException(exception));
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
@@ -1169,7 +1171,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
         {
-            if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+            if (_logger.IsError) LogMissingDependency(precompile, GetMissingDependencyException(exception));
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
@@ -1187,6 +1189,13 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
         => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+
+    private static DllNotFoundException GetMissingDependencyException(Exception exception) => exception switch
+    {
+        DllNotFoundException missingDependency => missingDependency,
+        { InnerException: DllNotFoundException missingDependency } => missingDependency,
+        _ => throw new ArgumentOutOfRangeException(nameof(exception)),
+    };
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected static string GetErrorString(IPrecompile precompile, string? error)
@@ -1350,7 +1359,7 @@ public partial class VirtualMachine<TGasPolicy>(
         Debug.Assert((exceptionType == EvmExceptionType.Suspend) == (ReturnData is VmState<TGasPolicy>),
             "CALL/CREATE stage a child frame exactly when they return Suspend.");
         if (exceptionType == EvmExceptionType.Suspend)
-            return new CallResult(Unsafe.As<VmState<TGasPolicy>>(ReturnData));
+            return new CallResult(Unsafe.As<VmState<TGasPolicy>>(ReturnData!));
         if (exceptionType == EvmExceptionType.Revert)
             goto Revert;
         if (ReturnData is not null)

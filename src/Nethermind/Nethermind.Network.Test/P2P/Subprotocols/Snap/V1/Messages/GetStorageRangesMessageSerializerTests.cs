@@ -67,14 +67,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         }
 
         [Test]
-        public void Deserialize_throws_on_null_root_hash()
+        public void Serialize_throws_on_null_root_hash()
         {
             GetStorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 StorageRange = new()
                 {
-                    RootHash = null!,
+                    RootHash = null,
                     Accounts = ArrayPoolList<PathWithAccount>.Empty(),
                     StartingHash = TestItem.KeccakB,
                     LimitHash = TestItem.KeccakC
@@ -82,9 +82,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 ResponseBytes = 1000
             };
             GetStorageRangesMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Serialize(msg), Throws.InvalidOperationException);
         }
 
         [Test]
@@ -111,9 +110,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        [TestCase("account")]
-        [TestCase("account-list")]
-        public void Deserialize_throws_on_null_required_hash(string fieldName)
+        [Test]
+        public void Deserialize_throws_on_null_required_hash([Values("root", "account", "account-list")] string fieldName)
         {
             byte[] serialized = EncodeMessageWithNullHash(fieldName);
             GetStorageRangesMessageSerializer serializer = new();
@@ -145,6 +143,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
         private static byte[] EncodeMessageWithNullHash(string fieldName)
         {
+            Hash256? rootHash = fieldName == "root" ? null : TestItem.KeccakB;
             Hash256? accountPath = fieldName == "account" ? null : TestItem.KeccakA;
             ValueHash256 startingHash = ValueKeccak.Zero;
             ValueHash256 limitHash = ValueKeccak.MaxValue;
@@ -153,7 +152,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 ? Rlp.OfEmptyList.Length
                 : Rlp.LengthOf(accountPath);
             int contentLength = Rlp.LengthOf(1L)
-                + Rlp.LengthOf(TestItem.KeccakB)
+                + Rlp.LengthOf(rootHash)
                 + Rlp.LengthOfSequence(accountsContentLength)
                 + Rlp.LengthOf(startingHash)
                 + Rlp.LengthOf(limitHash)
@@ -162,7 +161,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             RlpWriter writer = new(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
-            writer.Encode(TestItem.KeccakB);
+            writer.Encode(rootHash);
             writer.StartSequence(accountsContentLength);
             if (fieldName == "account-list")
             {

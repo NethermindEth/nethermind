@@ -69,6 +69,26 @@ public class MemoryPositionTests(bool tracing) : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Word_count_overflow_exhausts_execution_gas(
+        [Values(Instruction.CODECOPY, Instruction.CALLDATACOPY, Instruction.EXTCODECOPY,
+            Instruction.RETURNDATACOPY, Instruction.KECCAK256, Instruction.MCOPY)] Instruction instruction,
+        [Values(LowerLimb, "0x2000000000")] string length)
+    {
+        const ulong gasLimit = 100_000;
+        Prepare code = Prepare.EvmCode.PushData(length).PushData(0);
+        if (instruction != Instruction.KECCAK256) code = code.PushData(0);
+        if (instruction == Instruction.EXTCODECOPY) code = code.PushData(TestItem.AddressC);
+
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code.Op(instruction).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
+        }
+    }
+
+    [Test]
     public void Byte_store_followed_by_word_load_preserves_neighbours(
         [Values(0, 7, 8, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512)] int position)
     {

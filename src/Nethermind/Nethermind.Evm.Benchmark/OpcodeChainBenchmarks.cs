@@ -114,9 +114,10 @@ public class OpcodeChainBenchmarks
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             executingAccount: Address.Zero, codeSource: Address.Zero, caller: Address.Zero,
             codeInfo: code, callDepth: 0, value: 0, inputData: _input);
+        using StackAccessTracker accessTracker = new();
         using VmState<EthereumGasPolicy> state = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, environment,
-            new StackAccessTracker(), _state.TakeSnapshot());
+            accessTracker, _state.TakeSnapshot());
         TransactionSubstate result = _vm.ExecuteTransaction<OffFlag>(state, _state, _tracer);
         if (result.IsError || result.ShouldRevert)
             throw new InvalidOperationException($"Chain execution failed: {result.EvmExceptionType}");

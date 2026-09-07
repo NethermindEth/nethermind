@@ -63,15 +63,8 @@ public class EvmStackTests
     private const string PopAddress_out = "PopAddress_out";
     private const string PopLimbo = nameof(EvmStack.PopLimbo);
 
-    [TestCase(PushByte)]
-    [TestCase(PushOne)]
-    [TestCase(PushZero)]
-    [TestCase(PushUInt32)]
-    [TestCase(PushUInt64)]
-    [TestCase(PushUInt256)]
-    [TestCase(PushBytes)]
-    [TestCase(Dup)]
-    public void Push_when_full_returns_StackOverflow_and_preserves_head(string op)
+    [Test]
+    public void Push_when_full_returns_StackOverflow_and_preserves_head([Values(PushByte, PushOne, PushZero, PushUInt32, PushUInt64, PushUInt256, PushBytes, Dup)] string op)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         vmState.InitializeStacks(default, out EvmStack stack);
@@ -105,10 +98,8 @@ public class EvmStackTests
         Assert.That((int)stack.Head, Is.EqualTo(preFilled));
     }
 
-    [TestCase(Dup)]
-    [TestCase(Swap)]
-    [TestCase(Exchange)]
-    public void StackReshuffle_with_insufficient_depth_returns_StackUnderflow_and_preserves_head(string op)
+    [Test]
+    public void StackReshuffle_with_insufficient_depth_returns_StackUnderflow_and_preserves_head([Values(Dup, Swap, Exchange)] string op)
     {
         // DUPN / SWAPN / EXCHANGE delegate through stack.Dup/Swap/Exchange; all three must
         // return StackUnderflow (not corrupt Head) when the addressed slot is past the bottom.
@@ -226,23 +217,20 @@ public class EvmStackTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(17)]
-    [TestCase(31)]
-    [TestCase(32)]
-    public void PushRightPaddedBytes_traces_the_completed_word(int length)
+    [Test]
+    public void PushRightPaddedBytes_traces_the_completed_word(
+        [Values(0, 1, 17, 31, 32)] int length, [Values(0, 1, 7, 31)] int offset)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         StackPushTracer tracer = new();
         vmState.InitializeStacks(tracer, default, out EvmStack stack);
-        byte[] source = new byte[EvmPooledMemory.WordSize];
+        byte[] source = new byte[EvmPooledMemory.WordSize + offset];
         for (int i = 0; i < source.Length; i++) source[i] = (byte)(i + 1);
         byte[] expected = new byte[EvmPooledMemory.WordSize];
-        source.AsSpan(0, length).CopyTo(expected);
+        source.AsSpan(offset, length).CopyTo(expected);
 
         EvmExceptionType result = stack.PushRightPaddedBytes<OnFlag>(
-            ref MemoryMarshal.GetArrayDataReference(source),
+            ref source[offset],
             (uint)length);
 
         using (Assert.EnterMultipleScope())
