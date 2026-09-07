@@ -137,8 +137,8 @@ env:
   # means Amsterdam plus EIP-7805; nothing inside a fixture separates the two, so the lane names the
   # fork it means through the runner's --forkAlias.
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v0.3.0' }}
-  # Cases the pinned release ships across the frame lanes. Asserted so a scope resolving to nothing,
-  # or to less than the release holds, fails rather than reporting a clean run of too few tests.
+  # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
+  # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
   FRAME_MIN_CASES: '218'
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
   FRAME_TX_MIN_CASES: '78'
