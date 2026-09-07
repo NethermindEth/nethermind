@@ -37,27 +37,27 @@ public static unsafe partial class EvmInstructions
 
         // Only the resolved target (or a DELEGATECALL from it, which preserves ADDRESS) may approve.
         if (!vm.VmState.Env.ExecutingAccount.Equals(resolvedTarget))
-            return EvmExceptionType.Revert;
+            goto Reject;
 
         byte scopeByte = (byte)scope.u0;
         byte allowed = frame.AllowedApproveScope;
         if (scope > TxFrame.ApproveScopeMask || scopeByte == 0 || (scopeByte & ~allowed) != 0)
-            return EvmExceptionType.Revert;
+            goto Reject;
 
         bool approvesExecution = (scopeByte & TxFrame.ApproveExecution) != 0;
         bool approvesPayment = (scopeByte & TxFrame.ApprovePayment) != 0;
 
         if (approvesExecution)
         {
-            if (ctx.SenderApproved || resolvedTarget != ctx.Sender) return EvmExceptionType.Revert;
+            if (ctx.SenderApproved || resolvedTarget != ctx.Sender) goto Reject;
         }
 
         if (approvesPayment)
         {
-            if (ctx.Payer is not null) return EvmExceptionType.Revert;
+            if (ctx.Payer is not null) goto Reject;
             // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
-            if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
-            if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
+            if (!approvesExecution && !ctx.SenderApproved) goto Reject;
+            if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) goto Reject;
 
             // Consumption happens at payment approval, so first use is charged against this frame's gas.
             if (ctx.NonceKeys is { } nonceKeys
@@ -79,6 +79,11 @@ public static unsafe partial class EvmInstructions
         // Stop (not None): APPROVE exits the current call frame successfully, and dispatch requires
         // a non-None status from any handler that stages ReturnData.
         return EvmExceptionType.Stop;
+
+    Reject:
+        // A rejected approval reverts with no data; Revert status requires staged return data.
+        vm.ReturnData = Array.Empty<byte>();
+        return EvmExceptionType.Revert;
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
