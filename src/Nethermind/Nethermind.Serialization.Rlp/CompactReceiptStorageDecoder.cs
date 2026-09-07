@@ -24,7 +24,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> rlp = decoderContext.Data;
             int position = decoderContext.Position;
 
-            if (rlp[position] == Rlp.EmptyListByte)
+            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
             {
                 decoderContext.Position = position + 1;
                 return null;
@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Rlp
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int receiptLength);
             int receiptEnd = position + receiptLength;
 
-            position = RlpHelpers.DecodeByteArray(rlp, position, null, -1, out byte[] firstItem);
+            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -44,10 +44,8 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            position = RlpHelpers.DecodeAddress(rlp, position, allowNull: true, out Address? sender);
-            txReceipt.Sender = sender;
-            position = RlpHelpers.DecodeULong(rlp, position, out ulong gasUsedTotal);
-            txReceipt.GasUsedTotal = gasUsedTotal;
+            (position, txReceipt.Sender) = RlpHelpers.DecodeAddressOrNull(rlp, position);
+            (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
 
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
             int lastCheck = position + sequenceLength;
@@ -71,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                RlpHelpers.Check(decoderContext.Position, lastCheck);
             }
 
             // Handle any remaining extra bytes

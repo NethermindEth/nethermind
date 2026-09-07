@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> rlp = decoderContext.Data;
             int position = decoderContext.Position;
 
-            if (rlp[position] == Rlp.EmptyListByte)
+            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
             {
                 decoderContext.Position = position + 1;
                 return null;
@@ -69,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
 
             position = RlpHelpers.DecodeKeccakOrNull(rlp, position, out Hash256? blockHash);
             position = RlpHelpers.DecodeBool(rlp, position, out bool wasProcessed);
-            position = RlpHelpers.DecodeUInt256(rlp, position, -1, out UInt256 totalDifficulty);
+            position = RlpHelpers.DecodeUInt256(rlp, position, out UInt256 totalDifficulty);
 
             BlockMetadata metadata = BlockMetadata.None;
             // if we hadn't reached the end of the stream, assume we have metadata to decode
@@ -83,7 +83,7 @@ namespace Nethermind.Serialization.Rlp
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                RlpHelpers.Check(position, lastCheck);
             }
 
             if (blockHash is null)

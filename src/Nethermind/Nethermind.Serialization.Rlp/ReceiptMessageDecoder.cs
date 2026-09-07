@@ -24,14 +24,14 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> rlp = ctx.Data;
             int position = ctx.Position;
 
-            if (rlp[position] == Rlp.EmptyListByte)
+            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
             {
                 ctx.Position = position + 1;
                 return null;
             }
 
             TxReceipt txReceipt = new();
-            if (rlp[position] < 192)
+            if (!RlpHelpers.IsSequenceNext(rlp, position))
             {
                 position = RlpHelpers.SkipLength(rlp, position);
                 txReceipt.TxType = (TxType)rlp[position++];
@@ -39,12 +39,11 @@ namespace Nethermind.Serialization.Rlp
 
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
             int receiptEnd = position + sequenceLength;
-            position = RlpHelpers.DecodeByteArray(rlp, position, null, -1, out byte[] firstItem);
+            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                position = RlpHelpers.DecodeULong(rlp, position, out ulong statusGasUsed);
-                txReceipt.GasUsedTotal = statusGasUsed;
+                (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
@@ -53,16 +52,16 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                position = RlpHelpers.DecodeULong(rlp, position, out ulong stateGasUsed);
-                txReceipt.GasUsedTotal = stateGasUsed;
+                (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
             }
 
-            ctx.Position = position;
+            // When skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
             if (!skipBloom)
-                txReceipt.Bloom = ctx.DecodeBloomNonNull();
-            // When _skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
+            {
+                (position, txReceipt.Bloom) = RlpHelpers.DecodeBloomNonNull(rlp, position);
+            }
 
-            position = RlpHelpers.ReadSequenceLength(rlp, ctx.Position, out int logsLength);
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int logsLength);
             int lastCheck = position + logsLength;
 
             int numberOfReceipts = RlpHelpers.CountItems(rlp, position, lastCheck, LogsRlpLimit.Limit + 1);

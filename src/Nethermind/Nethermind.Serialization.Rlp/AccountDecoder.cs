@@ -64,7 +64,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             position = RlpHelpers.DecodeULong(accountRlp, position, out ulong nonce);
-            position = RlpHelpers.DecodeUInt256(accountRlp, position, -1, out UInt256 balance);
+            position = RlpHelpers.DecodeUInt256(accountRlp, position, out UInt256 balance);
             position = DecodeStorageRootStruct(accountRlp, position, out ValueHash256 storageRoot);
             DecodeCodeHashStruct(accountRlp, position, out ValueHash256 codeHash);
 

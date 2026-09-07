@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -28,6 +29,86 @@ internal static partial class RlpHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int SkipLength(ReadOnlySpan<byte> data, int position)
         => position + GetPrefixLength(data[position]);
+
+    // Pair forms of the primitives below, for call sites whose decode target is a property and so
+    // cannot be an `out` argument. `(position, item.Field) = Decode…(data, position);` keeps the
+    // cursor threading on one line there instead of an `out` local plus an assignment.
+
+    /// <inheritdoc cref="DecodeULong(ReadOnlySpan{byte}, int, out ulong)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, ulong Value) DecodeULong(ReadOnlySpan<byte> data, int position)
+        => (DecodeULong(data, position, out ulong value), value);
+
+    /// <inheritdoc cref="DecodePositiveInt(ReadOnlySpan{byte}, int, out int)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, int Value) DecodePositiveInt(ReadOnlySpan<byte> data, int position)
+        => (DecodePositiveInt(data, position, out int value), value);
+
+    /// <inheritdoc cref="DecodeUInt256(ReadOnlySpan{byte}, int, out UInt256, int)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, UInt256 Value) DecodeUInt256(ReadOnlySpan<byte> data, int position, int length = -1)
+        => (DecodeUInt256(data, position, out UInt256 value, length), value);
+
+    /// <inheritdoc cref="DecodeKeccak(ReadOnlySpan{byte}, int, out Hash256)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, Hash256 Value) DecodeKeccak(ReadOnlySpan<byte> data, int position)
+        => (DecodeKeccak(data, position, out Hash256 value), value);
+
+    /// <inheritdoc cref="DecodeKeccakOrNull(ReadOnlySpan{byte}, int, out Hash256)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, Hash256? Value) DecodeKeccakOrNull(ReadOnlySpan<byte> data, int position)
+        => (DecodeKeccakOrNull(data, position, out Hash256? value), value);
+
+    /// <inheritdoc cref="DecodeAddressOrNull(ReadOnlySpan{byte}, int, out Address)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, Address? Value) DecodeAddressOrNull(ReadOnlySpan<byte> data, int position)
+        => (DecodeAddressOrNull(data, position, out Address? value), value);
+
+    /// <inheritdoc cref="DecodeBloom(ReadOnlySpan{byte}, int, out Bloom)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, Bloom Value) DecodeBloom(ReadOnlySpan<byte> data, int position)
+        => (DecodeBloom(data, position, out Bloom value), value);
+
+    /// <inheritdoc cref="DecodeBloomOrNull(ReadOnlySpan{byte}, int, out Bloom)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, Bloom? Value) DecodeBloomOrNull(ReadOnlySpan<byte> data, int position)
+        => (DecodeBloomOrNull(data, position, out Bloom? value), value);
+
+    /// <inheritdoc cref="DecodeBloomNonNull(ReadOnlySpan{byte}, int, out Bloom)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, Bloom Value) DecodeBloomNonNull(ReadOnlySpan<byte> data, int position)
+        => (DecodeBloomNonNull(data, position, out Bloom value), value);
+
+    /// <inheritdoc cref="DecodeString(ReadOnlySpan{byte}, int, out string, RlpLimit)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static (int Position, string Value) DecodeString(ReadOnlySpan<byte> data, int position, RlpLimit? limit = null)
+        => (DecodeString(data, position, out string value, limit), value);
+
+    /// <summary>Tells whether the item at <paramref name="position"/> is a sequence rather than a byte string.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsSequenceNext(ReadOnlySpan<byte> data, int position) => data[position] >= ListOffset;
+
+    /// <summary>Tells whether the item at <paramref name="position"/> is the empty sequence.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsEmptySequenceNext(ReadOnlySpan<byte> data, int position) => data[position] == Rlp.EmptyListByte;
+
+    /// <summary>Asserts that a decode finished exactly at <paramref name="expected"/>.</summary>
+    /// <remarks>
+    /// Takes the cursor by value so a threaded run does not have to write it back to an
+    /// <see cref="RlpReader"/> just to be checked.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Check(int position, int expected)
+    {
+        if (position != expected)
+        {
+            ThrowCheckpointFailed(expected, position);
+        }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowCheckpointFailed(int expected, int position) =>
+        throw new RlpException($"Data checkpoint failed. Expected {expected} and is {position}");
 
     /// <summary>Advances past <paramref name="count"/> whole items.</summary>
     public static int SkipItems(ReadOnlySpan<byte> data, int position, int count)
@@ -91,7 +172,7 @@ internal static partial class RlpHelpers
     /// <summary>Decodes a byte string, yielding a span over <paramref name="data"/>.</summary>
     /// <returns>The position past the string.</returns>
     public static int DecodeByteArraySpan(
-        ReadOnlySpan<byte> data, int position, RlpLimit? limit, int size, out ReadOnlySpan<byte> value)
+        ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> value, RlpLimit? limit = null, int size = -1)
     {
         int start = position;
         int prefix = data[position++];
@@ -366,7 +447,7 @@ internal static partial class RlpHelpers
     /// <summary>Decodes a big-endian unsigned integer of up to 32 bytes.</summary>
     /// <param name="length">Required byte length, or -1 to accept any canonical encoding.</param>
     /// <returns>The position past the integer.</returns>
-    public static int DecodeUInt256(ReadOnlySpan<byte> data, int position, int length, out UInt256 value)
+    public static int DecodeUInt256(ReadOnlySpan<byte> data, int position, out UInt256 value, int length = -1)
     {
         int start = position;
         if (data[position] == 0)
@@ -374,7 +455,7 @@ internal static partial class RlpHelpers
             ThrowNonCanonicalInteger(start);
         }
 
-        position = DecodeByteArraySpan(data, position, RlpLimit.L32, -1, out ReadOnlySpan<byte> byteSpan);
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> byteSpan, RlpLimit.L32);
         if (byteSpan.Length > 32)
         {
             ThrowUnexpectedIntegerLength(start, byteSpan.Length);
@@ -406,7 +487,7 @@ internal static partial class RlpHelpers
             ThrowNonCanonicalInteger(start);
         }
 
-        position = DecodeByteArraySpan(data, position, RlpLimit.L32, -1, out ReadOnlySpan<byte> byteSpan);
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> byteSpan, RlpLimit.L32);
         if (byteSpan.Length > 32)
         {
             ThrowUnexpectedIntegerLength(start, byteSpan.Length);
@@ -496,11 +577,21 @@ internal static partial class RlpHelpers
         return position + Hash256.Size;
     }
 
+    /// <summary>Decodes a 20-byte address.</summary>
+    /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is an RLP null or is not an address.</exception>
+    public static int DecodeAddress(ReadOnlySpan<byte> data, int position, out Address address)
+    {
+        position = ReadAddressPrefix(data, position, allowNull: false, out _);
+        address = new Address(data.Slice(position, Address.Size));
+        return position + Address.Size;
+    }
+
     /// <summary>Decodes a 20-byte address, or an RLP null.</summary>
     /// <returns>The position past the item.</returns>
-    public static int DecodeAddress(ReadOnlySpan<byte> data, int position, bool allowNull, out Address? address)
+    public static int DecodeAddressOrNull(ReadOnlySpan<byte> data, int position, out Address? address)
     {
-        position = ReadAddressPrefix(data, position, allowNull, out bool hasValue);
+        position = ReadAddressPrefix(data, position, allowNull: true, out bool hasValue);
         if (!hasValue)
         {
             address = null;
@@ -526,7 +617,7 @@ internal static partial class RlpHelpers
             return position + Bloom.ByteLength;
         }
 
-        return DecodeByteArraySpan(data, position, RlpLimit.Bloom, -1, out bloomBytes);
+        return DecodeByteArraySpan(data, position, out bloomBytes, RlpLimit.Bloom);
     }
 
     /// <summary>Decodes a bloom, interning <see cref="Bloom.Empty"/>.</summary>
@@ -535,6 +626,26 @@ internal static partial class RlpHelpers
     {
         position = DecodeBloomSpan(data, position, out ReadOnlySpan<byte> bloomBytes);
         bloom = bloomBytes.Length == 0 ? null : CreateBloom(bloomBytes);
+        return position;
+    }
+
+    /// <summary>Decodes a bloom that must be present as a plain 256-byte string.</summary>
+    /// <remarks>Unlike <see cref="DecodeBloomOrNull"/> this does not accept the legacy sequence form.</remarks>
+    /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is not a 256-byte string.</exception>
+    public static int DecodeBloom(ReadOnlySpan<byte> data, int position, out Bloom bloom)
+    {
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom, Bloom.ByteLength);
+        bloom = CreateBloom(bloomBytes);
+        return position;
+    }
+
+    /// <inheritdoc cref="DecodeBloomOrNull"/>
+    /// <exception cref="RlpException">The item is an RLP null.</exception>
+    public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom)
+    {
+        position = DecodeBloomOrNull(data, position, out Bloom? value);
+        bloom = value ?? ThrowNullDecodedValue<Bloom>();
         return position;
     }
 
@@ -556,9 +667,9 @@ internal static partial class RlpHelpers
     /// <summary>Decodes a byte string into an array, reusing the shared single-byte arrays.</summary>
     /// <returns>The position past the string.</returns>
     public static int DecodeByteArray(
-        ReadOnlySpan<byte> data, int position, RlpLimit? limit, int size, out byte[] value)
+        ReadOnlySpan<byte> data, int position, out byte[] value, RlpLimit? limit = null, int size = -1)
     {
-        position = DecodeByteArraySpan(data, position, limit, size, out ReadOnlySpan<byte> span);
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> span, limit, size);
         if (span.Length == 0)
         {
             value = [];
@@ -577,6 +688,15 @@ internal static partial class RlpHelpers
         }
 
         value = span.ToArray();
+        return position;
+    }
+
+    /// <summary>Decodes a byte string as UTF-8 text.</summary>
+    /// <returns>The position past the string.</returns>
+    public static int DecodeString(ReadOnlySpan<byte> data, int position, out string value, RlpLimit? limit = null)
+    {
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bytes, limit);
+        value = Encoding.UTF8.GetString(bytes);
         return position;
     }
 
@@ -610,7 +730,7 @@ internal static partial class RlpHelpers
             return position + 1;
         }
 
-        position = DecodeByteArraySpan(data, position, RlpLimit.L32, -1, out ReadOnlySpan<byte> span);
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> span, RlpLimit.L32);
         Span<byte> bytes = stackalloc byte[Hash256.Size];
         bytes.Clear();
         span.CopyTo(bytes[(Hash256.Size - span.Length)..]);

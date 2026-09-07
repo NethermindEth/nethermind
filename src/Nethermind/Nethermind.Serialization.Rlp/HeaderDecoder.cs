@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> rlp = decoderContext.Data;
             int position = decoderContext.Position;
 
-            if (rlp[position] == Rlp.EmptyListByte)
+            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
             {
                 decoderContext.Position = position + 1;
                 return null;
@@ -35,23 +35,22 @@ namespace Nethermind.Serialization.Rlp
 
             position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 parentHash);
             position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 unclesHash);
-            position = RlpHelpers.DecodeAddress(rlp, position, allowNull: false, out Address? beneficiary);
+            position = RlpHelpers.DecodeAddress(rlp, position, out Address beneficiary);
             position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 stateRoot);
             position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 transactionsRoot);
-            decoderContext.Position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 receiptsRoot);
-
-            Bloom bloom = decoderContext.DecodeBloom();
-
-            position = RlpHelpers.DecodeUInt256(rlp, decoderContext.Position, -1, out UInt256 difficulty);
+            position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 receiptsRoot);
+            position = RlpHelpers.DecodeBloom(rlp, position, out Bloom bloom);
+            position = RlpHelpers.DecodeUInt256(rlp, position, out UInt256 difficulty);
             position = RlpHelpers.DecodeULong(rlp, position, out ulong number);
             position = RlpHelpers.DecodeULong(rlp, position, out ulong gasLimit);
             position = RlpHelpers.DecodeULong(rlp, position, out ulong gasUsed);
-            decoderContext.Position = RlpHelpers.DecodeULong(rlp, position, out ulong timestamp);
+            position = RlpHelpers.DecodeULong(rlp, position, out ulong timestamp);
+            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] extraData);
 
-            byte[] extraData = decoderContext.DecodeByteArray();
-
+            // The seal is a virtual extension point, so the cursor goes back to the reader once here.
+            decoderContext.Position = position;
             BlockHeader blockHeader = DecodeSealAndCreateHeader(
-                ref decoderContext, parentHash, unclesHash, beneficiary!, in difficulty, number, gasLimit, timestamp, extraData);
+                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);
             blockHeader.StateRoot = stateRoot;
             blockHeader.TxRoot = transactionsRoot;
             blockHeader.ReceiptsRoot = receiptsRoot;
@@ -59,63 +58,53 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.GasUsed = gasUsed;
             blockHeader.Hash = Keccak.Compute(headerRlp);
 
-            // The optional post-London fields are decoded off a local cursor, so the run costs one
-            // read and one write rather than a field round-trip per presence test.
             position = decoderContext.Position;
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeUInt256(rlp, position, -1, out UInt256 baseFeePerGas);
-                blockHeader.BaseFeePerGas = baseFeePerGas;
+                position = RlpHelpers.DecodeUInt256(rlp, position, out blockHeader.BaseFeePerGas);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 withdrawalsRoot);
-                blockHeader.WithdrawalsRoot = withdrawalsRoot;
+                (position, blockHeader.WithdrawalsRoot) = RlpHelpers.DecodeKeccak(rlp, position);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeULong(rlp, position, out ulong blobGasUsed);
-                blockHeader.BlobGasUsed = blobGasUsed;
+                (position, blockHeader.BlobGasUsed) = RlpHelpers.DecodeULong(rlp, position);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeULong(rlp, position, out ulong excessBlobGas);
-                blockHeader.ExcessBlobGas = excessBlobGas;
+                (position, blockHeader.ExcessBlobGas) = RlpHelpers.DecodeULong(rlp, position);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeKeccakOrNull(rlp, position, out Hash256? parentBeaconBlockRoot);
-                blockHeader.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+                (position, blockHeader.ParentBeaconBlockRoot) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeKeccakOrNull(rlp, position, out Hash256? requestsHash);
-                blockHeader.RequestsHash = requestsHash;
+                (position, blockHeader.RequestsHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeKeccakOrNull(rlp, position, out Hash256? blockAccessListHash);
-                blockHeader.BlockAccessListHash = blockAccessListHash;
+                (position, blockHeader.BlockAccessListHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
             }
 
             if (position != headerCheck)
             {
-                position = RlpHelpers.DecodeULong(rlp, position, out ulong slotNumber);
-                blockHeader.SlotNumber = slotNumber;
+                (position, blockHeader.SlotNumber) = RlpHelpers.DecodeULong(rlp, position);
             }
 
             decoderContext.Position = position;
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(headerCheck);
+                RlpHelpers.Check(position, headerCheck);
             }
 
             return blockHeader;

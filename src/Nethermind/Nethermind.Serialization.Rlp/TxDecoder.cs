@@ -91,7 +91,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         ReadOnlySpan<byte> rlp = decoderContext.Data;
         int position = decoderContext.Position;
 
-        if (rlp[position] == Rlp.EmptyListByte)
+        if (RlpHelpers.IsEmptySequenceNext(rlp, position))
         {
             decoderContext.Position = position + 1;
             transaction = null;
@@ -113,7 +113,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         }
         else
         {
-            if (rlp[position] < 192)
+            if (!RlpHelpers.IsSequenceNext(rlp, position))
             {
                 position = RlpHelpers.ReadPrefixAndContentLength(rlp, position, out _, out int contentLength);
                 txSequenceStart = position;

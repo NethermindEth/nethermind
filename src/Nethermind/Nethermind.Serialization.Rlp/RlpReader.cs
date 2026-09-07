@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -72,7 +71,7 @@ public ref struct RlpReader
 
     public readonly int Length => Data.Length;
 
-    public readonly bool IsSequenceNext() => Data[Position] >= 192;
+    public readonly bool IsSequenceNext() => RlpHelpers.IsSequenceNext(Data, Position);
 
     public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
@@ -134,13 +133,7 @@ public ref struct RlpReader
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly void Check(int nextCheck)
-    {
-        if (Position != nextCheck)
-        {
-            ThrowCheckpointFailed(nextCheck, Position);
-        }
-    }
+    public readonly void Check(int nextCheck) => RlpHelpers.Check(Position, nextCheck);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly void CheckEnd()
@@ -150,10 +143,6 @@ public ref struct RlpReader
             ThrowCheckEndFailed(Position);
         }
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowCheckpointFailed(int expected, int position) =>
-        throw new RlpException($"Data checkpoint failed. Expected {expected} and is {position}");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowCheckEndFailed(int position) =>
@@ -266,13 +255,13 @@ public ref struct RlpReader
 
     public Address DecodeAddress()
     {
-        Position = RlpHelpers.DecodeAddress(Data, Position, allowNull: false, out Address? address);
+        Position = RlpHelpers.DecodeAddress(Data, Position, out Address address);
         return address!;
     }
 
     public Address? DecodeAddressOrNull()
     {
-        Position = RlpHelpers.DecodeAddress(Data, Position, allowNull: true, out Address? address);
+        Position = RlpHelpers.DecodeAddressOrNull(Data, Position, out Address? address);
         return address;
     }
 
@@ -304,7 +293,7 @@ public ref struct RlpReader
 
     public UInt256 DecodeUInt256(int length = -1)
     {
-        Position = RlpHelpers.DecodeUInt256(Data, Position, length, out UInt256 value);
+        Position = RlpHelpers.DecodeUInt256(Data, Position, out UInt256 value, length);
         return value;
     }
 
@@ -327,8 +316,8 @@ public ref struct RlpReader
 
     public Bloom DecodeBloom()
     {
-        ReadOnlySpan<byte> bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
-        return RlpHelpers.CreateBloom(bloomBytes);
+        Position = RlpHelpers.DecodeBloom(Data, Position, out Bloom bloom);
+        return bloom;
     }
 
     public Bloom? DecodeBloomOrNull()
@@ -337,8 +326,11 @@ public ref struct RlpReader
         return bloom;
     }
 
-    public Bloom DecodeBloomNonNull() =>
-        DecodeBloomOrNull() ?? ThrowNullDecodedValue<Bloom>();
+    public Bloom DecodeBloomNonNull()
+    {
+        Position = RlpHelpers.DecodeBloomNonNull(Data, Position, out Bloom bloom);
+        return bloom;
+    }
 
     public void DecodeBloomStructRef(out BloomStructRef bloom) =>
         DecodeBloomStructRef(out bloom, out _);
@@ -376,7 +368,7 @@ public ref struct RlpReader
 
     public byte[] DecodeByteArray(RlpLimit? limit = null, int size = -1)
     {
-        Position = RlpHelpers.DecodeByteArray(Data, Position, limit, size, out byte[] value);
+        Position = RlpHelpers.DecodeByteArray(Data, Position, out byte[] value, limit, size);
         return value;
     }
 
@@ -448,7 +440,7 @@ public ref struct RlpReader
 
     public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null, int size = -1)
     {
-        Position = RlpHelpers.DecodeByteArraySpan(Data, Position, limit, size, out ReadOnlySpan<byte> value);
+        Position = RlpHelpers.DecodeByteArraySpan(Data, Position, out ReadOnlySpan<byte> value, limit, size);
         return value;
     }
 
@@ -486,8 +478,8 @@ public ref struct RlpReader
 
     public string DecodeString(RlpLimit? limit = null)
     {
-        ReadOnlySpan<byte> bytes = DecodeByteArraySpan(limit);
-        return Encoding.UTF8.GetString(bytes);
+        Position = RlpHelpers.DecodeString(Data, Position, out string value, limit);
+        return value;
     }
 
     public long DecodeLong() => (long)DecodeULong();
@@ -530,7 +522,7 @@ public ref struct RlpReader
 
         for (int i = 0; i < itemsCount; i++)
         {
-            position = RlpHelpers.DecodeByteArray(data, position, null, innerSize, out result[i]);
+            position = RlpHelpers.DecodeByteArray(data, position, out result[i], size: innerSize);
         }
 
         Position = position;

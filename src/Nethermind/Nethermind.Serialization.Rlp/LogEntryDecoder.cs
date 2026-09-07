@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> rlp = decoderContext.Data;
             int position = decoderContext.Position;
 
-            if (rlp[position] == Rlp.EmptyListByte)
+            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
             {
                 decoderContext.Position = position + 1;
                 return null;
@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Rlp
             Rlp.GuardLimit(logEntryLength, rlp.Length - position, RlpLimit);
             int logEntryCheck = position + logEntryLength;
 
-            position = RlpHelpers.DecodeAddress(rlp, position, allowNull: false, out Address? address);
+            position = RlpHelpers.DecodeAddress(rlp, position, out Address address);
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int topicsLength);
             int topicsCheck = position + topicsLength;
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
@@ -42,13 +42,12 @@ namespace Nethermind.Serialization.Rlp
                 position = RlpHelpers.DecodeKeccak(rlp, position, out topics[i]);
             }
 
+            RlpHelpers.Check(position, topicsCheck);
+            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] data);
+            RlpHelpers.Check(position, logEntryCheck);
             decoderContext.Position = position;
-            decoderContext.Check(topicsCheck);
 
-            byte[] data = decoderContext.DecodeByteArray();
-            decoderContext.Check(logEntryCheck);
-
-            return new LogEntry(address!, data, topics);
+            return new LogEntry(address, data, topics);
         }
 
         public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -643,11 +643,11 @@ namespace Nethermind.Trie
             }
             else
             {
-                position = RlpHelpers.DecodeByteArraySpan(data, position, null, -1, out ReadOnlySpan<byte> valueSpan);
+                position = RlpHelpers.DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> valueSpan);
                 (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
                 if (isLeaf)
                 {
-                    RlpHelpers.DecodeByteArraySpan(data, position, null, -1, out valueSpan);
+                    RlpHelpers.DecodeByteArraySpan(data, position, out valueSpan);
                     CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
                     _nodeData = new LeafData(key, buffer);
@@ -781,7 +781,7 @@ namespace Nethermind.Trie
             ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
             int position = SeekChildPosition(nodeRlp, i);
 
-            if (nodeRlp[position] < 192)
+            if (!RlpHelpers.IsSequenceNext(nodeRlp, position))
             {
                 return null;
             }

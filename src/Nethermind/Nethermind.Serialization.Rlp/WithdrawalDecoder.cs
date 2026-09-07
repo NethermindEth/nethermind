@@ -15,7 +15,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         ReadOnlySpan<byte> rlp = decoderContext.Data;
         int position = decoderContext.Position;
 
-        if (rlp[position] == Rlp.EmptyListByte)
+        if (RlpHelpers.IsEmptySequenceNext(rlp, position))
         {
             decoderContext.Position = position + 1;
             return null;
@@ -26,7 +26,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 
         position = RlpHelpers.DecodeULong(rlp, position, out ulong index);
         position = RlpHelpers.DecodeULong(rlp, position, out ulong validatorIndex);
-        position = RlpHelpers.DecodeAddress(rlp, position, allowNull: false, out Address? address);
+        position = RlpHelpers.DecodeAddress(rlp, position, out Address address);
         position = RlpHelpers.DecodeULong(rlp, position, out ulong amountInGwei);
         decoderContext.Position = position;
 
@@ -34,13 +34,13 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         {
             Index = index,
             ValidatorIndex = validatorIndex,
-            Address = address!,
+            Address = address,
             AmountInGwei = amountInGwei
         };
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
-            decoderContext.Check(checkPosition);
+            RlpHelpers.Check(position, checkPosition);
         }
 
         return withdrawal;
