@@ -19,11 +19,18 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
 {
-    // EIP8141-DEVIATION: the spec does not cap the signature count; guards allocation before gas is charged.
-    private const int SignaturesDecodeCap = 1024;
-
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
-    private static readonly RlpLimit SignaturesCountLimit = RlpLimit.For<Transaction>(SignaturesDecodeCap, nameof(Transaction.FrameSignatures));
+
+    // Every entry is a four-item sequence, so five bytes at least.
+    private const int MinSignatureRlpLength = 5;
+
+    // The spec bounds the signature list only through gas: each entry is charged at least the ARBITRARY
+    // verification price. The array is sized from the declared count, so the bytes on hand bound it too.
+    private static RlpLimit SignaturesCountLimit(int bytesLeft) => RlpLimit.For<Transaction>(
+        (int)Math.Min(RlpLimit.MaxBlockGas / Eip8141Constants.ArbitraryVerificationGasCost + 1,
+            (ulong)bytesLeft / MinSignatureRlpLength),
+        nameof(Transaction.FrameSignatures));
+
     // Decode-side allocation guard only — EIP-7594's per-tx blob limit is far tighter and is
     // enforced by the transaction validator.
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(ShardBlobNetworkWrapperRlp.BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
@@ -134,7 +141,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress();
         transaction.Frames = decoderContext.DecodeNonNullArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
-        transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance, limit: SignaturesCountLimit);
+        transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance,
+            limit: SignaturesCountLimit(decoderContext.Length - decoderContext.Position));
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas

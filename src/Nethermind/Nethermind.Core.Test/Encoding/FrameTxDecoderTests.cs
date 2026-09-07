@@ -27,7 +27,6 @@ namespace Nethermind.Core.Test.Encoding;
 public class FrameTxDecoderTests
 {
     private const int BlobVersionedHashesDecodeCap = ShardBlobNetworkWrapperRlp.BlobCountLimit;
-    private const int SignaturesDecodeCap = 1024;
     private const int FrameDataDecodeCap = 30 * 1024 * 1024;
     // The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).
     private const int ShortSequencePrefixMax = 0xf7;
@@ -281,14 +280,15 @@ public class FrameTxDecoderTests
     /// </summary>
     /// <param name="chainId">Replaces the chain_id field; defaults to <see cref="TestBlockchainIds.ChainId"/>.</param>
     /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
+    /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, params Rlp[] trailing) =>
+    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, params Rlp[] trailing) =>
         Rlp.Encode([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
             Rlp.Encode(0L),                                 // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
             Rlp.Encode(Array.Empty<Rlp>()),                 // frames
-            Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
+            signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
             Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
             Rlp.Encode(Array.Empty<Rlp>()),                 // blob_versioned_hashes
             .. trailing]);
@@ -507,22 +507,40 @@ public class FrameTxDecoderTests
         }
     }
 
-    [TestCase(SignaturesDecodeCap, false)]
-    [TestCase(SignaturesDecodeCap + 1, true)]
-    public void Decode_BoundsTheSignatureCount(int signatureCount, bool rejected)
+    // EIP-8141 caps the signature count only through gas, and a list this size is payable well inside a
+    // block, so the decoder must not reject it.
+    [TestCase(1024)]
+    [TestCase(1025)]
+    public void Decode_SignatureCountBoundedOnlyByGas_IsAccepted(int signatureCount)
     {
         Transaction tx = CreateFrameTx(signatures:
             [.. Enumerable.Range(0, signatureCount).Select(static _ =>
                 new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, default))]);
 
-        if (rejected)
-        {
-            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
-        }
-        else
-        {
-            Assert.That(EncodeDecode(tx).FrameSignatures!.Length, Is.EqualTo(signatureCount));
-        }
+        Assert.That(EncodeDecode(tx).FrameSignatures!.Length, Is.EqualTo(signatureCount));
+    }
+
+    // Likewise for the signature length, charged as calldata.
+    [TestCase(65_536)]
+    [TestCase(65_537)]
+    public void Decode_SignatureLengthBoundedOnlyByGas_IsAccepted(int signatureLength)
+    {
+        Transaction tx = CreateFrameTx(signatures: [new TxFrameSignature(
+            TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(signatureLength, 0x01))]);
+
+        Assert.That(EncodeDecode(tx).FrameSignatures![0].Signature.Length, Is.EqualTo(signatureLength));
+    }
+
+    // The gas budget alone admits 10,000,001 entries at the default MaxBlockGas, so one-byte placeholders would
+    // size an array eight times their own length. RlpLimitException, not the RlpException a null element
+    // raises, is what distinguishes refusing the count from allocating for it.
+    [TestCase(1_024)]
+    [TestCase(100_000)]
+    public void Decode_SignatureCountTheBytesCannotHold_IsRefusedBeforeAllocating(int count)
+    {
+        byte[] payload = TypedPayload(FrameTxBody(signatures: PlaceholderList(count)));
+
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpLimitException>());
     }
 
     [Test]
@@ -530,13 +548,8 @@ public class FrameTxDecoderTests
     {
         byte[] payload = TypedPayload(FrameTxBody(chainId: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
 
-        void Decode()
-        {
-            RlpReader reader = new(payload);
-            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-        }
-
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
+        Assert.That(() => DecodeConsensusPayload(payload),
+            Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
     }
 
     [TestCase(FrameDataDecodeCap, false)]
@@ -572,14 +585,24 @@ public class FrameTxDecoderTests
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        void Decode()
-        {
-            RlpReader reader = new(payload);
-            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-        }
-
-        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>()
             .With.Message.Contains("RLP data is truncated").And.Message.Contains("recent root reference"));
+    }
+
+    /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
+    private static Rlp PlaceholderList(int count)
+    {
+        byte[] bytes = new byte[Rlp.LengthOfSequence(count)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(count);
+        bytes.AsSpan(bytes.Length - count).Fill(Rlp.EmptyListByte);
+        return new Rlp(bytes);
+    }
+
+    private static Transaction DecodeConsensusPayload(byte[] payload)
+    {
+        RlpReader reader = new(payload);
+        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
     }
 
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
