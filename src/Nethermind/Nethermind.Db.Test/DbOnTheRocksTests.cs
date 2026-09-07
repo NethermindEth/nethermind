@@ -147,7 +147,7 @@ namespace Nethermind.Db.Test
                 using IKeyValueStoreSnapshot afterReinsert = snapshotStore.CreateSnapshot();
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(db.Get([50]), Is.EqualTo([0xF0]));
+                    Assert.That(GetValue(db, [50]), Is.EqualTo([0xF0]));
                     Assert.That(afterReinsert.Get([50]), Is.EqualTo([0xF0]));
                     Assert.That(beforeDeletes.Get([50]), Is.EqualTo([50]));
                     Assert.That(afterDeletes.Get([50]), Is.Null);
@@ -160,9 +160,9 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reopened.Get([10]), Is.Null);
-                Assert.That(reopened.Get([42]), Is.EqualTo([42]));
-                Assert.That(reopened.Get([50]), Is.EqualTo([0xF0]));
+                Assert.That(GetValue(reopened, [10]), Is.Null);
+                Assert.That(GetValue(reopened, [42]), Is.EqualTo([42]));
+                Assert.That(GetValue(reopened, [50]), Is.EqualTo([0xF0]));
             }
             Assert.That(ReadOptionsFile(DbPath), Does.Contain("min_tombstones_for_range_conversion=0"));
         }
