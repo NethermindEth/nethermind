@@ -461,7 +461,7 @@ public class PersistenceManager(
         {
             StateId current = GetCurrentPersistedStateId();
             StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
-            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(unchanged, unchanged);
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(unchanged, unchanged, WriteFlags.DisableWAL);
             work(batch);
         }
         finally

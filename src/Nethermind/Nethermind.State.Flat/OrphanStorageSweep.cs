@@ -16,6 +16,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 {
     private static readonly byte[] MarkerKey = Keccak.Compute("OrphanStorageSwept").BytesToArray();
     private static readonly byte[] CursorKey = Keccak.Compute("OrphanStorageSweepCursor").BytesToArray();
+    private static readonly byte[] TallyKey = Keccak.Compute("OrphanStorageSweepTally").BytesToArray();
     private const byte Swept = 1;
     private const byte LayoutUnsupported = 2;
     private const int IdentitiesPerBatch = 256;
@@ -32,6 +33,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     private readonly CancellationTokenSource _cts = new();
     private Thread? _loop;
     private long _checkCursor;
+    private bool _tallyLoaded;
     private long _lastProgressAt;
     private long _slotsScanned;
     private long _orphanSlots;
@@ -68,6 +70,9 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         IReadOnlyKeyValueStore accounts = db.GetColumnDb(FlatDbColumns.Account);
         long startPrefix = repair ? ReadCursor() : _checkCursor;
         if (startPrefix > uint.MaxValue) return true;
+        if (startPrefix == 0) ResetTally();
+        else if (repair && !_tallyLoaded) LoadTally();
+        _tallyLoaded = true;
 
         Dictionary<ValueHash256, bool> decided = [];
         List<ValueHash256> orphans = [];
@@ -101,7 +106,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
                     currentPrefix = prefix;
                     decided.Clear();
-                    LogProgress(prefix);
+                    LogProgress(repair, prefix);
                 }
 
                 slotsThisPass++;
@@ -127,12 +132,18 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         if (repair)
         {
             Delete(accounts, orphans, token);
+            IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
             if (completed)
             {
-                db.GetColumnDb(FlatDbColumns.Metadata).Remove(CursorKey);
-                db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+                metadata.Remove(CursorKey);
+                metadata.Remove(TallyKey);
+                metadata.PutSpan(MarkerKey, [Swept]);
             }
-            else WriteCursor((uint)nextPrefix);
+            else
+            {
+                WriteCursor((uint)nextPrefix);
+                WriteTally();
+            }
         }
         else _checkCursor = nextPrefix;
 
@@ -161,7 +172,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         {
             if (repair && TryStampFresh())
             {
-                if (_logger.IsInfo) _logger.Info("Flat orphan storage sweep skipped: this database has no persisted state yet, so every slot it will hold is written by a version that never leaves orphans; recorded as swept.");
+                if (_logger.IsInfo) _logger.Info("Flat orphan storage sweep skipped: this database has no persisted block state, so its base holds nothing to judge and what a state sync writes next is not orphaned; recorded as swept.");
                 return;
             }
 
@@ -189,7 +200,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             if (token.IsCancellationRequested) return;
 
             OrphanStorageReport report = Report;
-            string outcome = $"{report.SlotsScanned:N0} slots scanned, {report.OrphanSlots:N0} orphaned slots under {report.OrphanAccounts:N0} accounts ({report.MissingAccounts:N0} absent, {report.EmptyRootAccounts:N0} with an empty storage root) in {Stopwatch.GetElapsedTime(startedAt)} since this start.";
+            string outcome = $"{report.SlotsScanned:N0} slots scanned, {report.OrphanSlots:N0} orphaned slots under {report.OrphanAccounts:N0} accounts ({report.MissingAccounts:N0} absent, {report.EmptyRootAccounts:N0} with an empty storage root); this start took {Stopwatch.GetElapsedTime(startedAt)}.";
             if (repair)
             {
                 if (_logger.IsInfo) _logger.Info($"Flat orphan storage sweep done, orphaned slots deleted: {outcome}");
@@ -214,6 +225,12 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         for (int first = 0; first < orphans.Count; first += IdentitiesPerBatch)
         {
             token.ThrowIfCancellationRequested();
+            if (!Drained(0))
+            {
+                if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it, so a state sync is rebuilding it and nothing in it may be judged until that sync has persisted. The sweep starts over on the next start.");
+                throw new OperationCanceledException();
+            }
+
             int last = Math.Min(orphans.Count, first + IdentitiesPerBatch);
             persistenceManager.RunMaintenance(batch =>
             {
@@ -229,13 +246,45 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         }
     }
 
-    private void LogProgress(long prefix)
+    private void LogProgress(bool repair, long prefix)
     {
         if (!_logger.IsInfo) return;
         if (_lastProgressAt != 0 && Stopwatch.GetElapsedTime(_lastProgressAt) < ProgressInterval) return;
 
         _lastProgressAt = Stopwatch.GetTimestamp();
-        _logger.Info($"Flat orphan storage sweep at {prefix / (double)(1L << 32):P1} of the key space: {_slotsScanned:N0} slots scanned, {_orphanAccounts:N0} orphaned accounts so far.");
+        _logger.Info($"Flat orphan storage {(repair ? "sweep" : "check")} at {prefix / (double)(1L << 32):P1} of the key space: {_slotsScanned:N0} slots scanned, {_orphanAccounts:N0} orphaned accounts so far.");
+    }
+
+    private void ResetTally()
+    {
+        _slotsScanned = 0;
+        _orphanSlots = 0;
+        _orphanAccounts = 0;
+        _missingAccounts = 0;
+        _emptyRootAccounts = 0;
+    }
+
+    private void LoadTally()
+    {
+        byte[]? value = db.GetColumnDb(FlatDbColumns.Metadata).Get(TallyKey);
+        if (value is not { Length: 5 * sizeof(long) }) return;
+
+        _slotsScanned = BinaryPrimitives.ReadInt64BigEndian(value);
+        _orphanSlots = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(8));
+        _orphanAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(16));
+        _missingAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(24));
+        _emptyRootAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(32));
+    }
+
+    private void WriteTally()
+    {
+        Span<byte> value = stackalloc byte[5 * sizeof(long)];
+        BinaryPrimitives.WriteInt64BigEndian(value, _slotsScanned);
+        BinaryPrimitives.WriteInt64BigEndian(value[8..], _orphanSlots);
+        BinaryPrimitives.WriteInt64BigEndian(value[16..], _orphanAccounts);
+        BinaryPrimitives.WriteInt64BigEndian(value[24..], _missingAccounts);
+        BinaryPrimitives.WriteInt64BigEndian(value[32..], _emptyRootAccounts);
+        db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(TallyKey, value);
     }
 
     private long ReadCursor()
