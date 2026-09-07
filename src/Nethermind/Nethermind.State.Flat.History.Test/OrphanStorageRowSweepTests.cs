@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -151,6 +152,25 @@ public class OrphanStorageRowSweepTests
 
         Assert.That(announced, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)),
             "the tally travels with the cursor, so a consumer deciding on the announced counts sees what the whole sweep did, not what the last process saw");
+    }
+
+    [Test]
+    public void A_progress_record_left_at_cursor_zero_is_resumed_with_its_tally_not_restarted()
+    {
+        Span<byte> record = stackalloc byte[sizeof(uint) + 3 * sizeof(long)];
+        BinaryPrimitives.WriteUInt32BigEndian(record, 0);
+        BinaryPrimitives.WriteInt64BigEndian(record[sizeof(uint)..], 3);
+        BinaryPrimitives.WriteInt64BigEndian(record[(sizeof(uint) + sizeof(long))..], 2);
+        BinaryPrimitives.WriteInt64BigEndian(record[(sizeof(uint) + 2 * sizeof(long))..], 1);
+        _flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(Keccak.Compute("OrphanStorageRowsSweepProgress").Bytes, record);
+        using OrphanStorageRowSweep resumed = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        OrphanStorageRowReport? announced = null;
+        resumed.Completed += completed => announced = completed;
+
+        resumed.RunToCompletion(repair: true, CancellationToken.None);
+
+        Assert.That(announced, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 14, OrphanRows: 7, OrphanAccounts: 5)),
+            "a first pass writes its tally under cursor zero before it deletes, so a record at cursor zero is a resume whose deleted rows can no longer be recounted; only a missing record is a fresh sweep");
     }
 
     [Test]
