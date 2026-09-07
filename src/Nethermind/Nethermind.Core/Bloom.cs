@@ -221,7 +221,10 @@ public class Bloom : IEquatable<Bloom>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
     {
-        ref byte k = ref MemoryMarshal.GetReference(ValueKeccak.Compute(sequence).BytesAsSpan);
+        // Through the cache rather than straight to ValueKeccak: the logs of one block repeat their
+        // emitting addresses and their topic signatures, so two in three sequences arriving here have
+        // been hashed already.
+        ref byte k = ref MemoryMarshal.GetReference(KeccakCache.Compute(sequence).BytesAsSpan);
         ulong u = Unsafe.ReadUnaligned<ulong>(ref k);
         u = BinaryPrimitives.ReverseEndianness(u);
         return new BloomExtract(u);

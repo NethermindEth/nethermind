@@ -40,7 +40,32 @@ public static unsafe class KeccakCache
     private const int InputLengthOfAddress = Address.Size;
     private const int CacheLineSizeBytes = 64;
 
-#if !ZK_EVM
+#if ZK_EVM
+    // Direct-mapped memo for the zkEVM guest. A keccak permutation is a precompile costing 38,454
+    // prover units against ~16 for an aligned word read, and 47% of the inputs reaching here in one
+    // mainnet block repeat: log addresses and topics, account addresses, low storage-slot indices and
+    // the keccak(key || slot) of a mapping access. The guest runs one block on one thread, so the
+    // seqlock the host form needs is not required, and one slot per key is enough — a collision just
+    // recomputes. Only inputs of 8..64 bytes are memoized; longer ones repeat rarely and would cost
+    // more to store and compare than the hash they save.
+    private const nuint MinMemoLength = sizeof(ulong);
+    private const nuint MaxMemoLength = 64;
+    private const int MemoSlotBits = 15;
+    private const int MemoSlotCount = 1 << MemoSlotBits;
+
+    /// <summary>Knuth's multiplicative hash constant, 2^32 / phi rounded to an odd integer.</summary>
+    private const uint MemoSlotMultiplier = 2654435761;
+
+    // One slot is sixteen words so its address is a shift: the input zero-padded to whole words,
+    // then the keccak, then the input length (zero while the slot is empty). The length has to be
+    // part of the key — a 20-byte address and a 32-byte topic ending in twelve zero bytes pad to the
+    // same words, and a contract picks its own topics.
+    private const int MemoSlotShift = 4;
+    private const nuint MemoValueWord = MaxMemoLength / sizeof(ulong);
+    private const nuint MemoLengthWord = MemoValueWord + ValueHash256.MemorySize / sizeof(ulong);
+
+    private static readonly ulong[] Memo = new ulong[MemoSlotCount << MemoSlotShift];
+#else
     private static readonly Entry* Memory;
 
     static KeccakCache()
@@ -57,19 +82,77 @@ public static unsafe class KeccakCache
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
-#if ZK_EVM
-        return input.IsEmpty ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
-#else
         ComputeTo(input, out ValueHash256 keccak256);
         return keccak256;
-#endif
     }
 
     [SkipLocalsInit]
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
 #if ZK_EVM
-        keccak256 = input.IsEmpty ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+        nuint length = (nuint)(uint)input.Length;
+        if (length - MinMemoLength > MaxMemoLength - MinMemoLength)
+        {
+            keccak256 = length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+            return;
+        }
+
+        ref byte inputRef = ref MemoryMarshal.GetReference(input);
+        ulong tail = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, length - sizeof(ulong)));
+        nuint words = length >> 3;
+        nuint partial = length & 7;
+        // The bytes past the last whole word are the top `partial` bytes of `tail`; shifting them down
+        // gives a zero-padded final word, so the stored key never needs a byte-granular compare.
+        ulong lastWord = partial == 0 ? 0 : tail >> (int)((MinMemoLength - partial) << 3);
+
+        // Every word of the input feeds the slot index. Neither end alone will do: a big-endian storage
+        // slot index is zeros up front, and the mapping preimage keccak(pad32(address) || pad32(slot))
+        // is zeros up front *and* constant at the back, so an index taken from either end funnels every
+        // key of one mapping into a single slot.
+        ulong mixed = lastWord ^ length;
+        for (nuint i = 0; i < words; i++)
+        {
+            mixed ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3));
+        }
+
+        uint folded = (uint)mixed ^ (uint)(mixed >> 32);
+        ref ulong slot = ref Unsafe.Add(
+            ref MemoryMarshal.GetArrayDataReference(Memo),
+            (nuint)((folded * MemoSlotMultiplier) >> (32 - MemoSlotBits)) << MemoSlotShift);
+        ref ulong slotLength = ref Unsafe.Add(ref slot, MemoLengthWord);
+
+        if (slotLength == length)
+        {
+            for (nuint i = 0; i < words; i++)
+            {
+                if (Unsafe.Add(ref slot, i) != Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3)))
+                {
+                    goto Miss;
+                }
+            }
+
+            if (partial == 0 || Unsafe.Add(ref slot, words) == lastWord)
+            {
+                keccak256 = Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord));
+                return;
+            }
+        }
+
+    Miss:
+        keccak256 = ValueKeccak.Compute(input);
+
+        for (nuint i = 0; i < words; i++)
+        {
+            Unsafe.Add(ref slot, i) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3));
+        }
+
+        if (partial != 0)
+        {
+            Unsafe.Add(ref slot, words) = lastWord;
+        }
+
+        Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord)) = keccak256;
+        slotLength = length;
 #else
         // Special cases jump forward as unpredicted
         if (input.Length is 0 or > Entry.MaxPayloadLength)

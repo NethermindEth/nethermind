@@ -17,27 +17,9 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.State
 {
-    public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
+    public partial class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
-        private static readonly ValueHash256[] Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
-
-        private static ValueHash256[] CreateLookup()
-        {
-            const int LookupSize = 1024;
-
-            Span<byte> buffer = stackalloc byte[32];
-            ValueHash256[] lookup = new ValueHash256[LookupSize];
-
-            for (int i = 0; i < lookup.Length; i++)
-            {
-                UInt256 index = new((uint)i);
-                index.ToBigEndian(buffer);
-                lookup[i] = ValueKeccak.Compute(buffer);
-            }
-
-            return lookup;
-        }
 
         public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
             : this(trieStore, Keccak.EmptyTreeHash, logManager)
