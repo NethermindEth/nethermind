@@ -211,7 +211,7 @@ public class FlatWorldStateScopeHistoricalRootTests
 
         return new SnapshotBundle(
             readOnlyBundle,
-            new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance),
+            Substitute.For<ITrieNodeCache>(),
             _pool,
             ResourcePool.Usage.MainBlockProcessing);
     }
