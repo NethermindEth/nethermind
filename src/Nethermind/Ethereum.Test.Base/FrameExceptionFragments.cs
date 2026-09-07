@@ -26,10 +26,10 @@ namespace Ethereum.Test.Base;
 /// themselves.
 /// </para>
 /// <para>
-/// <c>BlockchainTestBase</c> maps all three labels. <c>TransactionTestBase</c> maps only
-/// <c>TYPE_6_INVALID_FRAME_FORMAT</c>, from <see cref="Format"/> and <see cref="Decode"/>: it stops at
-/// <c>TxValidator.IsWellFormed</c>, which runs neither the signature validator nor the transaction
-/// processor, so no <see cref="Signature"/> or <see cref="Execution"/> message can reach it.
+/// <c>BlockchainTestBase</c> maps all three labels. <c>TransactionTestBase</c> maps the first two: it runs
+/// <c>TxValidator.IsWellFormed</c> and then <c>FrameTxSignatureValidator</c>, the pair a transaction must
+/// clear to be accepted off the wire, but never the transaction processor, so no <see cref="Execution"/>
+/// message can reach it.
 /// </para>
 /// </remarks>
 public static class FrameExceptionFragments
