@@ -307,12 +307,14 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items)
     {
         lock (_reclaimLock)
-        lock (_lock)
         {
-            if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive) return;
+            lock (_lock)
+            {
+                if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive) return;
 
-            ClearWalkItems(items);
-            WriteRange(WalkRangeKey, fromInclusive, toInclusive);
+                ClearWalkItems(items);
+                WriteRange(WalkRangeKey, fromInclusive, toInclusive);
+            }
         }
     }
 
