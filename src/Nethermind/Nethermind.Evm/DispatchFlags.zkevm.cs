@@ -9,7 +9,7 @@ namespace Nethermind.Evm;
 /// <inheritdoc cref="DispatchFlags"/>
 internal static partial class DispatchFlags
 {
-    /// <summary>The guest proves a block; it reports nothing per opcode.</summary>
+    /// <summary>Disables EVM tracing in the guest; receipt collection remains supported.</summary>
     public const bool ConstTracing = false;
 
     /// <summary>The guest runs to completion or fails; there is nothing to cancel it.</summary>
