@@ -87,6 +87,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             if (orphans.Count > 0)
             {
                 WriteProgress((uint)startPrefix);
+                db.SyncWal();
                 Delete(db.GetColumnDb(FlatDbColumns.Account), orphans, token);
             }
 
@@ -216,6 +217,10 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             {
                 if (_logger.IsInfo) _logger.Info($"Flat orphan storage sweep done, orphaned slots deleted: {outcome}");
             }
+            else if (!Drained(0))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Flat orphan storage check inconclusive: the flat database was cleared under it by a state sync, and slots land before their accounts while that sync writes. {outcome}");
+            }
             else if (report.OrphanAccounts > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Flat orphan storage check FAILED: {outcome} Set FlatDb.SweepOrphanStorage to delete them.");
@@ -238,25 +243,34 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             token.ThrowIfCancellationRequested();
             int last = Math.Min(orphans.Count, first + IdentitiesPerBatch);
             bool rebuilt = false;
-            persistenceManager.RunMaintenance(batch =>
+            try
             {
-                rebuilt = !Drained(0);
-                if (rebuilt) return;
-
-                for (int index = first; index < last; index++)
+                persistenceManager.RunMaintenance(batch =>
                 {
-                    ValueHash256 identity = orphans[index];
-                    if (!IsOrphan(accounts, identity, out _)) continue;
+                    rebuilt = !Drained(0);
+                    if (rebuilt) return;
 
-                    batch.DeleteStorageRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
-                    batch.DeleteStorageTrieNodeRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
-                }
-            }, token);
+                    for (int index = first; index < last; index++)
+                    {
+                        ValueHash256 identity = orphans[index];
+                        if (!IsOrphan(accounts, identity, out _)) continue;
+
+                        batch.DeleteStorageRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                        batch.DeleteStorageTrieNodeRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                    }
+                }, token);
+            }
+            catch (InvalidOperationException) when (!Drained(0))
+            {
+                rebuilt = true;
+            }
 
             if (rebuilt)
             {
-                db.GetColumnDb(FlatDbColumns.Metadata).Remove(ProgressKey);
-                if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it, so a state sync is rebuilding it and nothing in it may be judged until that sync has persisted. The sweep starts over on the next start.");
+                IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+                metadata.Remove(ProgressKey);
+                metadata.PutSpan(MarkerKey, [Swept]);
+                if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it and a state sync is rebuilding it from scratch. Everything that sync writes is written by this version and cannot be orphaned, so the database is recorded as swept.");
                 throw new OperationCanceledException();
             }
         }

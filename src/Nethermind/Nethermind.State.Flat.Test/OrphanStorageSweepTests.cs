@@ -323,7 +323,7 @@ public class OrphanStorageSweepTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted from a database another writer is assembling");
-            Assert.That(sweep.AlreadyHandled, Is.False);
+            Assert.That(sweep.AlreadyHandled, Is.True, "the clear emptied every data column, so what the sync writes next is written by this version and cannot be orphaned; the resynced database owes no pass");
         }
     }
 
