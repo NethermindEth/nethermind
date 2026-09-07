@@ -289,6 +289,7 @@ def _validate_diagnostic(path: Path) -> None:
     if data["schema_version"] != 1:
         raise CorpusResultsError(f"{path.name}: unsupported schema version")
     for key in ("summary_present", "summary_valid", "container_present", "container_error",
+                "container_oom_killed",
                 "tool_log_present", "resource_sample_present", "resource_sample_valid",
                 "resource_sample_normalized"):
         if not isinstance(data[key], bool):
@@ -299,12 +300,11 @@ def _validate_diagnostic(path: Path) -> None:
         if isinstance(data[key], bool) or not isinstance(data[key], int) or data[key] < 0:
             raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
     for key in ("resource_sample_wall_seconds",):
-        if isinstance(data[key], bool) or not isinstance(data[key], (int, float)) or data[key] < 0:
-            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative number")
+        _number(data[key], f"{path.name}: {key}")
     for key in ("summary_fail_rate", "requested_duration_seconds"):
         value = data[key]
-        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
-            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative number or null")
+        if value is not None:
+            _number(value, f"{path.name}: {key}")
     if data["summary_fail_rate"] is not None and data["summary_fail_rate"] > 1:
         raise CorpusResultsError(f"{path.name}: summary_fail_rate is greater than one")
     value = data["summary_request_count"]

@@ -386,9 +386,13 @@ if [[ "$JB_MODE" == "compare" ]]; then
     --output /io/out \
     ${validate[@]+"${validate[@]}"} \
     ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log"
-  tool_exit_code="${PIPESTATUS[0]}"
+  pipeline_status=("${PIPESTATUS[@]}")
+  tool_exit_code="${pipeline_status[0]:--1}"
+  tee_exit_code="${pipeline_status[1]:--1}"
   set -e
-  (( tool_exit_code == 0 )) || tool_failed=1
+  if (( tool_exit_code != 0 || tee_exit_code != 0 )); then
+    tool_failed=1
+  fi
   capture_container_state
 else
   # No --prometheus: json-bench builds per-client/per-method metrics from k6's
@@ -422,9 +426,13 @@ else
       --output /io/out \
       ${html[@]+"${html[@]}"} \
       ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log"
-    tool_exit_code="${PIPESTATUS[0]}"
+    pipeline_status=("${PIPESTATUS[@]}")
+    tool_exit_code="${pipeline_status[0]:--1}"
+    tee_exit_code="${pipeline_status[1]:--1}"
     set -e
-    (( tool_exit_code == 0 )) || tool_failed=1
+    if (( tool_exit_code != 0 || tee_exit_code != 0 )); then
+      tool_failed=1
+    fi
     capture_container_state
   fi
 fi

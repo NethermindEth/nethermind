@@ -187,6 +187,31 @@ class CorpusResultsTests(unittest.TestCase):
         self.assertTrue((stage_root / "corpus" / "a" / "nm" / "100" / "warmup-diagnostic.json").is_file())
         self.assertTrue((stage_root / "node-health" / "nethermind" / "node-health.json").is_file())
 
+    def test_diagnostic_rejects_poisoned_types_and_non_finite_numbers(self):
+        base = {
+            "schema_version": 1, "tool_exit_code": 0, "summary_present": True,
+            "summary_valid": True, "summary_error": "none", "summary_bytes": 1,
+            "summary_request_count": 1, "summary_fail_rate": 0.0,
+            "requested_duration_seconds": 1.0, "container_present": True,
+            "container_status": "exited", "container_exit_code": 0,
+            "container_oom_killed": False, "container_error": False,
+            "tool_log_present": False, "tool_log_lines": 0, "tool_log_k6_errors": 0,
+            "tool_log_summary_read_errors": 0, "tool_log_summary_parse_errors": 0,
+            "tool_log_oom_signals": 0, "output_files": 0, "output_bytes": 0,
+            "resource_sample_present": True, "resource_sample_valid": True,
+            "resource_sample_wall_seconds": 1.0, "resource_sample_count": 1,
+            "resource_sample_requests": 1, "resource_sample_normalized": True,
+        }
+        for name, changes in (
+            ("oom type", {"container_oom_killed": "false"}),
+            ("wall NaN", {"resource_sample_wall_seconds": float("nan")}),
+            ("duration infinity", {"requested_duration_seconds": float("inf")}),
+        ):
+            with self.subTest(name=name):
+                path = self.write_json(self.dir / name / "diagnostic.json", {**base, **changes})
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results._validate_diagnostic(path)
+
     def test_stage_copies_only_validated_allowlisted_files(self):
         out_root = self.dir / "out"
         sanitized = corpus_results.sanitize_data(raw_summary())

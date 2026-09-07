@@ -204,6 +204,15 @@ print(int(c) if isinstance(c, (int, float)) and not isinstance(c, bool) and c > 
 PY
 }
 
+# A requested warm-up is valid only when its aggregate exists and at least 80% of the requested
+# load reached the node. Keep this decision as a small shell contract so the continue-to-the-next-
+# client behavior can be exercised without starting Docker nodes.
+warmup_delivery_is_valid() {
+  local delivered="$1" requested="$2"
+  [[ "$delivered" =~ ^[0-9]+$ && "$requested" =~ ^[1-9][0-9]*$ ]] || return 1
+  (( delivered > 0 && delivered * 10 >= requested * 8 ))
+}
+
 # achieved_rps from a replay's own meta sidecar — measured, unlike the pace it was asked for.
 warm_replay_rps() {
   [[ -s "$1" ]] || { echo ""; return 0; }
@@ -397,7 +406,7 @@ for entry in $CLIENTS; do
             # the warm-up's own fail gate is lifted, so nothing else would report it.
             warm_got="$(warm_delivered "$warm_cell/summary.json")"
             warm_want=$(( warm_rps * WARMUP_SECONDS ))
-            if (( warm_got > 0 && warm_got * 10 >= warm_want * 8 )); then
+            if warmup_delivery_is_valid "$warm_got" "$warm_want"; then
               WARMED_SECONDS="$WARMUP_SECONDS"
               WARMED_RPS=$(( warm_got / WARMUP_SECONDS ))
               echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
@@ -432,13 +441,11 @@ for entry in $CLIENTS; do
           # short) window instead would truncate delivery below what the 240s default managed.
           warm_timeout=$(( WARMUP_SECONDS + 60 ))
           (( warm_timeout < 300 )) && warm_timeout=300
-          set +e
           timeout "$warm_timeout" python3 "$here/corpus_parity.py" timings \
               --corpus "$corpus" --rpc-url "http://localhost:8545" \
               --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
               --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"
           warm_status=$?
-          set -e
           # 124 = the timeout fired: the node still absorbed warm load for the whole window.
           if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
             warm_got="$(warm_replay_requests "$warm_cell/timings.meta.json")"
@@ -446,7 +453,7 @@ for entry in $CLIENTS; do
             # The replay writes its own meta beside the CSV, and achieved_rps there is measured.
             # A fired timeout can kill it before that write; without the aggregate, the warm-up is
             # invalid even though the next client is still allowed to run.
-            if (( warm_got > 0 && warm_got * 10 >= warm_want * 8 )); then
+            if warmup_delivery_is_valid "$warm_got" "$warm_want"; then
               WARMED_SECONDS=$(( SECONDS - warm_started ))
               warmup_replay_rps="$(warm_replay_rps "$warm_cell/timings.meta.json")"
               WARMED_RPS="${warmup_replay_rps:-$warm_rps}"
@@ -576,8 +583,8 @@ for entry in $CLIENTS; do
     health_error_count="$(grep -ci 'ERROR' "$clean" || true)"
     if [[ "$ctype" == "nethermind" ]]; then
       # Exception / invalid-block / shutdown-marker wording is Nethermind-specific — gate only on NM cells.
-      if [[ -s "$cst/node.exc" ]]; then
-        echo "::warning::${label}: ${exc_count} Exception line(s) in node log"
+      if (( health_exception_count > 0 )); then
+        echo "::warning::${label}: ${health_exception_count} Exception line(s) in node log"
         [[ "$JB_ETH_CALL_CORPUS" != "true" ]] && head -20 "$cst/node.exc"
         node_issue=1
       fi
@@ -604,6 +611,10 @@ for entry in $CLIENTS; do
     if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
       rm -f "$cst/node.log" "$clean" "$cst/node.exc"
     fi
+  elif [[ "$ctype" == "nethermind" ]]; then
+    health_clean_shutdown=false
+    echo "::warning::${label}: node log is missing; cannot confirm clean shutdown"
+    node_issue=1
   fi
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     mkdir -p "$OUT_DIR/node-health/${label}"
