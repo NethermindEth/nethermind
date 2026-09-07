@@ -49,12 +49,8 @@ public class KeyedNonceManagerTests
         Assert.That(slotB1.Index, Is.Not.EqualTo(slotA1.Index), "distinct senders must yield distinct slots");
     }
 
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(12)]
-    [TestCase(15)]
-    [TestCase(Eip8250Constants.MaxNonceKeys)]
-    public void Batched_storage_indices_match_individual_slots(int count)
+    [Test]
+    public void Batched_storage_indices_match_individual_slots([Values(8, 9, 12, 15, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
         UInt256[] indices = new UInt256[count];
@@ -67,9 +63,8 @@ public class KeyedNonceManagerTests
         }
     }
 
-    [TestCase(12)]
-    [TestCase(Eip8250Constants.MaxNonceKeys)]
-    public void Batched_nonce_set_is_consumed_and_validated(int count)
+    [Test]
+    public void Batched_nonce_set_is_consumed_and_validated([Values(12, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
 

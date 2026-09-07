@@ -249,9 +249,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.Throws<SubprotocolException>(HandleIncomingStatusMessage);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Get_headers_stops_at_first_missing_block(bool missingTail)
+        [Test]
+        public void Get_headers_stops_at_first_missing_block([Values] bool missingTail)
         {
             BlockHeader[] headers = new BlockHeader[5];
             headers[0] = Build.A.BlockHeader.TestObject;
@@ -406,9 +405,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
         }
 
-        [TestCase(5)]
-        [TestCase(50)]
-        public void Should_truncate_array_when_too_many_body(int availableBody)
+        [Test]
+        public void Should_truncate_array_when_too_many_body([Values(5, 50)] int availableBody)
         {
             List<Block> blocks = [];
             Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
@@ -810,13 +808,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
-        [TestCase(257)]
-        [TestCase(300)]
-        [TestCase(1055)]
-        [TestCase(1056)]
-        [TestCase(1500)]
-        [TestCase(10000)]
-        public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage(int txCount)
+        [Test]
+        public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage([Values(257, 300, 1055, 1056, 1500, 10000)] int txCount)
         {
             Transaction[] txs = BuildTransactionsWithEqualSerializedLength(txCount, dataSize: 0);
 
@@ -830,13 +823,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == maxNumberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
         }
 
-        [TestCase(0)]
-        [TestCase(128)]
-        [TestCase(4096)]
-        [TestCase(100000)]
-        [TestCase(102400)]
-        [TestCase(222222)]
-        public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
+        [Test]
+        public void should_send_single_transaction_even_if_exceed_MaxPacketSize([Values(0, 128, 4096, 100000, 102400, 222222)] int dataSize)
         {
             const int txCount = 512;
 
