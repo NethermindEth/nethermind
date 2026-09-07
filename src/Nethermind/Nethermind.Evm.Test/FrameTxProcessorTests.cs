@@ -3713,7 +3713,7 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(slice.GetAccountChanges(Observer)!.StorageChangeCount, Is.EqualTo(1));
+            Assert.That(slice.GetAccountChanges(Observer)?.StorageChangeCount, Is.EqualTo(1));
         }
     }
 
