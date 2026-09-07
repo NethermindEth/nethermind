@@ -170,7 +170,9 @@ class CorpusResultsTests(unittest.TestCase):
         }
         path = self.write_json(self.dir / "resources.json", valid)
         corpus_results._validate_resources(path)
-        for key, value in (("memory_anon_samples", -1), ("memory_file_peak_bytes", "unknown")):
+        for key, value in (("memory_anon_samples", -1), ("memory_file_peak_bytes", "unknown"),
+                           ("memory_anon_avg_bytes", float("nan")),
+                           ("memory_file_samples", float("inf"))):
             with self.subTest(key=key):
                 invalid = self.write_json(self.dir / f"{key}.json", {**valid, key: value})
                 with self.assertRaises(corpus_results.CorpusResultsError):
