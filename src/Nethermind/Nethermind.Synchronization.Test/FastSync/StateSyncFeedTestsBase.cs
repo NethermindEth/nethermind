@@ -341,7 +341,10 @@ public abstract class StateSyncFeedTestsBase(
             }, token);
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
-            Task.FromResult(_snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token)!);
+            Task.FromResult(_snapServer.GetTrieNodes(
+                request.AccountAndStoragePaths,
+                request.RootHash,
+                token) ?? EmptyByteArrayList.Instance);
     }
 }
 

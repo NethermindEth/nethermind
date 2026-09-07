@@ -219,9 +219,8 @@ public class BlockchainBridgeTests
             Arg.Any<ITxTracer>());
     }
 
-    [TestCase(7UL)]
-    [TestCase(0UL)]
-    public void Bridge_head_is_correct(ulong headNumber)
+    [Test]
+    public void Bridge_head_is_correct([Values(7UL, 0UL)] ulong headNumber)
     {
         Block head = Build.A.Block.WithNumber(headNumber).TestObject;
         Block bestSuggested = Build.A.Block.WithNumber(8UL).TestObject;
@@ -232,11 +231,8 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.HeadBlock, Is.EqualTo(head));
     }
 
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical, bool postEip4844)
+    [Test]
+    public void GetReceiptAndGasInfo_returns_correct_results([Values] bool isCanonical, [Values] bool postEip4844)
     {
         Hash256 txHash = TestItem.KeccakA;
         Hash256 blockHash = TestItem.KeccakB;
@@ -341,9 +337,8 @@ public class BlockchainBridgeTests
             Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys(bool optimize)
+    [Test]
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys([Values] bool optimize)
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
             optimize,

@@ -119,9 +119,8 @@ public class HealingTreeTests
         }
     }
 
-    [TestCase(INodeStorage.KeyScheme.Hash)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath)]
-    public async Task HealingTreeTest(INodeStorage.KeyScheme keyScheme)
+    [Test]
+    public async Task HealingTreeTest([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme keyScheme)
     {
         await using IContainer server = CreateNode();
         await using IContainer client = CreateNode();

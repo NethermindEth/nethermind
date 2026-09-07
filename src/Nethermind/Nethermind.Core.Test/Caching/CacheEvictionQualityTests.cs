@@ -24,11 +24,7 @@ public class CacheEvictionQualityTests
     public void Setup() => (_keys, _values) = CacheTestData.Build(KeyPoolSize);
 
     [Test]
-    [TestCase(256)]
-    [TestCase(1024)]
-    [TestCase(4096)]
-    [TestCase(16384)]
-    public void Uniform_random_workload(int capacity)
+    public void Uniform_random_workload([Values(256, 1024, 4096, 16384)] int capacity)
     {
         // Simulate uniform random access: keys drawn uniformly from [0, 2*capacity)
         // This tests how well each cache handles a working set larger than capacity.
@@ -54,11 +50,7 @@ public class CacheEvictionQualityTests
     }
 
     [Test]
-    [TestCase(256)]
-    [TestCase(1024)]
-    [TestCase(4096)]
-    [TestCase(16384)]
-    public void Zipf_workload(int capacity)
+    public void Zipf_workload([Values(256, 1024, 4096, 16384)] int capacity)
     {
         // Zipf distribution: few keys are very hot, most are cold.
         // A good eviction policy should keep hot keys and evict cold ones.
@@ -79,11 +71,7 @@ public class CacheEvictionQualityTests
     }
 
     [Test]
-    [TestCase(256)]
-    [TestCase(1024)]
-    [TestCase(4096)]
-    [TestCase(16384)]
-    public void Working_set_with_scan(int capacity)
+    public void Working_set_with_scan([Values(256, 1024, 4096, 16384)] int capacity)
     {
         // Hot working set (50% of capacity) accessed 90% of the time,
         // with occasional sequential scans through cold keys.
@@ -120,11 +108,7 @@ public class CacheEvictionQualityTests
     }
 
     [Test]
-    [TestCase(256)]
-    [TestCase(1024)]
-    [TestCase(4096)]
-    [TestCase(16384)]
-    public void Sequential_scan(int capacity)
+    public void Sequential_scan([Values(256, 1024, 4096, 16384)] int capacity)
     {
         // Worst case for LRU: pure sequential scan through keys 0..N
         // Every access is a miss once the scan exceeds capacity.

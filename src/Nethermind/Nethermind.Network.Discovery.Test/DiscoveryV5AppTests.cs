@@ -197,9 +197,8 @@ public class DiscoveryV5AppTests
         Assert.That(node, Is.Null);
     }
 
-    [TestCase("192.0.2.1")]
-    [TestCase("2001:db8::1")]
-    public async Task Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment(string ip)
+    [Test]
+    public async Task Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment([Values("192.0.2.1", "2001:db8::1")] string ip)
     {
         IPAddress address = IPAddress.Parse(ip);
         await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(
@@ -293,9 +292,8 @@ public class DiscoveryV5AppTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task AddNodeToDiscovery_ShouldPreserveProvenanceAndObservedSequence(bool isVerified)
+    [Test]
+    public async Task AddNodeToDiscovery_ShouldPreserveProvenanceAndObservedSequence([Values] bool isVerified)
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
@@ -404,9 +402,8 @@ public class DiscoveryV5AppTests
         Assert.That(node, Is.Null);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Should_Accept_Ipv6_Enr(bool useUdp6)
+    [Test]
+    public async Task Should_Accept_Ipv6_Enr([Values] bool useUdp6)
     {
         await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
             IPAddress.Parse("2001:4860:4860::8844"),

@@ -21,12 +21,10 @@ public class HistoryRowFormatTests
 
     private HistoryAvailability Availability() => new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
 
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
-    [TestCase(FlatLayout.PreimageFlatV1)]
-    public void Resolve_WindowedOnALayoutThatCannotBackTheV3Fallback_Refuses(FlatLayout layout)
+    [Test]
+    public void Resolve_WindowedOnALayoutThatCannotBackTheV3Fallback_Refuses([Values(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat, FlatLayout.PreimageFlatV1)] FlatLayout layout)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100, Layout = layout };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100, Layout = layout };
 
         Assert.That(() => HistoryRowFormat.Resolve(Availability(), config), Throws.InstanceOf<InvalidConfigurationException>(),
             "a v3 read falls through to the live flat Account column, which this layout keys differently or never populates - every account unchanged since the queried block would read as absent instead of failing");
@@ -35,7 +33,7 @@ public class HistoryRowFormatTests
     [Test]
     public void Resolve_WindowedOnTheFlatLayout_ResolvesV3()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100, Layout = FlatLayout.Flat };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100, Layout = FlatLayout.Flat };
 
         HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(Availability(), config);
 
@@ -46,10 +44,8 @@ public class HistoryRowFormatTests
         }
     }
 
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
-    [TestCase(FlatLayout.PreimageFlatV1)]
-    public void Resolve_UnwindowedOnANonFlatLayout_IsStillAllowed(FlatLayout layout)
+    [Test]
+    public void Resolve_UnwindowedOnANonFlatLayout_IsStillAllowed([Values(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat, FlatLayout.PreimageFlatV1)] FlatLayout layout)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 0, Layout = layout };
 
@@ -59,10 +55,8 @@ public class HistoryRowFormatTests
             "v2 never reads the live flat Account column, so the layout that column uses cannot make it answer wrongly - the guard must stay narrow");
     }
 
-    [TestCase((byte)1)]
-    [TestCase((byte)2)]
-    [TestCase((byte)3)]
-    public void VerifyFormat_AgainstADatabaseStampedByATruncatedKeyEpoch_Refuses(byte stampedVersion)
+    [Test]
+    public void VerifyFormat_AgainstADatabaseStampedByATruncatedKeyEpoch_Refuses([Values((byte)1, (byte)2, (byte)3)] byte stampedVersion)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
         {
@@ -92,7 +86,7 @@ public class HistoryRowFormatTests
             HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), 1, ValueKeccak.Zero, HistoryAvailability.FormatVersion);
         }
 
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100, Layout = FlatLayout.Flat };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100, Layout = FlatLayout.Flat };
 
         Assert.That(() => HistoryRowFormat.Resolve(Availability(), config), Throws.InstanceOf<InvalidConfigurationException>(),
             "v2 rows are descending post-values; reading them with v3 forward-seeks answers wrongly instead of failing, so windowing an existing v2 database must refuse outright");

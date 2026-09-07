@@ -139,6 +139,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual bool ConsumeNetMeteredSStoreGas(ref TSelf gas, IReleaseSpec spec) =>
         TSelf.UpdateGas(ref gas, spec.GasCosts.NetMeteredSStoreCost);
 
+    /// <summary>Charges net-metered storage using the selected EIP-8038 mode.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeNetMeteredSStoreGas<Eip8038>(ref TSelf gas, IReleaseSpec spec)
+        where Eip8038 : struct, IFlag => TSelf.ConsumeNetMeteredSStoreGas(ref gas, spec);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool ConsumeSSetFromCleanGas(ref TSelf gas) =>
         TSelf.UpdateGas(ref gas, GasCostOf.SSet - GasCostOf.SReset);
@@ -201,6 +206,42 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         StorageAccessType storageAccessType,
         IReleaseSpec spec);
 
+    /// <summary>Charges storage access using the selected fork flags.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeStorageAccessGas<Eip2929, Eip8038>(ref TSelf gas,
+        ref readonly StackAccessTracker accessTracker, bool isTracingAccess,
+        in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        TSelf.ConsumeStorageAccessGas(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+
+    /// <summary>Charges account access using the selected fork flags.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeAccountAccessGas<Eip2929, Eip8038>(ref TSelf gas, IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker, bool isTracingAccess, Address address,
+        AccountAccessKind kind = AccountAccessKind.Default)
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        TSelf.ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+
+    /// <summary>Reserves CALL gas using the selected EIP-150 mode.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryReserveChildGas<Eip150>(ref TSelf gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
+        where Eip150 : struct, IFlag => TSelf.TryReserveChildGas(ref gas, in requestedGas, spec, out childGas);
+
+    /// <summary>Reserves CREATE gas using the selected EIP-150 mode.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryReserveChildGas<Eip150>(ref TSelf gas, IReleaseSpec spec, out ulong childGas)
+        where Eip150 : struct, IFlag => TSelf.TryReserveChildGas(ref gas, spec, out childGas);
+
+    /// <summary>Charges creation using the selected fork flags.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeCreateGas<Eip8037, TOpCreate, Eip3860, Eip8038>(ref TSelf gas, IReleaseSpec spec, ulong initCodeWords)
+        where Eip8037 : struct, IFlag
+        where TOpCreate : struct, EvmInstructions.IOpCreate
+        where Eip3860 : struct, IFlag
+        where Eip8038 : struct, IFlag => TSelf.ConsumeCreateGas<Eip8037, TOpCreate>(ref gas, spec, initCodeWords);
+
     static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, ref EvmPooledMemory memory);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -225,6 +266,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref TSelf gas, IReleaseSpec spec)
         where TEip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag;
+
+    /// <summary>Charges a storage write using the selected EIP-8038 mode.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeStorageWrite<Eip8037, TIsSlotCreation, Eip8038>(ref TSelf gas, IReleaseSpec spec)
+        where Eip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        TSelf.ConsumeStorageWrite<Eip8037, TIsSlotCreation>(ref gas, spec);
 
     // Pre-EIP-8037 fallback: refund into execution gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -317,9 +366,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     // EXTCODECOPY may need different categorization (state trie access) for some policies.
     static abstract void ConsumeDataCopyGas(ref TSelf gas, IReleaseSpec spec, bool isExternalCode, ulong words);
-
-    static abstract void OnBeforeInstructionTrace(in TSelf gas, int pc, Instruction instruction, int depth);
-    static abstract void OnAfterInstructionTrace(in TSelf gas);
 }
 
 public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)

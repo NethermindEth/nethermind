@@ -147,10 +147,10 @@ namespace Nethermind.Trie
             bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
             if (!codeExist)
             {
-                byte[] code = _codeKeyValueStore[key.Bytes];
-                codeExist = code is not null;
-                if (codeExist)
+                byte[]? code = _codeKeyValueStore[key.Bytes];
+                if (code is not null)
                 {
+                    codeExist = true;
                     codeLength = code.Length;
                     _existingCodeHash.Set(key, codeLength);
                 }

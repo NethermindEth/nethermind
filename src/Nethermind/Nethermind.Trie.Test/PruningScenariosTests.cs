@@ -1033,10 +1033,8 @@ namespace Nethermind.Trie.Test
                 .VerifyAccountBalance(2, 101)
                 .VerifyAccountBalance(3, 101);
 
-        [TestCase(10)]
-        [TestCase(64)]
-        [TestCase(100)]
-        public void Keep_OnlySomeDepth(int maxDepth)
+        [Test]
+        public void Keep_OnlySomeDepth([Values(10, 64, 100)] int maxDepth)
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(maxDepth)
@@ -1205,10 +1203,8 @@ namespace Nethermind.Trie.Test
                 .AssertThatCachedPersistedNodeCountIs(3);
         }
 
-        [TestCase(10)]
-        [TestCase(64)]
-        [TestCase(100)]
-        public void Can_ContinueCommittingEvenWhenPruning(int maxDepth)
+        [Test]
+        public void Can_ContinueCommittingEvenWhenPruning([Values(10, 64, 100)] int maxDepth)
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(maxDepth)
@@ -1229,10 +1225,8 @@ namespace Nethermind.Trie.Test
             }
         }
 
-        [TestCase(10)]
-        [TestCase(64)]
-        [TestCase(100)]
-        public void Can_ContinueCommittingEvenWhenPruning_WithKeyTracking(int maxDepth)
+        [Test]
+        public void Can_ContinueCommittingEvenWhenPruning_WithKeyTracking([Values(10, 64, 100)] int maxDepth)
         {
             PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(maxDepth)
