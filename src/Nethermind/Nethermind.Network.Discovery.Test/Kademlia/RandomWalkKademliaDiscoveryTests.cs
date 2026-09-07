@@ -9,8 +9,10 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging.Abstractions;
+using Autofac;
+using Nethermind.Core;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -29,7 +31,8 @@ public class RandomWalkKademliaDiscoveryTests
     public async Task DiscoverNodes_should_stream_nodes_from_random_lookup(CancellationToken token)
     {
         TestKademlia kademlia = new();
-        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, new RoutingTableStub());
+        using IContainer container = CreateContainer(kademlia, new RoutingTableStub());
+        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
 
         List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(2).ToListAsync(token);
 
@@ -46,7 +49,8 @@ public class RandomWalkKademliaDiscoveryTests
     public async Task DiscoverNodes_should_not_run_any_job_when_disabled(CancellationToken token)
     {
         TestKademlia kademlia = new();
-        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, new RoutingTableStub());
+        using IContainer container = CreateContainer(kademlia, new RoutingTableStub());
+        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
 
         List<int> nodes = await discovery.DiscoverNodes(0, 2, token).ToListAsync(token);
 
@@ -62,7 +66,8 @@ public class RandomWalkKademliaDiscoveryTests
     public async Task DiscoverNodes_should_pace_iterations_to_minimum_iteration_duration(CancellationToken token)
     {
         TestKademlia kademlia = new();
-        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, new RoutingTableStub());
+        using IContainer container = CreateContainer(kademlia, new RoutingTableStub());
+        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(4).ToListAsync(token);
@@ -79,7 +84,8 @@ public class RandomWalkKademliaDiscoveryTests
     public async Task DiscoverNodes_should_not_delay_when_lookup_exceeds_minimum_iteration_duration(CancellationToken token)
     {
         TestKademlia kademlia = new() { LookupDelay = TimeSpan.FromMilliseconds(1100) };
-        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, new RoutingTableStub());
+        using IContainer container = CreateContainer(kademlia, new RoutingTableStub());
+        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(3).ToListAsync(token);
@@ -103,12 +109,11 @@ public class RandomWalkKademliaDiscoveryTests
         AssertPacedBy(delays, [OneSecond, OneSecond, OneSecond]);
     }
 
-    [TestCase(16, 16)]
-    [TestCase(16, 48)]
+    [Test]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_should_back_off_when_filled_table_admits_nothing(int nodeCount, int capacity, CancellationToken token)
+    public async Task DiscoverNodes_should_back_off_when_filled_table_admits_nothing([Values(16, 48)] int capacity, CancellationToken token)
     {
-        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(nodeCount, capacity) };
+        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(16, capacity) };
 
         TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 11, token);
 
@@ -237,7 +242,8 @@ public class RandomWalkKademliaDiscoveryTests
                 if (wait == checks) completed.TrySetResult();
             }
         };
-        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(new TestKademlia(), routingTable, timeProvider);
+        using IContainer container = CreateContainer(new TestKademlia(), routingTable, timeProvider);
+        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
 
         // Leave enough channel space for every lookup and park each job only after it has checked occupancy.
         await using IAsyncEnumerator<int> nodes = discovery.DiscoverNodes(concurrentJobs, checks * NodesPerLookup, token).GetAsyncEnumerator(token);
@@ -269,17 +275,19 @@ public class RandomWalkKademliaDiscoveryTests
             .SetName("DiscoverNodes_returns_from_idle_ceiling_to_productive_pace");
     }
 
-    private static RandomWalkKademliaDiscovery<int, int, int> CreateDiscovery(
+    private static IContainer CreateContainer(
         TestKademlia kademlia,
         RoutingTableStub routingTable,
         TimeProvider? timeProvider = null) =>
-        new(kademlia,
-            routingTable,
-            IntKeyOperator.Instance,
-            Int32KademliaDistance.Instance,
-            new KademliaConfig<int> { CurrentNodeId = 0 },
-            NullLoggerFactory.Instance,
-            timeProvider);
+        new ContainerBuilder()
+            .AddModule(new KademliaModule<int, int, int>())
+            .AddSingleton<IKademlia<int, int>>(kademlia)
+            .AddSingleton<IRoutingTable<int, int>>(routingTable)
+            .AddSingleton<IKeyOperator<int, int, int>>(IntKeyOperator.Instance)
+            .AddSingleton<IKademliaDistance<int>>(Int32KademliaDistance.Instance)
+            .AddSingleton(new KademliaConfig<int> { CurrentNodeId = 0 })
+            .AddSingleton(timeProvider ?? TimeProvider.System)
+            .Build();
 
     /// <summary>
     /// Runs the requested number of lookup iterations and returns the paced delays each of them asked for.
@@ -299,7 +307,8 @@ public class RandomWalkKademliaDiscoveryTests
         {
             OnDelayRequested = onDelayRequested
         };
-        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, routingTable, timeProvider);
+        using IContainer container = CreateContainer(kademlia, routingTable, timeProvider);
+        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
 
         await discovery.DiscoverNodes(1, NodesPerLookup, token)
             .Take(iterations * NodesPerLookup).ToListAsync(token);
