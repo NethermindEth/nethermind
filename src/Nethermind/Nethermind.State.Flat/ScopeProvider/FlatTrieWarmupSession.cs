@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -26,6 +27,7 @@ internal sealed class FlatTrieWarmupSession :
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer?> _storageWarmers = [];
     private readonly int _hintSequenceId;
     private bool _isDisposed;
+    private long _leases = RefCountingLease.Single;
 
     public FlatTrieWarmupSession(
         in StateId baseState,
@@ -51,39 +53,66 @@ internal sealed class FlatTrieWarmupSession :
 
     public void HintWarmAccount(in ValueAddress address)
     {
-        if (ShouldStopWarming() || !_transientResource.ShouldPrewarm(in address, null)) return;
-        _trieWarmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId);
+        if (Volatile.Read(ref _isDisposed) || !RefCountingLease.TryAcquire(ref _leases)) return;
+        bool enqueued = false;
+        try
+        {
+            if (Volatile.Read(ref _isDisposed) || ShouldStopWarming(_hintSequenceId)
+                || !_transientResource.ShouldPrewarm(in address, null)) return;
+            enqueued = _trieWarmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId);
+        }
+        finally
+        {
+            if (!enqueued) ReleaseLease();
+        }
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
-        if (ShouldStopWarming() || !_transientResource.ShouldPrewarm(in address, index)) return;
+        if (Volatile.Read(ref _isDisposed) || !RefCountingLease.TryAcquire(ref _leases)) return;
+        bool enqueued = false;
+        try
+        {
+            if (Volatile.Read(ref _isDisposed) || ShouldStopWarming(_hintSequenceId)
+                || !_transientResource.ShouldPrewarm(in address, index)) return;
 
-        Address accountAddress = address.ToAddress();
-        StorageWarmer? storageWarmer = _storageWarmers.GetOrAdd(accountAddress, static (address, session) =>
+            Address accountAddress = address.ToAddress();
+            StorageWarmer? storageWarmer = _storageWarmers.GetOrAdd(accountAddress, static (address, session) =>
+            {
+                Hash256 storageRoot = session._readOnlySnapshotBundle.GetAccount(address.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
+                return storageRoot == Keccak.EmptyTreeHash
+                    ? null
+                    : new StorageWarmer(session, address.Value.ToAccountPath.ToHash256(), storageRoot, session._logManager);
+            }, this);
+            if (storageWarmer is not null)
+            {
+                enqueued = _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, _hintSequenceId);
+            }
+        }
+        finally
         {
-            Hash256 storageRoot = session._readOnlySnapshotBundle.GetAccount(address.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
-            return storageRoot == Keccak.EmptyTreeHash
-                ? null
-                : new StorageWarmer(session, address.Value.ToAccountPath.ToHash256(), storageRoot, session._logManager);
-        }, this);
-        if (storageWarmer is not null)
-        {
-            _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, _hintSequenceId);
+            if (!enqueued) ReleaseLease();
         }
     }
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (ShouldStopWarming(sequenceId)) return false;
-        _stateTree.WarmUpPath(address.ToAccountPath.Bytes);
-        return true;
+        try
+        {
+            if (ShouldStopWarming(sequenceId)) return false;
+            _stateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            return true;
+        }
+        finally
+        {
+            ReleaseLease();
+        }
     }
 
-    private bool ShouldStopWarming() => ShouldStopWarming(_hintSequenceId);
-
+    // Producer disposal must not cancel accepted jobs: the main generation invalidates them,
+    // and each queued job holds a lease keeping the session's resources alive through execution.
     private bool ShouldStopWarming(int sequenceId) =>
-        Volatile.Read(ref _isDisposed) || _hintSequenceId != sequenceId || _snapshotBundle.HintSequenceId != sequenceId;
+        _hintSequenceId != sequenceId || _snapshotBundle.HintSequenceId != sequenceId;
 
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
@@ -95,10 +124,7 @@ internal sealed class FlatTrieWarmupSession :
                 node = CreateUnknownNode(hash);
             }
 
-            if (node.NodeType != NodeType.Unknown)
-            {
-                node = _transientResource.GetOrAddStateNode(in path, node);
-            }
+            node = _transientResource.GetOrAddStateNode(in path, node);
         }
 
         return ValidateNode(node, address: null, in path, hash);
@@ -114,10 +140,7 @@ internal sealed class FlatTrieWarmupSession :
                 node = CreateUnknownNode(hash);
             }
 
-            if (node.NodeType != NodeType.Unknown)
-            {
-                node = _transientResource.GetOrAddStorageNode(address, in path, node);
-            }
+            node = _transientResource.GetOrAddStorageNode(address, in path, node);
         }
 
         return ValidateNode(node, address, in path, hash);
@@ -132,7 +155,12 @@ internal sealed class FlatTrieWarmupSession :
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _isDisposed, true)) return;
+        if (!Interlocked.Exchange(ref _isDisposed, true)) ReleaseLease();
+    }
+
+    private void ReleaseLease()
+    {
+        if (!RefCountingLease.ReleaseOnce(ref _leases)) return;
 
         try
         {
@@ -178,12 +206,19 @@ internal sealed class FlatTrieWarmupSession :
 
         public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
         {
-            if (session.ShouldStopWarming(sequenceId)) return false;
+            try
+            {
+                if (session.ShouldStopWarming(sequenceId)) return false;
 
-            ValueHash256 key = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(index, ref key);
-            _storageTree.WarmUpPath(key.BytesAsSpan);
-            return true;
+                ValueHash256 key = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(index, ref key);
+                _storageTree.WarmUpPath(key.BytesAsSpan);
+                return true;
+            }
+            finally
+            {
+                session.ReleaseLease();
+            }
         }
     }
 }
