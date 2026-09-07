@@ -16,6 +16,8 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong HistoryPruneIntervalBlocks { get; set; } = 1024;
     public int HistoryPrunePassBudgetSeconds { get; set; } = 5;
     public string? HistorySliceAddresses { get; set; }
+    public bool SweepOrphanStorage { get; set; } = false;
+    public bool VerifyOrphanStorage { get; set; } = false;
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
     public long HistoryVerifyMaxRows { get; set; } = 0;

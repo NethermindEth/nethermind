@@ -144,6 +144,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        builder
+            .AddSingleton<OrphanStorageSweep>()
+            .AddStep(typeof(SweepFlatOrphanStorage));
+
         if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
         {
             throw new InvalidConfigurationException(
