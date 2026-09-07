@@ -720,6 +720,32 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Can_encode_branch_with_every_child_a_hash()
+    {
+        TrieNode node = new(NodeType.Branch);
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            node.SetChild(i, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)i])));
+        }
+
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        TrieNode restoredNode = new(NodeType.Unknown, rlp);
+        restoredNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The widest a branch encodes to: sixteen 33-byte hash items plus the value and the header.
+            Assert.That(rlp.Length, Is.EqualTo(532), "RLP length");
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                Assert.That(restoredNode.GetChildHash(i), Is.EqualTo(Keccak.Compute([(byte)i])), $"child {i}");
+            }
+        }
+    }
+
+    [Test]
     public void Size_of_a_heavy_leaf_is_correct()
     {
         Context ctx = new();

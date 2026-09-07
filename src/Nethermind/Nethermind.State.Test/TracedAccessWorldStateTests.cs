@@ -54,6 +54,60 @@ public class TracedAccessWorldStateTests(bool parallel)
         return (tws, scope);
     }
 
+    /// <summary>Builds an untraced decorator — one that was never handed a slice — over an account A at nonce 0.</summary>
+    private (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) CreateIdleState()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, 0);
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        TracedAccessWorldState tws = new(inner, parallel);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        return (tws, inner, tws.BeginScope(baseBlock));
+    }
+
+    [TestCase("SetIndex")]
+    [TestCase("IncrementIndex")]
+    [TestCase("Clear")]
+    public void Control_member_without_generating_block_access_list_throws_actionable_exception(string member)
+    {
+        (TracedAccessWorldState tws, _, IDisposable scope) = CreateIdleState();
+        using (scope)
+        {
+            Action call = member switch
+            {
+                "SetIndex" => () => tws.SetIndex(0),
+                "IncrementIndex" => tws.IncrementIndex,
+                _ => tws.Clear
+            };
+
+            Assert.That(call, Throws.InvalidOperationException.With.Message.EqualTo(
+                "Block access list tracing requires a generating block access list to be set."));
+        }
+    }
+
+    [Test]
+    public void Mutation_without_generating_block_access_list_delegates_without_recording()
+    {
+        (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) = CreateIdleState();
+        using (scope)
+        {
+            tws.SetNonce(TestItem.AddressA, 1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inner.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+                Assert.That(tws.GetGeneratingBlockAccessList(), Is.Null);
+            }
+        }
+    }
+
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_RecordsBalanceChange(
@@ -540,7 +594,9 @@ public class TracedAccessWorldStateTests(bool parallel)
         using (scope)
         {
             tws.Set(cell, [0x01]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo(UInt256.One));
             tws.Set(cell, [0x02]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())

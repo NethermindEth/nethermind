@@ -31,7 +31,9 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             }
             builder
                 .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
-                .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!);
+                .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) =>
+                    codeInfoRepo as OverridableCodeInfoRepository
+                    ?? throw new InvalidOperationException($"{nameof(ICodeInfoRepository)} must be decorated by {nameof(OverridableCodeInfoRepository)}."));
         });
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);

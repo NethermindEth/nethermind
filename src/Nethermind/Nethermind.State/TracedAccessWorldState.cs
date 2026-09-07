@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -20,8 +21,9 @@ namespace Nethermind.State;
 /// <remarks>
 /// Records only while <see cref="SetGeneratingBlockAccessList"/> holds a slice, so the decorator can sit
 /// idle in a simulation stack; with none installed every member delegates to the decorated state.
-/// <see cref="Clear"/>, <see cref="SetIndex"/> and <see cref="IncrementIndex"/> still dereference it, so a
-/// missed setup in block processing fails fast at <c>Setup</c> instead of emitting an empty BAL.
+/// <see cref="Clear"/>, <see cref="SetIndex"/> and <see cref="IncrementIndex"/> instead go through the
+/// guarded <see cref="GeneratingBlockAccessList"/>, so a missed setup in block processing fails fast with
+/// an <see cref="InvalidOperationException"/> naming it instead of emitting an empty BAL.
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
@@ -256,15 +258,28 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             ? _generatingBlockAccessList!.GetAccountChanges(address)
             : _generatingBlockAccessList!.RecordReadAndGet(address);
 
+    /// <summary>The live slice, for the control members that must not silently no-op without one.</summary>
+    /// <remarks>Every recording member checks <see cref="_generatingBlockAccessList"/> for null and delegates
+    /// to the decorated state instead; see the class remarks.</remarks>
+    private BlockAccessListAtIndex GeneratingBlockAccessList
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _generatingBlockAccessList ?? ThrowGeneratingBlockAccessListNotSet();
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static BlockAccessListAtIndex ThrowGeneratingBlockAccessListNotSet() =>
+        throw new InvalidOperationException("Block access list tracing requires a generating block access list to be set.");
+
     public void SetIndex(uint index)
-        => _generatingBlockAccessList.Index = index;
+        => GeneratingBlockAccessList.Index = index;
 
     public void IncrementIndex()
-        => _generatingBlockAccessList.Index++;
+        => GeneratingBlockAccessList.Index++;
 
     public void Clear()
     {
-        _generatingBlockAccessList.Clear();
+        GeneratingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
         _hasLastReadCell = false;
         _lastReadStorageChanges = null;
@@ -356,13 +371,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     private bool GetCodeHashCurrent(Address address, [NotNullWhen(true)] out ValueHash256? hash)
     {
-        hash = null;
-        bool res = TryGetCodeChangeCurrent(address, out CodeChange? codeChange);
-        if (res)
+        if (TryGetCodeChangeCurrent(address, out CodeChange? codeChange))
         {
             hash = codeChange.Value.CodeHash;
+            return true;
         }
-        return res;
+        hash = null;
+        return false;
     }
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)

@@ -128,7 +128,7 @@ public static partial class EvmInstructions
         // Spec stack order: param on top, address second, in3 (slot key / local index / unused) third.
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (param > 0x0A) return EvmExceptionType.BadInstruction;
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 in3)) return EvmExceptionType.StackUnderflow;
 
