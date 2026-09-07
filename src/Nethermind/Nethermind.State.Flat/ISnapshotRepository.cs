@@ -86,7 +86,8 @@ public interface ISnapshotRepository
     /// <remarks>Defers when finality is ahead of the committed head, a known finalized tip conflicts with its ancestry,
     /// or the committed chain cannot reach the current persisted state. Unknown roots retain only their own heights.
     /// Known roots are cached until their heights are pruned or fall below the current persisted state;
-    /// conflicting roots are invalidated and unknown roots are retried on later passes.</remarks>
+    /// conflicting roots are invalidated and unknown roots are retried on later passes. Ancestry verified
+    /// against a committed head is reused while later heads extend it.</remarks>
     void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState);
 
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to

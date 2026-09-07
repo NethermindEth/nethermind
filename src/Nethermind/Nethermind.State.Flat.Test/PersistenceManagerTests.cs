@@ -316,6 +316,80 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void RemoveFinalizedPersistedForks_PrunesAcrossPruneBatches()
+    {
+        const ulong TipBlock = 1001;
+        StateId parent = Block0;
+        for (ulong block = 1; block <= TipBlock; block++)
+        {
+            StateId canonical = CreateStateId(block, 1);
+            PersistBase(parent, canonical);
+            _finalizedStateProvider.SetFinalizedStateRootAt(block, new Hash256(canonical.StateRoot));
+            parent = canonical;
+        }
+        StateId firstBatchOrphan = CreateStateId(1, 2);
+        StateId secondBatchOrphan = CreateStateId(1000, 2);
+        PersistBase(Block0, firstBatchOrphan);
+        PersistBase(CreateStateId(999, 1), secondBatchOrphan);
+        _snapshotRepository.SetLastCommittedStateId(parent);
+        _finalizedStateProvider.SetFinalizedBlockNumber(TipBlock);
+
+        // Direct call: at this depth AddToPersistence would also take the finalized RocksDB persist path.
+        _snapshotRepository.RemoveFinalizedPersistedForks(_finalizedStateProvider, Block0);
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(parent, Block0, (int)TipBlock);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(firstBatchOrphan), Is.False);
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(secondBatchOrphan), Is.False);
+            Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo((int)TipBlock));
+            Assert.That(assembled.Persisted.Count, Is.EqualTo((int)TipBlock));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task AddToPersistence_ReusesVerifiedAncestryUntilReorg(bool reorg)
+    {
+        StateId parent = CreateStateId(1, 1);
+        StateId tip = CreateStateId(2, 1);
+        PersistBase(Block0, parent);
+        PersistBase(parent, tip);
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(2);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, TestItem.KeccakA);
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(tip.StateRoot));
+        await _persistenceManager.AddToPersistence(tip);
+        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.True, "a locally committed ancestor outranks a lagging canonical root");
+
+        StateId next;
+        if (reorg)
+        {
+            StateId altParent = CreateStateId(1, 2);
+            next = CreateStateId(2, 2);
+            PersistBase(Block0, altParent);
+            PersistBase(altParent, next);
+            _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(altParent.StateRoot));
+            _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(next.StateRoot));
+        }
+        else
+        {
+            next = CreateStateId(3, 1);
+            PersistBase(tip, next);
+        }
+        _snapshotRepository.SetLastCommittedStateId(next);
+        // The first pass after a reorg only invalidates the stale cached root at the finalized tip.
+        await _persistenceManager.AddToPersistence(next);
+        await _persistenceManager.AddToPersistence(next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.EqualTo(!reorg));
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(tip), Is.EqualTo(!reorg));
+        }
+    }
+
+    [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
         // Gate passes (60+16=76 > 64) but GetFinalizedStateRootAt(16) is not configured → seed = null.
