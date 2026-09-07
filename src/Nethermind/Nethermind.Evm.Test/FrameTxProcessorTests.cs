@@ -34,8 +34,8 @@ namespace Nethermind.Evm.Test;
 
 /// <summary>End-to-end EIP-8141 outer-loop scenarios through <c>TransactionProcessor.Execute</c>, with a
 /// base fee of 0 and 1 wei fees so balance assertions stay simple.</summary>
-/// <remarks>State is NOT rolled back when a frame transaction turns out invalid mid-loop: in block
-/// processing that invalidates the block, so nothing observes the state.</remarks>
+/// <remarks>A frame transaction found invalid mid-loop is rolled back to the executor's transaction
+/// snapshot, so post-rejection assertions see the state the transaction started from.</remarks>
 [TestFixture]
 public class FrameTxProcessorTests
 {
@@ -77,8 +77,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooHigh));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooHigh));
+        }
     }
 
     [Test]
@@ -91,8 +94,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooLow));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooLow));
+        }
     }
 
     [Test]
@@ -104,8 +110,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
     }
 
     [Test]
@@ -116,8 +125,38 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
+    }
+
+    /// <summary>Pins the rollback this fixture's remarks describe: a frame that ran and wrote state before
+    /// the transaction turned out invalid leaves nothing behind.</summary>
+    [Test]
+    public void Execute_FrameTxThatNeverSetsAPayer_RollsBackTheStateItsFramesWrote()
+    {
+        // Execution is approved but payment never is, so the SENDER frame runs and only the payer check
+        // at the end of the loop rejects the transaction.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            AssertStorage(Observer, 0, UInt256.Zero, "the SENDER frame's write is rolled back with the transaction");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.Zero);
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore));
+        }
     }
 
     // The spec reserves max(standard_gas_limit, calldata_floor_gas) rather than invalidating.
@@ -142,12 +181,18 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        }
         // The payer is charged the spent gas only: unused gas is refunded.
         UInt256 balance = _stateProvider.GetBalance(Sender);
-        Assert.That(balance, Is.LessThan(1.Ether), "payer charged");
-        Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balance, Is.LessThan(1.Ether), "payer charged");
+            Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
+        }
     }
 
     // A pre-warm worker runs on its own thread against parent state, so its gas is speculative; block
@@ -170,8 +215,11 @@ public class FrameTxProcessorTests
             ? _transactionProcessor.Warmup(tx, context, NullTxTracer.Instance)
             : _transactionProcessor.Execute(tx, context, NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True, "must reach settlement, else this pins nothing");
-        Assert.That(tx.BlockGasUsed, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "must reach settlement, else this pins nothing");
+            Assert.That(tx.BlockGasUsed, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
+        }
     }
 
     [Test]
@@ -190,9 +238,12 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer)));
 
-        Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
-        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1 + endowment), "the endowed child was created and its self-destruct transferred the balance, so a vacuous pass where the CREATE2 never ran is ruled out");
-        Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1 + endowment), "the endowed child was created and its self-destruct transferred the balance, so a vacuous pass where the CREATE2 never ran is ruled out");
+            Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+        }
     }
 
     [Test]
@@ -252,10 +303,13 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert leaves the frame transaction included");
-        Assert.That(_stateProvider.AccountExists(child), Is.True,
-            "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
-        Assert.That(_stateProvider.GetCode(child), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert leaves the frame transaction included");
+            Assert.That(_stateProvider.AccountExists(child), Is.True,
+                "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
+            Assert.That(_stateProvider.GetCode(child), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+        }
     }
 
     [Test]
@@ -271,9 +325,12 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False, "a frame transaction whose only frame is a reverting POST_TX approves no payer, so it is rejected");
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction), "the empty destroy-list snapshot restore on the POST_TX-revert path must not throw before the never-set-a-payer rejection is reached");
-        Assert.That(result.ErrorDescription, Does.Contain("never set a payer"), "rejection is the payer gate reached after the destroy-list rewind, not an earlier well-formedness pre-check");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, "a frame transaction whose only frame is a reverting POST_TX approves no payer, so it is rejected");
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction), "the empty destroy-list snapshot restore on the POST_TX-revert path must not throw before the never-set-a-payer rejection is reached");
+            Assert.That(result.ErrorDescription, Does.Contain("never set a payer"), "rejection is the payer gate reached after the destroy-list rewind, not an earlier well-formedness pre-check");
+        }
     }
 
     [Test]
@@ -437,10 +494,13 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx, baseFeePerGas: 10);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
-        Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+        }
     }
 
     [Test]
@@ -472,8 +532,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
     }
 
     [Test]
@@ -484,8 +547,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
     }
 
     [Test]
@@ -498,8 +564,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
     }
 
     [Test]
@@ -515,8 +584,11 @@ public class FrameTxProcessorTests
 
         // The second APPROVE(APPROVE_PAYMENT) reverts its DEFAULT frame (payer already set), which
         // does not invalidate the transaction; the original payer remains charged.
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether));
+        }
     }
 
     [Test]
@@ -530,8 +602,11 @@ public class FrameTxProcessorTests
         FrameReceiptTracer tracer = new();
         TransactionResult result = Process(tx, tracer: tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
+        }
         // The codeless target runs empty code in the VM, which creates it and emits the transfer log.
         Assert.That(tracer.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         LogEntry expectedLog = TransferLog.CreateTransfer(Sender, Recipient, 12345);
@@ -543,8 +618,11 @@ public class FrameTxProcessorTests
         // Sender pays the value plus the spent gas, so the charge sits between the value alone and
         // value + both frame gas limits.
         UInt256 balance = _stateProvider.GetBalance(Sender);
-        Assert.That(balance, Is.LessThan(1.Ether - (UInt256)12345), "value transferred and gas charged");
-        Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)(verify.GasLimit + transfer.GasLimit + 12345)), "unused gas refunded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balance, Is.LessThan(1.Ether - (UInt256)12345), "value transferred and gas charged");
+            Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)(verify.GasLimit + transfer.GasLimit + 12345)), "unused gas refunded");
+        }
     }
 
     [Test]
@@ -557,8 +635,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [TestCase((byte)0x00, 6UL, TestName = "Execute_TxParam_TxType")]
@@ -681,8 +762,11 @@ public class FrameTxProcessorTests
         }
         else
         {
-            Assert.That(observed, Is.GreaterThan(UInt256.Zero), "the writing frame spent execution gas too");
-            Assert.That(observed, Is.Not.EqualTo(stateGasUsed), "the execution dimension excludes the state charge");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(observed, Is.GreaterThan(UInt256.Zero), "the writing frame spent execution gas too");
+                Assert.That(observed, Is.Not.EqualTo(stateGasUsed), "the execution dimension excludes the state charge");
+            }
         }
     }
 
@@ -871,8 +955,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
-        Assert.That(tx.Frames![1].IsAtomicBatch, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
+            Assert.That(tx.Frames![1].IsAtomicBatch, Is.True);
+        }
         AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
         AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
     }
@@ -916,10 +1003,13 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
+        }
     }
 
     /// <summary>A sponsored frame transaction estimates against the budget its frames fix, not against
@@ -980,15 +1070,17 @@ public class FrameTxProcessorTests
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
+    /// <summary>Frame counts EIP-8141 never admits: an absent list, an empty one, and an oversized one.</summary>
+    private static readonly int?[] FrameCountsOutsideTheAdmittedRange = [null, 0, Eip8141Constants.MaxFrames + 1];
+
     /// <remarks>
     /// A type-6 transaction reaches the frame estimator on its type alone, so a frame count EIP-8141 never
     /// admits must be reported as such: an absent list is not the gas-limit overflow the estimator blamed,
     /// and an empty or oversized one prices into a budget no block can ever spend.
     /// </remarks>
-    [TestCase(null)]
-    [TestCase(0)]
-    [TestCase(Eip8141Constants.MaxFrames + 1)]
-    public void EstimateGas_FrameTxWithAFrameCountOutsideTheAdmittedRange_ReportsTheFrameCount(int? frameCount)
+    [Test]
+    public void EstimateGas_FrameTxWithAFrameCountOutsideTheAdmittedRange_ReportsTheFrameCount(
+        [ValueSource(nameof(FrameCountsOutsideTheAdmittedRange))] int? frameCount)
     {
         Transaction tx = FrameTx(nonce: 0);
         tx.Frames = frameCount is { } count ? RepeatedFrames(count) : null;
@@ -1008,10 +1100,9 @@ public class FrameTxProcessorTests
     /// refuse the same counts the estimator refuses rather than faulting on the absent list or running an
     /// oversized one frame by frame.
     /// </remarks>
-    [TestCase(null)]
-    [TestCase(0)]
-    [TestCase(Eip8141Constants.MaxFrames + 1)]
-    public void Execute_FrameTxWithAFrameCountOutsideTheAdmittedRange_IsRejectedAsMalformed(int? frameCount)
+    [Test]
+    public void Execute_FrameTxWithAFrameCountOutsideTheAdmittedRange_IsRejectedAsMalformed(
+        [ValueSource(nameof(FrameCountsOutsideTheAdmittedRange))] int? frameCount)
     {
         Transaction tx = FrameTx(nonce: 0);
         tx.Frames = frameCount is { } count ? RepeatedFrames(count) : null;
@@ -1046,8 +1137,11 @@ public class FrameTxProcessorTests
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
         TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
 
-        Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
-        Assert.That(gasTracer.StatusCode, Is.EqualTo(StatusCode.Failure), "a reverting POST_TX frame fails the probe status");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
+            Assert.That(gasTracer.StatusCode, Is.EqualTo(StatusCode.Failure), "a reverting POST_TX frame fails the probe status");
+        }
 
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
         ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
@@ -1070,8 +1164,11 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
     }
 
     [Test]
@@ -1083,22 +1180,13 @@ public class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        // compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided),
-        // so the entry must be present when the hash is computed and signed.
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
-        Ecdsa ecdsa = new();
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+        TransactionResult result = Process(SelfSignedSelfVerifyTx(nonce: 0));
 
-        TransactionResult result = Process(tx);
-
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        }
     }
 
     [Test]
@@ -1121,19 +1209,16 @@ public class FrameTxProcessorTests
             new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
         ];
-        Ecdsa ecdsa = new();
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = ecdsa.Sign(TestItem.PrivateKeyB, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures[1] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, vrs);
+        SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyB, sponsor);
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetBalance(sponsor), Is.LessThan(1.Ether), "the sponsor pays the gas");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(sponsor), Is.LessThan(1.Ether), "the sponsor pays the gas");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        }
     }
 
     [Test]
@@ -1145,21 +1230,9 @@ public class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
-        Ecdsa ecdsa = new();
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+        Transaction tx = SelfSignedSelfVerifyTx(nonce: 0);
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
@@ -1185,11 +1258,7 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Address beneficiary = TestItem.AddressF;
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.GasPrice = 0; // max_priority_fee_per_gas - zero premium, so the beneficiary credit is zero
@@ -1311,9 +1380,12 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
+        }
     }
 
     /// <remarks>Driven through <c>CallAndRestore</c> (which runs with <see cref="ExecutionOptions.SkipValidation"/>)
@@ -1496,9 +1568,12 @@ public class FrameTxProcessorTests
         Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert must not invalidate the transaction");
         AssertStorage(Observer, 0, assertionFails ? UInt256.Zero : UInt256.One,
             "the execution body is kept exactly when the assertion holds");
-        Assert.That(tracer.FrameReceipts![1].StateGasUsed,
-            Is.EqualTo(assertionFails ? 0UL : (ulong)GasCostOf.SSetState));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.LessThan(balanceBefore), "the payer pays for what ran");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].StateGasUsed,
+                Is.EqualTo(assertionFails ? 0UL : (ulong)GasCostOf.SSetState));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.LessThan(balanceBefore), "the payer pays for what ran");
+        }
         return tracer.StatusCode;
     }
 
@@ -1557,9 +1632,12 @@ public class FrameTxProcessorTests
         Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Observer)),
             tracer: reverting);
 
-        Assert.That(approving.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(approving.GasSpent - reverting.GasSpent, Is.GreaterThan(100_000L),
-            "an exceptional halt consumes the assertion frame's whole gas limit");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(approving.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(approving.GasSpent - reverting.GasSpent, Is.GreaterThan(100_000L),
+                "an exceptional halt consumes the assertion frame's whole gas limit");
+        }
     }
 
     // The unwind stops at the validation prefix: that state is what the transaction is charged for.
@@ -1740,12 +1818,7 @@ public class FrameTxProcessorTests
             new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit, UInt256.Zero, default),
             new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
         FrameReceiptTracer tracer = new();
         TransactionResult result = Process(tx, tracer: tracer);
@@ -1784,12 +1857,15 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             // Both must actually run the BALANCE: a halted or skipped frame's gas cancels out of the spread.
-            Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-            Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-            Assert.That((long)baselineGas - (long)observerGas,
-                Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
-                "the earlier frame warmed its codeless target, so the observer's BALANCE pays the warm "
-                + "access where the baseline pays the cold one");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+                Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+                Assert.That((long)baselineGas - (long)observerGas,
+                    Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+                    "the earlier frame warmed its codeless target, so the observer's BALANCE pays the warm "
+                    + "access where the baseline pays the cold one");
+            }
         }
     }
 
@@ -1836,11 +1912,14 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             // The precompile account is not alive, so the transfer also pays the NEW_ACCOUNT state cost.
-            Assert.That(tracer.FrameReceipts![1].GasUsed,
-                Is.EqualTo(18UL + Eip8038Constants.WarmAccess + (ulong)GasCostOf.NewAccountState),
-                "the frame must be charged for the precompile it ran, plus its entry charge");
-            Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
-            Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.FrameReceipts![1].GasUsed,
+                    Is.EqualTo(18UL + Eip8038Constants.WarmAccess + (ulong)GasCostOf.NewAccountState),
+                    "the frame must be charged for the precompile it ran, plus its entry charge");
+                Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
+                Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
+            }
         }
 
         // The VM builds the log from its own caller/executing account, not the processor's.
@@ -2261,9 +2340,10 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A processor over a <see cref="TracedAccessWorldState"/> that generates a block access list.</summary>
-    private (EthereumTransactionProcessor Processor, TracedAccessWorldState State) TracedProcessor()
+    /// <param name="parallel">True serves storage reads from the recorded change, as a validating node does.</param>
+    private (EthereumTransactionProcessor Processor, TracedAccessWorldState State) TracedProcessor(bool parallel = false)
     {
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel);
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
         return (BuildProcessor(tracedState, new EthereumCodeInfoRepository(tracedState)), tracedState);
     }
@@ -2345,9 +2425,12 @@ public class FrameTxProcessorTests
         CallOutputTracer firstUseTracer = new();
         TransactionResult result = Process(firstUse, tracer: firstUseTracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetNonce(Sender), Is.Zero,
-            "a keyed transaction must not advance the account nonce");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetNonce(Sender), Is.Zero,
+                "a keyed transaction must not advance the account nonce");
+        }
         foreach (UInt256 key in keys)
         {
             Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
@@ -2360,8 +2443,11 @@ public class FrameTxProcessorTests
 
         Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
         FrameTxValidation.TryCalculateGasBudget(reuse, Spec, out _, out ulong reuseFloor, out _);
-        Assert.That(reuseTracer.GasSpent, Is.EqualTo(reuseFloor));
-        Assert.That(firstUseTracer.GasSpent, Is.GreaterThan(reuseTracer.GasSpent));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reuseTracer.GasSpent, Is.EqualTo(reuseFloor));
+            Assert.That(firstUseTracer.GasSpent, Is.GreaterThan(reuseTracer.GasSpent));
+        }
     }
 
     // The sequence is per key, so every selected key must currently sit at nonce_seq.
@@ -2388,11 +2474,7 @@ public class FrameTxProcessorTests
         // validator reject a block every sequential node accepts.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         UInt256[] keys = [1, 7];
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
@@ -2714,17 +2796,23 @@ public class FrameTxProcessorTests
         if (!expectedExecuted)
         {
             // Pinned to the reference check: every other rejection also leaves TransactionExecuted false.
-            Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+                Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
+            }
             return;
         }
 
         CallOutputTracer plainTracer = new();
         TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: headSlot);
 
-        Assert.That(unreferencing.TransactionExecuted, Is.True);
-        Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
-            "the reference's calldata and prepaid accesses must be charged");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unreferencing.TransactionExecuted, Is.True);
+            Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
+                "the reference's calldata and prepaid accesses must be charged");
+        }
     }
 
     /// <remarks>The call entry points reach the processor without the tx validator's EIP-8272 gate, so the
@@ -2741,9 +2829,12 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx, slotNumber: 1_001);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
+        }
     }
 
     [Test]
@@ -2788,9 +2879,12 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx, slotNumber: 1_001);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.TooManyRecentRootReferences));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.TooManyRecentRootReferences));
+        }
     }
 
     /// <remarks>An empty reference list still occupies the byte <c>0xc0</c> on the wire, so it is priced:
@@ -2870,11 +2964,7 @@ public class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
@@ -2983,10 +3073,13 @@ public class FrameTxProcessorTests
         Assert.That(result.TransactionExecuted, Is.True, "the scenario must commit, or the two arms match trivially");
         if (rollback is RipemdRollback.PostTxFailure)
         {
-            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
-                "the touching frame must succeed, or its touch never reaches the POST_TX rollback");
-            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
-                "the POST_TX assertion must fail, or nothing is rolled back");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                    "the touching frame must succeed, or its touch never reaches the POST_TX rollback");
+                Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                    "the POST_TX assertion must fail, or nothing is rolled back");
+            }
         }
         else
         {
@@ -3091,8 +3184,11 @@ public class FrameTxProcessorTests
         CallOutputTracer tracer = new();
         TransactionResult result = Process(tx, tracer: tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        }
     }
 
     [TestCase(false, TestName = "Execute_TxDiff_ReadsStorageDiffAndChangeFlags_Sequential")]
@@ -3249,8 +3345,11 @@ public class FrameTxProcessorTests
         (_, CallOutputTracer tracer) = ProcessTraced(
             FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out BlockAccessListAtIndex slice, parallel);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
+        }
     }
 
     // A failed assertion is diagnosed from the trace, so TXDIFF's live read has to appear there
@@ -3266,8 +3365,11 @@ public class FrameTxProcessorTests
         TransactionResult result = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(tracer.Reads, Does.Contain((Observer, (UInt256)5, (UInt256)99)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Reads, Does.Contain((Observer, (UInt256)5, (UInt256)99)));
+        }
     }
 
     private sealed class StorageReadTracer : TxTracer
@@ -3382,9 +3484,12 @@ public class FrameTxProcessorTests
     {
         IBlockAccessListSource readOnly = new SinglePropertyBlockAccessListSource();
 
-        Assert.That(() => readOnly.SetGeneratingBlockAccessList(new BlockAccessListAtIndex()),
-            Throws.TypeOf<NotSupportedException>());
-        Assert.That(readOnly.GeneratedBlockAccessList, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => readOnly.SetGeneratingBlockAccessList(new BlockAccessListAtIndex()),
+                Throws.TypeOf<NotSupportedException>());
+            Assert.That(readOnly.GeneratedBlockAccessList, Is.Null);
+        }
     }
 
     private sealed class SinglePropertyBlockAccessListSource : IBlockAccessListSource
@@ -3453,13 +3558,8 @@ public class FrameTxProcessorTests
 
     private TransactionResult ProcessTraced(Transaction tx, ITxTracer tracer, out BlockAccessListAtIndex slice, bool parallel)
     {
-        // parallel: true serves storage reads from the recorded change, as a validating node does.
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel);
-        slice = new BlockAccessListAtIndex();
-        tracedState.SetGeneratingBlockAccessList(slice);
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor(parallel);
+        slice = tracedState.GetGeneratingBlockAccessList()!;
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
@@ -3505,8 +3605,11 @@ public class FrameTxProcessorTests
         (TransactionResult result, CallOutputTracer tracer) = CallSimulated(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
 
-        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription ?? result.Error.ToString());
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription ?? result.Error.ToString());
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        }
     }
 
     // The shared diff view is built once per transaction, which only holds while the POST_TX frames
@@ -3554,8 +3657,11 @@ public class FrameTxProcessorTests
             SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)),
             out BlockAccessListAtIndex slice);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(slice.GetAccountChanges(Observer)!.StorageChangeCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(slice.GetAccountChanges(Observer)!.StorageChangeCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -3567,8 +3673,11 @@ public class FrameTxProcessorTests
         (_, CallOutputTracer tracer) = CallSimulated(
             FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out TracedAccessWorldState idleRecorder);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(((IBlockAccessListSource)idleRecorder).GeneratedBlockAccessList, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(((IBlockAccessListSource)idleRecorder).GeneratedBlockAccessList, Is.Null);
+        }
     }
 
     // The VM holds its last TxExecutionContext, and RPC processors are pooled, so a retained view
@@ -3729,13 +3838,19 @@ public class FrameTxProcessorTests
         Transaction referencing = FrameTx(nonce: 0, SelfVerifyFrame());
         referencing.RecentRootReferences = [];
         TransactionResult referencingResult = Process(referencing, slotNumber: HeadSlot);
-        Assert.That(referencingResult.TransactionExecuted, Is.False);
-        Assert.That(referencingResult.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(referencingResult.TransactionExecuted, Is.False);
+            Assert.That(referencingResult.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
+        }
 
         Transaction postTx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient));
         TransactionResult postTxResult = Process(postTx);
-        Assert.That(postTxResult.TransactionExecuted, Is.False);
-        Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postTxResult.TransactionExecuted, Is.False);
+            Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
+        }
     }
 
     [Test]
@@ -3753,12 +3868,18 @@ public class FrameTxProcessorTests
         Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
         keyed.NonceKeys = [7];
         TransactionResult keyedResult = Process(keyed);
-        Assert.That(keyedResult.TransactionExecuted, Is.False);
-        Assert.That(keyedResult.ErrorDescription, Does.Contain(FrameTxValidation.KeyedNoncesNotEnabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keyedResult.TransactionExecuted, Is.False);
+            Assert.That(keyedResult.ErrorDescription, Does.Contain(FrameTxValidation.KeyedNoncesNotEnabled));
+        }
 
         Transaction postTx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient));
         TransactionResult postTxResult = Process(postTx);
-        Assert.That(postTxResult.TransactionExecuted, Is.False);
-        Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postTxResult.TransactionExecuted, Is.False);
+            Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
+        }
     }
 }

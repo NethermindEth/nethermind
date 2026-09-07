@@ -3108,10 +3108,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(true, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingVerifyFrame_IsRejected")]
         public void SubmitTx_FrameTransactionBehindAnUnrecognizedPrefix_IsJudgedOnItsTrailingFrame(bool trailingVerify)
         {
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
-                .Returns(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             TxFrame trailing = trailingVerify
@@ -3170,7 +3167,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
             _headInfo.BlockGasLimit = 130_000;
 
-            byte[] frameData = Enumerable.Repeat((byte)1, frameDataLength).ToArray();
+            byte[] frameData = new byte[frameDataLength];
+            Array.Fill(frameData, (byte)1);
             Transaction frameTx = new()
             {
                 Type = TxType.FrameTx,
@@ -3205,8 +3203,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
 
@@ -3267,8 +3268,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
 
@@ -3286,8 +3290,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
 
@@ -3512,8 +3519,11 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
         }
 
         // The EVM resolves P256VERIFY through the code-info repository, so gating it on a fork flag here would
@@ -3730,10 +3740,7 @@ namespace Nethermind.TxPool.Test
             // Distinct senders share one opaque-prefix sponsor, so the exposure gate bounds its summed
             // pending cost to its balance, and removing a tx releases the reservation.
             Address sponsor = TestItem.AddressD;
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(sponsor));
-            // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(sponsor));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -3763,16 +3770,14 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task Frame_transaction_is_evicted_when_its_prefix_stops_validating_against_the_new_head()
         {
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted));
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("prefix reverts"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
@@ -3783,9 +3788,7 @@ namespace Nethermind.TxPool.Test
         {
             // The payer is never rewritten in place: RemoveTransaction runs without the head lock, so a removal
             // landing between the payer and exposure writes would release the wrong figure from the wrong payer.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             // Solvent, so an in-place move would succeed and keep the transaction: eviction is the policy
@@ -3800,13 +3803,13 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressF));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "a moved payer evicts rather than rewrites");
 
             // Back to the original sponsor, so the follow-up measures D's ledger rather than F's empty balance.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
             Assert.That(_txPool.SubmitTx(next, TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted), "the eviction must have released the original payer");
         }
@@ -3816,16 +3819,14 @@ namespace Nethermind.TxPool.Test
         {
             // Admitted without a payer it holds no reservation, so there is nothing to move and nothing unsafe
             // about leaving it: evicting would drop a transaction that has become better attributed, not worse.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulator unavailable"));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Undecided("simulator unavailable"));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressF));
             Block first = Build.A.Block.WithNumber(1).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(first);
 
@@ -3837,7 +3838,7 @@ namespace Nethermind.TxPool.Test
 
             // The payer was indexed even though it was not recorded, so a head touching only it revalidates.
             simulator.ClearReceivedCalls();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("the payer revoked its approval"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("the payer revoked its approval"));
             Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
             second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(second);
@@ -3850,9 +3851,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task Revalidation_ignores_a_block_that_only_touched_the_expiry_verifier()
         {
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
@@ -3865,7 +3864,7 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForNewHead(parent);
             simulator.ClearReceivedCalls();
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("prefix reverts"));
             Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
             block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { Eip8141Constants.ExpiryVerifierAddress };
             await RaiseBlockAddedToMainAndWaitForNewHead(block);
@@ -3882,15 +3881,13 @@ namespace Nethermind.TxPool.Test
         {
             // A timeout is the prefix's own wall clock, not a bound this node spent, so re-queueing it would
             // have it reclaim the per-head budget on every head with nothing to break the loop.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectTimedOut("timed out"));
             Block first = Build.A.Block.WithNumber(1).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(first);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "a timeout must not evict");
@@ -3909,22 +3906,20 @@ namespace Nethermind.TxPool.Test
         {
             // A bound this node spent judges nothing, so the transaction has to stay queued: a one-off
             // change leaves no later head whose change list would mention its dependencies again.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
             Block first = Build.A.Block.WithNumber(1).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(first);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "an admission bound must not evict");
 
             // The next head touches nothing this transaction depends on, so only the carried-forward
             // deferral can bring it back to the simulator.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("prefix reverts"));
             Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
             second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(second);
@@ -3936,15 +3931,13 @@ namespace Nethermind.TxPool.Test
         public async Task Frame_transaction_survives_a_simulation_that_failed_on_a_resource_bound()
         {
             // An exhausted budget says nothing about validity, so it must not turn into a mass eviction.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
@@ -3954,9 +3947,7 @@ namespace Nethermind.TxPool.Test
         public async Task Revalidation_eviction_releases_the_payer_reservation()
         {
             // A leaked reservation would be permanent: the sponsor could never fund another frame tx.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
 
@@ -3968,10 +3959,10 @@ namespace Nethermind.TxPool.Test
 
             _txPool.SubmitTx(evicted, TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("prefix reverts"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
             Assert.That(_txPool.SubmitTx(next, TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted), "the evicted transaction must have released its sponsor reservation");
         }
@@ -3980,18 +3971,16 @@ namespace Nethermind.TxPool.Test
         public async Task Revalidation_eviction_leaves_the_transaction_resubmittable()
         {
             // Unlike expiry, invalidity against a head reverses, so the hash must not stay in the cache.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("payer over its exposure"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("payer over its exposure"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
             Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted), "the same transaction must be admissible once its payer is solvent again");
         }
@@ -4001,9 +3990,7 @@ namespace Nethermind.TxPool.Test
         {
             // The delegate is a head-state snapshot, so a sender that delegates after admission must be
             // re-indexed or the account whose code its prefix runs stops being watched.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
@@ -4017,7 +4004,7 @@ namespace Nethermind.TxPool.Test
             simulator.ClearReceivedCalls();
 
             // Only the delegate moves now: without the re-index the transaction would not be revalidated.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("delegate code changed"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("delegate code changed"));
             Block delegateChanged = Build.A.Block.WithNumber(2).WithParent(delegating).TestObject;
             delegateChanged.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressC };
             await RaiseBlockAddedToMainAndWaitForNewHead(delegateChanged);
@@ -4029,15 +4016,13 @@ namespace Nethermind.TxPool.Test
         public async Task Reorg_revalidates_frame_transactions_its_change_list_does_not_mention()
         {
             // A reorg reports the new branch's changes but not what the abandoned one reverted.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("prefix reverts"));
             Block block = Build.A.Block.WithNumber(1).TestObject;
             block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(block, Build.A.Block.WithNumber(1).TestObject);
@@ -4048,9 +4033,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task Frame_transaction_is_not_revalidated_when_the_block_touched_no_tracked_dependency()
         {
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
@@ -4078,9 +4061,7 @@ namespace Nethermind.TxPool.Test
         {
             // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap
             // bounds how many of its sponsored transactions may be pending at once.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -4111,9 +4092,7 @@ namespace Nethermind.TxPool.Test
         {
             // Reading the count and then inserting would let every submission observe the same free slot,
             // leaving the sponsor over its cap for as long as the transactions stay pending.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
             foreach (PrivateKey sender in senders)
@@ -4124,12 +4103,26 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
             _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
 
-            Transaction[] sponsored = [.. senders.Select(sender => SponsoredFrameTx(sender, TestItem.PrivateKeyD))];
+            Transaction[] sponsored = new Transaction[senders.Length];
+            for (int i = 0; i < senders.Length; i++)
+            {
+                sponsored[i] = SponsoredFrameTx(senders[i], TestItem.PrivateKeyD);
+            }
+
             AcceptTxResult[] results = new AcceptTxResult[sponsored.Length];
 
             Parallel.For(0, sponsored.Length, i => results[i] = _txPool.SubmitTx(sponsored[i], TxHandlingOptions.PersistentBroadcast));
 
-            Assert.That(results.Count(static result => result == AcceptTxResult.Accepted),
+            int accepted = 0;
+            foreach (AcceptTxResult result in results)
+            {
+                if (result == AcceptTxResult.Accepted)
+                {
+                    accepted++;
+                }
+            }
+
+            Assert.That(accepted,
                 Is.EqualTo(Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster),
                 "concurrent submissions must not admit more than the cap");
         }
@@ -4139,9 +4132,7 @@ namespace Nethermind.TxPool.Test
         {
             // The cap counts ahead of the filters that resolve the payer, so a rejection there must hand the
             // slot back or the sponsor is locked out for the life of the pool.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("declined"));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("declined"));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -4150,7 +4141,7 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult rejected = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast);
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
             AcceptTxResult afterRelease = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast);
 
             using (Assert.EnterMultipleScope())
@@ -4215,11 +4206,7 @@ namespace Nethermind.TxPool.Test
         {
             // Pins the guarantee, not the registration order: whatever the chain looks like, the prefix
             // may only be told "pre-validated" when the signature filter has actually accepted this tx.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
-                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            // The verify-gas bound is out of scope here; disable it so the tx reaches the simulation filter.
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -4327,9 +4314,7 @@ namespace Nethermind.TxPool.Test
         {
             // The cap counts the bump before the pool displaces the incumbent, so the sponsor is briefly at
             // two. Settling at anything but one locks it out the moment the survivor leaves.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -4361,9 +4346,7 @@ namespace Nethermind.TxPool.Test
         {
             // Drives the pool's own bookkeeping check, which walks both ledgers per head and is compiled
             // into debug builds only; the release-observable half is that a drained pool re-admits.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -4509,9 +4492,7 @@ namespace Nethermind.TxPool.Test
         {
             // EIP-8250: two nonce-key domains at one nonce do not compete, so both stay pending and both
             // owe the paymaster a slot. Discounting one against the other would double the cap per sender.
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD), KeyedNonceSpecProvider());
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -5143,9 +5124,13 @@ namespace Nethermind.TxPool.Test
             string baselineVerdicts = Verdicts(validator, baseline, corpus);
 
             List<string> unguarded = [];
-            foreach (PropertyInfo flag in typeof(ReleaseSpec).GetProperties()
-                         .Where(p => p.PropertyType == typeof(bool) && p.CanRead && p.CanWrite))
+            foreach (PropertyInfo flag in typeof(ReleaseSpec).GetProperties())
             {
+                if (flag.PropertyType != typeof(bool) || !flag.CanRead || !flag.CanWrite)
+                {
+                    continue;
+                }
+
                 ReleaseSpec flipped = SpecChangeMarkerBaseline();
                 flag.SetValue(flipped, !(bool)flag.GetValue(baseline)!);
 
@@ -5218,6 +5203,21 @@ namespace Nethermind.TxPool.Test
                 txStorage: storage);
             return ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker();
         }
+
+        /// <summary>Recreates the pool over a stubbed prefix simulator answering with <paramref name="result"/>.</summary>
+        /// <remarks>The verify-gas bound is out of scope for these tests, so it is disabled and whatever
+        /// filter the test is about is what binds.</remarks>
+        private IFrameTxPrefixSimulator CreatePoolWithSimulator(FrameTxSimulationResult result, ISpecProvider specProvider = null)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, result);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 },
+                specProvider ?? new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            return simulator;
+        }
+
+        private static void SimulatesAs(IFrameTxPrefixSimulator simulator, FrameTxSimulationResult result) =>
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(result);
 
         private TxPool CreatePool(
             ITxPoolConfig config = null,
