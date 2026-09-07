@@ -18,8 +18,8 @@ namespace Nethermind.Evm;
 /// </remarks>
 internal static partial class DispatchFlags
 {
-    /// <summary>Whether the coming transaction reports every opcode to the tracer.</summary>
-    public static bool Tracing(bool tracerIsTracingInstructions) => tracerIsTracingInstructions;
+    /// <summary>Whether the requested EVM tracing capability is enabled.</summary>
+    public static bool Tracing(bool isTracing) => isTracing;
 
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;

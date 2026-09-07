@@ -15,7 +15,7 @@ internal static partial class DispatchFlags
     /// <summary>The guest runs to completion or fails; there is nothing to cancel it.</summary>
     public const bool ConstCancelable = false;
 
-    public static bool Tracing(bool tracerIsTracingInstructions) => ConstTracing;
+    public static bool Tracing(bool isTracing) => ConstTracing;
 
     public static bool Cancelable(bool tracerIsCancelable) => ConstCancelable;
 

@@ -124,11 +124,11 @@ public partial class VirtualMachine<TGasPolicy>(
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both
     // the dispatch table and its matching loop specialization.
-    internal bool IsTracingActions { get; private set; }
-    internal bool IsTracingRefunds { get; private set; }
+    internal bool IsTracingActions { get => DispatchFlags.Tracing(field); private set; }
+    internal bool IsTracingRefunds { get => DispatchFlags.Tracing(field); private set; }
     private bool _isCancelableCached;
-    internal bool IsTracingAccess { get; private set; }
-    internal bool IsTracingOpLevelStorage { get; private set; }
+    internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
+    internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -1384,7 +1384,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
-        if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
+        if (DispatchFlags.Tracing(isTracing: true) && _txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
 
         return exceptionType switch
         {
@@ -1435,8 +1435,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         VmState.AccessTracker.Logs.Add(logEntry);
 
-        // Optionally report the log if tracing is enabled.
-        if (TxTracer.IsTracingLogs)
+        if (DispatchFlags.Tracing(isTracing: true) && TxTracer.IsTracingLogs)
         {
             TxTracer.ReportLog(logEntry);
         }
