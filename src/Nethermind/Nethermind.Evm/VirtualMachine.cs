@@ -531,7 +531,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (!chargedCodeDeposit && (spec.FailOnOutOfGasCodeDeposit || invalidCode))
         {
-            TGasPolicy.UpdateGas(ref _currentState.Gas, gasAvailableForCodeDeposit);
+            bool charged = TGasPolicy.UpdateGas(ref _currentState.Gas, gasAvailableForCodeDeposit);
+            Debug.Assert(charged, "Refund already merged the child's remaining gas into the parent.");
             // Code deposit failure is an exceptional halt of the child CREATE frame.
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding

@@ -569,7 +569,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         }
 
         EthereumGasPolicy.Refund(ref parent, in child);
-        EthereumGasPolicy.UpdateGas(ref parent, child.Value);
+        Assert.That(EthereumGasPolicy.UpdateGas(ref parent, child.Value), Is.True);
         EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
 
         Assert.That(

@@ -18,13 +18,16 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private OpcodeTable GetOpcodeTable() =>
         _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
 
-    // How often the non-traced table is rebuilt, and when the rebuilding stops.
     private const long OpcodeRefreshInterval = 10_000;
     private const long OpcodeRefreshLimit = 500_000;
 
     private static long _txCount;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Startup heuristic for re-capturing opcode entry points as the runtime warms up.
+    /// The transaction limits bound rebuild overhead; they do not detect JIT tier changes.
+    /// </remarks>
     private partial bool ShouldRefreshOpcodes()
     {
         if (_txCount >= OpcodeRefreshLimit || Interlocked.Increment(ref _txCount) % OpcodeRefreshInterval != 0)
