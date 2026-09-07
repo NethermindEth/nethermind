@@ -353,6 +353,7 @@ namespace Nethermind.TxPool.Test
 
             _blockTree.BestSuggestedHeader = head.Header;
             await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
