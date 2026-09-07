@@ -260,9 +260,8 @@ public partial class ShardBlobTxDecoderTests
             Throws.TypeOf<RlpException>().With.Message.Contains(nameof(Transaction.BlobVersionedHashes)));
     }
 
-    [TestCase(ProofVersion.V0)]
-    [TestCase(ProofVersion.V1)]
-    public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list(ProofVersion version)
+    [Test]
+    public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
     {
         Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
         Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);

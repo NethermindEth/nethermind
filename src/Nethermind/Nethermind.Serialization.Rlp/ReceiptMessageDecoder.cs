@@ -21,14 +21,7 @@ namespace Nethermind.Serialization.Rlp
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            ReadOnlySpan<byte> rlp = ctx.Data;
-            int position = ctx.Position;
-
-            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
-            {
-                ctx.Position = position + 1;
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref ctx, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
             if (!RlpHelpers.IsSequenceNext(rlp, position))

@@ -18,14 +18,7 @@ namespace Nethermind.Serialization.Rlp
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            ReadOnlySpan<byte> rlp = decoderContext.Data;
-            int position = decoderContext.Position;
-
-            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
-            {
-                decoderContext.Position = position + 1;
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int logEntryLength);
             Rlp.GuardLimit(logEntryLength, rlp.Length - position, RlpLimit);
