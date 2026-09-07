@@ -74,22 +74,13 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A type implementing <see cref="IFlag"/> that indicates whether instruction tracing is active.
     /// </typeparam>
+    /// <typeparam name="TSpec">The fork rules the opcode table specialized this handler on.</typeparam>
     /// <param name="vm">The current virtual machine instance containing execution state.</param>
     /// <param name="stack">The EVM stack for retrieving call parameters and pushing results.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <returns>
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TOpCall : struct, IOpCall
-        where TTracingInst : struct, IFlag
-        where TEip8037 : struct, IFlag
-        where TEip7708 : struct, IFlag =>
-        InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, DynamicCallSpec>(ref stack, ref gas, vm);
-
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -153,7 +144,7 @@ public static partial class EvmInstructions
         {
             // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
             // static gas check before any target access, so an OOG here must not touch the BAL.
-            bool valueOutOfGas = TSpec.IsEip2780Enabled(spec)
+            bool valueOutOfGas = TSpec.IsEip2780Enabled
                 ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas)
                 : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
             if (valueOutOfGas) goto OutOfGas;
@@ -171,7 +162,7 @@ public static partial class EvmInstructions
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
-        if (TSpec.UseHotAndColdStorage(spec) &&
+        if (TSpec.UseHotAndColdStorage &&
             delegated is not null &&
             !TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, delegated))
             goto OutOfGas;
@@ -179,9 +170,9 @@ public static partial class EvmInstructions
         // Charge additional gas if the target account is new or considered empty.
         // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
         // from the flat CALL_VALUE above; standalone EIP-2780 adds nothing extra here.
-        bool chargesNewAccount = TSpec.IsEip8038Enabled(spec)
+        bool chargesNewAccount = TSpec.IsEip8038Enabled
             ? hasValueTransfer && state.IsDeadAccount(target)
-            : !TSpec.IsEip2780Enabled(spec) && (TSpec.ClearEmptyAccountWhenTouched(spec) switch
+            : !TSpec.IsEip2780Enabled && (TSpec.ClearEmptyAccountWhenTouched switch
             {
                 false => !state.AccountExists(target),
                 true => hasValueTransfer && state.IsDeadAccount(target),
