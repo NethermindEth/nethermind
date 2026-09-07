@@ -75,7 +75,11 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded, Mism
             copy = [.. other._mismatches];
         }
 
-        AddRange(copy);
+        lock (_mismatches)
+        {
+            int taken = Math.Min(capacity - _mismatches.Count, copy.Count);
+            if (taken > 0) _mismatches.AddRange(taken == copy.Count ? copy : copy.GetRange(0, taken));
+        }
     }
 
     public List<HistoryWalkMismatch> Drain()

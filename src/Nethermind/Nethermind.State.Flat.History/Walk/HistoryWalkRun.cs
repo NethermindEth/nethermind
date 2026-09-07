@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
@@ -236,7 +237,8 @@ internal sealed class HistoryWalkRun
         }
         catch (AggregateException e)
         {
-            ExceptionDispatchInfo.Capture(e.InnerExceptions[0]).Throw();
+            Exception first = e.InnerExceptions.FirstOrDefault(static inner => inner is not OperationCanceledException) ?? e.InnerExceptions[0];
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 

@@ -60,6 +60,20 @@ public class StorageGroupFrontierTests
     }
 
     [Test]
+    public void Merging_child_sinks_into_their_parent_moves_the_records_without_charging_the_shared_budget_again()
+    {
+        MismatchBudget budget = new(4);
+        MismatchSink parent = new(capacity: 10, budget);
+        MismatchSink[] children = [new(capacity: 10, budget), new(capacity: 10, budget)];
+        children[0].AddRange([Found(1), Found(2)]);
+        children[1].AddRange([Found(3), Found(4)]);
+
+        foreach (MismatchSink child in children) parent.AddRange(child);
+
+        Assert.That(parent.Drain().Select(static m => m.Block), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }), "a merge is a transfer of records that already paid; charging the budget a second time per split level would drop findings the capacity keeps");
+    }
+
+    [Test]
     public void A_checkpoint_fires_once_per_batch_of_contiguous_groups()
     {
         List<uint> checkpoints = [];
