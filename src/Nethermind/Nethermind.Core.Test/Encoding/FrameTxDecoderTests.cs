@@ -531,13 +531,14 @@ public class FrameTxDecoderTests
         Assert.That(EncodeDecode(tx).FrameSignatures![0].Signature.Length, Is.EqualTo(signatureLength));
     }
 
-    // The guard that replaced the count cap: at the default 1 GGas MaxBlockGas,
-    // 1,000,000,000 / ArbitraryVerificationGasCost (100) + 1 == 10,000,001 entries.
-    [Test]
-    public void Decode_SignatureCountBeyondTheBlockGasBudget_Throws()
+    // The gas budget alone admits 10,000,001 entries at the default MaxBlockGas, so one-byte placeholders would
+    // size an array eight times their own length. RlpLimitException, not the RlpException a null element
+    // raises, is what distinguishes refusing the count from allocating for it.
+    [TestCase(1_024)]
+    [TestCase(100_000)]
+    public void Decode_SignatureCountTheBytesCannotHold_IsRefusedBeforeAllocating(int count)
     {
-        // The guard fires before any element is decoded, so 0xC0 placeholders are enough.
-        byte[] payload = TypedPayload(FrameTxBody(signatures: PlaceholderList(10_000_002)));
+        byte[] payload = TypedPayload(FrameTxBody(signatures: PlaceholderList(count)));
 
         Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpLimitException>());
     }
@@ -547,13 +548,8 @@ public class FrameTxDecoderTests
     {
         byte[] payload = TypedPayload(FrameTxBody(chainId: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
 
-        void Decode()
-        {
-            RlpReader reader = new(payload);
-            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-        }
-
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
+        Assert.That(() => DecodeConsensusPayload(payload),
+            Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
     }
 
     [TestCase(FrameDataDecodeCap, false)]
@@ -589,13 +585,7 @@ public class FrameTxDecoderTests
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        void Decode()
-        {
-            RlpReader reader = new(payload);
-            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-        }
-
-        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>()
             .With.Message.Contains("RLP data is truncated").And.Message.Contains("recent root reference"));
     }
 

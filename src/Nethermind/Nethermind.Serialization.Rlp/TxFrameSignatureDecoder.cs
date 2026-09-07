@@ -17,11 +17,16 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
 
     private static readonly RlpLimit _msgRlpLimit = RlpLimit.For<TxFrameSignature>(32, nameof(TxFrameSignature.Msg));
 
+    // Only the limit varies, and it is read once per signature, so the names are built once here. MaxBlockGas
+    // cannot be captured with them: configuration sets it after type initialization may have run.
+    private static readonly RlpLimit _signatureRlpLimitShape = RlpLimit.For<TxFrameSignature>(0, nameof(TxFrameSignature.Signature));
+
     // The spec bounds the signature bytes only through gas: they are charged as calldata, so no block can pay
     // for a longer one than this.
-    private static RlpLimit SignatureRlpLimit => RlpLimit.For<TxFrameSignature>(
-        (int)Math.Min(RlpLimit.MaxBlockGas / GasCostOf.TxDataZero + 1, int.MaxValue),
-        nameof(TxFrameSignature.Signature));
+    private static RlpLimit SignatureRlpLimit => _signatureRlpLimitShape with
+    {
+        Limit = (int)Math.Min(RlpLimit.MaxBlockGas / GasCostOf.TxDataZero + 1, int.MaxValue)
+    };
 
     protected override TxFrameSignature DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
