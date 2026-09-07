@@ -33,6 +33,7 @@ public class GuestDispatchFlagsTests
         Assert.DoesNotThrow(() => DispatchFlags.Validate(tracer));
     }
 
+    /// <remarks>Re-lists ITxTracer so Validate observes this IsCancelable implementation instead of the default interface value.</remarks>
     private sealed class CapabilityTracer : TxTracer, ITxTracer
     {
         public CapabilityTracer(string capability)
