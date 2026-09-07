@@ -108,6 +108,34 @@ public class PbtWorldStateScopeTests
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task PendingCode_IsOwnedByBundle_AndClearedAfterCommit(bool writeAccount)
+    {
+        byte[] code = Bytes.FromHexString("6001");
+        Hash256 codeHash = Keccak.Compute(code);
+        await using PbtTestContext ctx = new();
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        scope.Commit(0);
+
+        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
+            codeWriter.Set(codeHash.ValueHash256, code);
+        Assert.That(scope.Bundle.PendingCode[codeHash.ValueHash256], Is.EqualTo(code));
+
+        if (writeAccount)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
+            batch.Set(TestItem.AddressA, Build.An.Account.WithCode(code).TestObject);
+        }
+        scope.Commit(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Bundle.PendingCode, Is.Empty);
+            Assert.That(scope.CodeDb.GetCode(codeHash.ValueHash256), Is.EqualTo(code));
+        }
+    }
+
     [Test]
     public async Task ReplacingCode_RemovesStaleHeaderChunks()
     {

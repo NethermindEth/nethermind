@@ -243,9 +243,11 @@ public class PbtSnapshotBundleTests
         bundle.SetLeaf(key, value);
         Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root));
         bundle.CompleteLeafChanges();
+        bundle.PendingCode[value] = Bytes.FromHexString("6001");
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(bundle.PendingCode, Is.Empty);
             Assert.That(snapshot.TreeRoot, Is.EqualTo(root));
             Assert.That(snapshot.Content.TryGetLeaf(key, out ValueHash256? actual) && actual == value, Is.True);
         }

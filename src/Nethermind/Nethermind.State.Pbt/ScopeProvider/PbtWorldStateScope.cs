@@ -21,7 +21,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
     private readonly ITrieWarmer _trieWarmer;
-    private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
     private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [];
     private readonly HashSet<Stem> _queuedPrewarms = [];
@@ -60,7 +59,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         _trieWarmer = trieWarmer;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
-        CodeDb = new PbtCodeDb(codeDb, _pendingCode);
+        CodeDb = new PbtCodeDb(codeDb, Bundle.PendingCode);
         _trieWarmer.OnEnterScope();
     }
 
@@ -145,8 +144,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         if (!_rootDirty) return;
         foreach ((AddressAsKey address, Account? account) in _dirtyAccounts)
         {
-            if (account is null) DeleteAccount(address);
-            else ApplyAccount(address, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
+            if (account is null) Bundle.DeleteAccount(address);
+            else Bundle.ApplyAccount(address, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
         }
         long start = Stopwatch.GetTimestamp();
         PbtWriteBatchSet changes = Bundle.PrepareLeafChanges();
@@ -176,7 +175,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
             }
             _currentHeader = _childHeader;
             _childHeader = null;
-            _pendingCode.Clear();
+            Bundle.PendingCode.Clear();
             lock (_storages) _storages.Clear();
             _rootDirty = false;
         }
@@ -222,83 +221,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         }
     }
 
-    private void ApplyAccount(Address address, Account account)
-    {
-        ValueHash256 oldCodeHash = Bundle.GetAccount(address)?.CodeHash.ValueHash256 ?? ValueKeccak.OfAnEmptyString;
-        ValueHash256 newCodeHash = account.CodeHash.ValueHash256;
-        if (oldCodeHash != newCodeHash)
-        {
-            RemoveCodeReference(oldCodeHash);
-            AddCodeReference(newCodeHash);
-        }
-
-        byte[]? code = account.HasCode && _pendingCode.TryGetValue(newCodeHash, out byte[]? pending) ? pending : null;
-        ValueHash256? prior = Bundle.GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
-        uint priorCodeSize = prior is null ? 0 : PbtKeyDerivation.ReadBasicDataCodeSize(prior.Value.Bytes);
-        uint codeSize = code is not null ? (uint)code.Length
-            : !account.HasCode ? 0
-            : priorCodeSize;
-        Span<byte> basicData = stackalloc byte[ValueHash256.MemorySize];
-        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-        Bundle.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicData));
-        Bundle.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), newCodeHash);
-
-        int priorHeaderChunkCount = Math.Min(
-            checked((int)((priorCodeSize + 30) / 31)),
-            PbtKeyDerivation.HeaderCodeChunks);
-        if (code is null)
-        {
-            if (!account.HasCode)
-            {
-                for (int chunkId = 0; chunkId < priorHeaderChunkCount; chunkId++)
-                    Bundle.SetLeaf(PbtStateKey.Code(address, oldCodeHash, chunkId), null);
-            }
-            return;
-        }
-
-        byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
-        int count = chunks.Length / PbtKeyDerivation.CodeChunkSize;
-        int headerChunkCount = Math.Min(count, PbtKeyDerivation.HeaderCodeChunks);
-        for (int chunkId = headerChunkCount; chunkId < priorHeaderChunkCount; chunkId++)
-            Bundle.SetLeaf(PbtStateKey.Code(address, oldCodeHash, chunkId), null);
-        for (int chunkId = 0; chunkId < count; chunkId++)
-        {
-            ReadOnlySpan<byte> chunk = chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
-            PbtFullKey key = PbtStateKey.Code(address, newCodeHash, chunkId);
-            Bundle.SetLeaf(key, chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
-        }
-    }
-
-    private void DeleteAccount(Address address)
-    {
-        Account? prior = Bundle.GetAccount(address);
-        if (prior is not null) RemoveCodeReference(prior.CodeHash.ValueHash256);
-        Bundle.DeletePrefix(PbtStateKey.AccountPrefix(address));
-        Bundle.DeletePrefix(PbtStateKey.StoragePrefix(address));
-        Bundle.SelfDestruct(address);
-    }
-
-    private void AddCodeReference(in ValueHash256 codeHash)
-    {
-        if (codeHash == ValueKeccak.OfAnEmptyString) return;
-        Bundle.SetCodeReference(codeHash, checked(Bundle.GetCodeReference(codeHash) + 1));
-    }
-
-    private void RemoveCodeReference(in ValueHash256 codeHash)
-    {
-        if (codeHash == ValueKeccak.OfAnEmptyString) return;
-        ulong count = Bundle.GetCodeReference(codeHash);
-        if (count <= 1)
-        {
-            Bundle.SetCodeReference(codeHash, null);
-            Bundle.DeletePrefix(PbtStateKey.OverflowCodePrefix(codeHash));
-        }
-        else
-        {
-            Bundle.SetCodeReference(codeHash, count - 1);
-        }
-    }
-
     private sealed class WriteBatch(PbtWorldStateScope scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly long _start = Stopwatch.GetTimestamp();
@@ -308,8 +230,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         {
             scope.Bundle.SetAccount(key, account);
             scope._dirtyAccounts[key] = account;
-            if (account is null) scope.DeleteAccount(key);
-            else scope.ApplyAccount(key, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
+            if (account is null) scope.Bundle.DeleteAccount(key);
+            else scope.Bundle.ApplyAccount(key, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
             scope._rootDirty = true;
         }
 

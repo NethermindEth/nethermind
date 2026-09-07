@@ -23,6 +23,8 @@ public sealed class PbtSnapshotBundle(
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
 
+    internal Dictionary<ValueHash256, byte[]> PendingCode { get; } = [];
+
     private PbtSnapshotContent WriteBuffer
     {
         get
@@ -182,6 +184,83 @@ public sealed class PbtSnapshotBundle(
         DeletePrefix(PbtStateKey.StoragePrefix(address));
     }
 
+    internal void ApplyAccount(Address address, Account account)
+    {
+        ValueHash256 oldCodeHash = GetAccount(address)?.CodeHash.ValueHash256 ?? ValueKeccak.OfAnEmptyString;
+        ValueHash256 newCodeHash = account.CodeHash.ValueHash256;
+        if (oldCodeHash != newCodeHash)
+        {
+            RemoveCodeReference(oldCodeHash);
+            AddCodeReference(newCodeHash);
+        }
+
+        byte[]? code = account.HasCode && PendingCode.TryGetValue(newCodeHash, out byte[]? pending) ? pending : null;
+        ValueHash256? prior = GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
+        uint priorCodeSize = prior is null ? 0 : PbtKeyDerivation.ReadBasicDataCodeSize(prior.Value.Bytes);
+        uint codeSize = code is not null ? (uint)code.Length
+            : !account.HasCode ? 0
+            : priorCodeSize;
+        Span<byte> basicData = stackalloc byte[ValueHash256.MemorySize];
+        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
+        SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicData));
+        SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), newCodeHash);
+
+        int priorHeaderChunkCount = Math.Min(
+            checked((int)((priorCodeSize + 30) / 31)),
+            PbtKeyDerivation.HeaderCodeChunks);
+        if (code is null)
+        {
+            if (!account.HasCode)
+            {
+                for (int chunkId = 0; chunkId < priorHeaderChunkCount; chunkId++)
+                    SetLeaf(PbtStateKey.Code(address, oldCodeHash, chunkId), null);
+            }
+            return;
+        }
+
+        byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
+        int count = chunks.Length / PbtKeyDerivation.CodeChunkSize;
+        int headerChunkCount = Math.Min(count, PbtKeyDerivation.HeaderCodeChunks);
+        for (int chunkId = headerChunkCount; chunkId < priorHeaderChunkCount; chunkId++)
+            SetLeaf(PbtStateKey.Code(address, oldCodeHash, chunkId), null);
+        for (int chunkId = 0; chunkId < count; chunkId++)
+        {
+            ReadOnlySpan<byte> chunk = chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
+            PbtFullKey key = PbtStateKey.Code(address, newCodeHash, chunkId);
+            SetLeaf(key, chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
+        }
+    }
+
+    internal void DeleteAccount(Address address)
+    {
+        Account? prior = GetAccount(address);
+        if (prior is not null) RemoveCodeReference(prior.CodeHash.ValueHash256);
+        DeletePrefix(PbtStateKey.AccountPrefix(address));
+        DeletePrefix(PbtStateKey.StoragePrefix(address));
+        SelfDestruct(address);
+    }
+
+    private void AddCodeReference(in ValueHash256 codeHash)
+    {
+        if (codeHash == ValueKeccak.OfAnEmptyString) return;
+        SetCodeReference(codeHash, checked(GetCodeReference(codeHash) + 1));
+    }
+
+    private void RemoveCodeReference(in ValueHash256 codeHash)
+    {
+        if (codeHash == ValueKeccak.OfAnEmptyString) return;
+        ulong count = GetCodeReference(codeHash);
+        if (count <= 1)
+        {
+            SetCodeReference(codeHash, null);
+            DeletePrefix(PbtStateKey.OverflowCodePrefix(codeHash));
+        }
+        else
+        {
+            SetCodeReference(codeHash, count - 1);
+        }
+    }
+
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         foreach (KeyValuePair<PbtFullKey, ValueHash256?> _ in WriteBatchBuilder.Leaves)
@@ -191,6 +270,7 @@ public sealed class PbtSnapshotBundle(
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
         Pending.Reset();
+        PendingCode.Clear();
         return snapshot;
     }
 
@@ -198,6 +278,7 @@ public sealed class PbtSnapshotBundle(
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        PendingCode.Clear();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
         PbtWriteBatchBuilder? builder = _writeBatchBuilder;
