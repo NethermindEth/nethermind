@@ -24,7 +24,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
     private partial bool ShouldRefreshOpcodes() => false;
 
-    public object ReturnData;
+    public object? ReturnData;
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run

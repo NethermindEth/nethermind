@@ -63,6 +63,23 @@ public class StorageProviderTests(bool useFlat)
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
     [Test]
+    public void Storage_access_after_scope_disposal_throws()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell storageCell = new(ctx.Address1, UInt256.Zero);
+        IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        scope.Dispose();
+
+        Assert.That(
+            () => provider.Set(in storageCell, _values[1]),
+            Throws.InvalidOperationException);
+
+        using IDisposable nextScope = provider.BeginScope(IWorldState.PreGenesis);
+        Assert.That(provider.Get(in storageCell).IsZero(), Is.True);
+    }
+
+    [Test]
     [NonParallelizable]
     public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
     {

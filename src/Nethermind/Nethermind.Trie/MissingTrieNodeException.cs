@@ -8,7 +8,7 @@ namespace Nethermind.Trie;
 
 public class MissingTrieNodeException(string message, Hash256? address, TreePath path, Hash256 hash, Exception? innerException = null) : TrieException(message, innerException)
 {
-    public Hash256 Address { get; } = address;
+    public Hash256? Address { get; } = address;
     public TreePath Path { get; } = path;
     public Hash256 Hash { get; } = hash;
 }

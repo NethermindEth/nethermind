@@ -11,6 +11,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
@@ -48,11 +49,15 @@ public class ProtocolHandlerBaseTests
         public Task StartTimeoutCheck() => CheckProtocolInitTimeout();
         public void SimulateLateInitMessage() => ReceivedProtocolInitMsg(new AckMessage());
         public void ScheduleBackgroundTask(Func<int, CancellationToken, ValueTask> backgroundTask) =>
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(1, backgroundTask, "test");
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(1, backgroundTask);
+        public void ScheduleBackgroundTaskFor(TestRequestMessage request) =>
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(request, static (_, _) => ValueTask.CompletedTask);
         public void ScheduleSyncServeTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, Task<TestResponseMessage>> syncServe) =>
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
         public void ScheduleSyncServeValueTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> syncServe) =>
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
+        public void ScheduleHandlerSyncServeTask(TestRequestMessage request) =>
+            BackgroundTaskScheduler.TryScheduleSyncServe<TestProtocolHandler, TestRequestMessage, TestResponseMessage, TestSyncServeRequestHandler>(this, request);
         public TestRequestMessage Deserialize(byte[] data) => Deserialize<TestRequestMessage>(data);
         public override void Init() { }
         public override void Dispose() { }
@@ -64,7 +69,8 @@ public class ProtocolHandlerBaseTests
     {
         public Task ScheduledTask { get; private set; } = Task.CompletedTask;
 
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             ScheduledTask = fulfillFunc(request, cancellationToken);
             return true;
@@ -73,13 +79,72 @@ public class ProtocolHandlerBaseTests
 
     private sealed class NoopBackgroundTaskScheduler : IBackgroundTaskScheduler
     {
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null) => true;
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq> => true;
+    }
+
+    private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
+    {
+        public static Task<TestResponseMessage> Execute(TestProtocolHandler handler, TestRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new TestResponseMessage());
+    }
+
+    /// <summary>Records the name each scheduled task is reported under.</summary>
+    private sealed class NameCapturingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        public string? ReportedName { get; private set; }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            ReportedName = BackgroundTaskTypeRegistry.GetName(TReq.TaskId);
+            return true;
+        }
     }
 
     private sealed class TestRequestMessage : P2PMessage
     {
         public override int PacketType => 1;
         public override string Protocol => "test";
+    }
+
+    public enum SchedulingPath
+    {
+        SyncServeTask,
+        SyncServeValueTask,
+        HandlerSyncServe,
+        BackgroundTask
+    }
+
+    /// <remarks>
+    /// Each wrapper request is generic over the message it wraps, so its own type name is identical for
+    /// every instantiation. The wrappers therefore report the wrapped type instead, which nothing in the
+    /// type system enforces — this pins it for every scheduling path.
+    /// </remarks>
+    [Test]
+    public void Scheduling_reports_the_wrapped_message_type([Values] SchedulingPath path)
+    {
+        NameCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+        TestRequestMessage request = new();
+
+        switch (path)
+        {
+            case SchedulingPath.SyncServeTask:
+                handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+                break;
+            case SchedulingPath.SyncServeValueTask:
+                handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
+                break;
+            case SchedulingPath.HandlerSyncServe:
+                handler.ScheduleHandlerSyncServeTask(request);
+                break;
+            case SchedulingPath.BackgroundTask:
+                handler.ScheduleBackgroundTaskFor(request);
+                break;
+        }
+
+        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
     }
 
     private sealed class TestResponseMessage : P2PMessage

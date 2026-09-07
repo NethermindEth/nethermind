@@ -503,8 +503,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
-            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null, string? source = null)
+            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+                where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
                 CancellationTokenSource cts = new();
                 cts.Cancel();
@@ -519,7 +519,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             public List<Type> RequestTypes { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null, string? source = null)
+                TimeSpan? timeout = null) where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
                 RequestTypes.Add(typeof(TReq));
                 fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
@@ -649,7 +649,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private sealed class CallbackBackgroundTaskScheduler(Func<bool> onSchedule) : IBackgroundTaskScheduler
         {
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null, string? source = null) => onSchedule();
+                TimeSpan? timeout = null) where TReq : notnull, IBackgroundTaskRequest<TReq> => onSchedule();
         }
 
         [Test]
