@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
@@ -64,7 +65,7 @@ public abstract class TransactionTestBase
     }
 
     /// <summary>
-    /// Every check Nethermind applies to a raw transaction before accepting it off the wire, as one error.
+    /// The stateless checks a raw transaction must clear before pool admission, as one error.
     /// </summary>
     /// <remarks>
     /// <see cref="TxValidator.IsWellFormed"/> alone is not that set for EIP-8141: a frame transaction names
@@ -81,7 +82,8 @@ public abstract class TransactionTestBase
             return error;
         }
 
-        // Same availability test the pool filter and the processor make.
+        // Same availability test the pool's ingress filter makes; the processor resolves the same
+        // precompile through its code-info repository instead.
         IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
             ? SecP256r1Precompile.Instance
             : null;
@@ -204,7 +206,7 @@ public abstract class TransactionTestBase
         ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] = [.. FrameExceptionFragments.Format, .. FrameExceptionFragments.Decode],
         ["TransactionException.TYPE_6_INVALID_SIGNATURE"] = [.. FrameExceptionFragments.Signature],
         ["TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED"] = ["BlobTxGasLimitExceeded"],
-        ["TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS"] = ["InvalidMaxPriorityFeePerGas"],
+        ["TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS"] = [TxErrorMessages.InvalidMaxPriorityFeePerGas],
         // A fee field wider than its type: the decoder's length guard names neither field nor type.
         ["TransactionException.GASPRICE_OVERFLOW"] = [.. FrameExceptionFragments.FeeOverflow],
         ["TransactionException.PRIORITY_OVERFLOW"] = [.. FrameExceptionFragments.FeeOverflow],

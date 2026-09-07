@@ -918,13 +918,13 @@ jobs:
             fi
 
             # A scope that resolved to nothing reports no failures, so the narrowed lanes assert they
-            # actually ran their fixtures. Only the unfiltered run has a known count.
+            # actually ran their fixtures. Only an unfiltered, single-chunk run has a known count.
             MIN_CASES=""
             case "$TEST_TYPE" in
               frameTest|frameBlockTest) MIN_CASES="$FRAME_MIN_CASES" ;;
               frameTxTest)              MIN_CASES="$FRAME_TX_MIN_CASES" ;;
             esac
-            if [ -n "$MIN_CASES" ] && [ -z "$FILTER" ] && [ $rc -eq 0 ]; then
+            if [ -n "$MIN_CASES" ] && [ "$CHUNK" = "1of1" ] && [ -z "$FILTER" ] && [ $rc -eq 0 ]; then
               RAN=$(jq 'length' "$RESULTS_FILE" 2>/dev/null || echo 0)
               if [ "$RAN" -lt "$MIN_CASES" ]; then
                 echo "::error::$TEST_TYPE ran $RAN cases, fewer than the $MIN_CASES expected; the fixture scope or the release pin has moved"
