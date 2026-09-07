@@ -228,9 +228,6 @@ public ref struct RlpReader
         return DecodeKeccakPayload();
     }
 
-    /// <remarks>Compares through <see cref="ValueHash256"/>, whose equality is a whole-word 32-byte
-    /// compare, rather than <c>SequenceEqual</c>: the latter is an out-of-line call, and the zkVM guest
-    /// has no SIMD behind it.</remarks>
     private Hash256 DecodeKeccakPayload()
     {
         ValueHash256 keccak = new(Read(Hash256.Size));
