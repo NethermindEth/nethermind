@@ -31,7 +31,7 @@ public class PbtResourcePoolTests
     public void Write_accumulator_drains_and_pool_return_discards_pending_changes(int zone, bool parallel, int touchedMask, int entriesPerShard)
     {
         PbtResourcePool.Usage usage = parallel ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing;
-        ShardedWriteBatch batch = _pool.GetWriteBatch(usage);
+        PbtWriteBatchBuilder batch = _pool.GetWriteBatch(usage);
         List<PbtFullKey> keys = [];
         for (int shard = 15; shard >= 0; shard--)
         {
@@ -57,7 +57,7 @@ public class PbtResourcePoolTests
         else for (int index = 0; index < keys.Count; index++) Write(index);
 
         Dictionary<PbtFullKey, ValueHash256?> leaves = new(batch.Leaves);
-        PbtPartitionWriteBatch prepared = batch.PrepareDrain();
+        PbtWriteBatch prepared = batch.Build();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(batch.Count, Is.EqualTo(keys.Count));
@@ -92,7 +92,7 @@ public class PbtResourcePoolTests
         Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
         Array.Clear(operations);
         Assert.That(batch.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
-        Assert.That(batch.PrepareDrain().Count, Is.EqualTo(keys.Count), "a failed fold can retry");
+        Assert.That(batch.Build().Count, Is.EqualTo(keys.Count), "a failed fold can retry");
         for (int index = 0; index < keys.Count; index++)
         {
             using (Assert.EnterMultipleScope())
@@ -102,16 +102,17 @@ public class PbtResourcePoolTests
             }
         }
         batch.CompleteDrain();
-        Assert.That(batch.PrepareDrain().Count, Is.Zero);
+        Assert.That(batch.Build().Count, Is.Zero);
         batch.SetLeaf(keys[0], TestItem.KeccakA.ValueHash256);
-        Assert.That(batch.PrepareDrain().Count, Is.EqualTo(1));
+        Assert.That(batch.Build().Count, Is.EqualTo(1));
         _pool.ReturnWriteBatch(usage, batch);
-        ShardedWriteBatch rented = _pool.GetWriteBatch(usage);
+        PbtWriteBatchBuilder rented = _pool.GetWriteBatch(usage);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented, Is.SameAs(batch));
             Assert.That(rented.Count, Is.Zero);
-            Assert.That(rented.PrepareDrain().Count, Is.Zero);
+            Assert.That(rented.Build().Count, Is.Zero);
+            Assert.That(rented.Build().ShardNibbleIndex, Is.EqualTo(2));
             Assert.That(rented.TryGetLeaf(keys[0], out _), Is.False);
         }
         _pool.ReturnWriteBatch(usage, rented);
@@ -121,17 +122,17 @@ public class PbtResourcePoolTests
     public void Write_batch_pool_retains_three_partitions_per_writable_bundle()
     {
         const PbtResourcePool.Usage usage = PbtResourcePool.Usage.MainBlockProcessing;
-        ShardedWriteBatch[] batches = new ShardedWriteBatch[7];
+        PbtWriteBatchBuilder[] batches = new PbtWriteBatchBuilder[7];
         for (int index = 0; index < batches.Length; index++) batches[index] = _pool.GetWriteBatch(usage);
-        foreach (ShardedWriteBatch batch in batches) _pool.ReturnWriteBatch(usage, batch);
-        ShardedWriteBatch[] rented = new ShardedWriteBatch[7];
+        foreach (PbtWriteBatchBuilder batch in batches) _pool.ReturnWriteBatch(usage, batch);
+        PbtWriteBatchBuilder[] rented = new PbtWriteBatchBuilder[7];
         for (int index = 0; index < rented.Length; index++) rented[index] = _pool.GetWriteBatch(usage);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented.AsSpan(0, 6).ToArray(), Is.EquivalentTo(batches.AsSpan(0, 6).ToArray()));
             Assert.That(rented[6], Is.Not.SameAs(batches[6]));
         }
-        foreach (ShardedWriteBatch batch in rented) _pool.ReturnWriteBatch(usage, batch);
+        foreach (PbtWriteBatchBuilder batch in rented) _pool.ReturnWriteBatch(usage, batch);
     }
 
     [TestCase(null)]

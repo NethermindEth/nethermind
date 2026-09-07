@@ -267,10 +267,10 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence persistence = new(db, config);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         Account account = new(1, 100);
-        PbtWriteBatch changes = new();
+        using PbtWriteBatchBuilder changes = new(0);
         foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, null)) changes.Set(key, value);
         using PbtNodeGroupStore nodeStore = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes);
+        ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes.Build());
         ValueHash256 persistedRoot = corruptNode ? root : TestItem.KeccakB.ValueHash256;
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
             StateId.PreGenesis,

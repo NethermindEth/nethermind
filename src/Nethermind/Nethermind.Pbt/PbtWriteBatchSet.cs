@@ -51,7 +51,11 @@ internal sealed class PbtWriteBatchSet
     internal static PbtWriteBatchSet Create(IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> uniqueOperations) =>
         Prepare([.. EnumerateOperations(uniqueOperations)]);
 
-    internal static PbtWriteBatchSet Create(PbtWriteBatch changes) => Prepare([.. changes.Operations]);
+    internal static PbtWriteBatchSet Create(PbtWriteBatch changes)
+    {
+        changes.Consume(out PbtWriteOperation[] operations, out _);
+        return Prepare(operations);
+    }
 
     internal void Consume(out PbtWriteOperation[] operations, out int[] table)
     {

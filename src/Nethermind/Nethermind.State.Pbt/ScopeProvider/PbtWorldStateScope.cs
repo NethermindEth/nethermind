@@ -143,7 +143,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     {
         if (!_rootDirty) return;
         long start = Stopwatch.GetTimestamp();
-        IReadOnlyDictionary<PbtPartition, PbtPartitionWriteBatch> changes = Bundle.PrepareLeafChanges();
+        IReadOnlyDictionary<PbtPartition, PbtWriteBatch> changes = Bundle.PrepareLeafChanges();
         LastFoldMutationCount = Bundle.PendingMutationCount;
         _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes);
         Bundle.CompleteLeafChanges();

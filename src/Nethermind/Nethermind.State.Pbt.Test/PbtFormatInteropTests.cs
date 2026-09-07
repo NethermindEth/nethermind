@@ -16,7 +16,7 @@ public class PbtFormatInteropTests
     public void Physical_payload_roundtrip()
     {
         Random random = new(8297);
-        PbtWriteBatch batch = new();
+        using PbtWriteBatchBuilder batch = new(0);
         EipReferenceTree oracle = new();
         for (int index = 0; index < 300; index++)
         {
@@ -30,7 +30,7 @@ public class PbtFormatInteropTests
         }
 
         using PbtNodeGroupStore source = new();
-        ValueHash256 sourceRoot = TrieUpdater.UpdateRoot(source, default, batch);
+        ValueHash256 sourceRoot = TrieUpdater.UpdateRoot(source, default, batch.Build());
         using PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(source.ExportPhysicalPayloads());
 
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(target.ExportPhysicalPayloads());

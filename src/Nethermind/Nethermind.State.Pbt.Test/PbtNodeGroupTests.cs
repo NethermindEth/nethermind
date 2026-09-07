@@ -306,23 +306,23 @@ public class PbtNodeGroupTests
     public void Multiple_node_changes_publish_one_complete_group_and_unchanged_batch_publishes_none()
     {
         using PublishingStore store = new();
-        PbtWriteBatch batch = new();
+        using PbtWriteBatchBuilder batch = new(0);
         batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(1)));
         batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Publishes, Is.EqualTo(1));
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(3));
         }
 
-        batch = new();
-        batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(3)));
-        batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(4)));
-        root = TrieUpdater.UpdateRoot(store, root, batch);
+        using PbtWriteBatchBuilder changedBatch = new(0);
+        changedBatch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(3)));
+        changedBatch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(4)));
+        root = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
         Assert.That(store.Publishes, Is.EqualTo(2));
 
-        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, batch);
+        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unchangedRoot, Is.EqualTo(root));
@@ -331,19 +331,19 @@ public class PbtNodeGroupTests
 
         PbtNodePath siblingPath = new([0x80], 1);
         byte[]? sibling = store.Inner.GetNode(siblingPath);
-        batch = new();
-        batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(5)));
-        root = TrieUpdater.UpdateRoot(store, root, batch);
+        using PbtWriteBatchBuilder siblingChangeBatch = new(0);
+        siblingChangeBatch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(5)));
+        root = TrieUpdater.UpdateRoot(store, root, siblingChangeBatch.Build());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Publishes, Is.EqualTo(3));
             Assert.That(store.Inner.GetNode(siblingPath), Is.EqualTo(sibling));
         }
 
-        batch = new();
-        batch.Delete(new PbtFullKey([0x00]));
-        batch.Delete(new PbtFullKey([0x80]));
-        root = TrieUpdater.UpdateRoot(store, root, batch);
+        using PbtWriteBatchBuilder deleteBatch = new(0);
+        deleteBatch.Delete(new PbtFullKey([0x00]));
+        deleteBatch.Delete(new PbtFullKey([0x80]));
+        root = TrieUpdater.UpdateRoot(store, root, deleteBatch.Build());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(default(ValueHash256)));
@@ -358,13 +358,13 @@ public class PbtNodeGroupTests
     public void Update_rejects_missing_or_mismatched_current_root(bool storedRootPresent)
     {
         using PbtNodeGroupStore store = new();
-        PbtWriteBatch batch = new();
+        using PbtWriteBatchBuilder batch = new(0);
         batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(1)));
-        if (storedRootPresent) TrieUpdater.UpdateRoot(store, default, batch);
-        batch = new();
-        batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
+        if (storedRootPresent) TrieUpdater.UpdateRoot(store, default, batch.Build());
+        using PbtWriteBatchBuilder changes = new(0);
+        changes.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
 
-        Assert.That(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(3)), batch), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(3)), changes.Build()), Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCase("0000,0800", "0800", false, new[] { 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_group_root_handoff")]
@@ -384,7 +384,7 @@ public class PbtNodeGroupTests
         }
         ValueHash256 root = expected.ApplyBatch(initial);
         using PoisoningStore store = new(PbtNodeGroupStore.FromPhysicalPayloads(expected.PhysicalPayloads));
-        PbtWriteBatch batch = new();
+        using PbtWriteBatchBuilder batch = new(0);
         List<(byte[] Key, byte[]? Value)> changes = [];
         foreach (string key in deletedKeys.Split(','))
         {
@@ -402,7 +402,7 @@ public class PbtNodeGroupTests
         }
         expected.ApplyBatch(changes);
 
-        ValueHash256 actualRoot = TrieUpdater.UpdateRoot(store, root, batch);
+        ValueHash256 actualRoot = TrieUpdater.UpdateRoot(store, root, batch.Build());
 
         Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "leases are poisoned synchronously as frames exit, before parent placement");
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.Inner.ExportPhysicalPayloads());

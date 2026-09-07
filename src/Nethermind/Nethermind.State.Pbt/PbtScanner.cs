@@ -31,10 +31,10 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).Root;
         if (report.InvalidLeafCount == 0)
         {
-            PbtWriteBatch changes = new();
+            using PbtWriteBatchBuilder changes = new(0);
             foreach ((PbtFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
             using PbtNodeGroupStore nodeStore = new();
-            report.ComputedRoot = TrieUpdater.UpdateRoot(nodeStore, default, changes);
+            report.ComputedRoot = TrieUpdater.UpdateRoot(nodeStore, default, changes.Build());
             report.RootMatches = report.ComputedRoot == report.PersistedRoot;
             List<PbtNodeRecord> expectedNodes = [];
             foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())

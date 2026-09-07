@@ -31,9 +31,17 @@ public static class TrieUpdater
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
-        if (changes.Count == 0) return currentRoot;
+        changes.Consume(out PbtWriteOperation[] operations, out int[] table);
+        if (changes.ShardNibbleIndex == 0)
+            return UpdateRoot(store, currentRoot, operations, new(table, 0, 0, false, false), metrics);
 
-        PbtWriteOperation[] operations = [.. changes.Operations];
+        int deleteCount = 0;
+        for (int index = 0; index < operations.Length; index++)
+        {
+            if (operations[index].Kind != PbtWriteOperationKind.Delete) continue;
+            (operations[deleteCount], operations[index]) = (operations[index], operations[deleteCount]);
+            deleteCount++;
+        }
         return UpdateRoot(store, currentRoot, operations, default, metrics);
     }
 
@@ -53,7 +61,7 @@ public static class TrieUpdater
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
         in ValueHash256 currentRoot,
-        IReadOnlyDictionary<PbtPartition, PbtPartitionWriteBatch> changes,
+        IReadOnlyDictionary<PbtPartition, PbtWriteBatch> changes,
         TrieUpdaterMetrics? metrics = null)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -64,7 +72,7 @@ public static class TrieUpdater
         Subtree[] rootBoundaries = new Subtree[16];
         try
         {
-            foreach ((PbtPartition partition, PbtPartitionWriteBatch batch) in changes)
+            foreach ((PbtPartition partition, PbtWriteBatch batch) in changes)
             {
                 byte zone = partition switch
                 {
@@ -73,6 +81,7 @@ public static class TrieUpdater
                     PbtPartition.Storage => Eip8297KeyDerivation.StorageZone,
                     _ => throw new ArgumentOutOfRangeException(nameof(changes)),
                 };
+                ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out PbtWriteOperation[] operations, out int[] table);
                 if (operations.Length != 0) workers.Add(new(store, zone, operations, table, metrics is not null));
             }

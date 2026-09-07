@@ -67,10 +67,10 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             if (value != default) leaves[key] = value;
         }
 
-        PbtWriteBatch changes = new();
+        using PbtWriteBatchBuilder changes = new(0);
         foreach ((PbtFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
         using PbtNodeGroupStore nodeStore = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes);
+        ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes.Build());
 
         using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
         foreach ((ValueHash256 hash, Account? account) in accounts) batch.SetAccount(hash, account);

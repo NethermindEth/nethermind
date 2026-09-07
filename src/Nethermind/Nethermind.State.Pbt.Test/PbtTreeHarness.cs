@@ -21,14 +21,14 @@ internal sealed class PbtTreeHarness : IDisposable
 
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
-        PbtWriteBatch batch = new();
+        using PbtWriteBatchBuilder batch = new(0);
         foreach ((byte[] key, byte[]? value) in writes)
         {
             PbtFullKey fullKey = new(key);
             if (value is null) batch.Delete(fullKey);
             else batch.Set(fullKey, new ValueHash256(value));
         }
-        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, batch);
+        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, batch.Build());
         return RootHash;
     }
 

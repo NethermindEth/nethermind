@@ -18,7 +18,7 @@ public sealed class PbtSnapshotBundle(
     PbtResourcePool.Usage usage) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
-    private readonly Dictionary<PbtPartition, ShardedWriteBatch> _writeBatches = new()
+    private readonly Dictionary<PbtPartition, PbtWriteBatchBuilder> _writeBatches = new()
     {
         [PbtPartition.Account] = resourcePool.GetWriteBatch(usage),
         [PbtPartition.Code] = resourcePool.GetWriteBatch(usage),
@@ -47,7 +47,7 @@ public sealed class PbtSnapshotBundle(
         get
         {
             int count = 0;
-            foreach (ShardedWriteBatch batch in _writeBatches.Values) count += batch.Count;
+            foreach (PbtWriteBatchBuilder batch in _writeBatches.Values) count += batch.Count;
             return count;
         }
     }
@@ -60,7 +60,7 @@ public sealed class PbtSnapshotBundle(
         _writeBatches[(PbtPartition)partition].SetLeaf(key, value);
     }
 
-    internal IReadOnlyDictionary<PbtPartition, PbtPartitionWriteBatch> PrepareLeafChanges()
+    internal IReadOnlyDictionary<PbtPartition, PbtWriteBatch> PrepareLeafChanges()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         lock (_accountLock)
@@ -72,15 +72,15 @@ public sealed class PbtSnapshotBundle(
             }
             _accountsAwaitingCode.Clear();
         }
-        Dictionary<PbtPartition, PbtPartitionWriteBatch> changes = [];
-        foreach ((PbtPartition partition, ShardedWriteBatch batch) in _writeBatches)
-            if (batch.Count != 0) changes.Add(partition, batch.PrepareDrain());
+        Dictionary<PbtPartition, PbtWriteBatch> changes = [];
+        foreach ((PbtPartition partition, PbtWriteBatchBuilder batch) in _writeBatches)
+            if (batch.Count != 0) changes.Add(partition, batch.Build());
         return changes;
     }
 
     internal void CompleteLeafChanges()
     {
-        foreach (ShardedWriteBatch batch in _writeBatches.Values) batch.CompleteDrain();
+        foreach (PbtWriteBatchBuilder batch in _writeBatches.Values) batch.CompleteDrain();
     }
 
     internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
@@ -106,7 +106,7 @@ public sealed class PbtSnapshotBundle(
 
     internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> EnumeratePendingLeafMutationsForTest()
     {
-        foreach (ShardedWriteBatch batch in _writeBatches.Values)
+        foreach (PbtWriteBatchBuilder batch in _writeBatches.Values)
             foreach (KeyValuePair<PbtFullKey, ValueHash256?> mutation in batch.Leaves) yield return mutation;
     }
 

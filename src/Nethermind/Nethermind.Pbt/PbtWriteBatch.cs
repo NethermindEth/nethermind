@@ -5,38 +5,41 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-/// <summary>A batch of complete-key mutations applied atomically by <see cref="TrieUpdater"/>.</summary>
+/// <summary>A single-use prepared mutation batch produced by <see cref="PbtWriteBatchBuilder"/>.</summary>
 public sealed class PbtWriteBatch
 {
-    private readonly Dictionary<PbtFullKey, PbtWriteOperation> _operations = [];
+    private PbtWriteOperation[]? _operations;
+    private int[] _table;
 
-    /// <summary>Gets the number of mutations in this batch.</summary>
-    public int Count => _operations.Count;
-
-    /// <summary>Adds a complete-key value mutation.</summary>
-    public void Set(PbtFullKey key, in ValueHash256 value)
+    internal PbtWriteBatch(PbtWriteOperation[] operations, int[] table, int shardNibbleIndex)
     {
-        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
-        _operations[key] = PbtWriteOperation.Set(key, value);
+        _operations = operations;
+        _table = table;
+        ShardNibbleIndex = shardNibbleIndex;
     }
 
-    /// <summary>Adds an explicit complete-key deletion.</summary>
-    public void Delete(PbtFullKey key)
-    {
-        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
-        _operations[key] = PbtWriteOperation.Delete(key);
-    }
+    /// <summary>Gets the number of prepared mutations before the batch is consumed.</summary>
+    public int Count => Operations.Length;
 
-    // TrieUpdater relies on unique keys with deletions preceding writes.
-    internal IEnumerable<PbtWriteOperation> Operations
+    internal int ShardNibbleIndex { get; }
+    internal ReadOnlySpan<PbtWriteOperation> Entries => Operations;
+    internal ReadOnlySpan<int> Precalculated
     {
         get
         {
-            foreach (PbtWriteOperation operation in _operations.Values)
-                if (operation.Kind == PbtWriteOperationKind.Delete) yield return operation;
-            foreach (PbtWriteOperation operation in _operations.Values)
-                if (operation.Kind == PbtWriteOperationKind.Set) yield return operation;
+            _ = Operations;
+            return _table;
         }
+    }
+
+    private PbtWriteOperation[] Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
+
+    internal void Consume(out PbtWriteOperation[] operations, out int[] table)
+    {
+        operations = Operations;
+        table = _table;
+        _operations = null;
+        _table = [];
     }
 }
 

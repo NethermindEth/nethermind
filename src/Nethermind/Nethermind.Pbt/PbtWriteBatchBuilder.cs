@@ -2,19 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Pbt;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
-/// <summary>Accumulates canonical leaf mutations for one key-zone partition between root folds.</summary>
-/// <remarks>Writes and reads synchronize per shard. Enumeration, preparation and reset require joined writers.</remarks>
-public sealed class ShardedWriteBatch : IDisposable, IResettable
+/// <summary>Accumulates complete-key mutations in shards selected by a key nibble.</summary>
+/// <remarks>Writes and reads synchronize per shard. Count, enumeration, preparation and reset require joined writers.</remarks>
+/// <param name="shardNibbleIndex">The zero-based key nibble used to select a shard.</param>
+public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IResettable
 {
     // Full inline keys and values make dictionary entries substantially larger than stem-map entries.
     private const int RetainedShardEntries = 512;
     private const int ShardCount = 16;
     private readonly Shard[] _shards = CreateShards();
+
+    private readonly int _shardNibbleIndex = ValidateShardNibbleIndex(shardNibbleIndex);
+
+    private static int ValidateShardNibbleIndex(int shardNibbleIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)shardNibbleIndex, (uint)(PbtFullKey.MaxLength * 2));
+        return shardNibbleIndex;
+    }
 
     private sealed class Shard
     {
@@ -29,17 +37,26 @@ public sealed class ShardedWriteBatch : IDisposable, IResettable
         return shards;
     }
 
-    private static int ShardOf(PbtFullKey key)
+    private int ShardOf(PbtFullKey key)
     {
-        if (PbtWriteBatchSet.PartitionOf(key) < 0)
-            throw new ArgumentException("A canonical account, code or storage key is required.", nameof(key));
-        return key.Bytes[1] >> 4;
+        if (key.Length * 2 <= _shardNibbleIndex)
+            throw new ArgumentException("The complete key must contain the sharding nibble.", nameof(key));
+        return (key.Bytes[_shardNibbleIndex >> 1] >> ((_shardNibbleIndex & 1) == 0 ? 4 : 0)) & 15;
     }
 
-    internal void SetLeaf(PbtFullKey key, ValueHash256? value)
+    /// <summary>Adds an explicit complete-key value mutation.</summary>
+    public void Set(PbtFullKey key, in ValueHash256 value) => SetMutation(key, value);
+
+    /// <summary>Adds an explicit complete-key deletion.</summary>
+    public void Delete(PbtFullKey key) => SetMutation(key, null);
+
+    internal void SetLeaf(PbtFullKey key, ValueHash256? value) =>
+        SetMutation(key, value is null || value.Value == default ? null : value);
+
+    private void SetMutation(PbtFullKey key, ValueHash256? value)
     {
         Shard shard = _shards[ShardOf(key)];
-        lock (shard.Lock) (shard.Entries ??= [])[key] = value is null || value.Value == default ? null : value;
+        lock (shard.Lock) (shard.Entries ??= [])[key] = value;
     }
 
     internal bool TryGetLeaf(PbtFullKey key, out ValueHash256? value)
@@ -52,7 +69,8 @@ public sealed class ShardedWriteBatch : IDisposable, IResettable
         }
     }
 
-    internal int Count
+    /// <summary>Gets the number of pending unique mutations.</summary>
+    public int Count
     {
         get
         {
@@ -74,9 +92,20 @@ public sealed class ShardedWriteBatch : IDisposable, IResettable
         }
     }
 
-    /// <summary>Prepares transient canonical mutations and first-nibble counts at complete-key depth eight.</summary>
-    /// <remarks>After a successful fold, call <see cref="CompleteDrain"/>. The updater mutates its operation array.</remarks>
-    internal PbtPartitionWriteBatch PrepareDrain()
+    internal IEnumerable<PbtWriteOperation> Operations
+    {
+        get
+        {
+            foreach ((PbtFullKey key, ValueHash256? value) in Leaves)
+                if (value is null) yield return PbtWriteOperation.Delete(key);
+            foreach ((PbtFullKey key, ValueHash256? value) in Leaves)
+                if (value is { } hash) yield return PbtWriteOperation.Set(key, hash);
+        }
+    }
+
+    /// <summary>Builds an independent, single-use batch without clearing pending mutations.</summary>
+    /// <remarks>Writers must be joined before building. Reset only after a successful fold to retain mutations for retry.</remarks>
+    public PbtWriteBatch Build()
     {
         Span<int> deleteCounts = stackalloc int[ShardCount];
         deleteCounts.Clear();
@@ -107,7 +136,7 @@ public sealed class ShardedWriteBatch : IDisposable, IResettable
             }
             offset += entries.Count;
         }
-        return new PbtPartitionWriteBatch(operations, table);
+        return new PbtWriteBatch(operations, table, _shardNibbleIndex);
     }
 
     internal void CompleteDrain() => Reset();

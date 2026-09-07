@@ -107,9 +107,9 @@ public class PbtRebuilderTests
         using IPbtPersistence.IReader reader = target.CreateReader();
         foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.EnumerateLeaves(reader))
         {
-            PbtWriteBatch incrementalChange = new();
+            using PbtWriteBatchBuilder incrementalChange = new(0);
             incrementalChange.Set(key, value);
-            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, incrementalChange);
+            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, incrementalChange.Build());
         }
 
         using (Assert.EnterMultipleScope())

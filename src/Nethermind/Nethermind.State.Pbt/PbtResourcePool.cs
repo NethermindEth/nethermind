@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
+using Nethermind.Pbt;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
@@ -49,10 +50,10 @@ public class PbtResourcePool : IPbtResourcePool
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
     /// <inheritdoc/>
-    public ShardedWriteBatch GetWriteBatch(Usage usage) => _categories[usage].GetWriteBatch();
+    public PbtWriteBatchBuilder GetWriteBatch(Usage usage) => _categories[usage].GetWriteBatch();
 
     /// <inheritdoc/>
-    public void ReturnWriteBatch(Usage usage, ShardedWriteBatch batch) => _categories[usage].ReturnWriteBatch(batch);
+    public void ReturnWriteBatch(Usage usage, PbtWriteBatchBuilder batch) => _categories[usage].ReturnWriteBatch(batch);
 
     /// <inheritdoc/>
     public PbtTransientResource GetCachedResource(Usage usage)
@@ -130,8 +131,8 @@ public class PbtResourcePool : IPbtResourcePool
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         // Each writable bundle holds three partition batches and one prewarm resource.
-        private readonly ConcurrentStackPool<ShardedWriteBatch> _writeBatchPool = new(writableBundlePoolSize * 3);
-        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(ShardedWriteBatch));
+        private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _writeBatchPool = new(writableBundlePoolSize * 3);
+        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
         private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
         private long _lastCachedResourceCapacity = 1024;
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
@@ -158,19 +159,19 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
         }
 
-        public ShardedWriteBatch GetWriteBatch()
+        public PbtWriteBatchBuilder GetWriteBatch()
         {
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
-            if (_writeBatchPool.TryGet(out ShardedWriteBatch? batch))
+            if (_writeBatchPool.TryGet(out PbtWriteBatchBuilder? batch))
             {
                 Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
                 return batch;
             }
             Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
-            return new ShardedWriteBatch();
+            return new PbtWriteBatchBuilder(2);
         }
 
-        public void ReturnWriteBatch(ShardedWriteBatch batch)
+        public void ReturnWriteBatch(PbtWriteBatchBuilder batch)
         {
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
             _writeBatchPool.Return(batch);

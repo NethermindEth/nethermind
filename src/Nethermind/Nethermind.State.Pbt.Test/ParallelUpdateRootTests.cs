@@ -188,7 +188,7 @@ public class ParallelUpdateRootTests
         sequential.ApplyBatch(initial);
         string[] initialRecords = PhysicalRecords(store.Inner);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        Dictionary<PbtPartition, PbtPartitionWriteBatch> prepared = PreparePartitions(changes);
+        Dictionary<PbtPartition, PbtWriteBatch> prepared = PreparePartitions(changes);
         store.Coordinate = true;
         store.FailWorker = failWorker;
         store.Writes = 0;
@@ -218,19 +218,19 @@ public class ParallelUpdateRootTests
         }
     }
 
-    private static Dictionary<PbtPartition, PbtPartitionWriteBatch> PreparePartitions((byte[] Key, byte[]? Value)[] changes)
+    private static Dictionary<PbtPartition, PbtWriteBatch> PreparePartitions((byte[] Key, byte[]? Value)[] changes)
     {
-        Dictionary<PbtPartition, PbtPartitionWriteBatch> prepared = [];
+        Dictionary<PbtPartition, PbtWriteBatch> prepared = [];
         foreach (PbtPartition partition in new[] { PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage })
         {
-            using ShardedWriteBatch batch = new();
+            using PbtWriteBatchBuilder batch = new(2);
             foreach ((byte[] key, byte[]? value) in changes)
             {
                 PbtFullKey fullKey = new(key);
                 if (PbtWriteBatchSet.PartitionOf(fullKey) == (int)partition)
                     batch.SetLeaf(fullKey, value is null ? null : new ValueHash256(value));
             }
-            if (batch.Count != 0) prepared.Add(partition, batch.PrepareDrain());
+            if (batch.Count != 0) prepared.Add(partition, batch.Build());
         }
         return prepared;
     }
@@ -327,11 +327,11 @@ public class ParallelUpdateRootTests
         (byte[] Key, byte[]? Value)[] entries)
     {
         using CountingStore store = new();
-        PbtWriteBatch batch = new();
+        using PbtWriteBatchBuilder batch = new(0);
         foreach ((byte[] key, byte[]? value) in entries)
             batch.Set(new PbtFullKey(key), new ValueHash256(value!));
         TrieUpdaterMetrics metrics = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch, metrics);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
         return (root, metrics, store.Writes);
     }
 

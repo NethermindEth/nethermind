@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Pbt;
+
 namespace Nethermind.State.Pbt;
 
 /// <summary>Hands out and takes back the per-layer collections, pooled per <see cref="PbtResourcePool.Usage"/>.</summary>
@@ -23,10 +25,10 @@ public interface IPbtResourcePool
     void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource resource);
 
     /// <summary>Rents an empty canonical leaf accumulator for one key-zone partition.</summary>
-    ShardedWriteBatch GetWriteBatch(PbtResourcePool.Usage usage);
+    PbtWriteBatchBuilder GetWriteBatch(PbtResourcePool.Usage usage);
 
     /// <summary>Returns a partition batch to its original rental usage, discarding pending mutations.</summary>
     /// <remarks>The caller must not access the batch after returning it.</remarks>
-    void ReturnWriteBatch(PbtResourcePool.Usage usage, ShardedWriteBatch batch);
+    void ReturnWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder batch);
 
 }
