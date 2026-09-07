@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -26,13 +25,23 @@ internal static unsafe class BN254
             throw new InvalidOperationException("MCL initialization failed");
     }
 
+    /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
+    /// <remarks>
+    /// <paramref name="input"/> must be exactly 128 bytes — two 64-byte big-endian G1 points — and
+    /// <paramref name="output"/> exactly 64 bytes. <see cref="BN254AddPrecompile.Run"/> guarantees both by trimming
+    /// longer call data and zero-padding shorter input as EIP-196 requires, so neither length is
+    /// attacker-controlled. The guard is a runtime check rather than a <c>Debug.Assert</c> because the
+    /// deserialization below reads through a raw pointer: an unchecked mismatch would read past the backing buffer,
+    /// whereas a violation here surfaces as an ordinary precompile failure.
+    /// </remarks>
+    /// <returns><c>false</c> on a length mismatch, a point that fails to deserialize, or a serialization failure.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool Add(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
 
-        Debug.Assert(input.Length == 128);
-        Debug.Assert(output.Length == 64);
+        if (input.Length != 2 * chunkSize || output.Length != chunkSize)
+            return false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
@@ -49,13 +58,23 @@ internal static unsafe class BN254
         }
     }
 
+    /// <summary>Multiplies a BN254 G1 point by a scalar and writes the normalized result (EIP-196).</summary>
+    /// <remarks>
+    /// <paramref name="input"/> must be exactly 96 bytes — a 64-byte big-endian G1 point followed by a 32-byte
+    /// big-endian scalar — and <paramref name="output"/> exactly 64 bytes. <see cref="BN254MulPrecompile.Run"/>
+    /// guarantees both by trimming longer call data and zero-padding shorter input as EIP-196 requires, so neither
+    /// length is attacker-controlled. The guard is a runtime check rather than a <c>Debug.Assert</c> because the
+    /// deserialization below reads through a raw pointer: an unchecked mismatch would read past the backing buffer,
+    /// whereas a violation here surfaces as an ordinary precompile failure.
+    /// </remarks>
+    /// <returns><c>false</c> on a length mismatch, a point or scalar that fails to decode, or a serialization failure.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool Mul(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
 
-        Debug.Assert(input.Length == 96);
-        Debug.Assert(output.Length == 64);
+        if (input.Length != chunkSize + 32 || output.Length != chunkSize)
+            return false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
