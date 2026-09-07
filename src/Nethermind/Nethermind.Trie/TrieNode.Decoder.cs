@@ -385,10 +385,10 @@ namespace Nethermind.Trie
                 ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
                 int cursor = item.SeekChildPosition(nodeRlp, 0);
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                ref object child = ref Unsafe.As<BranchData>(item._nodeData!).FirstChild;
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object data = branchData[i];
+                    object data = child;
                     if (data is null)
                     {
                         int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
@@ -505,10 +505,10 @@ namespace Nethermind.Trie
                 int runStart = -1;
                 int runLength = 0;
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                ref object child = ref Unsafe.As<BranchData>(item._nodeData!).FirstChild;
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object data = branchData[i];
+                    object data = child;
                     if (data is null)
                     {
                         int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
