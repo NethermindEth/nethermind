@@ -989,8 +989,7 @@ public class FrameTxProcessorTests
 
         const ulong blockGasLimit = 30_000_000;
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
-            new TxFrame(TxFrame.ModeSender, 0, Recipient,
-                executionGasLimit: 200_000, stateGasLimit: 29_900_000, UInt256.Zero, default));
+            Frame(TxFrame.ModeSender, target: Recipient, stateGasLimit: 29_900_000));
         BlockHeader header = Build.A.BlockHeader.WithNumber(1)
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(blockGasLimit).TestObject;
@@ -1008,6 +1007,33 @@ public class FrameTxProcessorTests
             Assert.That(maxGas, Is.GreaterThan(blockGasLimit), "only the combined budget exceeds it");
             Assert.That(error, Is.Null);
             Assert.That(estimate, Is.EqualTo(maxGas));
+        }
+    }
+
+    /// <remarks>The state dimension carries a block budget of its own, so a reservation no block can hold in
+    /// that dimension alone is unestimable however small the execution dimension is.</remarks>
+    [Test]
+    public void EstimateGas_FrameTxWhoseStateBudgetAloneExceedsTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        const ulong blockGasLimit = 30_000_000;
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Recipient, stateGasLimit: 40_000_000));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(blockGasLimit).TestObject;
+
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(execution, Is.LessThanOrEqualTo(blockGasLimit), "the execution dimension fits the block");
+            Assert.That(state, Is.GreaterThan(blockGasLimit), "only the state dimension exceeds it");
+            Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
         }
     }
 
