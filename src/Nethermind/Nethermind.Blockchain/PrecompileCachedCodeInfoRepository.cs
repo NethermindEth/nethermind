@@ -72,7 +72,7 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     }
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
-        vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo)
+        vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out CodeInfo? cachedCodeInfo)
             ? cachedCodeInfo.Precompile
             : _baseCodeInfoRepository.GetPrecompile(codeSource, vmSpec);
 

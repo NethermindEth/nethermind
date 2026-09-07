@@ -54,8 +54,8 @@ public class TracedAccessWorldStateTests(bool parallel)
         return (tws, scope);
     }
 
-    [Test]
-    public void Mutation_without_generating_block_access_list_throws_actionable_exception()
+    /// <summary>Builds an untraced decorator — one that was never handed a slice — over an account A at nonce 0.</summary>
+    private (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) CreateIdleState()
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -69,13 +69,43 @@ public class TracedAccessWorldStateTests(bool parallel)
 
         TracedAccessWorldState tws = new(inner, parallel);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        using IDisposable scope = tws.BeginScope(baseBlock);
+        return (tws, inner, tws.BeginScope(baseBlock));
+    }
 
-        Assert.That(
-            () => tws.SetNonce(TestItem.AddressA, 1),
-            Throws.InvalidOperationException.With.Message.EqualTo(
+    [TestCase("SetIndex")]
+    [TestCase("IncrementIndex")]
+    [TestCase("Clear")]
+    public void Control_member_without_generating_block_access_list_throws_actionable_exception(string member)
+    {
+        (TracedAccessWorldState tws, _, IDisposable scope) = CreateIdleState();
+        using (scope)
+        {
+            Action call = member switch
+            {
+                "SetIndex" => () => tws.SetIndex(0),
+                "IncrementIndex" => tws.IncrementIndex,
+                _ => tws.Clear
+            };
+
+            Assert.That(call, Throws.InvalidOperationException.With.Message.EqualTo(
                 "Block access list tracing requires a generating block access list to be set."));
-        Assert.That(inner.GetNonce(TestItem.AddressA), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Mutation_without_generating_block_access_list_delegates_without_recording()
+    {
+        (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) = CreateIdleState();
+        using (scope)
+        {
+            tws.SetNonce(TestItem.AddressA, 1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inner.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+                Assert.That(tws.GetGeneratingBlockAccessList(), Is.Null);
+            }
+        }
     }
 
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
