@@ -66,8 +66,9 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
     internal bool RunOnePass(bool repair, long maxSlots, TimeSpan budget, CancellationToken token)
     {
-        ISortedKeyValueStore storage = (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage);
-        IReadOnlyKeyValueStore accounts = db.GetColumnDb(FlatDbColumns.Account);
+        using IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
+        IReadOnlyKeyValueStore accounts = snapshot.GetColumn(FlatDbColumns.Account);
         long startPrefix = repair ? ReadProgress() : _checkCursor;
         if (startPrefix > uint.MaxValue) return true;
         if (startPrefix == 0) ResetTally();
@@ -133,7 +134,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             if (orphans.Count > 0)
             {
                 WriteProgress((uint)startPrefix);
-                Delete(accounts, orphans, token);
+                Delete(db.GetColumnDb(FlatDbColumns.Account), orphans, token);
             }
 
             IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);

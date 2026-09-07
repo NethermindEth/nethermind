@@ -292,15 +292,43 @@ public class OrphanStorageSweepTests
             });
         using OrphanStorageSweep sweep = new(_db, manager, LimboLogs.Instance);
 
+        Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
+            "a state sync that starts under the pass clears the database and rebuilds it with storage landing before accounts; the sweep must read that on disk, where the manager's cached state id does not show it, and stop");
+
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         SlotValue value = default;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
-                "a state sync that starts under the pass clears the database and rebuilds it with storage landing before accounts; the sweep must read that on disk, where the manager's cached state id does not show it, and stop");
             Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted from a database another writer is assembling");
             Assert.That(sweep.AlreadyHandled, Is.False);
         }
+    }
+
+    [Test]
+    public void A_slot_removed_while_the_pass_runs_is_judged_against_the_account_of_the_same_moment()
+    {
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetAccount(WithStorage, new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+            batch.SetStorage(WithStorage, 1, SlotValue.FromSpanWithoutLeadingZero([0x0A]));
+        }
+
+        IColumnsDb<FlatDbColumns> racing = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        racing.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _db.GetColumnDb(call.Arg<FlatDbColumns>()));
+        racing.CreateSnapshot().Returns(_ =>
+        {
+            IColumnDbSnapshot<FlatDbColumns> snapshot = _db.CreateSnapshot();
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            batch.SetStorage(WithStorage, 1, null);
+            batch.SetAccount(WithStorage, new Account(1, 1));
+            return snapshot;
+        });
+        using OrphanStorageSweep sweep = new(racing, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+
+        OrphanStorageReport report = sweep.RunToCompletion(repair: false, CancellationToken.None);
+
+        Assert.That(report.OrphanAccounts, Is.Zero,
+            "block processing that empties a contract's storage between the iterator and the account read must not read as an orphan: both columns come from one snapshot, so the slot is judged against the account that still owned it");
     }
 
     [Test]
