@@ -76,12 +76,7 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
         int depth = checked(BitDepth + prefix.BitCount + 1);
         byte[] path = new byte[(depth + 7) >> 3];
         _path.CopyTo(path, 0);
-        for (int i = 0; i < prefix.BitCount; i++)
-        {
-            if (prefix.GetBit(i) == 0) continue;
-            int bit = BitDepth + i;
-            path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
-        }
+        PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, path, BitDepth);
         if (direction != 0)
         {
             int bit = depth - 1;

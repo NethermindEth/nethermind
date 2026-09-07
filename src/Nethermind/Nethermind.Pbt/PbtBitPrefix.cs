@@ -46,10 +46,7 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
         ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
         if (startBit > key.BitLength - bitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
         byte[] bytes = new byte[ByteCount(bitCount)];
-        for (int i = 0; i < bitCount; i++)
-        {
-            if (key.GetBit(startBit + i) != 0) bytes[i >> 3] |= (byte)(1 << (7 - (i & 7)));
-        }
+        CopyBits(key.Bytes, startBit, bitCount, bytes, 0);
 
         return TakeOwnership(bytes, bitCount);
     }
@@ -62,9 +59,9 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
         int bitCount = checked(first.BitCount + 1 + second.BitCount);
         if (bitCount > MaxBitCount) throw new InvalidDataException("Merged branch prefix exceeds 65535 bits.");
         byte[] bytes = new byte[ByteCount(bitCount)];
-        CopyBits(first, bytes, 0);
+        CopyBits(first.Bytes, 0, first.BitCount, bytes, 0);
         if (direction != 0) bytes[first.BitCount >> 3] |= (byte)(1 << (7 - (first.BitCount & 7)));
-        CopyBits(second, bytes, first.BitCount + 1);
+        CopyBits(second.Bytes, 0, second.BitCount, bytes, first.BitCount + 1);
         return TakeOwnership(bytes, bitCount);
     }
 
@@ -83,15 +80,31 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
 
     internal static int ByteCount(int bitCount) => (bitCount + 7) >> 3;
 
-    private static void CopyBits(PbtBitPrefix source, Span<byte> destination, int destinationOffset)
+    /// <summary>Copies an MSB-first bit range into a zeroed destination range, preserving adjacent bits.</summary>
+    internal static void CopyBits(ReadOnlySpan<byte> source, int sourceOffset, int bitCount, Span<byte> destination, int destinationOffset)
     {
-        for (int i = 0; i < source.BitCount; i++)
+        int sourceShift = sourceOffset & 7;
+        int destinationShift = destinationOffset & 7;
+        int sourceByte = sourceOffset >> 3;
+        int destinationByte = destinationOffset >> 3;
+        if (sourceShift == 0 && destinationShift == 0)
         {
-            if (source.GetBit(i) != 0)
-            {
-                int bit = destinationOffset + i;
-                destination[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
-            }
+            int wholeBytes = bitCount >> 3;
+            source.Slice(sourceByte, wholeBytes).CopyTo(destination[destinationByte..]);
+            sourceByte += wholeBytes;
+            destinationByte += wholeBytes;
+            bitCount &= 7;
+        }
+
+        for (; bitCount > 0; bitCount -= 8, sourceByte++, destinationByte++)
+        {
+            int count = Math.Min(8, bitCount);
+            int value = (source[sourceByte] << sourceShift) & 0xFF;
+            if (sourceShift + count > 8) value |= source[sourceByte + 1] >> (8 - sourceShift);
+            value &= 0xFF << (8 - count);
+            destination[destinationByte] |= (byte)(value >> destinationShift);
+            if (destinationShift + count > 8)
+                destination[destinationByte + 1] |= (byte)(value << (8 - destinationShift));
         }
     }
 }

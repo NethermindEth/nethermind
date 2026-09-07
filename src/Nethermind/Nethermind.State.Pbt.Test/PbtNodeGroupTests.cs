@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Buffers;
@@ -34,6 +35,64 @@ public class PbtNodeGroupTests
             Assert.That(nodes.MoveNext(), Is.False);
         }
     }
+
+    [TestCase(0)]
+    [TestCase(4)]
+    [TestCase(8)]
+    [TestCase(12)]
+    [TestCase(252)]
+    [TestCase(256)]
+    public void Reader_validates_every_required_leaf_bit_and_ignores_suffix_bits(int groupDepth)
+    {
+        byte[] groupBytes = new byte[(groupDepth + 7) / 8];
+        groupBytes.AsSpan().Fill(0xA5);
+        if ((groupDepth & 7) != 0) groupBytes[^1] &= 0xF0;
+        PbtNodePath groupKey = new(groupBytes, groupDepth);
+
+        for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
+        {
+            if (groupDepth != 0 && position == PbtFourLevelGroupGeometry.RootPosition) continue;
+            PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+            byte[] key = new byte[(path.BitDepth + 7) / 8 + 1];
+            path.Path.CopyTo(key);
+            byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey(key), Value(1)));
+            byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
+            Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1));
+
+            for (int bit = 0; bit < key.Length * 8; bit++)
+            {
+                byte mask = (byte)(0x80 >> (bit & 7));
+                payload[3 + (bit >> 3)] ^= mask;
+                if (bit < path.BitDepth)
+                    Assert.That(() => ReadGroupCount(groupKey, payload), Throws.TypeOf<InvalidDataException>(), $"position {position}, bit {bit}");
+                else
+                    Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1), $"position {position}, suffix bit {bit}");
+                payload[3 + (bit >> 3)] ^= mask;
+            }
+        }
+    }
+
+    [TestCase(8)]
+    [TestCase(12)]
+    [TestCase(252)]
+    [TestCase(PbtFourLevelGroupGeometry.MaxGroupDepth)]
+    public void Reader_rejects_leaf_keys_shorter_than_required_path(int groupDepth)
+    {
+        PbtNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
+        PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, 0);
+        byte[] key = new byte[(path.BitDepth + 7) / 8];
+        byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey(key), Value(1)));
+        byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
+        Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1));
+
+        byte[] shortEncoding = PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey(key.AsSpan(0, key.Length - 1)), Value(1)));
+        byte[] shortPayload = new byte[shortEncoding.Length + PbtNodeGroupCodec.TrailerLength];
+        shortEncoding.CopyTo(shortPayload, 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(shortPayload.AsSpan(shortPayload.Length - sizeof(uint)), 1u);
+        Assert.That(() => ReadGroupCount(groupKey, shortPayload), Throws.TypeOf<InvalidDataException>());
+    }
+
+    private static int ReadGroupCount(PbtNodePath groupKey, byte[] payload) => new PbtNodeGroupReader(groupKey, payload).Count;
 
     [Test]
     public void Default_reader_rejects_access_and_iteration()

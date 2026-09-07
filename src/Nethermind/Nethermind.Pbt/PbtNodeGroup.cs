@@ -314,11 +314,19 @@ public readonly ref struct PbtNodeGroupReader
         int requiredDepth = checked(groupKey.BitDepth + relativeDepth);
         int keyLength = BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]);
         if (keyLength * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
-        for (int bit = 0; bit < requiredDepth; bit++)
-        {
-            int expected = bit < groupKey.BitDepth ? GetBit(groupKey.Path, bit) : directions[bit - groupKey.BitDepth];
-            if (GetBit(encoding[3..], bit) != expected) throw new InvalidDataException("PBT leaf does not match its group position.");
-        }
+        ReadOnlySpan<byte> key = encoding.Slice(3, keyLength);
+        int completeBytes = groupKey.BitDepth >> 3;
+        if (!key[..completeBytes].SequenceEqual(groupKey.Path[..completeBytes]))
+            throw new InvalidDataException("PBT leaf does not match its group position.");
+
+        // Four-level group alignment keeps the group tail and relative path in one byte.
+        int groupTailBits = groupKey.BitDepth & 7;
+        int expectedTail = groupTailBits == 0 ? 0 : groupKey.Path[completeBytes];
+        for (int index = 0; index < relativeDepth; index++)
+            expectedTail |= directions[index] << (7 - groupTailBits - index);
+        int tailMask = 0xFF << (8 - groupTailBits - relativeDepth);
+        if (((key[completeBytes] ^ expectedTail) & tailMask) != 0)
+            throw new InvalidDataException("PBT leaf does not match its group position.");
     }
     private static int RelativeDirections(int position, Span<byte> directions)
     {
@@ -334,7 +342,6 @@ public readonly ref struct PbtNodeGroupReader
         if (position != currentPosition || depth == 0) throw new InvalidDataException("Invalid PBT node position.");
         return depth;
     }
-    private static int GetBit(ReadOnlySpan<byte> bytes, int bit) => (bytes[bit >> 3] >> (7 - (bit & 7))) & 1;
 
     /// <summary>Enumerates present positions without allocating.</summary>
     public ref struct Enumerator

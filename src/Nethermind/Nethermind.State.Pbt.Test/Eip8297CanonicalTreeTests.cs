@@ -16,6 +16,76 @@ namespace Nethermind.State.Pbt.Test;
 public class Eip8297CanonicalTreeTests
 {
     [Test]
+    public void Prefix_copy_matches_bit_reference(
+        [Range(0, 7)] int sourceOffset,
+        [Range(0, 7)] int destinationOffset)
+    {
+        byte[] source = Bytes.FromHexString("0xa5c37e81f0965ab4d2");
+        for (int bitCount = 0; bitCount <= 64; bitCount++)
+        {
+            byte[] actual = new byte[(destinationOffset + bitCount + 7) >> 3];
+            byte[] expected = new byte[actual.Length];
+            for (int bit = 0; bit < actual.Length * 8; bit++)
+            {
+                if (bit < destinationOffset || bit >= destinationOffset + bitCount)
+                    actual[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
+            }
+            actual.CopyTo(expected, 0);
+            CopyBitsReference(source, sourceOffset, bitCount, expected, destinationOffset);
+
+            PbtBitPrefix.CopyBits(source.AsSpan(0, (sourceOffset + bitCount + 7) >> 3), sourceOffset, bitCount, actual, destinationOffset);
+
+            Assert.That(actual, Is.EqualTo(expected), $"count {bitCount}");
+        }
+    }
+
+    [Test]
+    public void Path_append_and_prefix_composition_match_bit_reference(
+        [Range(0, 7)] int pathOffset,
+        [Values(0, 1, 7, 8, 9, 63, 64, 65, 65519)] int prefixLength,
+        [Values(0, 1)] int direction)
+    {
+        byte[] keyBytes = new byte[PbtFullKey.MaxLength];
+        new Random(8297).NextBytes(keyBytes);
+        PbtFullKey key = new(keyBytes);
+        int pathDepth = 8 + pathOffset;
+        PbtNodePath path = PbtNodePath.FromKey(key, pathDepth);
+        PbtBitPrefix prefix = PbtBitPrefix.FromKey(key, pathOffset, prefixLength);
+        byte[] expectedPrefix = new byte[(prefixLength + 7) >> 3];
+        CopyBitsReference(keyBytes, pathOffset, prefixLength, expectedPrefix, 0);
+        int resultDepth = pathDepth + prefixLength + 1;
+        byte[] expectedPath = new byte[(resultDepth + 7) >> 3];
+        CopyBitsReference(keyBytes, 0, pathDepth, expectedPath, 0);
+        CopyBitsReference(expectedPrefix, 0, prefixLength, expectedPath, pathDepth);
+        expectedPath[(resultDepth - 1) >> 3] |= (byte)(direction << (7 - ((resultDepth - 1) & 7)));
+
+        PbtNodePath appended = path.Append(prefix, direction);
+        PbtBitPrefix concatenated = PbtBitPrefix.Concat(new PbtBitPrefix(path.Path, pathDepth), direction, prefix);
+        byte[] expectedConcat = new byte[expectedPath.Length];
+        CopyBitsReference(keyBytes, 0, pathDepth, expectedConcat, 0);
+        expectedConcat[pathDepth >> 3] |= (byte)(direction << (7 - (pathDepth & 7)));
+        CopyBitsReference(expectedPrefix, 0, prefixLength, expectedConcat, pathDepth + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefix.Bytes.ToArray(), Is.EqualTo(expectedPrefix));
+            Assert.That(appended, Is.EqualTo(new PbtNodePath(expectedPath, resultDepth)));
+            Assert.That(concatenated, Is.EqualTo(new PbtBitPrefix(expectedConcat, resultDepth)));
+        }
+    }
+
+    private static void CopyBitsReference(ReadOnlySpan<byte> source, int sourceOffset, int bitCount, Span<byte> destination, int destinationOffset)
+    {
+        for (int index = 0; index < bitCount; index++)
+        {
+            int sourceBit = sourceOffset + index;
+            int destinationBit = destinationOffset + index;
+            if ((source[sourceBit >> 3] & (1 << (7 - (sourceBit & 7)))) != 0)
+                destination[destinationBit >> 3] |= (byte)(1 << (7 - (destinationBit & 7)));
+        }
+    }
+
+    [Test]
     public void Trie_updater_matches_independent_oracle_through_variable_length_mutations()
     {
         using PbtTreeHarness tree = new();
@@ -559,6 +629,40 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.GroupParses, Is.EqualTo(store.Reads));
             Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
         }
+    }
+
+    [TestCase(0)]
+    [TestCase(4)]
+    [TestCase(8)]
+    [TestCase(12)]
+    [TestCase(248)]
+    [TestCase(252)]
+    [TestCase(30004)]
+    [TestCase(65524, Ignore = "A dense group of 8191-byte keys exceeds the existing uint16 group entries length limit.")]
+    public void Dense_group_paths_survive_collapse_and_restoration(int groupDepth)
+    {
+        byte[] sharedKey = new byte[(groupDepth + 4 + 7) >> 3];
+        new Random(8297).NextBytes(sharedKey);
+        List<(byte[] Key, byte[]? Value)> initial = [];
+        List<(byte[] Key, byte[]? Value)> deletions = [];
+        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
+        {
+            byte[] key = (byte[])sharedKey.Clone();
+            int shift = 4 - (groupDepth & 4);
+            key[groupDepth >> 3] = (byte)((key[groupDepth >> 3] & ~(0xF << shift)) | (slot << shift));
+            initial.Add((key, Value((byte)(slot + 1))));
+            if (slot != 0 && slot != 15) deletions.Add((key, null));
+        }
+
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, initial);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "dense group");
+        ApplyAll(bulk, serial, oracle, deletions);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "collapsed group");
+        ApplyAll(bulk, serial, oracle, initial);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "restored group");
     }
 
     [TestCase(1)]

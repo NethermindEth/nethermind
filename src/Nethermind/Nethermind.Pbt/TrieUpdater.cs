@@ -38,7 +38,7 @@ public static class TrieUpdater
         using GroupMutationFrame group = new(store, RootPath, metrics);
         PbtNode? root = group.Take(RootPath, allowAbsent: true);
         Subtree result = FoldMutations(store, metrics, group, new(root, RootPath), 0, operations);
-        ValueHash256 hash = Place(group, result, RootPath);
+        ValueHash256 hash = Place(group, result, PbtFourLevelGroupGeometry.RootPosition, 0);
         group.Flush();
         return hash;
     }
@@ -165,8 +165,10 @@ public static class TrieUpdater
                 if (right.IsEmpty) continue;
 
                 PbtNodePath branchPath = BoundaryPath(group.GroupKey, slot, level);
-                ValueHash256 leftHash = Place(group, left, branchPath.Append(EmptyPrefix, 0));
-                ValueHash256 rightHash = Place(group, right, branchPath.Append(EmptyPrefix, 1));
+                // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
+                int position = 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
+                ValueHash256 leftHash = Place(group, left, position - width, branchPath.BitDepth + 1);
+                ValueHash256 rightHash = Place(group, right, position - 1, branchPath.BitDepth + 1);
                 boundaries[slot] = new(new PbtBranchNode(EmptyPrefix, leftHash, rightHash), branchPath);
             }
         }
@@ -244,22 +246,25 @@ public static class TrieUpdater
     private static Subtree Resolve(GroupMutationFrame group, Subtree subtree) =>
         subtree.IsEmpty || subtree.Node is not null ? subtree : new(group.Take(subtree.Path!)!, subtree.Path);
 
-    private static ValueHash256 Place(GroupMutationFrame group, Subtree subtree, PbtNodePath path)
+    private static ValueHash256 Place(GroupMutationFrame group, Subtree subtree, int position, int depth)
     {
         if (subtree.IsEmpty) return default;
-        if (subtree.Node is null && path.Equals(subtree.Path)) return subtree.Hash;
+        // Folding only moves a subtree along its own path, so equal depths imply equal paths.
+        if (subtree.Node is null && depth == subtree.Path!.BitDepth) return subtree.Hash;
         subtree = Resolve(group, subtree);
         PbtNode node = subtree.Node!;
-        if (node is PbtBranchNode branch && !path.Equals(subtree.Path))
+        if (node is PbtBranchNode branch && depth != subtree.Path!.BitDepth)
         {
-            int bitCount = subtree.Path!.BitDepth + branch.Prefix.BitCount - path.BitDepth;
+            int pathDepth = subtree.Path.BitDepth;
+            int bitCount = pathDepth + branch.Prefix.BitCount - depth;
             byte[] prefix = new byte[PbtBitPrefix.ByteCount(bitCount)];
-            for (int index = 0; index < bitCount; index++)
-                if (PrefixBit(subtree, path.BitDepth + index) != 0)
-                    prefix[index >> 3] |= (byte)(1 << (7 - (index & 7)));
+            int pathBits = Math.Max(0, pathDepth - depth);
+            PbtBitPrefix.CopyBits(subtree.Path.Path, Math.Min(depth, pathDepth), pathBits, prefix, 0);
+            int prefixOffset = Math.Max(0, depth - pathDepth);
+            PbtBitPrefix.CopyBits(branch.Prefix.Bytes, prefixOffset, bitCount - pathBits, prefix, pathBits);
             node = new PbtBranchNode(PbtBitPrefix.TakeOwnership(prefix, bitCount), branch.LeftHash, branch.RightHash);
         }
-        group.Store(path, node);
+        group.Store(position, node);
         return node.Hash;
     }
 
@@ -269,15 +274,11 @@ public static class TrieUpdater
 
     private static PbtNodePath BoundaryPath(PbtNodePath groupKey, int slot, int level)
     {
+        if (level == 0) return groupKey;
         int depth = groupKey.BitDepth + level;
         byte[] path = new byte[(depth + 7) >> 3];
         groupKey.Path.CopyTo(path);
-        for (int index = 0; index < level; index++)
-        {
-            if ((slot & (8 >> index)) == 0) continue;
-            int bit = groupKey.BitDepth + index;
-            path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
-        }
+        path[^1] |= (byte)((slot & (0xF << (4 - level))) << (4 - (groupKey.BitDepth & 4)));
         return PbtNodePath.TakeOwnership(path, depth);
     }
 
@@ -550,9 +551,8 @@ public static class TrieUpdater
             return node;
         }
 
-        internal void Store(PbtNodePath path, PbtNode node)
+        internal void Store(int position, PbtNode node)
         {
-            int position = _reader.Position(path);
             _nodes[position] = node;
             _changed |= 1U << position;
         }
