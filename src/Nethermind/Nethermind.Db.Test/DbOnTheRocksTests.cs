@@ -527,18 +527,7 @@ namespace Nethermind.Db.Test
             byte[][] expectedValues = new byte[keys.Length][];
             using (DbOnTheRocks legacyDb = new(DbPath, GetRocksDbSettings(DbPath, dbName), legacyConfig, legacyFactory, LimboLogs.Instance))
             {
-                for (int i = 0; i < keys.Length; i++)
-                {
-                    expectedValues[i] = CreateDynamicLevelValue(i, 0);
-                    legacyDb.PutSpan(keys[i], expectedValues[i], WriteFlags.None);
-                }
-                legacyDb.Flush();
-                legacyDb.Compact();
-
-                Assert.That(int.Parse(legacyDb.GatherProperty("rocksdb.num-files-at-level1")!), Is.GreaterThan(0),
-                    "the legacy static-level database must contain an L1 SST before migration");
-
-                for (int batch = 1; batch < 4; batch++)
+                for (int batch = 0; batch < 4; batch++)
                 {
                     for (int i = 0; i < keys.Length; i++)
                     {
@@ -547,6 +536,14 @@ namespace Nethermind.Db.Test
                     }
 
                     legacyDb.Flush();
+
+                    if (batch == 0)
+                    {
+                        legacyDb.Compact();
+
+                        Assert.That(int.Parse(legacyDb.GatherProperty("rocksdb.num-files-at-level1")!), Is.GreaterThan(0),
+                            "the legacy static-level database must contain an L1 SST before migration");
+                    }
                 }
 
                 legacyDb.Remove(keys[deletedIndex]);
