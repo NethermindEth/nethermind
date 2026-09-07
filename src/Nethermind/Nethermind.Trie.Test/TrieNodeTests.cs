@@ -184,10 +184,10 @@ public class TrieNodeTests
         }
     }
 
-    // The live resolver answers the memoized hash of an undecoded warmer child with a node of its own; that
+    // The live resolver answers the hash of an undecoded warmer child with a node of its own; that
     // node must take the slot, or every traversal through the parent repeats the lookup, load and decode.
     [Test]
-    public void Non_warmer_child_answering_a_memoized_hash_is_memoized_in_the_parent()
+    public void Non_warmer_child_answering_an_undecoded_warmer_slot_is_memoized_in_the_parent()
     {
         (TrieNode parent, _, Hash256 childHash) = ResolvedParentOfHashedLeaf();
 
@@ -213,7 +213,7 @@ public class TrieNodeTests
             Assert.That(first, Is.SameAs(placeholder));
             Assert.That(second, Is.SameAs(liveNode));
             Assert.That(third, Is.SameAs(liveNode));
-            Assert.That(lookups, Is.EqualTo(2), "a non-warmer child answering the memoized hash was not memoized into the parent");
+            Assert.That(lookups, Is.EqualTo(2), "a non-warmer child answering an undecoded warmer slot was not memoized into the parent");
         }
     }
 

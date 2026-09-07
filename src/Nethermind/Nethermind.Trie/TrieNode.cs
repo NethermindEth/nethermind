@@ -758,7 +758,6 @@ namespace Nethermind.Trie
             else if (childOrRef is Hash256 reference)
             {
                 child = tree.FindCachedOrUnknown(childPath, reference);
-                if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) _nodeData[childIndex] = child;
             }
             else
             {
@@ -1285,7 +1284,7 @@ namespace Nethermind.Trie
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 childOrRef = child;
-                                data = child.IsWarmerOwnedNonVolatile && child.NodeType == NodeType.Unknown ? keccak : child;
+                                if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
 
                                 break;
                             }
@@ -1466,7 +1465,7 @@ namespace Nethermind.Trie
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                     childOrRef = child;
-                                    data = child.IsWarmerOwnedNonVolatile && child.NodeType == NodeType.Unknown ? keccak : child;
+                                    if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
 
                                     break;
                                 }
@@ -1505,7 +1504,6 @@ namespace Nethermind.Trie
                 else if (childOrRef is Hash256 reference)
                 {
                     child = tree.FindCachedOrUnknown(childPath, reference);
-                    if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) node._nodeData[childIndex] = child;
                 }
                 else
                 {
