@@ -18,8 +18,8 @@ namespace Ethereum.Test.Base;
 /// referenced rather than copied wherever one exists.
 /// </para>
 /// <para>
-/// <see cref="Decode"/> is deliberately outside that invariant. Its fragments are generic RLP-decoder text
-/// carrying no frame context, so they also match decode failures from unrelated payloads. That only widens
+/// <see cref="Decode"/> is deliberately outside that invariant. Most of its fragments are generic RLP-decoder
+/// text carrying no frame context, so they also match decode failures from unrelated payloads. That only widens
 /// what satisfies <c>TYPE_6_INVALID_FRAME_FORMAT</c> — the exception table is additive and a fixture passes
 /// when its expected label is among those matched, so a broad fragment can mask a rejection for the wrong
 /// reason but can never turn a passing lane red. Narrowing it needs frame context in the decoder messages
@@ -124,6 +124,9 @@ public static class FrameExceptionFragments
         // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
+        // An overlong declared payload length runs the trailing recent-root-reference list off the end
+        // of the buffer. Frame context, so this does not widen the label to unrelated truncations.
+        "frame transaction recent root reference list is incomplete",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",

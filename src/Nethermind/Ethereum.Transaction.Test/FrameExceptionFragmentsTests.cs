@@ -15,13 +15,16 @@ namespace Ethereum.Transaction.Test;
 /// Guards the client wordings behind each frame-transaction fixture label.
 /// </summary>
 /// <remarks>
-/// The two <c>DecodeFailureMessage</c> tests drive the real decoder, so they fail if its wording moves
+/// The <c>DecodeFailureMessage</c> tests drive the real decoder, so they fail if its wording moves
 /// away from the table. The rest assert the table against literals and cannot: a processor reword
 /// leaves both the case and the fragment green while the mapping goes dead. Reaching the processor
 /// wordings the same way needs constants behind them, which this fixture cannot add on its own.
 /// </remarks>
 public class FrameExceptionFragmentsTests
 {
+    /// <summary>The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).</summary>
+    private const int ShortSequencePrefixMax = 0xf7;
+
     private static bool Covers(IEnumerable<string> fragments, string message)
     {
         foreach (string fragment in fragments)
@@ -32,8 +35,8 @@ public class FrameExceptionFragmentsTests
         return false;
     }
 
-    /// <summary>Encodes a frame transaction payload, defective only in the field the caller varies.</summary>
-    private static string DecodeFailureMessage(Rlp frames, Rlp maxPriorityFeePerGas)
+    /// <summary>Encodes a frame transaction payload, varying only the fields the caller supplies.</summary>
+    private static byte[] EncodePayload(Rlp frames, Rlp maxPriorityFeePerGas)
     {
         Rlp payloadSequence = Rlp.Encode(
             Rlp.Encode(1L),                      // chain_id
@@ -47,7 +50,14 @@ public class FrameExceptionFragmentsTests
         byte[] payload = new byte[1 + payloadSequence.Length];
         payload[0] = (byte)TxType.FrameTx;
         payloadSequence.Bytes.CopyTo(payload, 1);
+        return payload;
+    }
 
+    private static string DecodeFailureMessage(Rlp frames, Rlp maxPriorityFeePerGas) =>
+        DecodeFailureMessage(EncodePayload(frames, maxPriorityFeePerGas));
+
+    private static string DecodeFailureMessage(byte[] payload)
+    {
         // Catch, not Throws: the length guard raises the RlpLimitException subclass.
         RlpException thrown = Assert.Catch<RlpException>(() =>
         {
@@ -67,6 +77,24 @@ public class FrameExceptionFragmentsTests
             maxPriorityFeePerGas: Rlp.Encode(0L));
 
         Assert.That(message, Does.Contain("Expected a sequence prefix"));
+        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+    }
+
+    [Test]
+    public void Decode_CoversAPayloadLengthThatOverrunsTheBuffer()
+    {
+        // A frame transaction has no envelope signature, so an overlong declared length leaves the end-of-payload
+        // checkpoint past the last field; every overrun then fails at the same peek, so one case says it all.
+        byte[] payload = EncodePayload(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxPriorityFeePerGas: Rlp.Encode(0L));
+        Assert.That(payload[1] + 1, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
+            "the overrun must keep the short-form prefix, or it declares a length of length instead");
+        payload[1]++;
+
+        string message = DecodeFailureMessage(payload);
+
+        Assert.That(message, Does.Contain("RLP data is truncated"));
         Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
     }
 
