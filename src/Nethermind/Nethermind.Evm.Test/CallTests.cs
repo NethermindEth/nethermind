@@ -473,5 +473,36 @@ namespace Nethermind.Evm.Test
                 Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000).Done,
                 _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
             };
+
+        [Test]
+        public void Jump_after_a_nested_call_validates_against_the_resumed_frame()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+
+            // The destination fits a PUSH1 in both builds, so the probe has the layout of the real code.
+            int jumpDest = CallThenJump(1).Done.Length;
+            byte[] code = CallThenJump(jumpDest)
+                .Op(Instruction.JUMPDEST)
+                .PushData(1)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Error, Is.Null);
+                AssertStorage(UInt256.Zero, new byte[] { 1 });
+            }
+
+            static Prepare CallThenJump(int destination) => Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.POP)
+                .PushData(destination)
+                .Op(Instruction.JUMP)
+                .Op(Instruction.INVALID);
+        }
     }
 }

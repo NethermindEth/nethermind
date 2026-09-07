@@ -117,6 +117,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(EvmWord value) => Vector256.OnesComplement(value);
     }
 

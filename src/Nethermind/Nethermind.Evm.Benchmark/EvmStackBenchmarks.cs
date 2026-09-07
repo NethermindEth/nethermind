@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Benchmark
         [ArgumentsSource(nameof(ValueSource))]
         public UInt256 Uint256(UInt256 v)
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.PushUInt256<OffFlag>(in v);
             stack.PopUInt256(out UInt256 value);
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public byte Byte()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             int b = 1;
 
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushZero()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.PushZero<OffFlag, OnFlag>();
             stack.PushZero<OffFlag, OnFlag>();
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushOne()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.PushOne<OffFlag>();
             stack.PushOne<OffFlag>();
@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushUInt32()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.PushUInt32<OffFlag, OnFlag>(0x10203040);
             stack.PushUInt32<OffFlag, OnFlag>(0x50607080);
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushUInt64()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.PushUInt64<OffFlag, OnFlag>(0x1020304050607080);
             stack.PushUInt64<OffFlag, OnFlag>(0x90A0B0C0D0E0F000);
@@ -135,7 +135,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void Swap()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.Swap<OffFlag, OnFlag>(2);
             stack.Swap<OffFlag, OnFlag>(2);
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void Dup()
         {
-            EvmStack stack = new(1, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
+            EvmStack stack = new(1, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default, null);
 
             stack.Dup<OffFlag, OnFlag>(1);
             stack.Dup<OffFlag, OnFlag>(1);

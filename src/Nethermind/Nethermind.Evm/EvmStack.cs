@@ -13,6 +13,7 @@ using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -28,19 +29,21 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
+    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
     {
         Head = head;
         _tracer = txTracer;
+        _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
     }
 
-    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
+    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
     {
         Head = head;
         _tracer = null!;
+        _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
@@ -67,6 +70,25 @@ public ref partial struct EvmStack
     /// with a program counter.
     /// </remarks>
     internal readonly nint CodeLength;
+    private readonly CodeInfo? _codeInfo;
+    private long[]? _jumpDestinations;
+
+    /// <summary>The jump-destination bitmap of <see cref="Code"/>, resolved on the first in-range jump and kept in the frame.</summary>
+    /// <remarks>
+    /// Kept on the stack so a jump validates against the frame it is executing without walking
+    /// <c>vm.VmState.Env.CodeInfo</c>. Resolving lazily keeps the analysis off the path of frames that
+    /// never jump. Only a stack built over no code may omit the code info; the empty bitmap then rejects
+    /// every destination.
+    /// </remarks>
+    internal long[] JumpDestinations
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
+            return _jumpDestinations ??= _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+        }
+    }
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;

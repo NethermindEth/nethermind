@@ -157,7 +157,7 @@ public static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            nint jumpTarget = JumpDestination((int)destination, vm.VmState.Env);
+            nint jumpTarget = JumpDestination((int)destination, ref stack);
             if (jumpTarget < 0)
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
