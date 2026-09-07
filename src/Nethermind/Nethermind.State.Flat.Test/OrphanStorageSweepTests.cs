@@ -214,9 +214,36 @@ public class OrphanStorageSweepTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scannedByFirstSweep, Is.EqualTo(2));
-            Assert.That(_sweep.Report.SlotsScanned, Is.EqualTo(3), "a completed sweep leaves no cursor behind, so a forced pass covers the whole column again rather than the tail the last yield stopped at");
+            Assert.That(_sweep.Report.SlotsScanned, Is.EqualTo(1), "a completed sweep leaves no cursor behind, so a forced pass starts at the beginning of the key space and finds the slot written below the last yield point, which a stale cursor would skip");
             Assert.That(reader.TryGetStorageRaw(PathWithPrefix(0x00000001, tail: 0x01), slot, ref value), Is.False);
         }
+    }
+
+    [Test]
+    public void A_sweep_resumed_by_a_new_instance_reports_the_whole_sweep()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(PathWithPrefix(0x10000000, tail: 0x01), slot, EncodedValue);
+            batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
+        }
+
+        _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
+        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
+        manager.GetCurrentPersistedStateId().Returns(new StateId(1, Keccak.EmptyTreeHash));
+        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
+            .Do(call =>
+            {
+                using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
+            });
+        using OrphanStorageSweep resumed = new(_db, manager, LimboLogs.Instance);
+
+        OrphanStorageReport report = resumed.RunToCompletion(repair: true, CancellationToken.None);
+
+        Assert.That(report, Is.EqualTo(new OrphanStorageReport(SlotsScanned: 2, OrphanSlots: 2, OrphanAccounts: 2, MissingAccounts: 2, EmptyRootAccounts: 0)),
+            "the tally travels with the cursor, so a sweep finished by a later process reports everything the sweep did, not the last leg");
     }
 
     [Test]
