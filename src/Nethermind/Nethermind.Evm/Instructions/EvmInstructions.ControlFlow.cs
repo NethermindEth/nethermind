@@ -379,6 +379,7 @@ public static partial class EvmInstructions
         env.CodeInfo.ValidateJump(jumpDestination) ? jumpDestination : -1;
 
     /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
+    /// <remarks>Hints the target explicitly to reduce cache misses after non-sequential control flow.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void PrefetchCodeAtDestination(ref EvmStack stack, nint programCounter)
     {
