@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -15,14 +17,12 @@ public class TrieNodeCacheTests
 {
     private TrieNodeCache _cache = null!;
     private FlatDbConfig _config = null!;
-    private ResourcePool _resourcePool = null!;
 
     [SetUp]
     public void SetUp()
     {
         _config = new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB };
         _cache = new TrieNodeCache(_config, LimboLogs.Instance);
-        _resourcePool = new ResourcePool(_config);
     }
 
     [Test]
@@ -71,10 +71,7 @@ public class TrieNodeCacheTests
         Hash256 hash = Keccak.Compute([1, 2, 3]);
         TrieNode trieNode = new(NodeType.Leaf, hash);
 
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in path, trieNode);
 
         bool found = _cache.TryGet(null, in path, hash, out TrieNode? retrievedNode);
 
@@ -90,10 +87,7 @@ public class TrieNodeCacheTests
         Hash256 hash = Keccak.Compute([3, 4, 5]);
         TrieNode trieNode = new(NodeType.Branch, hash);
 
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address, in path, trieNode);
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(address, in path, trieNode);
 
         bool found = _cache.TryGet(address, in path, hash, out TrieNode? retrievedNode);
 
@@ -106,16 +100,12 @@ public class TrieNodeCacheTests
     {
         FlatDbConfig zeroConfig = new() { TrieCacheMemoryBudget = 0 };
         TrieNodeCache zeroCache = new(zeroConfig, LimboLogs.Instance);
-        ResourcePool zeroResourcePool = new(zeroConfig);
 
         TreePath path = TreePath.FromHexString("abcd");
         Hash256 hash = Keccak.Compute([1, 2, 3]);
         TrieNode trieNode = new(NodeType.Leaf, hash);
 
-        TransientResource transientResource = zeroResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
-
-        zeroCache.Add(transientResource);
+        zeroCache.GetOrAdd(null, in path, trieNode);
 
         bool found = zeroCache.TryGet(null, in path, hash, out TrieNode? retrievedNode);
 
@@ -126,8 +116,6 @@ public class TrieNodeCacheTests
     [Test]
     public void Add_MultipleNodes_AllRetrievable()
     {
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-
         TreePath path1 = TreePath.FromHexString("1111");
         TreePath path2 = TreePath.FromHexString("2222");
         TreePath path3 = TreePath.FromHexString("3333");
@@ -135,11 +123,9 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([2]);
         Hash256 hash3 = Keccak.Compute([3]);
 
-        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Branch, hash2));
-        transientResource.Nodes.Set(null, in path3, new TrieNode(NodeType.Extension, hash3));
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in path1, new TrieNode(NodeType.Leaf, hash1));
+        _cache.GetOrAdd(null, in path2, new TrieNode(NodeType.Branch, hash2));
+        _cache.GetOrAdd(null, in path3, new TrieNode(NodeType.Extension, hash3));
 
         Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
         Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
@@ -149,18 +135,14 @@ public class TrieNodeCacheTests
     [Test]
     public void Add_MixedStateAndStorageNodes_AllRetrievable()
     {
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-
         Hash256 storageAddress = Keccak.Compute([0xaa]);
         TreePath statePath = TreePath.FromHexString("1111");
         TreePath storagePath = TreePath.FromHexString("2222");
         Hash256 stateHash = Keccak.Compute([1]);
         Hash256 storageHash = Keccak.Compute([2]);
 
-        transientResource.Nodes.Set(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
-        transientResource.Nodes.Set(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
+        _cache.GetOrAdd(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
 
         Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
         Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
@@ -174,10 +156,7 @@ public class TrieNodeCacheTests
         Hash256 queryHash = Keccak.Compute([4, 5, 6]);
         TrieNode trieNode = new(NodeType.Leaf, storedHash);
 
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in path, trieNode);
 
         bool found = _cache.TryGet(null, in path, queryHash, out TrieNode? retrievedNode);
 
@@ -192,15 +171,9 @@ public class TrieNodeCacheTests
         Hash256 hash1 = Keccak.Compute([1, 2, 3]);
         Hash256 hash2 = Keccak.Compute([4, 5, 6]);
 
-        TransientResource transientResource1 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource1.Nodes.Set(null, in path, new TrieNode(NodeType.Leaf, hash1));
+        _cache.GetOrAdd(null, in path, new TrieNode(NodeType.Leaf, hash1));
 
-        _cache.Add(transientResource1);
-
-        TransientResource transientResource2 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource2.Nodes.Set(null, in path, new TrieNode(NodeType.Leaf, hash2));
-
-        _cache.Add(transientResource2);
+        _cache.GetOrAdd(null, in path, new TrieNode(NodeType.Leaf, hash2));
 
         Assert.That(_cache.TryGet(null, in path, hash1, out _), Is.False);
         Assert.That(_cache.TryGet(null, in path, hash2, out _), Is.True);
@@ -214,11 +187,8 @@ public class TrieNodeCacheTests
         Hash256 hash1 = Keccak.Compute([1]);
         Hash256 hash2 = Keccak.Compute([2]);
 
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Leaf, hash2));
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in path1, new TrieNode(NodeType.Leaf, hash1));
+        _cache.GetOrAdd(null, in path2, new TrieNode(NodeType.Leaf, hash2));
 
         Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
         Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
@@ -234,11 +204,8 @@ public class TrieNodeCacheTests
         Hash256 hash1 = Keccak.Compute([1]);
         Hash256 hash2 = Keccak.Compute([2]);
 
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address1, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(address2, in path2, new TrieNode(NodeType.Leaf, hash2));
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(address1, in path1, new TrieNode(NodeType.Leaf, hash1));
+        _cache.GetOrAdd(address2, in path2, new TrieNode(NodeType.Leaf, hash2));
 
         Assert.That(_cache.TryGet(address1, in path1, hash1, out _), Is.True);
         Assert.That(_cache.TryGet(address2, in path2, hash2, out _), Is.True);
@@ -248,7 +215,6 @@ public class TrieNodeCacheTests
     public void Clear_RemovesAllCachedNodes()
     {
         // Add multiple nodes across different shards
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
 
         TreePath path1 = TreePath.FromHexString("1000");
         TreePath path2 = TreePath.FromHexString("2000");
@@ -257,11 +223,9 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute([2]);
         Hash256 hash3 = Keccak.Compute([3]);
 
-        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Branch, hash2));
-        transientResource.Nodes.Set(null, in path3, new TrieNode(NodeType.Extension, hash3));
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in path1, new TrieNode(NodeType.Leaf, hash1));
+        _cache.GetOrAdd(null, in path2, new TrieNode(NodeType.Branch, hash2));
+        _cache.GetOrAdd(null, in path3, new TrieNode(NodeType.Extension, hash3));
 
         // Verify nodes are cached
         Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
@@ -280,18 +244,14 @@ public class TrieNodeCacheTests
     [Test]
     public void Clear_RemovesStateAndStorageNodes()
     {
-        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-
         Hash256 storageAddress = Keccak.Compute([0xaa]);
         TreePath statePath = TreePath.FromHexString("1111");
         TreePath storagePath = TreePath.FromHexString("2222");
         Hash256 stateHash = Keccak.Compute([1]);
         Hash256 storageHash = Keccak.Compute([2]);
 
-        transientResource.Nodes.Set(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
-        transientResource.Nodes.Set(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
-
-        _cache.Add(transientResource);
+        _cache.GetOrAdd(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
+        _cache.GetOrAdd(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
 
         // Verify nodes are cached
         Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
@@ -303,6 +263,80 @@ public class TrieNodeCacheTests
         // Verify all nodes are removed
         Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.False);
         Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.False);
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(true, 0)]
+    [TestCase(false, 1048576)]
+    [TestCase(true, 1048576)]
+    public void Add_TransientOnlyPrunesChildrenWithoutPromotion(bool storage, int budget)
+    {
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = (ulong)budget }, LimboLogs.Instance);
+        using TransientResource transientResource = new(new TransientResource.Size(1024, 1024));
+        Hash256? address = storage ? Keccak.Zero : null;
+        TreePath path = TreePath.Empty;
+        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode parent = new(NodeType.Branch);
+        parent.SetChild(0, child);
+        parent.ResolveKey(NullTrieStore.Instance, ref path);
+        transientResource.Nodes.Set(address, in path, parent);
+
+        cache.Add(transientResource);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGet(address, in path, parent.Keccak!, out _), Is.False);
+            Assert.That(parent.GetChild(NullTrieStore.Instance, ref path, 0), Is.Not.SameAs(child));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void GetOrAdd_ConcurrentSameHashPreservesIdentity(bool storage)
+    {
+        Hash256? address = storage ? Keccak.Zero : null;
+        TreePath path = TreePath.Empty;
+        TrieNode[] nodes = new TrieNode[256];
+        Parallel.For(0, nodes.Length, i => nodes[i] = _cache.GetOrAdd(address, in path, new TrieNode(NodeType.Unknown, Keccak.Zero)));
+        Assert.That(nodes, Is.All.SameAs(nodes[0]));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Add_PrunesDirectlyCachedChildrenWithoutTransientTracking(bool storage)
+    {
+        using TransientResource transientResource = new(new TransientResource.Size(1024, 1024));
+        Hash256? address = storage ? Keccak.Zero : null;
+        TreePath path = TreePath.Empty;
+        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode parent = new(NodeType.Branch);
+        parent.SetChild(0, child);
+        parent.ResolveKey(NullTrieStore.Instance, ref path);
+        _cache.GetOrAdd(address, in path, parent);
+
+        _cache.Add(transientResource);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(address, in path, parent.Keccak!, out TrieNode? cachedNode), Is.True);
+            Assert.That(cachedNode, Is.SameAs(parent));
+            Assert.That(transientResource.CachedNodes, Is.Zero);
+            Assert.That(parent.GetChild(NullTrieStore.Instance, ref path, 0), Is.Not.SameAs(child));
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(1048576)]
+    public void Add_EnforcesSampledMemoryBudget(int budget)
+    {
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = (ulong)budget }, LimboLogs.Instance);
+        using TransientResource transientResource = new(new TransientResource.Size(1024, 1024));
+        TreePath path = TreePath.Empty;
+        cache.GetOrAdd(null, in path, new TrieNode(NodeType.Unknown, Keccak.Zero));
+
+        cache.Add(transientResource);
+
+        Assert.That(cache.TryGet(null, in path, Keccak.Zero, out _), Is.EqualTo(budget > 1));
     }
 }
 
