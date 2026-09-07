@@ -74,6 +74,8 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
         "block_based_table_factory.partition_filters=true;" +
         "block_based_table_factory.metadata_block_size=4096;" +
+        "block_based_table_factory.index_block_search_type=kAuto;" +
+        "block_based_table_factory.uniform_cv_threshold=0.2;" +
 
         "block_based_table_factory.filter_policy=bloomfilter:10;" +
         "";
