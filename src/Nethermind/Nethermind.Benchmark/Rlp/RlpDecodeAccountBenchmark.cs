@@ -12,8 +12,6 @@ namespace Nethermind.Benchmarks.Rlp
     {
         private static byte[] _account;
 
-        // Built directly: AccountBuilder.WithBalance narrows to ulong, so it cannot carry the
-        // wide balance this benchmark exists to exercise.
         private byte[][] _scenarios =
         {
             Serialization.Rlp.Rlp.Encode(Account.TotallyEmpty).Bytes,
