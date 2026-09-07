@@ -18,12 +18,13 @@ namespace Nethermind.Taiko.Test;
 public class TaikoPrecompileShapeTests
 {
     /// <summary>Every Taiko fork spec, with the flags that register the two far precompiles set.</summary>
-    /// <remarks>The flags are set before <c>Precompiles</c> is first read, which is what builds the set,
-    /// so each fork is swept with its full registration rather than its default one.</remarks>
+    /// <remarks>The flags are set before <c>Precompiles</c> is first read, which is what builds the set, so
+    /// each fork is swept with its full registration rather than its default one. Nothing is filtered out:
+    /// a fork this cannot construct has to break the sweep, since one that quietly shrinks stops defending
+    /// the newest registration — the one most likely to need it.</remarks>
     private static IEnumerable<TestCaseData> TaikoForks() =>
         typeof(ITaikoReleaseSpec).Assembly.GetTypes()
-            .Where(t => !t.IsAbstract && typeof(ITaikoReleaseSpec).IsAssignableFrom(t)
-                        && t.GetConstructor(Type.EmptyTypes) is not null)
+            .Where(t => !t.IsAbstract && typeof(ITaikoReleaseSpec).IsAssignableFrom(t))
             .Select(t =>
             {
                 object spec = Activator.CreateInstance(t)!;

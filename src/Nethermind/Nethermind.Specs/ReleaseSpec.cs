@@ -149,8 +149,9 @@ public class ReleaseSpec : IReleaseSpec
     /// <summary>Rejects a registration <see cref="IsPrecompile"/> could never find.</summary>
     /// <remarks>Membership rejects on address shape before consulting the set, so a precompile with a
     /// non-zero byte above its number is unreachable: the call would resolve as an ordinary empty account,
-    /// with no exception anywhere and a consensus divergence to show for it. Failing when the set is built
-    /// turns that into a startup failure on the chain that registered it.</remarks>
+    /// with no exception anywhere and a consensus divergence to show for it. The set is built on first use,
+    /// so failing here surfaces as a failed block on the chain that registered one — loudly, and before it
+    /// can be mistaken for a valid state root.</remarks>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowUnreachablePrecompile(Address address) =>
         throw new InvalidOperationException(
