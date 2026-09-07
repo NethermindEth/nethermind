@@ -46,6 +46,9 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
+
+    // Incrementing this invalidates queued warmer jobs, including jobs owned by leased warmup sessions.
+    private volatile int _hintSequenceId;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -567,6 +570,10 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    internal int HintSequenceId => _hintSequenceId;
+
+    internal void StopWarming() => Interlocked.Increment(ref _hintSequenceId);
+
     internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
         in StateId baseState,
         ITrieWarmer trieWarmer,
@@ -584,6 +591,7 @@ public sealed class SnapshotBundle : IDisposable
 
             FlatTrieWarmupSession session = new(
                 baseState,
+                this,
                 readOnlySnapshotBundle,
                 transientResource,
                 _trieNodeCache,

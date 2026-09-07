@@ -1174,6 +1174,40 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void OwnedTrieWarmupSession_StopsQueuedWarmupWhenMainWarmerStops()
+    {
+        FlatDbConfig config = new();
+        TrackingResourcePool resourcePool = new();
+        ReadOnlySnapshotBundle snapshotBundle = new(
+            new SnapshotPooledList(0), new RecordingPersistenceReader(), false, PersistedSnapshotStack.Empty());
+        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, Substitute.For<ITrieNodeCache>());
+        using DeferredTrieWarmer trieWarmer = new();
+        using FlatScopeProvider provider = new(
+            new TestMemDb(),
+            flatDbManager,
+            config,
+            trieWarmer,
+            ResourcePool.Usage.MainBlockProcessing,
+            LimboLogs.Instance,
+            isReadOnly: false);
+        using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
+            Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject, new LocalMetrics());
+        using IWorldStateScopeProvider.ITrieWarmupSession session = ordinaryScope.CreateTrieWarmupSession();
+
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        ordinaryScope.StartWriteBatch(0).Dispose();
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
+            Assert.That(trieWarmer.CompleteAccountJob(), Is.False);
+        }
+    }
+
+    [Test]
     public void OwnedTrieWarmupSession_DisposeRejectsNewHintsAndInFlightJobsFinishSafely()
     {
         FlatDbConfig config = new();
@@ -1269,6 +1303,7 @@ public class FlatWorldStateScopeProviderTests
     {
         private ITrieWarmer.IAddressWarmer? _addressWarmer;
         private Address? _address;
+        private int _sequenceId;
 
         public ManualResetEventSlim JobAccepted { get; } = new(false);
         public int AddressJobPushes { get; private set; }
@@ -1284,11 +1319,12 @@ public class FlatWorldStateScopeProviderTests
             AddressJobPushes++;
             _addressWarmer = scope;
             _address = path;
+            _sequenceId = sequenceId;
             JobAccepted.Set();
             return true;
         }
 
-        public void CompleteAccountJob() => _addressWarmer!.WarmUpStateTrie(_address!, sequenceId: 0);
+        public bool CompleteAccountJob() => _addressWarmer!.WarmUpStateTrie(_address!, _sequenceId);
 
         public void OnEnterScope() => EnterCount++;
 
