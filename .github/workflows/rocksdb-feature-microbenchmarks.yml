@@ -1,0 +1,185 @@
+name: RocksDB feature microbenchmarks
+
+on:
+  push:
+    branches:
+      - test/rocksdb-feature-benchmarks
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BENCHMARK_PROJECT: src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj
+  RESULTS_ROOT: rocksdb-feature-results
+
+jobs:
+  microbenchmark:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - id: account-interpolation-read-hit
+            dataset: Account
+            variant: FlatAccountInterpolation
+            method: ReadHit
+          - id: account-auto-index-read-hit
+            dataset: Account
+            variant: AutoIndexUniform
+            method: ReadHit
+          - id: bytecode-separated-read-hit
+            dataset: Bytecode
+            variant: SeparatedKeyValue
+            method: ReadHit
+          - id: blocks-ribbon-read-miss
+            dataset: Blocks
+            variant: RibbonFilter
+            method: ReadMiss
+          - id: bytecode-data-block-hash-read-hit
+            dataset: Bytecode
+            variant: DataBlockBinaryHash
+            method: ReadHit
+          - id: blocks-lz4-rewrite-flush
+            dataset: Blocks
+            variant: Lz4
+            method: RewriteAndFlush
+          - id: blocks-format7-read-hit
+            dataset: Blocks
+            variant: Format7
+            method: ReadHit
+          - id: account-memtable-multiget
+            dataset: Account
+            variant: MemtableBatchLookup
+            method: MultiGetMemtableResident
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Free unused runner disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: false
+          dotnet: false
+          haskell: false
+          large-packages: false
+          docker-images: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Capture benchmark environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULTS_ROOT}"
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "dataset=${{ matrix.dataset }}"
+            echo "variant=${{ matrix.variant }}"
+            echo "method=${{ matrix.method }}"
+            echo "runner=${RUNNER_NAME}"
+            echo
+            uname -a
+            echo
+            dotnet --info
+            echo
+            git status --short --branch
+          } | tee "${RESULTS_ROOT}/provenance.txt"
+
+      - name: Restore benchmark project
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore "${BENCHMARK_PROJECT}" --locked-mode
+
+      - name: Build benchmark project
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build "${BENCHMARK_PROJECT}" \
+            --configuration Release \
+            --no-restore \
+            --disable-build-servers \
+            -m:2 \
+            -p:RunAnalyzersDuringBuild=false
+
+      - name: Run baseline and variant probes
+        shell: bash
+        env:
+          DATASET: ${{ matrix.dataset }}
+          VARIANT: ${{ matrix.variant }}
+          METHOD: ${{ matrix.method }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${RESULTS_ROOT}/standalone" "${RESULTS_ROOT}/bdn-baseline" "${RESULTS_ROOT}/bdn-variant"
+
+          run_standalone() {
+            local arm="$1"
+            local variant="$2"
+            local log="${RESULTS_ROOT}/standalone/${arm}.log"
+            echo "Running standalone ${arm}: ${DATASET}/${variant}"
+            dotnet run --project "${BENCHMARK_PROJECT}" --configuration Release --no-build -- \
+              --rocksdb-feature-standalone \
+              --rocksdb-feature-dataset "${DATASET}" \
+              --rocksdb-feature-variant "${variant}" \
+              --rocksdb-feature-operations 20 2>&1 | tee "${log}"
+            grep -Fq "dataset=${DATASET} variant=${variant}" "${log}"
+            grep -Fq "total_cpu_ms=" "${log}"
+            grep -Fq "private_bytes_phase_max=" "${log}"
+            grep -Fq "disk_bytes=" "${log}"
+          }
+
+          run_bdn() {
+            local arm="$1"
+            local variant="$2"
+            local artifacts="${RESULTS_ROOT}/bdn-${arm}"
+            local log="${RESULTS_ROOT}/bdn-${arm}.log"
+            echo "Running BDN ${arm}: ${DATASET}/${variant}/${METHOD}"
+            dotnet run --project "${BENCHMARK_PROJECT}" --configuration Release --no-build -- \
+              --rocksdb-feature-benchmarks \
+              --rocksdb-feature-dataset "${DATASET}" \
+              --rocksdb-feature-variant "${variant}" \
+              --quick \
+              --filter "*RocksDbFeatureBenchmarks.${METHOD}*" \
+              --warmupCount 1 \
+              --iterationCount 3 \
+              --launchCount 1 \
+              --exporters json,csv \
+              --artifacts "${artifacts}" 2>&1 | tee "${log}"
+            grep -Fq "Summary" "${log}"
+            if grep -Eiq "no benchmarks|there are no benchmarks" "${log}"; then
+              echo "BenchmarkDotNet reported no selected benchmark." >&2
+              return 1
+            fi
+            grep -Fq "${METHOD}" "${log}"
+            find "${artifacts}" -type f \( -name '*.json' -o -name '*.csv' \) -print -quit | grep -q .
+          }
+
+          # Keep baseline immediately beside its option variant on the same hosted VM.
+          run_standalone baseline Baseline
+          run_standalone variant "${VARIANT}"
+          run_bdn baseline Baseline
+          run_bdn variant "${VARIANT}"
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocksdb-feature-${{ matrix.id }}
+          path: rocksdb-feature-results
+          if-no-files-found: error
+          retention-days: 14
