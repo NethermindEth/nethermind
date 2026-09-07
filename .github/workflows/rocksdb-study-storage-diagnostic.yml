@@ -1,0 +1,183 @@
+name: RocksDB Study Storage Diagnostic
+
+# Manual read-only inspection of the benchmark runners. This intentionally does not prepare an
+# image, prune Docker state, remove files, change mounts, or inspect benchmark corpus contents.
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: >-
+          Runner to inspect: arm64 maps to reproducible-benchmarks-arm; amd64 maps to
+          reproducible-benchmarks.
+        required: true
+        type: choice
+        options:
+          - arm64
+          - amd64
+        default: arm64
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-storage:
+    name: Inspect ${{ inputs.arch }} runner storage
+    runs-on:
+      - self-hosted
+      - ${{ inputs.arch == 'arm64' && 'reproducible-benchmarks-arm' || 'reproducible-benchmarks' }}
+    timeout-minutes: 5
+    env:
+      DIAGNOSTIC_ARCH: ${{ inputs.arch }}
+    steps:
+      - name: Read filesystem and container storage state
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          case "${DIAGNOSTIC_ARCH}" in
+            arm64)
+              runner_label="reproducible-benchmarks-arm"
+              scratch_root="/data/expb-data/rpc-bench-scratch"
+              ;;
+            amd64)
+              runner_label="reproducible-benchmarks"
+              scratch_root="/mnt/sda/expb-data/rpc-bench-scratch"
+              ;;
+            *)
+              echo "::error::unsupported arch '${DIAGNOSTIC_ARCH}'"
+              exit 1
+              ;;
+          esac
+
+          echo "Runner label: ${runner_label}"
+          echo "Selected arch: ${DIAGNOSTIC_ARCH}"
+          echo "Configured study scratch: ${scratch_root}"
+
+          nearest_existing() {
+            local candidate="$1"
+            while [[ ! -e "${candidate}" && "${candidate}" != "/" ]]; do
+              candidate="${candidate%/*}"
+              [[ -n "${candidate}" ]] || candidate="/"
+            done
+            readlink -f -- "${candidate}" 2>/dev/null || printf '%s' "${candidate}"
+          }
+
+          probe_path() {
+            local label="$1" requested="$2" canonical status mount_info
+            echo
+            echo "== ${label} =="
+            echo "requested=${requested:-<unset>}"
+            if [[ -z "${requested}" ]]; then
+              echo "status=unset"
+              return 0
+            fi
+
+            if [[ -e "${requested}" ]]; then
+              status="present"
+            else
+              status="missing"
+            fi
+            canonical="$(nearest_existing "${requested}")"
+            echo "status=${status}"
+            echo "canonical=${canonical}"
+            if [[ "${status}" == "missing" ]]; then
+              echo "nearest_existing=${canonical}"
+            fi
+
+            if command -v findmnt >/dev/null 2>&1; then
+              mount_info="$(findmnt -T -- "${canonical}" -o TARGET,SOURCE,FSTYPE,OPTIONS 2>/dev/null || true)"
+              if [[ -n "${mount_info}" ]]; then
+                echo "findmnt:"
+                printf '%s\n' "${mount_info}"
+              else
+                echo "findmnt: unavailable for ${canonical}"
+              fi
+            else
+              echo "findmnt: command unavailable"
+            fi
+
+            echo "df_bytes:"
+            df -P -B1 -- "${canonical}" 2>/dev/null || echo "df_bytes: unavailable"
+            echo "df_inodes:"
+            df -Pi -- "${canonical}" 2>/dev/null || echo "df_inodes: unavailable"
+          }
+
+          probe_path "/ filesystem" "/"
+          probe_path "RUNNER_TEMP" "${RUNNER_TEMP:-}"
+          probe_path "containerd data path" "/var/lib/containerd"
+          probe_path "Docker data path" "/var/lib/docker"
+          probe_path "configured study scratch" "${scratch_root}"
+
+          docker_root=""
+          docker_driver=""
+          if command -v docker >/dev/null 2>&1; then
+            docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
+            docker_driver="$(docker info --format '{{.Driver}}' 2>/dev/null || true)"
+          fi
+          [[ "${docker_root}" == "<no value>" ]] && docker_root=""
+          [[ "${docker_driver}" == "<no value>" ]] && docker_driver=""
+          echo
+          echo "== Docker =="
+          echo "storage_driver=${docker_driver:-unavailable}"
+          echo "DockerRootDir=${docker_root:-unavailable}"
+          [[ -n "${docker_root}" ]] && probe_path "DockerRootDir" "${docker_root}"
+
+          containerd_pid=""
+          if command -v systemctl >/dev/null 2>&1; then
+            containerd_pid="$(systemctl show --property=MainPID --value containerd.service 2>/dev/null || true)"
+          fi
+          if [[ ! "${containerd_pid}" =~ ^[1-9][0-9]*$ ]] && command -v pgrep >/dev/null 2>&1; then
+            containerd_pid="$(pgrep -xo containerd 2>/dev/null || true)"
+          fi
+
+          containerd_root=""
+          containerd_state=""
+          if [[ "${containerd_pid}" =~ ^[1-9][0-9]*$ && -r "/proc/${containerd_pid}/cmdline" ]]; then
+            containerd_args=()
+            while IFS= read -r -d '' argument; do
+              containerd_args+=("${argument}")
+            done < "/proc/${containerd_pid}/cmdline"
+            for ((index = 0; index < ${#containerd_args[@]}; index++)); do
+              case "${containerd_args[index]}" in
+                --root=*) containerd_root="${containerd_args[index]#--root=}" ;;
+                --state=*) containerd_state="${containerd_args[index]#--state=}" ;;
+                --root)
+                  (( index + 1 < ${#containerd_args[@]} )) && containerd_root="${containerd_args[index + 1]}"
+                  ;;
+                --state)
+                  (( index + 1 < ${#containerd_args[@]} )) && containerd_state="${containerd_args[index + 1]}"
+                  ;;
+              esac
+            done
+          fi
+          if [[ -r "/etc/containerd/config.toml" ]]; then
+            [[ -n "${containerd_root}" ]] || containerd_root="$(awk -F= '
+              /^[[:space:]]*\[/ { exit }
+              $1 ~ /^[[:space:]]*root[[:space:]]*$/ { value=$2; gsub(/[[:space:]\"]/, "", value); print value; exit }
+            ' /etc/containerd/config.toml 2>/dev/null || true)"
+            [[ -n "${containerd_state}" ]] || containerd_state="$(awk -F= '
+              /^[[:space:]]*\[/ { exit }
+              $1 ~ /^[[:space:]]*state[[:space:]]*$/ { value=$2; gsub(/[[:space:]\"]/, "", value); print value; exit }
+            ' /etc/containerd/config.toml 2>/dev/null || true)"
+          fi
+
+          echo
+          echo "== containerd =="
+          echo "pid=${containerd_pid:-unavailable}"
+          echo "configured_root=${containerd_root:-not present in process arguments}"
+          echo "configured_state=${containerd_state:-not present in process arguments}"
+          [[ -n "${containerd_root}" ]] && probe_path "containerd configured root" "${containerd_root}"
+          [[ -n "${containerd_state}" ]] && probe_path "containerd configured state" "${containerd_state}"
+
+          echo
+          echo "== deleted-open aggregate =="
+          if command -v lsof >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+            deleted_open="$(timeout 20s lsof -nP -Fpns +L1 2>/dev/null | awk '
+              /^p[0-9]+$/ { if (seen) count++; seen=1; next }
+              /^s[0-9]+$/ { bytes += substr($0, 2); next }
+              END { if (seen) count++; printf "count=%d bytes=%d\n", count + 0, bytes + 0 }
+            ' || true)"
+            echo "${deleted_open:-unavailable}"
+          else
+            echo "unavailable (lsof and timeout are required)"
+          fi
