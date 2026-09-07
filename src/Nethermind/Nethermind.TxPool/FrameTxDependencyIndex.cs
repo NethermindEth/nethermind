@@ -35,7 +35,9 @@ internal sealed class FrameTxDependencyIndex
     /// <remarks>The membership test and the write share this index's lock, so a removal racing a caller that read
     /// the transaction earlier — block production evicting while its prefix re-simulates — either lands first and
     /// leaves nothing to re-index, or lands after and clears what was written. A recreated entry would leak: later
-    /// heads skip the absent transaction without cleaning up after it, and no removal is left to run.</remarks>
+    /// heads skip the absent transaction without cleaning up after it, and no removal is left to run.
+    /// Membership stands in for entry identity because admission takes the pool's head read lock and revalidation
+    /// its write lock, so the same hash cannot be re-admitted between a caller's read and its update.</remarks>
     public void Update(ValueHash256 hash, AddressAsKey[] accounts)
     {
         lock (_lock)
