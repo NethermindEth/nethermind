@@ -3977,6 +3977,42 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_does_not_reindex_a_transaction_evicted_while_its_prefix_simulated()
+        {
+            // Block production evicts without the head lock, so the removal can land while the head loop is
+            // inside the simulation. Re-indexing the accepted result would leave a dependency entry behind a
+            // transaction the pool no longer holds, and no later head removes it.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Stands in for the concurrent eviction, pinned to the one interleaving that matters: it lands
+            // after the sweep read the transaction and before the accepted result is indexed.
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+                .Returns(_ =>
+                {
+                    _txPool.EvictTransaction(tx);
+                    return FrameTxSimulationResult.Accept(TestItem.AddressD);
+                });
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the eviction must have taken, or nothing was raced");
+                Assert.That(TrackedFrameTxDependencies(), Is.Zero, "the finished simulation must not recreate the removed entry");
+            }
+        }
+
+        private int TrackedFrameTxDependencies() => ((FrameTxDependencyIndex)typeof(TxPool)
+            .GetField("_frameDependencies", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(_txPool)!).Count;
+
+        [Test]
         public async Task Revalidation_eviction_leaves_the_transaction_resubmittable()
         {
             // Unlike expiry, invalidity against a head reverses, so the hash must not stay in the cache.
