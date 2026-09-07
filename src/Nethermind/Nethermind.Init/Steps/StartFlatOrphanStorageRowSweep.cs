@@ -32,7 +32,7 @@ public class StartFlatOrphanStorageRowSweep(
             if (!sweep.Value.AlreadyHandled)
             {
                 sweep.Value.MarkFormatUnsupported();
-                if (_logger.IsInfo) _logger.Info("Flat history orphan storage row sweep reads post-value (unwindowed) rows only; this history is windowed, recorded and skipped.");
+                if (_logger.IsInfo) _logger.Info("Flat history orphan storage row sweep skipped and recorded: this history is windowed, and the windowed format stores pre-values, which do not carry the same-block create-and-destroy defect; the live slots it falls through to are covered by the flat state sweep.");
             }
 
             return Task.CompletedTask;

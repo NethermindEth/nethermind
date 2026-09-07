@@ -53,7 +53,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         _loop.Start();
     }
 
-    public OrphanStorageReport RunToCompletion(bool repair, CancellationToken token)
+    internal OrphanStorageReport RunToCompletion(bool repair, CancellationToken token)
     {
         while (!RunOnePass(repair, long.MaxValue, TimeSpan.MaxValue, token))
         {
@@ -126,8 +126,12 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
         if (repair)
         {
-            if (orphans.Count > 0) persistenceManager.RunMaintenance(persistence => Delete(persistence, accounts, orphans), token);
-            if (completed) db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+            Delete(accounts, orphans, token);
+            if (completed)
+            {
+                db.GetColumnDb(FlatDbColumns.Metadata).Remove(CursorKey);
+                db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+            }
             else WriteCursor((uint)nextPrefix);
         }
         else _checkCursor = nextPrefix;
@@ -135,14 +139,39 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         return completed;
     }
 
+    internal bool TryStampFresh()
+    {
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        if (persisted != StateId.PreGenesis && persisted != StateId.Sync) return false;
+
+        db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+        return true;
+    }
+
+    private bool Drained(ulong drainedAtBlock)
+    {
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        return persisted != StateId.PreGenesis && persisted != StateId.Sync && persisted.BlockNumber >= drainedAtBlock;
+    }
+
     private void RunLoop(bool repair, ulong drainedAtBlock)
     {
         CancellationToken token = _cts.Token;
         try
         {
-            while (persistenceManager.GetCurrentPersistedStateId().BlockNumber < drainedAtBlock)
+            if (repair && TryStampFresh())
             {
-                if (token.WaitHandle.WaitOne(DrainPoll)) return;
+                if (_logger.IsInfo) _logger.Info("Flat orphan storage sweep skipped: this database has no persisted state yet, so every slot it will hold is written by a version that never leaves orphans; recorded as swept.");
+                return;
+            }
+
+            if (!Drained(drainedAtBlock))
+            {
+                if (_logger.IsInfo) _logger.Info($"Flat orphan storage {(repair ? "sweep" : "check")} waits for the persisted flat state to reach block {drainedAtBlock}, so that everything the previous binary left queued has landed first.");
+                while (!Drained(drainedAtBlock))
+                {
+                    if (token.WaitHandle.WaitOne(DrainPoll)) return;
+                }
             }
 
             if (_logger.IsInfo) _logger.Info(repair
@@ -160,7 +189,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             if (token.IsCancellationRequested) return;
 
             OrphanStorageReport report = Report;
-            string outcome = $"{report.SlotsScanned:N0} slots scanned, {report.OrphanSlots:N0} orphaned slots under {report.OrphanAccounts:N0} accounts ({report.MissingAccounts:N0} absent, {report.EmptyRootAccounts:N0} with an empty storage root) in {Stopwatch.GetElapsedTime(startedAt)}.";
+            string outcome = $"{report.SlotsScanned:N0} slots scanned, {report.OrphanSlots:N0} orphaned slots under {report.OrphanAccounts:N0} accounts ({report.MissingAccounts:N0} absent, {report.EmptyRootAccounts:N0} with an empty storage root) in {Stopwatch.GetElapsedTime(startedAt)} since this start.";
             if (repair)
             {
                 if (_logger.IsInfo) _logger.Info($"Flat orphan storage sweep done, orphaned slots deleted: {outcome}");
@@ -180,20 +209,23 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         }
     }
 
-    private void Delete(IPersistence persistence, IReadOnlyKeyValueStore accounts, List<ValueHash256> orphans)
+    private void Delete(IReadOnlyKeyValueStore accounts, List<ValueHash256> orphans, CancellationToken token)
     {
         for (int first = 0; first < orphans.Count; first += IdentitiesPerBatch)
         {
-            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            token.ThrowIfCancellationRequested();
             int last = Math.Min(orphans.Count, first + IdentitiesPerBatch);
-            for (int index = first; index < last; index++)
+            persistenceManager.RunMaintenance(batch =>
             {
-                ValueHash256 identity = orphans[index];
-                if (!IsOrphan(accounts, identity, out _)) continue;
+                for (int index = first; index < last; index++)
+                {
+                    ValueHash256 identity = orphans[index];
+                    if (!IsOrphan(accounts, identity, out _)) continue;
 
-                batch.DeleteStorageRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
-                batch.DeleteStorageTrieNodeRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
-            }
+                    batch.DeleteStorageRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                    batch.DeleteStorageTrieNodeRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                }
+            }, token);
         }
     }
 
@@ -233,7 +265,6 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         int length = accounts.Get(identity.Bytes[..IdentityLength], buffer);
         missing = length <= 0;
         if (missing) return true;
-        if (length > buffer.Length) return false;
 
         RlpReader reader = new(buffer[..length]);
         return AccountDecoder.Slim.DecodeStorageRootOnly(ref reader) == Keccak.EmptyTreeHash;

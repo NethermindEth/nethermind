@@ -35,8 +35,13 @@ public class OrphanStorageSweepTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _persistence = new RocksDbPersistence(_db, LimboLogs.Instance);
         IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence>>(), Arg.Any<CancellationToken>()))
-            .Do(call => call.Arg<Action<IPersistence>>()(_persistence));
+        manager.GetCurrentPersistedStateId().Returns(new StateId(1, Keccak.EmptyTreeHash));
+        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
+            .Do(call =>
+            {
+                using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
+            });
         _sweep = new OrphanStorageSweep(_db, manager, LimboLogs.Instance);
     }
 
@@ -180,6 +185,54 @@ public class OrphanStorageSweepTests
             Assert.That(after.TryGetStorageRaw(second, slot, ref value), Is.False);
             Assert.That(after.TryGetStorageRaw(third, slot, ref value), Is.False);
             Assert.That(_sweep.AlreadyHandled, Is.True);
+        }
+    }
+
+    [Test]
+    public void A_forced_second_sweep_starts_from_the_beginning_of_the_key_space()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(PathWithPrefix(0x10000000, tail: 0x01), slot, EncodedValue);
+            batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
+        }
+
+        _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
+        _sweep.RunToCompletion(repair: true, CancellationToken.None);
+        long scannedByFirstSweep = _sweep.Report.SlotsScanned;
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(PathWithPrefix(0x00000001, tail: 0x01), slot, EncodedValue);
+        }
+
+        _sweep.RunToCompletion(repair: true, CancellationToken.None);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        SlotValue value = default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scannedByFirstSweep, Is.EqualTo(2));
+            Assert.That(_sweep.Report.SlotsScanned, Is.EqualTo(3), "a completed sweep leaves no cursor behind, so a forced pass covers the whole column again rather than the tail the last yield stopped at");
+            Assert.That(reader.TryGetStorageRaw(PathWithPrefix(0x00000001, tail: 0x01), slot, ref value), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_database_without_a_persisted_state_is_stamped_without_a_scan()
+    {
+        IPersistenceManager fresh = Substitute.For<IPersistenceManager>();
+        fresh.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
+        using OrphanStorageSweep sweep = new(_db, fresh, LimboLogs.Instance);
+
+        bool stamped = sweep.TryStampFresh();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stamped, Is.True, "a database that has never persisted a block is being built by this binary; it cannot hold orphans and must not be swept while snap sync writes storage before accounts");
+            Assert.That(sweep.AlreadyHandled, Is.True);
+            Assert.That(_sweep.TryStampFresh(), Is.False, "a database with a persisted block state is swept");
         }
     }
 

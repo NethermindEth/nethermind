@@ -454,12 +454,15 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
-    public void RunMaintenance(Action<IPersistence> work, CancellationToken cancellationToken)
+    public void RunMaintenance(Action<IPersistence.IWriteBatch> work, CancellationToken cancellationToken)
     {
         _persistenceLock.Wait(cancellationToken);
         try
         {
-            work(persistence);
+            StateId current = GetCurrentPersistedStateId();
+            StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(unchanged, unchanged);
+            work(batch);
         }
         finally
         {
