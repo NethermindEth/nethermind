@@ -86,6 +86,26 @@ public class Eip8297CanonicalTreeTests
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
     }
 
+    [TestCase(1)]
+    [TestCase(32)]
+    [TestCase(PbtFullKey.MaxLength)]
+    public void Compressed_boundary_cursor_survives_replacement_collapse_and_reinsertion(int keyLength)
+    {
+        byte[] leftKey = new byte[keyLength];
+        byte[] rightKey = new byte[keyLength];
+        rightKey[^1] = 1;
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+
+        ApplyAll(bulk, serial, oracle, [(leftKey, Value(1)), (rightKey, Value(2))]);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "initial boundary");
+        ApplyAll(bulk, serial, oracle, [(rightKey, Value(3)), (leftKey, null)]);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "promoted survivor");
+        ApplyAll(bulk, serial, oracle, [(leftKey, Value(4)), (rightKey, Value(5))]);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "restored boundary");
+    }
+
     [Test]
     public void Deep_one_sided_divergence_ladder_rejects_buried_prefix_before_store_access()
     {
@@ -377,15 +397,31 @@ public class Eip8297CanonicalTreeTests
         }
         PbtWriteOperation[] original = (PbtWriteOperation[])operations.Clone();
 
-        TrieUpdater.BucketizeByGroupBoundary(operations, groupDepth);
+        int[] offsets = new int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
+        Array.Fill(offsets, -1);
+        TrieUpdater.BucketizeByGroupBoundary(operations, groupDepth, offsets);
 
         int[] destinations = new int[count];
+        int[] bucketCounts = new int[PbtFourLevelGroupGeometry.BoundarySlots];
         for (int index = 0; index < count; index++)
+        {
             destinations[index] = (operations[index].Key.Bytes[groupDepth / 8] >> (4 - groupDepth % 8)) & 15;
+            bucketCounts[destinations[index]]++;
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(destinations, Is.Ordered);
             Assert.That(operations, Is.EquivalentTo(original));
+            Assert.That(offsets[0], Is.Zero);
+            Assert.That(offsets[^1], Is.EqualTo(count));
+            Assert.That(offsets, Is.Ordered);
+            int expectedOffset = 0;
+            for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+            {
+                Assert.That(offsets[bucket], Is.EqualTo(expectedOffset), $"bucket {bucket} start");
+                expectedOffset += bucketCounts[bucket];
+                Assert.That(offsets[bucket + 1], Is.EqualTo(expectedOffset), $"bucket {bucket} end");
+            }
         }
     }
 
@@ -417,6 +453,14 @@ public class Eip8297CanonicalTreeTests
             }
             ApplyAll(bulk, serial, oracle, changes);
             AssertEquivalentAfterReopen(bulk, serial, oracle, "mixed boundary batch");
+
+            List<(byte[] Key, byte[]? Value)> deletions = [];
+            foreach ((byte[] key, byte[]? _) in initial) deletions.Add((key, null));
+            foreach ((byte[] key, byte[]? _) in changes) deletions.Add((key, null));
+            ApplyAll(bulk, serial, oracle, deletions);
+            AssertEquivalentAfterReopen(bulk, serial, oracle, "boundary buckets collapse to untouched survivor");
+            ApplyAll(bulk, serial, oracle, initial);
+            AssertEquivalentAfterReopen(bulk, serial, oracle, "restore boundary buckets after collapse");
         }
     }
 
@@ -519,16 +563,20 @@ public class Eip8297CanonicalTreeTests
     }
 
     [TestCase(1)]
+    [TestCase(3)]
     [TestCase(4)]
     [TestCase(5)]
+    [TestCase(7)]
     [TestCase(8)]
+    [TestCase(9)]
+    [TestCase(11)]
     [TestCase(12)]
     [TestCase(13)]
     public void Span_partition_divergence_before_on_and_after_compressed_group_boundaries_matches_oracle(int divergenceBit)
     {
-        byte[] leftKey = [0x00, 0x00];
-        byte[] existingRightKey = [0x00, 0x08];
-        byte[] insertedKey = [0x00, 0x00];
+        byte[] leftKey = Bytes.FromHexString("0x0000");
+        byte[] existingRightKey = Bytes.FromHexString("0x0008");
+        byte[] insertedKey = Bytes.FromHexString("0x0000");
         insertedKey[divergenceBit >> 3] |= (byte)(1 << (7 - (divergenceBit & 7)));
         int trailingBit = divergenceBit == 12 ? 13 : divergenceBit + 1;
         insertedKey[trailingBit >> 3] |= (byte)(1 << (7 - (trailingBit & 7)));
@@ -541,6 +589,10 @@ public class Eip8297CanonicalTreeTests
         ApplyAll(bulk, serial, oracle, [.. initial]);
         ApplyAll(bulk, serial, oracle, [.. changes]);
         AssertEquivalentAfterReopen(bulk, serial, oracle, $"divergence bit {divergenceBit}");
+        ApplyAll(bulk, serial, oracle, [(insertedKey, null), (leftKey, Value(5)), (existingRightKey, null)]);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, $"collapse divergence bit {divergenceBit}");
+        ApplyAll(bulk, serial, oracle, [.. changes]);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, $"restore divergence bit {divergenceBit}");
     }
 
     [TestCase("insert-only")]
