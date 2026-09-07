@@ -882,9 +882,13 @@ internal static partial class RlpHelpers
     /// The interning compares are 32-byte <c>memcmp</c>s that miss for every hash but two, so the
     /// leading word discriminates first and a non-interned hash never reaches one.
     /// </remarks>
+    /// <param name="span">Must be at least <see cref="Hash256.Size"/> bytes; the read is unchecked.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong FirstWord(ReadOnlySpan<byte> span)
-        => Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(span));
+    {
+        Debug.Assert(span.Length >= Hash256.Size);
+        return Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(span));
+    }
 
     [DoesNotReturn, StackTraceHidden]
     public static T ThrowNullDecodedValue<T>() => throw new RlpException($"{typeof(T).Name} decoded as null");
