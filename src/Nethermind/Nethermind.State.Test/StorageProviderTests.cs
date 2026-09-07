@@ -163,7 +163,7 @@ public class StorageProviderTests(bool useFlat)
         (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(collection)!;
 
     [Test]
-    public void Same_address_same_index_different_values_restore([Values(-1, 0, 1, 2)] int snapshot)
+    public void Same_address_same_index_different_values_restore([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -222,7 +222,7 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Same_address_different_index([Values(-1, 0, 1, 2)] int snapshot)
+    public void Same_address_different_index([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -450,7 +450,7 @@ public class StorageProviderTests(bool useFlat)
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
     [Test]
-    public void Tload_same_address_same_index_different_values_restore([Values(-1, 0, 1, 2)] int snapshot)
+    public void Tload_same_address_same_index_different_values_restore([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -509,7 +509,7 @@ public class StorageProviderTests(bool useFlat)
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
     [Test]
-    public void Transient_state_restores_independent_of_persistent_state([Values(-1, 0, 1, 2)] int snapshot)
+    public void Transient_state_restores_independent_of_persistent_state([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -551,7 +551,7 @@ public class StorageProviderTests(bool useFlat)
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
     [Test]
-    public void Persistent_state_restores_independent_of_transient_state([Values(-1, 0, 1, 2)] int snapshot)
+    public void Persistent_state_restores_independent_of_transient_state([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
