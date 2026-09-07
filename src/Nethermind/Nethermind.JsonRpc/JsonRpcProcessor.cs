@@ -1085,7 +1085,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 // A request error is the caller's fault and costs one unauthenticated request, so it must not be able
                 // to dictate the operator's WARN volume (#13156); the line stays available at Debug. Server-side
                 // codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN.
-                bool requestError = ErrorCodes.IsRequestError(responseError.Code);
+                // OperatorActionable overrides the code: -32600 also carries "namespace X is disabled for this URL",
+                // which is a statement about this node's configuration and must stay at WARN.
+                bool requestError = ErrorCodes.IsRequestError(responseError.Code) && !responseError.OperatorActionable;
                 if (requestError ? _logger.IsDebug : _logger.IsWarn)
                 {
                     string message = $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";

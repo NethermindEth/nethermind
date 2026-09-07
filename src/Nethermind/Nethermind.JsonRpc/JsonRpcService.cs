@@ -39,11 +39,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
-        (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method) = Validate(rpcRequest, context);
+        (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-            return ValueTask.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, errorCode.Value, errorMessage, null, in rpcRequest.IdRef));
+            JsonRpcErrorResponse errorResponse = GetErrorResponse(methodName, errorCode.Value, errorMessage, null, in rpcRequest.IdRef);
+            if (operatorActionable && errorResponse.Error is not null)
+            {
+                errorResponse.Error.OperatorActionable = true;
+            }
+
+            return ValueTask.FromResult<JsonRpcResponse>(errorResponse);
         }
 
         try
@@ -1017,17 +1023,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return response;
     }
 
-    private (int? ErrorType, string? ErrorMessage, string MethodName, ResolvedMethodInfo? Method) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
+    private (int? ErrorType, string? ErrorMessage, string MethodName, ResolvedMethodInfo? Method, bool OperatorActionable) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
     {
         if (rpcRequest is null)
         {
-            return (ErrorCodes.InvalidRequest, "Invalid request", string.Empty, null);
+            return (ErrorCodes.InvalidRequest, "Invalid request", string.Empty, null, false);
         }
 
         string methodName = rpcRequest.Method;
         if (string.IsNullOrWhiteSpace(methodName))
         {
-            return (ErrorCodes.InvalidRequest, "Method is required", methodName, null);
+            return (ErrorCodes.InvalidRequest, "Method is required", methodName, null, false);
         }
 
         string trimmedMethodName = methodName.Trim();
@@ -1035,22 +1041,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ModuleResolution result = _rpcModuleProvider.Check(trimmedMethodName, context, out string? module, out ResolvedMethodInfo? method);
         if (result == ModuleResolution.Enabled)
         {
-            return (null, null, trimmedMethodName, method);
+            return (null, null, trimmedMethodName, method, false);
         }
 
-        (int? errorType, string errorMessage) = GetErrorResult(trimmedMethodName, context, result, module);
-        return (errorType, errorMessage, methodName, null);
+        (int? errorType, string errorMessage, bool operatorActionable) = GetErrorResult(trimmedMethodName, context, result, module);
+        return (errorType, errorMessage, methodName, null, operatorActionable);
 
+        // OperatorActionable is decided here, at the only place that knows *why* the request failed. A namespace
+        // that is disabled for this URL or this endpoint is a fact about the node's configuration, not about the
+        // request, and its message tells the operator how to fix it - so it must not be demoted with the rest of
+        // the -32600 traffic. Unknown methods and failed authentication are genuine caller faults.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
+        static (int? ErrorType, string ErrorMessage, bool OperatorActionable) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
-            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName)),
+            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName), false),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
-                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL.", true),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
-                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
-            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
-            _ => (null, null)
+                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}.", true),
+            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated.", false),
+            _ => (null, null, false)
         };
     }
 }

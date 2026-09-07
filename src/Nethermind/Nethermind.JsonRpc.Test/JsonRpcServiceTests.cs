@@ -797,6 +797,32 @@ public class JsonRpcServiceTests
         Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
     }
 
+    // #13156 follow-up: -32600 is overloaded. It is returned both for a request the caller got wrong ("Method is
+    // required") and for a namespace this node has disabled, whose message is a remediation instruction for the
+    // operator. Only the first may be demoted out of WARN, so the disabled cases carry OperatorActionable.
+    [TestCase(ModuleResolution.Disabled, true)]
+    [TestCase(ModuleResolution.EndpointDisabled, true)]
+    [TestCase(ModuleResolution.NotAuthenticated, false)]
+    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable)
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = "Debug";
+                callInfo[3] = null;
+                return resolution;
+            });
+
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
+        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
+
+        Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
+        Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
+    }
+
     [Test]
     public void Invocation_limit_exceeded_suppresses_warning()
     {

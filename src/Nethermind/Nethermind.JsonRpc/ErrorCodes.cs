@@ -180,6 +180,11 @@ namespace Nethermind.JsonRpc
         /// True for the JSON-RPC 2.0 pre-defined request errors (<see cref="ParseError"/>, <see cref="InvalidRequest"/>,
         /// <see cref="MethodNotFound"/>, <see cref="InvalidParams"/>): the request itself was wrong, which is the
         /// caller's fault rather than a condition of this node.
+        /// <para>
+        /// The code alone is not always enough: <see cref="InvalidRequest"/> is also returned for a namespace that
+        /// is disabled for the requested URL or endpoint, which is a condition of this node. Those errors set
+        /// <c>Error.OperatorActionable</c> and callers of this helper must honour it.
+        /// </para>
         /// </summary>
         public static bool IsRequestError(int code) =>
             code is ParseError or InvalidRequest or MethodNotFound or InvalidParams;
