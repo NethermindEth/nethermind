@@ -52,7 +52,7 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal void SetLeaf(PbtFullKey key, ValueHash256? value)
+    private void SetPbtLeaf(PbtFullKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         int partition = PbtWriteBatchSet.PartitionOf(key);
@@ -104,7 +104,7 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetCodeReference(codeHash);
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> PendingLeafMutations()
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> EnumeratePendingLeafMutationsForTest()
     {
         foreach (ShardedWriteBatch batch in _writeBatches.Values)
             foreach (KeyValuePair<PbtFullKey, ValueHash256?> mutation in batch.Leaves) yield return mutation;
@@ -192,7 +192,7 @@ public sealed class PbtSnapshotBundle(
                     WriteBuffer.SetCodeReference(previousHash, count == 0 ? null : count);
                     if (count == 0 && previousCode is not null)
                         foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode))
-                            if (key.Bytes[0] == Eip8297KeyDerivation.CodeZone) SetLeaf(key, null);
+                            if (key.Bytes[0] == Eip8297KeyDerivation.CodeZone) SetPbtLeaf(key, null);
                 }
                 if (account is { HasCode: true })
                 {
@@ -201,11 +201,7 @@ public sealed class PbtSnapshotBundle(
                 }
             }
 
-            SetLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), null);
-            SetLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), null);
-            if (previous is not null && (!previous.HasCode || previousCode is not null))
-                foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode, includeOverflowCode: false))
-                    SetLeaf(key, null);
+            WriteAccountLeaves(addressHash, account, code, previous, previousCode);
 
             _accountsAwaitingCode.Remove(addressHash);
             WriteBuffer.Accounts[addressHash] = account;
@@ -215,32 +211,45 @@ public sealed class PbtSnapshotBundle(
             }
             else if (account.HasCode && code is null)
             {
-                SetLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
                 _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
-            }
-            else
-            {
-                WriteAccountLeaves(addressHash, account, code);
             }
         }
     }
 
-    private void WriteAccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code)
+    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code, Account? previous = null, CodeInfo? previousCode = null)
     {
-        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code)) SetLeaf(key, value);
+        if (previous is not null && previousCode is not null)
+            foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode, includeOverflowCode: false))
+                if (key.Bytes[^1] >= PbtKeyDerivation.CodeOffset) SetPbtLeaf(key, null);
+
+        bool hasBasicData = false;
+        if (account is not null && (!account.HasCode || code is not null))
+        {
+            foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code))
+            {
+                if (key.Bytes[0] == Eip8297KeyDerivation.AccountZone && key.Bytes[^1] == PbtKeyDerivation.BasicDataLeafKey)
+                    hasBasicData = true;
+                SetPbtLeaf(key, value);
+            }
+        }
+        else
+        {
+            SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account?.CodeHash.ValueHash256);
+        }
+        if (!hasBasicData) SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), null);
     }
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
     {
         PbtFullKey key = PbtStateKey.Storage(address, slot);
-        SetLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
+        SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
         WriteBuffer.Storages[key] = value;
     }
 
     public void SelfDestruct(Address address)
     {
         ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        foreach ((PbtFullKey key, _) in EnumerateStorage(hash)) SetLeaf(key, null);
+        foreach ((PbtFullKey key, _) in EnumerateStorage(hash)) SetPbtLeaf(key, null);
         WriteBuffer.ClearStorage(hash);
     }
 

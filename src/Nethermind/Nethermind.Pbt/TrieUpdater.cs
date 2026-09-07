@@ -45,6 +45,11 @@ public static class TrieUpdater
         return UpdateRoot(store, currentRoot, operations, new(precalculated, 0, 0, false, false), metrics);
     }
 
+    /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
+    /// <remarks>
+    /// The supplied store must support concurrent reads and writes. Failed folds may leave partial writes;
+    /// the caller owns failure isolation and must not reuse that state without recovery.
+    /// </remarks>
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
         in ValueHash256 currentRoot,
@@ -54,7 +59,6 @@ public static class TrieUpdater
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
         List<PartitionFold> workers = new(3);
-        using StagingStore sharedStore = new(store);
         GroupMutationFrame?[] sharedGroups = new GroupMutationFrame[16];
         Subtree[][] zoneBoundaries = new Subtree[16][];
         Subtree[] rootBoundaries = new Subtree[16];
@@ -74,14 +78,14 @@ public static class TrieUpdater
             }
             if (workers.Count == 0) return currentRoot;
 
-            using GroupMutationFrame rootGroup = new(sharedStore, RootPath, metrics);
+            using GroupMutationFrame rootGroup = new(store, RootPath, metrics);
             Decompose(rootGroup, rootGroup.Take(RootPath, allowAbsent: true), 0, rootBoundaries);
             foreach (PartitionFold worker in workers)
             {
                 int slot = worker.Zone >> 4;
                 if (sharedGroups[slot] is not { } sharedGroup)
                 {
-                    sharedGroup = new(sharedStore, new PbtNodePath([(byte)(slot << 4)], 4), metrics);
+                    sharedGroup = new(store, new PbtNodePath([(byte)(slot << 4)], 4), metrics);
                     sharedGroups[slot] = sharedGroup;
                     zoneBoundaries[slot] = new Subtree[16];
                     Decompose(sharedGroup, Resolve(rootGroup, rootBoundaries[slot]), 4, zoneBoundaries[slot]);
@@ -107,14 +111,10 @@ public static class TrieUpdater
             ValueHash256 hash = Place(rootGroup, Compose(rootGroup, rootBoundaries), PbtFourLevelGroupGeometry.RootPosition, 0);
             rootGroup.Flush();
 
-            // No underlying writes occur until the joined workers and shared compression have all succeeded.
-            foreach (PartitionFold worker in workers) worker.Store.Publish();
-            sharedStore.Publish();
             return hash;
         }
         finally
         {
-            foreach (PartitionFold worker in workers) worker.Store.Dispose();
             foreach (GroupMutationFrame? sharedGroup in sharedGroups) sharedGroup?.Dispose();
         }
     }
@@ -122,68 +122,17 @@ public static class TrieUpdater
     private sealed class PartitionFold(IPbtStore store, byte zone, PbtWriteOperation[] operations, int[] table, bool collectMetrics)
     {
         internal byte Zone { get; } = zone;
-        internal StagingStore Store { get; } = new(store, zone);
         internal TrieUpdaterMetrics? Metrics { get; } = collectMetrics ? new() : null;
         internal Subtree Current { get; set; }
         internal Subtree Result { get; private set; }
 
         internal void Fold()
         {
-            using GroupMutationFrame group = new(Store, new PbtNodePath([Zone], 8), Metrics);
+            using GroupMutationFrame group = new(store, new PbtNodePath([Zone], 8), Metrics);
             // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
-            Result = FoldBoundary(Store, Metrics, group, Current, operations, new(table, 8, 8, false, false));
+            Result = FoldBoundary(store, Metrics, group, Current, operations, new(table, 8, 8, false, false));
             group.Flush();
             Result = Result.PreserveBeyond(group);
-        }
-    }
-
-    private sealed class StagingStore(IPbtStore backingStore, byte? zone = null) : IPbtStore, IDisposable
-    {
-        private readonly Dictionary<PbtNodePath, RefCountingMemory?> _groups = [];
-
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
-        {
-            ValidateOwnership(groupKey);
-            if (!_groups.TryGetValue(groupKey, out RefCountingMemory? payload)) return backingStore.GetNodeGroup(groupKey);
-            payload?.AcquireLease();
-            return payload;
-        }
-
-        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
-        {
-            ValidateOwnership(groupKey);
-            _groups.TryGetValue(groupKey, out RefCountingMemory? previous);
-            payload?.AcquireLease();
-            try
-            {
-                _groups[groupKey] = payload;
-            }
-            catch
-            {
-                ((IDisposable?)payload)?.Dispose();
-                throw;
-            }
-            ((IDisposable?)previous)?.Dispose();
-        }
-
-        private void ValidateOwnership(PbtNodePath groupKey)
-        {
-            if (zone is { } workerZone
-                ? groupKey.BitDepth < 8 || groupKey.Path[0] != workerZone
-                : groupKey.BitDepth >= 8)
-                throw new InvalidOperationException("A partition fold accessed a group outside its ownership boundary.");
-        }
-
-        internal void Publish()
-        {
-            foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in _groups)
-                backingStore.SetNodeGroup(groupKey, payload);
-        }
-
-        public void Dispose()
-        {
-            foreach (RefCountingMemory? payload in _groups.Values) ((IDisposable?)payload)?.Dispose();
-            _groups.Clear();
         }
     }
 

@@ -9,6 +9,7 @@ namespace Nethermind.Pbt;
 public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IDisposable
 {
     private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
+    private readonly System.Threading.Lock _groupLock = new();
     private Dictionary<PbtNodePath, RefCountingMemory> _groups = [];
     private bool _disposed;
 
@@ -55,44 +56,50 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     /// <inheritdoc/>
     public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(groupKey);
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        if (!_groups.TryGetValue(groupKey, out RefCountingMemory? payload)) return null;
+        lock (_groupLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ArgumentNullException.ThrowIfNull(groupKey);
+            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+            if (!_groups.TryGetValue(groupKey, out RefCountingMemory? payload)) return null;
 
-        payload.AcquireLease();
-        return payload;
+            payload.AcquireLease();
+            return payload;
+        }
     }
 
     /// <inheritdoc/>
     public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(groupKey);
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
+        lock (_groupLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ArgumentNullException.ThrowIfNull(groupKey);
+            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+            if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
 
-        _groups.TryGetValue(groupKey, out RefCountingMemory? previous);
-        if (payload is null)
-        {
-            _groups.Remove(groupKey);
-        }
-        else
-        {
-            payload.AcquireLease();
-            try
+            _groups.TryGetValue(groupKey, out RefCountingMemory? previous);
+            if (payload is null)
             {
-                _groups[groupKey] = payload;
+                _groups.Remove(groupKey);
             }
-            catch
+            else
             {
-                ((IDisposable)payload).Dispose();
-                throw;
+                payload.AcquireLease();
+                try
+                {
+                    _groups[groupKey] = payload;
+                }
+                catch
+                {
+                    ((IDisposable)payload).Dispose();
+                    throw;
+                }
             }
+            ((IDisposable?)previous)?.Dispose();
         }
-        ((IDisposable?)previous)?.Dispose();
     }
 
     /// <summary>Enumerates group keys in canonical order.</summary>

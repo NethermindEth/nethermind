@@ -179,7 +179,7 @@ public class ParallelUpdateRootTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Zone_workers_overlap_and_publish_only_after_success(bool failWorker)
+    public void Zone_workers_write_disjoint_groups_and_join_before_returning(bool failWorker)
     {
         (byte[] Key, byte[]? Value)[] initial = ZoneEntries(3, false);
         using CoordinatedStore store = new();
@@ -197,14 +197,13 @@ public class ParallelUpdateRootTests
             Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(store.Writes, Is.Zero);
-                Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(initialRecords));
+                Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
+                Assert.That(PhysicalRecords(store.Inner), Is.Not.EqualTo(initialRecords));
                 Assert.That(store.ArrivedWorkers, Is.EqualTo(3));
                 Assert.That(store.ActiveReads, Is.Zero, "all workers joined before failure returns");
             }
-            store.Coordinate = false;
-            store.FailWorker = false;
-            prepared = PreparePartitions(changes);
+            Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
+            return;
         }
         ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared);
         sequential.ApplyBatch(changes);
@@ -214,7 +213,7 @@ public class ParallelUpdateRootTests
             Assert.That(result, Is.EqualTo(sequential.RootHash));
             Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
             Assert.That(store.ActiveReads, Is.Zero);
-            Assert.That(store.DuplicateWrites, Is.False, "each staged group has one publisher");
+            Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared));
         }
     }
@@ -301,10 +300,13 @@ public class ParallelUpdateRootTests
 
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
-            if (Writes == 0) _writtenGroups.Clear();
-            DuplicateWrites |= !_writtenGroups.Add(groupKey);
-            Writes++;
-            Inner.SetNodeGroup(groupKey, payload);
+            lock (_writtenGroups)
+            {
+                if (Writes == 0) _writtenGroups.Clear();
+                DuplicateWrites |= !_writtenGroups.Add(groupKey);
+                Writes++;
+                Inner.SetNodeGroup(groupKey, payload);
+            }
         }
 
         public void Dispose()

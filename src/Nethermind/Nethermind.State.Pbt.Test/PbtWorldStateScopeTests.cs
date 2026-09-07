@@ -204,7 +204,7 @@ public class PbtWorldStateScopeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.RootHash, Is.EqualTo(initialRoot));
-            Assert.That(scope.Bundle.PendingLeafMutations(), Is.Empty);
+            Assert.That(scope.Bundle.EnumeratePendingLeafMutationsForTest(), Is.Empty);
             Assert.That(scope.Bundle.EnumerateLeaves(), Is.EquivalentTo(pending));
             Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
             Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
@@ -215,7 +215,7 @@ public class PbtWorldStateScopeTests
         using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             storage.Set(updatedSlot, Bytes.FromHexString("ef"));
         scope.Get(TestItem.AddressB);
-        KeyValuePair<PbtFullKey, ValueHash256?>[] secondFold = [.. scope.Bundle.PendingLeafMutations()];
+        KeyValuePair<PbtFullKey, ValueHash256?>[] secondFold = [.. scope.Bundle.EnumeratePendingLeafMutationsForTest()];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(secondFold.Length, Is.EqualTo(1));
