@@ -369,7 +369,7 @@ public static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
             newAccountCharged: newAccountCharged,
-            stateGasJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.StateGasJournalCheckpoint ?? 0);
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
         return EvmExceptionType.Suspend;
     }

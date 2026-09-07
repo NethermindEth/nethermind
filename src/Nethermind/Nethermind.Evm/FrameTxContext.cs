@@ -6,6 +6,9 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -80,10 +83,6 @@ public sealed class FrameTxContext(
     public bool SenderApproved { get; set; }
     public Address? Payer { get; set; }
 
-    /// <summary>Scope deposited by a successful <c>APPROVE</c> in the current frame; 0 means no signal.
-    /// The outer loop reads and clears it after the frame terminates.</summary>
-    public byte ApprovalScopeSignal { get; set; }
-
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
     /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
@@ -99,7 +98,7 @@ public sealed class FrameTxContext(
     private readonly long[] _frameStateGasCorrection = new long[frames.Length];
     private readonly ulong[] _frameExecutionGasUsed = new ulong[frames.Length];
     private readonly ulong[] _frameStateGasUsed = new ulong[frames.Length];
-    private readonly List<StateGasJournalEntry> _stateGasJournal = [];
+    private readonly List<FrameJournalEntry> _frameJournal = [];
 
     /// <summary>
     /// Records a completed frame's attributed <c>gas_used</c> so a later frame can read it through
@@ -125,8 +124,80 @@ public sealed class FrameTxContext(
         return net > 0 ? (ulong)net : 0;
     }
 
-    /// <summary>Journal position captured when an EVM call frame begins, so the rollback boundary that restores world state also restores the SSTORE-charge ownership map and per-frame <c>gas_used.state</c> corrections (EIP-8141 Gas Accounting).</summary>
-    public int StateGasJournalCheckpoint => _stateGasJournal.Count;
+    /// <summary>Journal position captured when an EVM call frame begins, so the rollback boundary that restores world state also restores the approval context, the SSTORE-charge ownership map and per-frame <c>gas_used.state</c> corrections (EIP-8141 Gas Accounting).</summary>
+    public int FrameJournalCheckpoint => _frameJournal.Count;
+
+    // Approval only advances, none -> sender approved -> paid, and Payer is write-once, so the stage
+    // number the journal keeps is a complete undo record.
+    private const int NoApproval = 0;
+    private const int SenderApprovedStage = 1;
+    private const int PaidStage = 2;
+
+    private int ApprovalStage => Payer is not null ? PaidStage : SenderApproved ? SenderApprovedStage : NoApproval;
+
+    /// <summary>
+    /// Evaluates an <c>APPROVE</c> of <paramref name="scope"/> by <paramref name="resolvedTarget"/> against
+    /// the transaction's approval context, changing nothing.
+    /// </summary>
+    /// <remarks>Split from <see cref="ApplyApproval"/> so a caller can charge the approval's gas in between:
+    /// a charge that cannot be met must not leave a half-applied approval behind.</remarks>
+    /// <param name="plan">The effects an admitted approval will apply; meaningless unless the outcome is
+    /// <see cref="FrameApprovalOutcome.Approved"/>.</param>
+    public FrameApprovalOutcome PlanApproval(byte scope, Address resolvedTarget, IWorldState worldState, out FrameApprovalPlan plan)
+    {
+        plan = default;
+        if (scope == 0 || (scope & ~CurrentFrame.AllowedApproveScope) != 0) return FrameApprovalOutcome.Rejected;
+
+        bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
+        bool approvesPayment = (scope & TxFrame.ApprovePayment) != 0;
+
+        if (approvesExecution && (SenderApproved || resolvedTarget != Sender)) return FrameApprovalOutcome.Rejected;
+
+        bool createsSender = false;
+        if (approvesPayment)
+        {
+            if (Payer is not null) return FrameApprovalOutcome.Rejected;
+            // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
+            if (!approvesExecution && !SenderApproved) return FrameApprovalOutcome.Rejected;
+            if (worldState.GetBalance(resolvedTarget) < MaxCost) return FrameApprovalOutcome.Rejected;
+
+            if (NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys))
+            {
+                if (worldState.GetNonce(Sender) >= Eip8250Constants.MaxNonceSeq) return FrameApprovalOutcome.NonceExhausted;
+                createsSender = !worldState.AccountExists(Sender);
+            }
+        }
+
+        plan = new FrameApprovalPlan(approvesExecution, approvesPayment, createsSender);
+        return FrameApprovalOutcome.Approved;
+    }
+
+    /// <summary>
+    /// Applies an approval admitted by <see cref="PlanApproval"/>, journaled so the boundary that restores
+    /// world state on a nested revert or halt restores the approval context with it.
+    /// </summary>
+    /// <remarks>The sender's account creation, when the plan calls for one, must already have been charged.</remarks>
+    public void ApplyApproval(in FrameApprovalPlan plan, Address resolvedTarget, IWorldState worldState, IReleaseSpec spec, in StackAccessTracker accessTracker)
+    {
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.ApprovalAdvanced, default, ApprovalStage, 0));
+
+        if (plan.ApprovesExecution) SenderApproved = true;
+        if (!plan.ApprovesPayment) return;
+
+        if (plan.CreatesSender) worldState.CreateAccountIfNotExists(Sender, UInt256.Zero);
+        worldState.SubtractFromBalance(resolvedTarget, MaxCost, spec);
+        if (NonceKeys is { } nonceKeys)
+        {
+            KeyedNonceManager.ConsumeNonceSet(worldState, Sender, nonceKeys, Nonce);
+        }
+        else
+        {
+            worldState.IncrementNonce(Sender);
+        }
+
+        Payer = resolvedTarget;
+        if (spec.UseHotAndColdStorage) accessTracker.WarmUp(resolvedTarget);
+    }
 
     /// <summary>
     /// Records the frame that paid an <c>SSTORE</c> state charge as the outstanding-charge owner
@@ -138,7 +209,7 @@ public sealed class FrameTxContext(
         ref int owner = ref CollectionsMarshal.GetValueRefOrAddDefault(_stateChargeOwner, slot, out bool existed);
         int previousOwner = existed ? owner : NoOwner;
         owner = frame;
-        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerSet, slot, previousOwner, 0));
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.OwnerSet, slot, previousOwner, 0));
     }
 
     /// <summary>
@@ -153,7 +224,7 @@ public sealed class FrameTxContext(
             return false;
         }
 
-        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerCleared, slot, owner, 0));
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.OwnerCleared, slot, owner, 0));
         return true;
     }
 
@@ -164,57 +235,64 @@ public sealed class FrameTxContext(
     public void ReduceFrameStateGas(int owner, long amount)
     {
         _frameStateGasCorrection[owner] += amount;
-        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.ReceiptReduced, default, owner, amount));
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.ReceiptReduced, default, owner, amount));
     }
 
     /// <summary>
-    /// Undoes ownership and receipt-correction journal entries recorded after
+    /// Undoes approval, ownership and receipt-correction journal entries recorded after
     /// <paramref name="checkpoint"/>, at the same boundary that restores world state.
     /// </summary>
-    public void RestoreStateGasJournal(int checkpoint)
+    public void RestoreFrameJournal(int checkpoint)
     {
-        int count = _stateGasJournal.Count;
+        int count = _frameJournal.Count;
         if (count == checkpoint) return;
 
-        Span<StateGasJournalEntry> entries = CollectionsMarshal.AsSpan(_stateGasJournal);
+        Span<FrameJournalEntry> entries = CollectionsMarshal.AsSpan(_frameJournal);
         for (int k = count - 1; k >= checkpoint; k--)
         {
-            ref StateGasJournalEntry entry = ref entries[k];
+            ref FrameJournalEntry entry = ref entries[k];
             switch (entry.Kind)
             {
-                case StateGasJournalKind.OwnerSet:
-                    if (entry.Owner == NoOwner)
+                case FrameJournalKind.OwnerSet:
+                    if (entry.Value == NoOwner)
                     {
                         _stateChargeOwner.Remove(entry.Slot);
                     }
                     else
                     {
-                        _stateChargeOwner[entry.Slot] = entry.Owner;
+                        _stateChargeOwner[entry.Slot] = entry.Value;
                     }
                     break;
-                case StateGasJournalKind.OwnerCleared:
-                    _stateChargeOwner[entry.Slot] = entry.Owner;
+                case FrameJournalKind.OwnerCleared:
+                    _stateChargeOwner[entry.Slot] = entry.Value;
                     break;
-                case StateGasJournalKind.ReceiptReduced:
-                    _frameStateGasCorrection[entry.Owner] -= entry.Amount;
+                case FrameJournalKind.ReceiptReduced:
+                    _frameStateGasCorrection[entry.Value] -= entry.Amount;
+                    break;
+                case FrameJournalKind.ApprovalAdvanced:
+                    SenderApproved = entry.Value >= SenderApprovedStage;
+                    if (entry.Value < PaidStage) Payer = null;
                     break;
             }
         }
 
-        _stateGasJournal.RemoveRange(checkpoint, count - checkpoint);
+        _frameJournal.RemoveRange(checkpoint, count - checkpoint);
     }
 
     /// <summary>The refill-driven reduction of <paramref name="frame"/>'s <c>gas_used.state</c>.</summary>
     public long StateGasCorrectionFor(int frame) => _frameStateGasCorrection[frame];
 
-    private enum StateGasJournalKind : byte
+    private enum FrameJournalKind : byte
     {
         OwnerSet,
         OwnerCleared,
         ReceiptReduced,
+        ApprovalAdvanced,
     }
 
-    private readonly record struct StateGasJournalEntry(StateGasJournalKind Kind, StorageCell Slot, int Owner, long Amount);
+    /// <summary><see cref="Value"/> carries the entry's undo target: a frame index for the ownership and
+    /// receipt kinds, the previous approval stage for <see cref="FrameJournalKind.ApprovalAdvanced"/>.</summary>
+    private readonly record struct FrameJournalEntry(FrameJournalKind Kind, StorageCell Slot, int Value, long Amount);
 
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {
@@ -228,3 +306,19 @@ public sealed class FrameTxContext(
         return ValueKeccak.Compute(input[..((nonceKeys.Length + 1) * 32)]);
     }
 }
+
+/// <summary>Outcome of evaluating an EIP-8141 <c>APPROVE</c> against a transaction's approval context.</summary>
+public enum FrameApprovalOutcome : byte
+{
+    /// <summary>The approval is admissible.</summary>
+    Approved,
+
+    /// <summary>A guard refused the approval; the requesting call frame reverts.</summary>
+    Rejected,
+
+    /// <summary>The sender's nonce sequence is exhausted; the requesting call frame halts exceptionally.</summary>
+    NonceExhausted,
+}
+
+/// <summary>The effects an admitted <c>APPROVE</c> will apply, so its caller can charge for them beforehand.</summary>
+public readonly record struct FrameApprovalPlan(bool ApprovesExecution, bool ApprovesPayment, bool CreatesSender);
