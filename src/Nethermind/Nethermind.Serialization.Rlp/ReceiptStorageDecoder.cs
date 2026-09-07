@@ -193,6 +193,8 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
+                // Repeats the logs the top-level union already holds: DecodeStructRef hands eth_getLogs one
+                // contiguous LogsRlp span, which N per-frame sequences cannot supply.
                 writer.Encode(item.Payer);
                 EncodeFrameReceipts(ref writer, item.FrameReceipts ?? []);
             }

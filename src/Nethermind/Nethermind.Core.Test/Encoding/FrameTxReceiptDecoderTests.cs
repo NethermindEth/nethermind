@@ -381,4 +381,64 @@ public class FrameTxReceiptDecoderTests
         Assert.That(seen[0], Is.EqualTo((TestItem.AddressD.ToString(), 1000UL, TxType.Legacy)));
         Assert.That(seen[2], Is.EqualTo((TestItem.AddressE.ToString(), 2000UL, TxType.Legacy)));
     }
+
+    // The payload defines only failure, success and skipped. An out-of-range byte round-trips, so the decoder is
+    // the only place it can be caught before AggregateStatus folds it to failure and RPC surfaces it raw.
+    [TestCase(TxFrameReceipt.StatusFailure, false)]
+    [TestCase(TxFrameReceipt.StatusSuccess, false)]
+    [TestCase(TxFrameReceipt.StatusSkipped, false)]
+    [TestCase((byte)3, true)]
+    [TestCase(byte.MaxValue, true)]
+    public void MessageDecode_FrameStatusOutsideThePayloadValues_Throws(byte status, bool rejected)
+    {
+        TxReceipt receipt = CreateReceipt(new TxFrameReceipt(status, 21_000, 0, []));
+
+        if (rejected)
+        {
+            Assert.That(() => DecodeMessage(receipt), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(DecodeMessage(receipt).FrameReceipts![0].Status, Is.EqualTo(status));
+        }
+    }
+
+    // The log ceiling is derived from a whole transaction's gas, so the frames share one budget; spent per frame
+    // it would admit MaxFrames times the emissions it stands for.
+    [TestCase(0, false, TestName = "MessageDecode_FrameLogsAtTheReceiptBudget_IsAccepted")]
+    [TestCase(1, true, TestName = "MessageDecode_FrameLogsOverTheReceiptBudget_Throws")]
+    public void MessageDecode_FrameLogBudgetIsSpentPerReceiptNotPerFrame(int excess, bool rejected)
+    {
+        const int firstFrameLogs = ReceiptMessageDecoder.MaxReceiptLogs / 2;
+        int secondFrameLogs = ReceiptMessageDecoder.MaxReceiptLogs - firstFrameLogs + excess;
+        // Each frame stays under the ceiling on its own, so only their sum can trip the guard.
+        TxReceipt receipt = CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(firstFrameLogs)),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(secondFrameLogs)));
+
+        if (rejected)
+        {
+            Assert.That(() => DecodeMessage(receipt), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(DecodeMessage(receipt).Logs, Has.Length.EqualTo(ReceiptMessageDecoder.MaxReceiptLogs));
+        }
+    }
+
+    private static TxReceipt DecodeMessage(TxReceipt receipt)
+    {
+        ReceiptMessageDecoder decoder = new();
+        byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
+        RlpReader reader = new(encoded);
+        return decoder.Decode(ref reader)!;
+    }
+
+    // One shared instance: only the count matters here, and encoding never mutates a log entry.
+    private static LogEntry[] RepeatedLogs(int count)
+    {
+        LogEntry[] logs = new LogEntry[count];
+        Array.Fill(logs, new LogEntry(TestItem.AddressB, [], []));
+        return logs;
+    }
 }

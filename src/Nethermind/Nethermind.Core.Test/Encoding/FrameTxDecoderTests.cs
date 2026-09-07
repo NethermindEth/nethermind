@@ -432,6 +432,37 @@ public class FrameTxDecoderTests
         Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
     }
 
+    // An under-declared nonce_keys header consumes the same bytes as the canonical one, so without a closing
+    // checkpoint one signed transaction would have two wire forms and so two hashes.
+    [TestCase(false, TestName = "Decode_CanonicalNonceKeysListHeader_IsAccepted")]
+    [TestCase(true, TestName = "Decode_UnderDeclaredNonceKeysListHeader_Throws")]
+    public void Decode_NonceKeysListHeaderMustMatchItsContent(bool underDeclare)
+    {
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [300];
+        byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, keyed);
+
+        // `c3 82 01 2c` is the whole nonce_keys list; `c1` under-declares it without moving any other byte.
+        ReadOnlySpan<byte> canonical = [0xc3, 0x82, 0x01, 0x2c];
+        int headerIndex = bytes.AsSpan().IndexOf(canonical);
+        Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
+        // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
+        Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+
+        if (underDeclare)
+        {
+            bytes[headerIndex] = 0xc1;
+            Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            RlpReader reader = new(bytes);
+            Assert.That(_txDecoder.Decode(ref reader)!.NonceKeys, Is.EqualTo(new UInt256[] { 300 }));
+        }
+    }
+
     [Test]
     public void Decode_MoreNonceKeysThanTheCap_Throws()
     {

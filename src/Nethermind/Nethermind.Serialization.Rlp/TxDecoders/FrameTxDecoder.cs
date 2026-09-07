@@ -351,6 +351,10 @@ public static class FrameTxNonceCalldata
             buffer[count++] = decoderContext.DecodeUInt256();
         }
 
+        // An element may not overrun the list's declared content length: without this the under-declared
+        // header c1 82 01 2c decodes as [300] just like canonical c3 82 01 2c — two hashes, one signature.
+        decoderContext.Check(end);
+
         return buffer[..count].ToArray();
     }
 
