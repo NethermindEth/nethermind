@@ -72,6 +72,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
             }
+
+            ctx.Check(lastCheck);
             txReceipt.Logs = entries;
 
             // Handle any remaining extra bytes
@@ -148,6 +150,8 @@ namespace Nethermind.Serialization.Rlp
                 {
                     logs[j] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
                 }
+
+                ctx.Check(logsEnd);
 
                 frameReceipts[i] = new TxFrameReceipt(status, executionGasUsed, stateGasUsed, logs);
                 ctx.Check(frameEnd);

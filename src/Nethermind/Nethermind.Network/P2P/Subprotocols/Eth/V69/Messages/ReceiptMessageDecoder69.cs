@@ -57,6 +57,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
         }
 
+        ctx.Check(lastCheck);
         txReceipt.Logs = entries;
 
         // Handle any remaining extra bytes
