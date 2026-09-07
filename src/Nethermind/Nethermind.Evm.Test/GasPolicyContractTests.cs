@@ -34,13 +34,19 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
         }
     }
 
-    [TestCase(0UL)]
-    [TestCase(1000UL)]
-    public void ClearExecutionGas_zeros_remaining(ulong available)
+    [Test]
+    public void ClearExecutionGas_zeros_remaining_and_preserves_state_gas([Values(0UL, 1000UL)] ulong available)
     {
         TGasPolicy gas = TGasPolicy.FromULong(available);
+        long reservoir = TGasPolicy.GetStateReservoir(in gas);
+        long stateUsed = TGasPolicy.GetStateGasUsed(in gas);
         TGasPolicy.ClearExecutionGas(ref gas);
-        Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.Zero);
+            Assert.That(TGasPolicy.GetStateReservoir(in gas), Is.EqualTo(reservoir));
+            Assert.That(TGasPolicy.GetStateGasUsed(in gas), Is.EqualTo(stateUsed));
+        }
     }
 
     [Test]
