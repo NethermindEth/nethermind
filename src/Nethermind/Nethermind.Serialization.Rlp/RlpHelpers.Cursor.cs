@@ -478,8 +478,54 @@ internal static partial class RlpHelpers
             ThrowInvalidLength(byteSpan.Length, length);
         }
 
-        value = new UInt256(byteSpan, true);
+        value = ToUInt256(byteSpan);
         return position;
+    }
+
+    private const int UInt256Bytes = sizeof(ulong) * 4;
+
+    /// <summary>Builds a <see cref="UInt256"/> from a big-endian RLP integer payload.</summary>
+    /// <remarks>
+    /// Canonical RLP integers are minimal, so a balance, fee or total difficulty is nearly always
+    /// shorter than the full 32 bytes. <see cref="UInt256"/>'s constructor sends every other length
+    /// through a loop that runs eight iterations per word whatever length it was handed, so those are
+    /// built here instead, touching each byte once. A full-width value is left to the constructor,
+    /// whose whole-word path vectorises.
+    /// </remarks>
+    private static UInt256 ToUInt256(ReadOnlySpan<byte> byteSpan)
+    {
+        int length = byteSpan.Length;
+        if (length <= sizeof(ulong))
+        {
+            return new UInt256(Word(byteSpan, 0, length));
+        }
+
+        if (length == UInt256Bytes)
+        {
+            return new UInt256(byteSpan, true);
+        }
+
+        int end1 = length - sizeof(ulong);
+        int end2 = end1 > sizeof(ulong) ? end1 - sizeof(ulong) : 0;
+        int end3 = end2 > sizeof(ulong) ? end2 - sizeof(ulong) : 0;
+        return new UInt256(
+            Word(byteSpan, end1, length),
+            Word(byteSpan, end2, end1),
+            Word(byteSpan, end3, end2),
+            Word(byteSpan, 0, end3));
+    }
+
+    /// <summary>Accumulates <paramref name="byteSpan"/> over <c>[start, end)</c> as a big-endian word.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Word(ReadOnlySpan<byte> byteSpan, int start, int end)
+    {
+        ulong word = 0;
+        for (int i = start; i < end; i++)
+        {
+            word = (word << 8) | byteSpan[i];
+        }
+
+        return word;
     }
 
     /// <summary>Decodes a big-endian unsigned integer into a right-aligned 32-byte word.</summary>

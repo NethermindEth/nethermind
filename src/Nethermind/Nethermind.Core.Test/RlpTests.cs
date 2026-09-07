@@ -25,6 +25,35 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Decodes_uint256_of_every_payload_length([Range(0, 32)] int byteLength)
+        {
+            UInt256 value = UInt256OfByteLength(byteLength);
+
+            UInt256 decoded = Rlp.Decode<UInt256>(Rlp.Encode(value).Bytes);
+
+            Assert.That(decoded, Is.EqualTo(value));
+        }
+
+        /// <summary>Builds a value whose canonical big-endian encoding is exactly that many bytes.</summary>
+        private static UInt256 UInt256OfByteLength(int byteLength)
+        {
+            if (byteLength == 0)
+            {
+                return UInt256.Zero;
+            }
+
+            Span<byte> bytes = stackalloc byte[byteLength];
+            for (int i = 0; i < byteLength; i++)
+            {
+                // Distinct per position so a word assembled from the wrong offset cannot still match.
+                bytes[i] = (byte)(i + 1);
+            }
+
+            bytes[0] = 0xab; // non-zero, so the encoding is canonical at this length
+            return new UInt256(bytes, isBigEndian: true);
+        }
+
+        [Test]
         public void DecodeArray_rejects_more_items_than_the_limit()
         {
             RlpLimit limit = new(4);
