@@ -32,9 +32,9 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const ulong JumpDestBytes = 0x5b5b5b5b5b5b5b5bUL;
     private const ulong PackByteHighBits = 0x0002040810204081UL;
 
-    private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
+    private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
     /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
-    internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap!;
+    internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;

@@ -29,7 +29,7 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo = null)
+    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
     {
         Head = head;
         _tracer = txTracer;
@@ -39,7 +39,7 @@ public ref partial struct EvmStack
         CodeLength = codeSpan.Length;
     }
 
-    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo = null)
+    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
     {
         Head = head;
         _tracer = null;
@@ -76,12 +76,17 @@ public ref partial struct EvmStack
     /// <remarks>
     /// Kept on the stack so a jump validates against the frame it is executing without walking
     /// <c>vm.VmState.Env.CodeInfo</c>. Resolving lazily keeps the analysis off the path of frames that
-    /// never jump; the empty bitmap rejects every destination for stacks built without code info.
+    /// never jump. Only a stack built over no code may omit the code info; the empty bitmap then rejects
+    /// every destination.
     /// </remarks>
     internal long[] JumpDestinations
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _jumpDestinations ??= _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+        get
+        {
+            Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
+            return _jumpDestinations ??= _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+        }
     }
 
     /// <summary>

@@ -278,8 +278,8 @@ public class VmState<TGasPolicy> : IDisposable
             "A resumed frame retains its initialized stack until disposal.");
         ref byte dataStack = ref As32AlignedRef(DataStack);
         stack = TTracingInst.IsActive
-            ? new(DataStackHead, txTracer, ref dataStack, codeSpan)
-            : new(DataStackHead, ref dataStack, codeSpan);
+            ? new(DataStackHead, txTracer, ref dataStack, codeSpan, Env.CodeInfo)
+            : new(DataStackHead, ref dataStack, codeSpan, Env.CodeInfo);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
