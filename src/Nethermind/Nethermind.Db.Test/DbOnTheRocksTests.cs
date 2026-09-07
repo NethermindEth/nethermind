@@ -858,7 +858,8 @@ namespace Nethermind.Db.Test
         {
             _db[[7]] = [77];
 
-            KeyValuePair<byte[], byte[]?>[] results = _db[[7], [7]];
+            byte[][] keys = [[7], [7]];
+            KeyValuePair<byte[], byte[]?>[] results = _db[keys];
 
             AssertMultiGetResults(results, [[7], [7]], [[77], [77]]);
         }
