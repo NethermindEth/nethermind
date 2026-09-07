@@ -14,6 +14,7 @@ using System.Linq;
 using BenchmarkDotNet.Columns;
 using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
+using Nethermind.Benchmarks.Store;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -48,6 +49,12 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            if (args.Contains("--rocksdb-feature-standalone"))
+            {
+                RunRocksDbFeatureStandalone(args);
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
@@ -80,6 +87,27 @@ namespace Nethermind.Benchmark.Runner
                     .FromAssemblies(releaseAssemblies)
                     .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
+        }
+
+        private static void RunRocksDbFeatureStandalone(string[] args)
+        {
+            RocksDbFeatureDatasetKind dataset = Enum.Parse<RocksDbFeatureDatasetKind>(
+                GetArgument(args, "--rocksdb-feature-dataset", nameof(RocksDbFeatureDatasetKind.Account)), true);
+            RocksDbFeatureVariant variant = Enum.Parse<RocksDbFeatureVariant>(
+                GetArgument(args, "--rocksdb-feature-variant", nameof(RocksDbFeatureVariant.Baseline)), true);
+            int operations = int.Parse(GetArgument(args, "--rocksdb-feature-operations", "1000"));
+
+            RocksDbFeatureStandaloneRunner.Run(dataset, variant, operations);
+        }
+
+        private static string GetArgument(string[] args, string name, string defaultValue)
+        {
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == name) return args[i + 1];
+            }
+
+            return defaultValue;
         }
     }
 }
