@@ -91,22 +91,24 @@ public class RandomWalkKademliaDiscoveryTests
         }
     }
 
-    [Test]
+    [TestCase(15, 16)]
+    [TestCase(21, 64)]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_should_keep_minimum_pace_until_table_has_a_full_bucket_of_nodes(CancellationToken token)
+    public async Task DiscoverNodes_should_keep_minimum_pace_while_table_is_underfilled(int nodeCount, int capacity, CancellationToken token)
     {
-        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(15, 16) };
+        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(nodeCount, capacity) };
 
         TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 4, token);
 
         AssertPacedBy(delays, [OneSecond, OneSecond, OneSecond]);
     }
 
-    [Test]
+    [TestCase(16, 16)]
+    [TestCase(16, 48)]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_should_back_off_when_filled_table_admits_nothing(CancellationToken token)
+    public async Task DiscoverNodes_should_back_off_when_filled_table_admits_nothing(int nodeCount, int capacity, CancellationToken token)
     {
-        RoutingTableStub routingTable = new() { Occupancy = FilledTable };
+        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(nodeCount, capacity) };
 
         TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 11, token);
 
@@ -189,26 +191,59 @@ public class RandomWalkKademliaDiscoveryTests
     {
         RoutingTableStub routingTable = new() { Occupancy = FilledTable };
 
-        await RunIterations(new TestKademlia(), routingTable, iterations: 4, token,
-            advanceTime: false, concurrentJobs: 4);
+        await RunPacingChecks(routingTable, checks: 4, token, concurrentJobs: 4);
 
         Assert.That(routingTable.GetOccupancyCalls, Is.EqualTo(1));
     }
 
-    [TestCase(999, 1)]
-    [TestCase(1000, 2)]
+    [TestCase(999, 1, 4)]
+    [TestCase(1000, 2, 1)]
     [CancelAfter(10000)]
     public async Task DiscoverNodes_should_expire_cached_routing_table_occupancy_after_one_second(
         int elapsedMilliseconds,
         int expectedOccupancyCalls,
+        int expectedDelaySeconds,
         CancellationToken token)
     {
         RoutingTableStub routingTable = new() { Occupancy = FilledTable };
 
-        await RunIterations(new TestKademlia(), routingTable, iterations: 2, token,
-            timeAdvance: TimeSpan.FromMilliseconds(elapsedMilliseconds));
+        TimeSpan[] delays = await RunPacingChecks(routingTable, checks: 2, token,
+            timeAdvance: TimeSpan.FromMilliseconds(elapsedMilliseconds),
+            onDelayRequested: wait => { if (wait == 1) routingTable.Occupancy = new RoutingTableOccupancy(0, 16); });
 
-        Assert.That(routingTable.GetOccupancyCalls, Is.EqualTo(expectedOccupancyCalls));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(routingTable.GetOccupancyCalls, Is.EqualTo(expectedOccupancyCalls));
+            Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(expectedDelaySeconds) }));
+        }
+    }
+
+    private static async Task<TimeSpan[]> RunPacingChecks(
+        RoutingTableStub routingTable,
+        int checks,
+        CancellationToken token,
+        int concurrentJobs = 1,
+        TimeSpan? timeAdvance = null,
+        Action<int>? onDelayRequested = null)
+    {
+        TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        NoWaitTimeProvider timeProvider = new()
+        {
+            TimeAdvance = timeAdvance ?? TimeSpan.Zero,
+            CompletedTimers = checks - concurrentJobs,
+            OnDelayRequested = wait =>
+            {
+                onDelayRequested?.Invoke(wait);
+                if (wait == checks) completed.TrySetResult();
+            }
+        };
+        RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(new TestKademlia(), routingTable, timeProvider);
+
+        // Leave enough channel space for every lookup and park each job only after it has checked occupancy.
+        await using IAsyncEnumerator<int> nodes = discovery.DiscoverNodes(concurrentJobs, checks * NodesPerLookup, token).GetAsyncEnumerator(token);
+        Assert.That(await nodes.MoveNextAsync(), Is.True);
+        await completed.Task.WaitAsync(token);
+        return timeProvider.RequestedDelays;
     }
 
     /// <summary>Asserts that the first iterations waited for exactly the expected paces.</summary>
@@ -258,40 +293,36 @@ public class RandomWalkKademliaDiscoveryTests
         RoutingTableStub routingTable,
         int iterations,
         CancellationToken token,
-        Action<int>? onDelayRequested = null,
-        bool advanceTime = true,
-        int concurrentJobs = 1,
-        TimeSpan? timeAdvance = null)
+        Action<int>? onDelayRequested = null)
     {
         NoWaitTimeProvider timeProvider = new()
         {
-            OnDelayRequested = onDelayRequested,
-            AdvanceTime = advanceTime,
-            TimeAdvance = timeAdvance
+            OnDelayRequested = onDelayRequested
         };
         RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, routingTable, timeProvider);
 
-        await discovery.DiscoverNodes(concurrentJobs, NodesPerLookup, token)
+        await discovery.DiscoverNodes(1, NodesPerLookup, token)
             .Take(iterations * NodesPerLookup).ToListAsync(token);
 
         return timeProvider.RequestedDelays;
     }
 
     /// <summary>
-    /// Runs timers immediately while recording the delay that was asked for, on a clock that never advances.
+    /// Records paced delays and advances the clock only when a timer is requested.
     /// </summary>
     /// <remarks>
-    /// Freezing <see cref="GetTimestamp"/> makes the measured lookup time zero, so a job asks for exactly the pace it
-    /// chose rather than the pace minus however long the test machine took.
+    /// Lookup time stays zero regardless of the test machine's speed. Timers beyond <see cref="CompletedTimers"/>
+    /// stay pending until discovery is disposed, allowing tests to inspect a fixed number of completed pacing checks.
     /// </remarks>
     private sealed class NoWaitTimeProvider : TimeProvider
     {
         private readonly ConcurrentQueue<TimeSpan> _requestedDelays = new();
         private long _timestamp;
+        private int _timerCount;
 
         public TimeSpan[] RequestedDelays => _requestedDelays.ToArray();
 
-        public bool AdvanceTime { get; init; } = true;
+        public int CompletedTimers { get; init; } = int.MaxValue;
 
         public TimeSpan? TimeAdvance { get; init; }
 
@@ -305,12 +336,10 @@ public class RandomWalkKademliaDiscoveryTests
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             _requestedDelays.Enqueue(dueTime);
-            OnDelayRequested?.Invoke(_requestedDelays.Count);
-            if (AdvanceTime)
-            {
-                Interlocked.Add(ref _timestamp, (TimeAdvance ?? dueTime).Ticks);
-            }
-            return System.CreateTimer(callback, state, TimeSpan.Zero, period);
+            int timer = Interlocked.Increment(ref _timerCount);
+            Interlocked.Add(ref _timestamp, (TimeAdvance ?? dueTime).Ticks);
+            OnDelayRequested?.Invoke(timer);
+            return System.CreateTimer(callback, state, timer <= CompletedTimers ? TimeSpan.Zero : Timeout.InfiniteTimeSpan, period);
         }
     }
 

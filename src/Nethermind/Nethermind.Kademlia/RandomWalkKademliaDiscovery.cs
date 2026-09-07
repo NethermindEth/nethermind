@@ -62,6 +62,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     /// </summary>
     /// <remarks>
     /// A cold table has one bucket, so it must first collect a full bucket's worth of nodes before this ratio applies.
+    /// Networks with fewer than KSize reachable nodes therefore stay at the minimum interval.
     /// Buckets only split once they overflow, so a table that saturated its reachable neighbourhood settles above
     /// 90% of its slots. A table whose peers were evicted for being unresponsive falls below this ratio and resumes
     /// discovering at full speed.
@@ -146,7 +147,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     {
         TimeSpan iterationDuration = MinimumIterationDuration;
         // Carried across iterations so that the window covers the paced wait as well as the lookup; a job at the
-        // maximum interval is asleep for nearly all of its iteration, and admissions made then must still reset it.
+        // maximum interval is asleep for nearly all of its iteration, and admissions made then must restore productive pacing.
         long admissionsSeen = admissions.Count;
         while (!token.IsCancellationRequested)
         {
