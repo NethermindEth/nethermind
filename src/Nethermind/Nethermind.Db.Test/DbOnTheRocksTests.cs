@@ -77,8 +77,11 @@ namespace Nethermind.Db.Test
             {
                 db.Set(key, value);
                 db.Flush();
-                Assert.That(ReadOptionsFile(DbPath), Does.Contain("read_triggered_compaction_threshold=0.01"));
-                Assert.That(ReadOptionsFile(DbPath), Does.Contain("max_compaction_trigger_wakeup_seconds=60"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ReadOptionsFile(DbPath), Does.Contain("read_triggered_compaction_threshold=0.01"));
+                    Assert.That(ReadOptionsFile(DbPath), Does.Contain("max_compaction_trigger_wakeup_seconds=60"));
+                }
             }
 
             config.FlatDbAdditionalRocksDbOptions = "read_triggered_compaction_threshold=0;";
