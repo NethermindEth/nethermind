@@ -66,6 +66,27 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void FlatMetadataCacheOption_AllowsFlushAndReopen()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] value = [4, 5, 6];
+            DbConfig config = new();
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance))
+            {
+                db.Set(key, value);
+                db.Flush();
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("cache_index_and_filter_blocks=true"));
+            }
+
+            config.FlatDbAdditionalRocksDbOptions = "block_based_table_factory.cache_index_and_filter_blocks=false;";
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance);
+            Assert.That(reopened.Get(key), Is.EqualTo(value));
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain("cache_index_and_filter_blocks=false"));
+        }
+
+        [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
@@ -679,6 +700,21 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        private static string ReadOptionsFile(string dbPath)
+        {
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
+            string? latestOptionsPath = null;
+            foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
+            {
+                if (latestOptionsPath is null || string.CompareOrdinal(Path.GetFileName(optionsPath), Path.GetFileName(latestOptionsPath)) > 0)
+                {
+                    latestOptionsPath = optionsPath;
+                }
+            }
+
+            return File.ReadAllText(latestOptionsPath!).Replace(" ", string.Empty, StringComparison.Ordinal);
+        }
 
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
