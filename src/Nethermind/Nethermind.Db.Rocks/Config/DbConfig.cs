@@ -353,6 +353,7 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
+        "block_based_table_factory.index_block_search_type=kInterpolation;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
