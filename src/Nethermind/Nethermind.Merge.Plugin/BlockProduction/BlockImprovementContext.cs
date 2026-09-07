@@ -46,9 +46,7 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     public Task<Block?> ImprovementTask { get; }
 
-    public Block? CurrentBestBlock => _best.CurrentBestBlock;
-    public UInt256 BlockFees => _best.BlockFees;
-    public IBlockProductionContext Snapshot() => _best;
+    public BlockProductionSnapshot Best => _best;
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
     {
@@ -69,7 +67,7 @@ public class BlockImprovementContext : IBlockImprovementContext
             }
         }
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     public bool Disposed { get; private set; }

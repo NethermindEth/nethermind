@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -64,7 +63,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(factory.Created!.Reads, Is.LessThanOrEqualTo(candidates.Length), "reads wrapped around, so two reads may have aliased to one candidate");
-            // engine_getPayloadV3 item 3: commitments must match the payload's blob versioned hashes.
+            // A bundle from another candidate breaks engine_getPayloadV3 item 3 (commitments must match the payload's blob versioned hashes).
             Assert.That(commitments, Is.EqualTo(new BlobsBundleV1(served).Commitments), "blobs bundle came from another candidate");
             if (version >= 4)
             {
@@ -118,15 +117,14 @@ public partial class EngineModuleTests
         /// <summary>How many times the candidate was read; above the candidate count, reads alias.</summary>
         public int Reads => Volatile.Read(ref _reads);
 
-        public Block? CurrentBestBlock => candidates[NextCandidate()];
-        public UInt256 BlockFees => FeesOf((Math.Max(Volatile.Read(ref _reads), 1) - 1) % candidates.Length);
-        public IBlockProductionContext Snapshot()
+        public BlockProductionSnapshot Best
         {
-            int candidate = NextCandidate();
-            return new BlockProductionSnapshot(candidates[candidate], FeesOf(candidate));
+            get
+            {
+                int candidate = (Interlocked.Increment(ref _reads) - 1) % candidates.Length;
+                return new(candidates[candidate], FeesOf(candidate));
+            }
         }
-
-        private int NextCandidate() => (Interlocked.Increment(ref _reads) - 1) % candidates.Length;
         public Task<Block?> ImprovementTask { get; } = new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; } = startDateTime;

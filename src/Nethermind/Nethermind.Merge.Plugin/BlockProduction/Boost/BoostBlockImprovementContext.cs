@@ -65,13 +65,11 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     public Task<Block?> ImprovementTask { get; }
-    public Block? CurrentBestBlock => _best.CurrentBestBlock;
-    public UInt256 BlockFees => _best.BlockFees;
-    public IBlockProductionContext Snapshot() => _best;
+    public BlockProductionSnapshot Best => _best;
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 

@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.BlockProduction;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,13 +47,12 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 {
     public Task<Block?> ImprovementTask { get; }
 
-    public Block? CurrentBestBlock { get; private set; }
+    public BlockProductionSnapshot Best => _best;
 
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 
-    public UInt256 BlockFees => 0;
-    public IBlockProductionContext Snapshot() => new BlockProductionSnapshot(CurrentBestBlock, BlockFees);
+    private volatile BlockProductionSnapshot _best;
 
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private readonly CancellationToken _improvementToken;
@@ -91,7 +89,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         _improvementCancellation = cts;
         _improvementToken = cts.Token;
-        CurrentBestBlock = currentBestBlock;
+        _best = new(currentBestBlock, UInt256.Zero);
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger<ShutterBlockImprovementContext>();
         _blockProducer = blockProducer;
@@ -127,20 +125,20 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         {
             if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             await BuildBlock();
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         bool includedShutterTxs = await TryBuildShutterBlock(slot);
         if (includedShutterTxs)
         {
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         long waitTime = _shutterConfig.MaxKeyDelay - offset;
         if (waitTime <= 0)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
         waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
@@ -160,13 +158,13 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             Metrics.ShutterKeysMissed++;
             if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
 
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         // should succeed after waiting for transactions
         await TryBuildShutterBlock(slot);
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     private async Task<bool> TryBuildShutterBlock(ulong slot)
@@ -181,7 +179,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, IBlockProducer.Flags.None, _linkedCancellation?.Token ?? default);
         if (result is not null)
         {
-            CurrentBestBlock = result;
+            _best = new(result, UInt256.Zero);
         }
     }
 }
