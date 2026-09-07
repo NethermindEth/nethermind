@@ -165,7 +165,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     {
         if (Drained(0)) return false;
 
-        db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+        StampSwept();
         return true;
     }
 

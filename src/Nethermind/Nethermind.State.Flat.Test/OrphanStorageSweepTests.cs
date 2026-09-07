@@ -287,6 +287,8 @@ public class OrphanStorageSweepTests
         IPersistence freshPersistence = new RocksDbPersistence(freshDb, LimboLogs.Instance);
         IPersistenceManager fresh = Substitute.For<IPersistenceManager>();
         fresh.LeaseReader().Returns(_ => freshPersistence.CreateReader());
+        byte[] progressKey = Keccak.Compute("OrphanStorageSweepProgress").BytesToArray();
+        freshDb.GetColumnDb(FlatDbColumns.Metadata).PutSpan(progressKey, new byte[sizeof(uint) + 5 * sizeof(long)]);
         using OrphanStorageSweep sweep = new(freshDb, fresh, LimboLogs.Instance);
 
         bool stamped = sweep.TryStampFresh();
@@ -295,6 +297,7 @@ public class OrphanStorageSweepTests
         {
             Assert.That(stamped, Is.True, "a database that has never persisted a block is being built by this binary; it cannot hold orphans and must not be swept while snap sync writes storage before accounts");
             Assert.That(sweep.AlreadyHandled, Is.True);
+            Assert.That(freshDb.GetColumnDb(FlatDbColumns.Metadata).Get(progressKey), Is.Null, "a cursor left by a pass the clear interrupted indexes the old key space; a forced pass later must start at zero, not there");
             Assert.That(_sweep.TryStampFresh(), Is.False, "a database with a persisted block state is swept");
         }
     }
