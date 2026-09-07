@@ -127,7 +127,10 @@ class CorpusResultsTests(unittest.TestCase):
             "memory_avg_bytes": 100, "memory_peak_bytes": 200, "io_read_bytes": 3,
             "io_write_bytes": 4, "stall_cpu_usec": None, "stall_io_usec": None,
             "stall_memory_usec": None, "requests": 90, "cpu_ms_per_request": 133.3,
-            "io_read_bytes_per_request": 0.0,
+            "io_read_bytes_per_request": 0.0, "memory_anon_samples": 242,
+            "memory_anon_avg_bytes": 70, "memory_anon_peak_bytes": 100,
+            "memory_file_samples": 242, "memory_file_avg_bytes": 30,
+            "memory_file_peak_bytes": 50,
         })
         tool_log = self.dir / "jsonbench-tool.log"
         tool_log.write_text(
@@ -158,6 +161,20 @@ class CorpusResultsTests(unittest.TestCase):
         self.assertEqual(data["tool_log_oom_signals"], 1)
         self.assertNotIn("SENTINEL_PRIVATE_DATA", out.read_text(encoding="utf-8"))
         corpus_results._validate_diagnostic(out)
+
+    def test_resources_reject_negative_or_non_numeric_memory_breakdown(self):
+        valid = {
+            "memory_anon_samples": 0, "memory_anon_avg_bytes": None,
+            "memory_anon_peak_bytes": None, "memory_file_samples": 0,
+            "memory_file_avg_bytes": None, "memory_file_peak_bytes": None,
+        }
+        path = self.write_json(self.dir / "resources.json", valid)
+        corpus_results._validate_resources(path)
+        for key, value in (("memory_anon_samples", -1), ("memory_file_peak_bytes", "unknown")):
+            with self.subTest(key=key):
+                invalid = self.write_json(self.dir / f"{key}.json", {**valid, key: value})
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results._validate_resources(invalid)
 
     def test_stage_accepts_diagnostics_and_node_health(self):
         out_root = self.dir / "diagnostic-tree"

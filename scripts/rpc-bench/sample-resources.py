@@ -125,6 +125,8 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
                  for name in ("cpu", "io", "memory")}
 
     memory_samples: list[int] = []
+    memory_anon_samples: list[int] = []
+    memory_file_samples: list[int] = []
     peak_cores = 0.0
     last_t, last_cpu = started, cpu_start
     while not should_stop():
@@ -133,6 +135,11 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
         current = _read_int(cgroup / "memory.current")
         if current is not None:
             memory_samples.append(current)
+        memory_stat = _read_kv(cgroup / "memory.stat")
+        for key, samples in (("anon", memory_anon_samples), ("file", memory_file_samples)):
+            value = memory_stat.get(key)
+            if value is not None and value >= 0:
+                samples.append(value)
         cpu_now = cpu_usec()
         span = now - last_t
         if span > 0:
@@ -161,6 +168,14 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
         "cpu_throttled_usec": throttle.get("throttled_usec", 0) - throttled_start,
         "memory_avg_bytes": int(sum(memory_samples) / len(memory_samples)) if memory_samples else 0,
         "memory_peak_bytes": max(memory_samples) if memory_samples else 0,
+        "memory_anon_samples": len(memory_anon_samples),
+        "memory_anon_avg_bytes": int(sum(memory_anon_samples) / len(memory_anon_samples))
+        if memory_anon_samples else None,
+        "memory_anon_peak_bytes": max(memory_anon_samples) if memory_anon_samples else None,
+        "memory_file_samples": len(memory_file_samples),
+        "memory_file_avg_bytes": int(sum(memory_file_samples) / len(memory_file_samples))
+        if memory_file_samples else None,
+        "memory_file_peak_bytes": max(memory_file_samples) if memory_file_samples else None,
         "io_read_bytes": io_end[0] - io_start[0],
         "io_write_bytes": io_end[1] - io_start[1],
         "stall_cpu_usec": psi_delta("cpu"),

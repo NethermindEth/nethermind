@@ -249,7 +249,13 @@ RESOURCE_FIELDS = {
     "wall_seconds", "samples", "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores",
     "cpu_throttled_usec", "memory_avg_bytes", "memory_peak_bytes", "io_read_bytes",
     "io_write_bytes", "stall_cpu_usec", "stall_io_usec", "stall_memory_usec", "requests",
-    "cpu_ms_per_request", "io_read_bytes_per_request",
+    "cpu_ms_per_request", "io_read_bytes_per_request", "memory_anon_samples",
+    "memory_anon_avg_bytes", "memory_anon_peak_bytes", "memory_file_samples",
+    "memory_file_avg_bytes", "memory_file_peak_bytes",
+}
+MEMORY_BREAKDOWN_FIELDS = {
+    "memory_anon_samples", "memory_anon_avg_bytes", "memory_anon_peak_bytes",
+    "memory_file_samples", "memory_file_avg_bytes", "memory_file_peak_bytes",
 }
 
 
@@ -264,6 +270,8 @@ def _validate_resources(path: Path) -> None:
             continue  # PSI is absent on kernels without pressure accounting
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise CorpusResultsError(f"{path.name}: {key} is not numeric")
+        if key in MEMORY_BREAKDOWN_FIELDS and (not math.isfinite(float(value)) or value < 0):
+            raise CorpusResultsError(f"{path.name}: {key} is not a finite non-negative number")
 
 
 DIAGNOSTIC_FIELDS = {
