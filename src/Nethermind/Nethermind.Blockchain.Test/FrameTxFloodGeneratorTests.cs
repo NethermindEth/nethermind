@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -16,6 +17,8 @@ namespace Nethermind.Blockchain.Test;
 public class FrameTxFloodGeneratorTests
 {
     private const int OfferedRate = 1_000;
+
+    private static readonly TimeSpan SubmissionWait = TimeSpan.FromSeconds(10);
 
     private static FrameTxFloodMeasurement.FloodGenerator Generator() =>
         new(static _ => AcceptTxResult.Accepted, [Build.A.Transaction.TestObject], OfferedRate);
@@ -48,5 +51,27 @@ public class FrameTxFloodGeneratorTests
         Assert.That(generator.Run(() => generator.Stop()), Is.True,
             "the counters are read after this join, so a stop the body asks for must be reported honestly");
         Assert.That(generator.IsRunning, Is.False);
+    }
+
+    [Test]
+    public void Run_submits_while_the_body_runs()
+    {
+        using FrameTxFloodMeasurement.FloodGenerator generator = Generator();
+
+        Assert.That(
+            generator.Run(() => SpinWait.SpinUntil(() => Volatile.Read(ref generator.Submitted) > 0, SubmissionWait)),
+            Is.True,
+            "the body ran without the generator offering a single transaction, so the arm measures an unflooded pool");
+    }
+
+    [Test]
+    public void Run_leaves_disposal_to_the_owner()
+    {
+        using FrameTxFloodMeasurement.FloodGenerator generator = Generator();
+
+        generator.Run(static () => true);
+
+        Assert.That(generator.Stop(), Is.True,
+            "Run disposed an instance it does not own, so the owner's later calls run against a disposed source");
     }
 }

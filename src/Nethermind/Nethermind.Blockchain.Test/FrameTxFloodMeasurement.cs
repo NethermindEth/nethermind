@@ -361,8 +361,9 @@ public class FrameTxFloodMeasurement
     }
 
     /// <summary>Open-loop submitter that owns its thread and its cancellation.</summary>
-    /// <remarks><see cref="Run{T}"/> is the only way to start it, so the thread cannot outlive the caller's
-    /// window however that window ends.</remarks>
+    /// <remarks><see cref="Run{T}"/> is the only way to start it and stops it on every exit path, so the thread
+    /// cannot outlive the caller's window however that window ends. It runs once, and the caller that constructed
+    /// it disposes it.</remarks>
     internal sealed class FloodGenerator : IDisposable
     {
         private static readonly TimeSpan JoinTimeout = TimeSpan.FromSeconds(30);
@@ -404,13 +405,20 @@ public class FrameTxFloodMeasurement
         }
 
         /// <summary>Runs <paramref name="body"/> with the generator submitting, and stops it on every exit path.</summary>
+        /// <remarks>Stopping is not disposal: the caller owns the instance and disposes it.</remarks>
         public T Run<T>(Func<T> body)
         {
-            using (this)
+            _thread.Start();
+            _started = true;
+            try
             {
-                _started = true;
-                _thread.Start();
                 return body();
+            }
+            finally
+            {
+                // Throwing here would mask a failure from the body, but a generator still submitting into
+                // infrastructure the caller is about to tear down has to be visible in the run's output.
+                if (!Stop()) TestContext.Error.WriteLine("frame-tx flood generator did not stop within the join timeout");
             }
         }
 
@@ -419,7 +427,7 @@ public class FrameTxFloodMeasurement
         /// <summary>Cancels and joins the submitting thread, returning whether it stopped within the timeout.</summary>
         public bool Stop()
         {
-            if (!_disposed) _cts.Cancel();
+            _cts.Cancel();
             return !_started || _thread.Join(JoinTimeout);
         }
 
@@ -715,7 +723,7 @@ public class FrameTxFloodMeasurement
         _floodTxs = BuildFloodTransactions(_saltCursor);
         _saltCursor += FloodPoolSize;
 
-        FloodGenerator generator = new(
+        using FloodGenerator generator = new(
             tx => _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), _floodTxs, offeredRate);
 
         return generator.Run(() =>
@@ -1083,38 +1091,51 @@ public class FrameTxFloodMeasurement
 
         /// <summary>
         /// Takes the processing stack from the chain's production wiring; only the executor under measurement,
-        /// its counting adapter and the two collaborators the rig deliberately drives are built here.
+        /// its counting adapter, the eviction gate the rig drives and a disabled block access list manager are
+        /// built here.
         /// </summary>
+        /// <remarks>The returned rig owns the processing scope and its source; nothing else does, so a throw
+        /// before the rig is returned has to close them.</remarks>
         public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling)
         {
             ISpecProvider specProvider = chain.SpecProvider;
             IReleaseSpec spec = specProvider.GenesisSpec;
 
             IReadOnlyTxProcessorSource source = chain.ReadOnlyTxProcessingEnvFactory.Create();
-            IReadOnlyTxProcessingScope scope = source.Build(chain.BlockTree.Head?.Header);
-            IWorldState state = scope.WorldState;
+            IReadOnlyTxProcessingScope? scope = null;
+            try
+            {
+                scope = source.Build(chain.BlockTree.Head?.Header);
+                IWorldState state = scope.WorldState;
 
-            CountingAdapter adapter = new(
-                new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
+                CountingAdapter adapter = new(
+                    new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
 
-            ProducerRig rig = new(scope, source, spec, ceiling, kRetry);
+                ProducerRig rig = new(scope, source, spec, ceiling, kRetry);
 
-            IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-            balManager.Enabled.Returns(false);
+                IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
+                balManager.Enabled.Returns(false);
 
-            ITxPool gate = Substitute.For<ITxPool>();
-            gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
+                ITxPool gate = Substitute.For<ITxPool>();
+                gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
 
-            rig._adapter = adapter;
-            rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
-                adapter,
-                state,
-                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
-                LimboLogs.Instance,
-                balManager,
-                gate);
+                rig._adapter = adapter;
+                rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
+                    adapter,
+                    state,
+                    new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                    LimboLogs.Instance,
+                    balManager,
+                    gate);
 
-            return rig;
+                return rig;
+            }
+            catch
+            {
+                scope?.Dispose();
+                source.Dispose();
+                throw;
+            }
         }
 
         private bool OnEvictionRequested() => ++_attemptsOnCurrent >= _kRetry;
