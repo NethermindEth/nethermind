@@ -245,7 +245,12 @@ public ref struct RlpReader
     }
 
     public ValueHash256? DecodeValueKeccak()
-        => TryDecodeValueKeccak(out ValueHash256 keccak) ? keccak : null;
+    {
+        // Not a conditional expression: the implicit Hash256? -> ValueHash256 conversion would
+        // give `null` the type ValueHash256, silently yielding a non-null zero hash.
+        if (!TryDecodeValueKeccak(out ValueHash256 keccak)) return null;
+        return keccak;
+    }
 
     public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
 

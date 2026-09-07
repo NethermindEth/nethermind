@@ -155,6 +155,18 @@ namespace Nethermind.Core.Test
             AssertValueWriterMatchesExpected(writer, buffer, ExpectedValueHash(value));
         }
 
+        [TestCaseSource(nameof(ValueWriterValueHashCases))]
+        public void RlpReader_roundtrips_value_hash(ValueHash256? value)
+        {
+            byte[] buffer = new byte[Rlp.LengthOf(in value)];
+            RlpWriter writer = new(buffer);
+            writer.Encode(in value);
+
+            RlpReader reader = new(buffer);
+
+            Assert.That(reader.DecodeValueKeccak(), Is.EqualTo(value));
+        }
+
         [TestCaseSource(nameof(ValueWriterAddressCases))]
         public void RlpWriter_encodes_address_like_Rlp(Address? value)
         {
