@@ -66,6 +66,106 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void FlatTombstoneConversion_PreservesSnapshotsScansOverwritesAndReopen()
+        {
+            DbConfig config = new();
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance))
+            {
+                ISortedKeyValueStore sorted = db;
+                IKeyValueStoreWithSnapshot snapshotStore = db;
+
+                for (byte key = 0; key < 96; key++)
+                {
+                    db.Set([key], [key]);
+                }
+
+                db.Flush();
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("min_tombstones_for_range_conversion=32"));
+
+                using IKeyValueStoreSnapshot beforeDeletes = snapshotStore.CreateSnapshot();
+                for (byte key = 10; key < 42; key++)
+                {
+                    db.Remove([key]);
+                }
+
+                for (byte key = 43; key < 75; key++)
+                {
+                    db.Remove([key]);
+                }
+
+                using IKeyValueStoreSnapshot afterDeletes = snapshotStore.CreateSnapshot();
+
+                List<byte> expectedForward = [];
+                for (byte key = 0; key < 10; key++)
+                {
+                    expectedForward.Add(key);
+                }
+
+                expectedForward.Add(42);
+                for (byte key = 75; key < 96; key++)
+                {
+                    expectedForward.Add(key);
+                }
+
+                List<byte> forward = [];
+                using (ISortedView view = sorted.GetViewBetween([0], [96]))
+                {
+                    while (view.MoveNext())
+                    {
+                        forward.Add(view.CurrentKey[0]);
+                    }
+                }
+
+                List<byte> reverse = [];
+                using (ReadOptions readOptions = db.CreateReadOptions())
+                using (Iterator iterator = db.CreateIterator(readOptions))
+                {
+                    iterator.SeekToLast();
+                    while (iterator.Valid())
+                    {
+                        reverse.Add(iterator.GetKeySpan()[0]);
+                        iterator.Prev();
+                    }
+                }
+
+                byte[] expectedReverse = expectedForward.ToArray();
+                Array.Reverse(expectedReverse);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(beforeDeletes.Get([10]), Is.EqualTo([10]));
+                    Assert.That(beforeDeletes.Get([50]), Is.EqualTo([50]));
+                    Assert.That(afterDeletes.Get([10]), Is.Null);
+                    Assert.That(afterDeletes.Get([50]), Is.Null);
+                    Assert.That(afterDeletes.Get([42]), Is.EqualTo([42]), "the interior live key must remain visible");
+                    Assert.That(forward, Is.EqualTo(expectedForward));
+                    Assert.That(reverse, Is.EqualTo(expectedReverse));
+                }
+
+                db.Set([50], [0xF0]);
+                using IKeyValueStoreSnapshot afterReinsert = snapshotStore.CreateSnapshot();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(db.Get([50]), Is.EqualTo([0xF0]));
+                    Assert.That(afterReinsert.Get([50]), Is.EqualTo([0xF0]));
+                }
+
+                db.Flush();
+            }
+
+            config.FlatDbAdditionalRocksDbOptions = "min_tombstones_for_range_conversion=0;";
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reopened.Get([10]), Is.Null);
+                Assert.That(reopened.Get([42]), Is.EqualTo([42]));
+                Assert.That(reopened.Get([50]), Is.EqualTo([0xF0]));
+            }
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain("min_tombstones_for_range_conversion=0"));
+        }
+
+        [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
@@ -679,6 +779,21 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        private static string ReadOptionsFile(string dbPath)
+        {
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
+            string? latestOptionsPath = null;
+            foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
+            {
+                if (latestOptionsPath is null || string.CompareOrdinal(Path.GetFileName(optionsPath), Path.GetFileName(latestOptionsPath)) > 0)
+                {
+                    latestOptionsPath = optionsPath;
+                }
+            }
+
+            return File.ReadAllText(latestOptionsPath!).Replace(" ", string.Empty, StringComparison.Ordinal);
+        }
 
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()

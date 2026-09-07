@@ -312,6 +312,7 @@ public class DbConfig : IDbConfig
 
         "ttl=0;" +
         "periodic_compaction_seconds=0;" +
+        "min_tombstones_for_range_conversion=32;" +
         "compression=kLZ4Compression;" +
 
         // Reduce num of files. Tend to be a good thing.
