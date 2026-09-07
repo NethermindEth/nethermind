@@ -89,7 +89,7 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly UInt256 ShiftAmount = new(64);
     private static readonly UInt256 BytePosition = new(15);
     private static readonly UInt256 SignExtendPosition = new(15);
-    private static readonly UInt256 JumpDestination = UInt256.Zero;
+    private static readonly UInt256 JumpDestination = UInt256.One;
     private static readonly UInt256 One = UInt256.One;
     private static readonly UInt256 CallTarget = new(0x1000UL);
     private static readonly UInt256 CallGasLimit = new(100_000UL);
@@ -245,6 +245,12 @@ public unsafe class EvmOpcodesBenchmark
         if (Opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
         {
             _opcodeCode[1] = ExtendedStackImmediate;
+        }
+        else if (Opcode is Instruction.JUMP or Instruction.JUMPI)
+        {
+            // Byte 0 is the opcode under test, so the destination must be a JUMPDEST elsewhere in the executed
+            // code, or the cell measures the invalid-destination early-out rather than a taken jump.
+            _opcodeCode[(int)JumpDestination] = (byte)Instruction.JUMPDEST;
         }
         _opcodeCodeInfo = new CodeInfo(_opcodeCode);
 
