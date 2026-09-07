@@ -31,11 +31,12 @@ public static class TrieUpdater
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
+        BucketPlan plan = changes.Plan;
         changes.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = table;
         if (changes.ShardNibbleIndex == 0)
-            return UpdateRoot(store, currentRoot, operations.AsSpan(), new(table.AsSpan(), 0, 0, false, false), metrics);
+            return UpdateRoot(store, currentRoot, operations.AsSpan(), plan, metrics);
 
         int deleteCount = 0;
         for (int index = 0; index < operations.Count; index++)

@@ -24,12 +24,13 @@ public sealed class PbtWriteBatch : IDisposable
 
     internal int ShardNibbleIndex { get; }
     internal ReadOnlySpan<PbtWriteOperation> Entries => Operations.AsSpan();
-    internal ReadOnlySpan<int> Precalculated
+    internal TrieUpdater.BucketPlan Plan
     {
         get
         {
             _ = Operations;
-            return _table!.AsSpan();
+            int depth = ShardNibbleIndex * PbtFourLevelGroupGeometry.LevelsPerGroup;
+            return new(_table!.AsSpan(), depth, depth, false, false);
         }
     }
 

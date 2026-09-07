@@ -42,6 +42,16 @@ public class Eip8297CanonicalTreeTests
         builder.Set(zeroKey, default);
         using PbtWriteBatch first = builder.Build();
         using PbtWriteBatch second = builder.Build();
+        TrieUpdater.BucketPlan plan = first.Plan;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(plan.Depth, Is.EqualTo(shardNibbleIndex * 4));
+            Assert.That(plan.BranchDepth, Is.EqualTo(plan.Depth));
+            Assert.That(plan.IsSorted, Is.False);
+            Assert.That(plan.PrefixesValidated, Is.False);
+            Assert.That(plan.Precalculated[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
+            Assert.That(plan.Precalculated.Slice(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
+        }
         first.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = table;
@@ -60,6 +70,7 @@ public class Eip8297CanonicalTreeTests
             }));
             Assert.Throws<InvalidOperationException>(() => first.Consume(out _, out _));
             Assert.Throws<InvalidOperationException>(() => _ = first.Count);
+            Assert.Throws<InvalidOperationException>(() => { _ = first.Plan; });
         }
         PbtWriteOperation[] expected = operations.AsSpan().ToArray();
         operations.AsSpan().Clear();
@@ -997,7 +1008,7 @@ public class Eip8297CanonicalTreeTests
                     builder.SetLeaf(operation.Key, operation.Value);
                 }
                 PbtWriteBatch partitionBatch = builder.Build();
-                AssertPreparedLevel(partitionBatch.Entries, partitionBatch.Precalculated, 8, 8);
+                AssertPreparedLevel(partitionBatch.Entries, partitionBatch.Plan.Precalculated, 8, 8);
                 prepared.Add(partition, partitionBatch);
             }
             preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
