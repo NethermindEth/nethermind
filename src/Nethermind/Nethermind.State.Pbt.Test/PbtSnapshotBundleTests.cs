@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -98,6 +99,44 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.PendingLeafMutations(), Is.EquivalentTo(new[] { new KeyValuePair<PbtFullKey, ValueHash256?>(key, flatValue) }));
             Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.Hash(new PbtNodeReader(expectedLeaf))));
             Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(delete ? null : expectedLeaf));
+        }
+    }
+
+    [TestCase(7u, false)]
+    [TestCase(1000u, false)]
+    [TestCase(7u, true)]
+    [TestCase(1000u, true)]
+    public void Account_and_slot_setters_stage_canonical_writes_and_deletions(uint slot, bool deleteAccount)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtFullKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] code = Bytes.FromHexString("6001");
+        Account account = Build.An.Account.WithCode(code).TestObject;
+        bundle.SetAccount(TestItem.AddressA, account);
+        bundle.SetAccount(TestItem.AddressA, account);
+        bundle.PendingCode[account.CodeHash.ValueHash256] = code;
+        EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("ab"));
+        bundle.SetSlot(TestItem.AddressA, slot, value);
+        bundle.PrepareLeafChanges();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
+            Assert.That(bundle.GetLeaf(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.Not.Null);
+            Assert.That(bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, account.CodeHash.ValueHash256, 0)), Is.Not.Null);
+        }
+        bundle.CompleteLeafChanges();
+        if (deleteAccount) bundle.SetAccount(TestItem.AddressA, null);
+        else bundle.SetSlot(TestItem.AddressA, slot, default);
+        bundle.PrepareLeafChanges();
+        bundle.CompleteLeafChanges();
+        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(deleteAccount ? null : account));
+            Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(default(EvmWord)));
+            Assert.That(bundle.GetLeaf(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.Null);
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(deleteAccount ? 0 : 1));
         }
     }
 

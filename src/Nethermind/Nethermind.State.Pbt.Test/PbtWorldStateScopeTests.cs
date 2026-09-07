@@ -136,8 +136,9 @@ public class PbtWorldStateScopeTests
         }
     }
 
-    [Test]
-    public async Task ReplacingCode_RemovesStaleHeaderChunks()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ReplacingCode_RemovesStaleHeaderChunks(bool codeAfterAccount)
     {
         byte[] longCode = new byte[100];
         Array.Fill(longCode, (byte)0x01);
@@ -153,14 +154,25 @@ public class PbtWorldStateScopeTests
             batch.Set(TestItem.AddressA, Build.An.Account.WithCode(longCode).TestObject);
         scope.Commit(0);
 
-        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
-            codeWriter.Set(shortHash.ValueHash256, shortCode);
+        if (!codeAfterAccount) WriteShortCode();
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
             batch.Set(TestItem.AddressA, Build.An.Account.WithCode(shortCode).TestObject);
+        if (codeAfterAccount) WriteShortCode();
         scope.Commit(1);
 
-        for (int chunkId = 1; chunkId < 4; chunkId++)
-            Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Bundle.GetCodeReference(longHash.ValueHash256), Is.Zero);
+            Assert.That(scope.Bundle.GetCodeReference(shortHash.ValueHash256), Is.EqualTo(1));
+            for (int chunkId = 1; chunkId < 4; chunkId++)
+                Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
+        }
+
+        void WriteShortCode()
+        {
+            using IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite();
+            codeWriter.Set(shortHash.ValueHash256, shortCode);
+        }
     }
 
     [TestCase(7u, false)]

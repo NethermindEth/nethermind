@@ -22,7 +22,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     private readonly bool _isReadOnly;
     private readonly ITrieWarmer _trieWarmer;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
-    private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [];
     private readonly HashSet<Stem> _queuedPrewarms = [];
     private readonly object _warmupLock = new();
 
@@ -142,17 +141,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     public void UpdateRootHash()
     {
         if (!_rootDirty) return;
-        foreach ((AddressAsKey address, Account? account) in _dirtyAccounts)
-        {
-            if (account is null) Bundle.DeleteAccount(address);
-            else Bundle.ApplyAccount(address, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
-        }
         long start = Stopwatch.GetTimestamp();
         PbtWriteBatchSet changes = Bundle.PrepareLeafChanges();
         LastFoldMutationCount = changes.Count;
         _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes);
         Bundle.CompleteLeafChanges();
-        _dirtyAccounts.Clear();
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
         _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
@@ -229,9 +222,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         public void Set(Address key, Account? account)
         {
             scope.Bundle.SetAccount(key, account);
-            scope._dirtyAccounts[key] = account;
-            if (account is null) scope.Bundle.DeleteAccount(key);
-            else scope.Bundle.ApplyAccount(key, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
             scope._rootDirty = true;
         }
 
@@ -246,8 +236,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         public void Set(in UInt256 index, byte[] value)
         {
             EvmWord word = EvmWordSlot.FromStripped(value);
-            PbtFullKey key = PbtStateKey.Storage(address, index);
-            scope.Bundle.SetLeaf(key, EvmWordSlot.IsZero(word) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in word)));
             scope.Bundle.SetSlot(address, index, word);
             scope._rootDirty = true;
         }

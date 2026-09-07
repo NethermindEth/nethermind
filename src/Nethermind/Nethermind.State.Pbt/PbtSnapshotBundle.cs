@@ -19,6 +19,7 @@ public sealed class PbtSnapshotBundle(
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private PbtPendingFlatWrites? _pending = resourcePool.GetPendingFlatWrites(usage);
     private PbtWriteBatchBuilder? _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
+    private readonly HashSet<AddressAsKey> _accountsAwaitingCode = [];
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
@@ -66,7 +67,17 @@ public sealed class PbtSnapshotBundle(
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBatchBuilder.SetLeaf(key, value);
 
-    internal PbtWriteBatchSet PrepareLeafChanges() => WriteBatchBuilder.PrepareDrain();
+    internal PbtWriteBatchSet PrepareLeafChanges()
+    {
+        _accountsAwaitingCode.RemoveWhere(address =>
+        {
+            Account account = Pending.Accounts[address]!;
+            if (!PendingCode.ContainsKey(account.CodeHash.ValueHash256)) return false;
+            ApplyAccount(address, account);
+            return true;
+        });
+        return WriteBatchBuilder.PrepareDrain();
+    }
 
     internal void CompleteLeafChanges()
     {
@@ -168,11 +179,24 @@ public sealed class PbtSnapshotBundle(
         return value is null ? default : EvmWordSlot.FromStripped(value.Value.Bytes);
     }
 
-    public void SetAccount(Address address, Account? account) => Pending.Accounts[address] = account;
+    public void SetAccount(Address address, Account? account)
+    {
+        if (account is null) DeleteAccount(address);
+        else ApplyAccount(address, account);
+        Pending.Accounts[address] = account;
+        if (account is { HasCode: true } && !PendingCode.ContainsKey(account.CodeHash.ValueHash256))
+            _accountsAwaitingCode.Add(address);
+        else
+            _accountsAwaitingCode.Remove(address);
+    }
 
     internal void PromoteAccount(Address address, Account? account) => Pending.Accounts.TryAdd(address, account);
 
-    public void SetSlot(Address address, in UInt256 slot, in EvmWord value) => Pending.Slots[(address, slot)] = value;
+    public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
+    {
+        SetLeaf(PbtStateKey.Storage(address, slot), EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
+        Pending.Slots[(address, slot)] = value;
+    }
 
     public void SelfDestruct(Address address)
     {
@@ -184,7 +208,7 @@ public sealed class PbtSnapshotBundle(
         DeletePrefix(PbtStateKey.StoragePrefix(address));
     }
 
-    internal void ApplyAccount(Address address, Account account)
+    private void ApplyAccount(Address address, Account account)
     {
         ValueHash256 oldCodeHash = GetAccount(address)?.CodeHash.ValueHash256 ?? ValueKeccak.OfAnEmptyString;
         ValueHash256 newCodeHash = account.CodeHash.ValueHash256;
@@ -231,7 +255,7 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal void DeleteAccount(Address address)
+    private void DeleteAccount(Address address)
     {
         Account? prior = GetAccount(address);
         if (prior is not null) RemoveCodeReference(prior.CodeHash.ValueHash256);
@@ -269,6 +293,7 @@ public sealed class PbtSnapshotBundle(
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
+        _accountsAwaitingCode.Clear();
         Pending.Reset();
         PendingCode.Clear();
         return snapshot;
@@ -278,6 +303,7 @@ public sealed class PbtSnapshotBundle(
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        _accountsAwaitingCode.Clear();
         PendingCode.Clear();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
