@@ -93,9 +93,9 @@ public class RandomWalkKademliaDiscoveryTests
 
     [Test]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_should_keep_minimum_pace_while_table_is_underfilled(CancellationToken token)
+    public async Task DiscoverNodes_should_keep_minimum_pace_until_table_has_a_full_bucket_of_nodes(CancellationToken token)
     {
-        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(5, 16) };
+        RoutingTableStub routingTable = new() { Occupancy = new RoutingTableOccupancy(15, 16) };
 
         TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 4, token);
 
@@ -185,13 +185,30 @@ public class RandomWalkKademliaDiscoveryTests
 
     [Test]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_should_cache_routing_table_occupancy_within_minimum_interval(CancellationToken token)
+    public async Task DiscoverNodes_should_share_cached_routing_table_occupancy_between_jobs(CancellationToken token)
     {
         RoutingTableStub routingTable = new() { Occupancy = FilledTable };
 
-        await RunIterations(new TestKademlia(), routingTable, iterations: 4, token, advanceTime: false);
+        await RunIterations(new TestKademlia(), routingTable, iterations: 4, token,
+            advanceTime: false, concurrentJobs: 4);
 
         Assert.That(routingTable.GetOccupancyCalls, Is.EqualTo(1));
+    }
+
+    [TestCase(999, 1)]
+    [TestCase(1000, 2)]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_should_expire_cached_routing_table_occupancy_after_one_second(
+        int elapsedMilliseconds,
+        int expectedOccupancyCalls,
+        CancellationToken token)
+    {
+        RoutingTableStub routingTable = new() { Occupancy = FilledTable };
+
+        await RunIterations(new TestKademlia(), routingTable, iterations: 2, token,
+            timeAdvance: TimeSpan.FromMilliseconds(elapsedMilliseconds));
+
+        Assert.That(routingTable.GetOccupancyCalls, Is.EqualTo(expectedOccupancyCalls));
     }
 
     /// <summary>Asserts that the first iterations waited for exactly the expected paces.</summary>
@@ -242,16 +259,20 @@ public class RandomWalkKademliaDiscoveryTests
         int iterations,
         CancellationToken token,
         Action<int>? onDelayRequested = null,
-        bool advanceTime = true)
+        bool advanceTime = true,
+        int concurrentJobs = 1,
+        TimeSpan? timeAdvance = null)
     {
         NoWaitTimeProvider timeProvider = new()
         {
             OnDelayRequested = onDelayRequested,
-            AdvanceTime = advanceTime
+            AdvanceTime = advanceTime,
+            TimeAdvance = timeAdvance
         };
         RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, routingTable, timeProvider);
 
-        await discovery.DiscoverNodes(1, NodesPerLookup, token).Take(iterations * NodesPerLookup).ToListAsync(token);
+        await discovery.DiscoverNodes(concurrentJobs, NodesPerLookup, token)
+            .Take(iterations * NodesPerLookup).ToListAsync(token);
 
         return timeProvider.RequestedDelays;
     }
@@ -272,6 +293,8 @@ public class RandomWalkKademliaDiscoveryTests
 
         public bool AdvanceTime { get; init; } = true;
 
+        public TimeSpan? TimeAdvance { get; init; }
+
         /// <summary>Called as a job starts waiting, with the one-based ordinal of that wait.</summary>
         public Action<int>? OnDelayRequested { get; init; }
 
@@ -285,7 +308,7 @@ public class RandomWalkKademliaDiscoveryTests
             OnDelayRequested?.Invoke(_requestedDelays.Count);
             if (AdvanceTime)
             {
-                Interlocked.Add(ref _timestamp, dueTime.Ticks);
+                Interlocked.Add(ref _timestamp, (TimeAdvance ?? dueTime).Ticks);
             }
             return System.CreateTimer(callback, state, TimeSpan.Zero, period);
         }

@@ -61,9 +61,10 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     /// Reciprocal of the bucket-slot fill ratio the table must reach before idle lookups may slow down.
     /// </summary>
     /// <remarks>
+    /// A cold table has one bucket, so it must first collect a full bucket's worth of nodes before this ratio applies.
     /// Buckets only split once they overflow, so a table that saturated its reachable neighbourhood settles above
-    /// 90% of its slots. A table holding only a handful of contacts, such as one still bootstrapping or one whose
-    /// peers were just evicted for being unresponsive, stays below this ratio and keeps discovering at full speed.
+    /// 90% of its slots. A table whose peers were evicted for being unresponsive falls below this ratio and resumes
+    /// discovering at full speed.
     /// </remarks>
     private const int HealthyOccupancyDivisor = 3;
 
@@ -79,6 +80,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>();
     private readonly TKadKey _currentNodeHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
+    private readonly int _kSize = kademliaConfig.KSize;
     private readonly int _maxDistance = distance.MaxDistance;
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly Lock _occupancyLock = new();
@@ -221,7 +223,8 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             }
 
             RoutingTableOccupancy occupancy = routingTable.GetOccupancy();
-            _cachedUnderfilled = occupancy.NodeCount * HealthyOccupancyDivisor < occupancy.Capacity;
+            _cachedUnderfilled = occupancy.NodeCount < _kSize ||
+                occupancy.NodeCount * HealthyOccupancyDivisor < occupancy.Capacity;
             _lastOccupancyTimestamp = timestamp;
             _hasCachedOccupancy = true;
             return _cachedUnderfilled;
