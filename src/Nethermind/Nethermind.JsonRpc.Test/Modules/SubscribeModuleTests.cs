@@ -285,9 +285,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [TestCase("true")]
-        [TestCase("false")]
-        public async Task NewHeadSubscription_with_bool_arg(string boolArg)
+        [Test]
+        public async Task NewHeadSubscription_with_bool_arg([Values("true", "false")] string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
@@ -808,9 +807,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [TestCase("true")]
-        [TestCase("false")]
-        public async Task NewPendingTransactionsSubscription_creating_result_with_bool_arg(string boolArg)
+        [Test]
+        public async Task NewPendingTransactionsSubscription_creating_result_with_bool_arg([Values("true", "false")] string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
@@ -877,11 +875,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""")).Using(JToken.EqualityComparer));
         }
 
-        [TestCase(2)]
-        [TestCase(5)]
-        [TestCase(10)]
+        [Test]
         [Explicit("Requires a WS server running")]
-        public async Task NewPendingTransactionSubscription_multiple_fast_messages(int messages)
+        public async Task NewPendingTransactionSubscription_multiple_fast_messages([Values(2, 5, 10)] int messages)
         {
             ITxPool txPool = Substitute.For<ITxPool>();
 
@@ -914,11 +910,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             await Task.Delay(1_000);
         }
 
-        [TestCase(2)]
-        [TestCase(5)]
-        [TestCase(10)]
+        [Test]
         [Explicit("Requires a WS server running")]
-        public async Task MultipleSubscriptions_concurrent_fast_messages(int messages)
+        public async Task MultipleSubscriptions_concurrent_fast_messages([Values(2, 5, 10)] int messages)
         {
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);

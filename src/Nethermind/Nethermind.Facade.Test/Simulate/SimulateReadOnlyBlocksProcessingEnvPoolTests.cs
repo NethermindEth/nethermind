@@ -71,9 +71,8 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         Assert.That(new HashSet<SimulateReadOnlyBlocksProcessingScope>(scopes), Has.Count.EqualTo(n), "every concurrent renter got an independent scope");
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Rent_AfterRelease_RestoresSlot(bool poison)
+    [Test]
+    public void Rent_AfterRelease_RestoresSlot([Values] bool poison)
     {
         FakeEnvFactory factory = new(throwOnBegin: poison);
         using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 1);
@@ -92,9 +91,8 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         Assert.That(() => pool.Begin(null).Dispose(), Throws.Nothing);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Dispose_DisposesTrackedEnvs(bool stillRented)
+    [Test]
+    public void Dispose_DisposesTrackedEnvs([Values] bool stillRented)
     {
         FakeEnvFactory factory = new();
         SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 2);

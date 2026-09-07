@@ -331,9 +331,8 @@ public class JsonRpcServiceTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"Nethermind/test\",\"id\":67}"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Admin_peers_is_working_with_empty_or_null_params(bool useNullParams)
+    [Test]
+    public async Task Admin_peers_is_working_with_empty_or_null_params([Values] bool useNullParams)
     {
         IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
         PeerInfo[] expectedPeers = [new PeerInfo { Enode = "enode://expected-peer" }];
@@ -402,9 +401,8 @@ public class JsonRpcServiceTests
 
     // A streamed trace executes while the response is written, on the module's own overridable env; the module must
     // therefore stay rented until the response is disposed, or the next rental races it on that env.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Returns_module_to_pool_only_after_a_streamed_result_is_disposed(bool streamed)
+    [Test]
+    public void Returns_module_to_pool_only_after_a_streamed_result_is_disposed([Values] bool streamed)
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();

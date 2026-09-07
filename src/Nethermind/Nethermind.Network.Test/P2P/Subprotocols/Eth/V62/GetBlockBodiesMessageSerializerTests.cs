@@ -32,9 +32,8 @@ public class GetBlockBodiesMessageSerializerTests
         SerializerTester.TestZero(serializer, message);
     }
 
-    [TestCase(500)]
-    [TestCase(1024)]
-    public void Can_deserialize_body_request_up_to_message_limit(int hashCount)
+    [Test]
+    public void Can_deserialize_body_request_up_to_message_limit([Values(500, 1024)] int hashCount)
     {
         GetBlockBodiesMessageSerializer serializer = new();
         using GetBlockBodiesMessage message = new(CreateHashes(hashCount));

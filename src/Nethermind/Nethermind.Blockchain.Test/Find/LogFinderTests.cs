@@ -186,11 +186,10 @@ public class LogFinderTests
     // Everything the receipt path lets escape must survive the PLINQ wrapping: several partitions faulting at
     // once arrive as one AggregateException, and the RPC layer maps the bare types onto error codes. A
     // single-block range takes the sequential path and cannot cover this.
-    [TestCase(typeof(ResourceNotFoundException))]
-    [TestCase(typeof(ConcurrencyLimitReachedException))]
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
-    public void throw_unwrapped_exception_on_the_parallel_path(Type exceptionType)
+    public void throw_unwrapped_exception_on_the_parallel_path([Values(typeof(ResourceNotFoundException), typeof(ConcurrencyLimitReachedException))] Type exceptionType)
     {
         int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
         SetUp(allowReceiptIterator: true, chainLength: chainLength);

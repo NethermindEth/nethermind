@@ -955,10 +955,8 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(2));
     }
 
-    [TestCase(null)]
-    [TestCase(1000000000)]
-    [TestCase(1000001)]
-    public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
+    [Test]
+    public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd([Values(null, 1000000000, 1000001)] long? terminalTotalDifficulty)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -971,10 +969,8 @@ public partial class EngineModuleTests
         Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
     }
 
-    [TestCase(null)]
-    [TestCase(1000000000)]
-    [TestCase(1000001)]
-    public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
+    [Test]
+    public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd([Values(null, 1000000000, 1000001)] long? terminalTotalDifficulty)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -1202,9 +1198,8 @@ public partial class EngineModuleTests
         await rpc.engine_getPayloadV1(Bytes.FromHexString(fcu1.Data.PayloadId!));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task executePayloadV1_processes_passed_transactions(bool moveHead)
+    [Test]
+    public async Task executePayloadV1_processes_passed_transactions([Values] bool moveHead)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
