@@ -24,7 +24,7 @@ internal static class InputDecoder
     /// <summary>Decodes a stateless input into the payload the run executes.</summary>
     /// <remarks>
     /// Also installs the run's hash seed, as soon as the payload's own commitment is available and
-    /// before anything downstream is keyed by a hash - see <see cref="SpanExtensions.SeedHashes(in ValueHash256)"/>.
+    /// before anything downstream is keyed by a hash - see <see cref="SpanExtensions.SeedHashes(in UInt256)"/>.
     /// </remarks>
     internal static StatelessPayload Decode(ReadOnlySpan<byte> data)
     {

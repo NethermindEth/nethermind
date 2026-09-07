@@ -10,8 +10,8 @@ using NUnit.Framework;
 /// The guest installs it while decoding the payload it is about to execute, rather than in a static
 /// initializer, which is what keeps a class-initialisation check off every mixer call; a test process
 /// reaches the mixers without decoding a payload, and has no payload root to seed from. Deliberately
-/// outside any namespace, so it wraps every fixture here and a new one cannot forget it - hashing
-/// unseeded traps rather than throwing.
+/// outside any namespace, so it wraps every fixture here and a new one cannot forget it. Unseeded
+/// release hashing is not guaranteed to fail: the scalar word and variable-width paths can use a zero seed.
 /// </remarks>
 [SetUpFixture]
 public class SeedGuestHashes

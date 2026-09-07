@@ -32,6 +32,9 @@ namespace Nethermind.Core.Extensions
         /// <para>
         /// Install the entire seed before creating hash-keyed containers;
         /// reseeding invalidates stored hashes. Not synchronised against concurrent hashing.
+        /// In release guests, unseeded scalar hashing of 32-byte and other inputs longer than 16 bytes
+        /// (except 20-byte addresses) silently uses a zero seed; address and short-input hashing access
+        /// uninitialised seed arrays. Missing seeding is not guaranteed to fail immediately.
         /// </para>
         /// <para>
         /// A no-op on the host, which seeds its hashes per process. The guest installs its seed at run
@@ -40,14 +43,6 @@ namespace Nethermind.Core.Extensions
         /// </para>
         /// </remarks>
         public static partial void SeedHashes(in UInt256 seed);
-
-        /// <summary>Installs a 256-bit hash value as the guest hash mixers' seed.</summary>
-        /// <param name="seed">The full-width seed, subject to the requirements of <see cref="SeedHashes(in UInt256)"/>.</param>
-        public static void SeedHashes(in Crypto.ValueHash256 seed)
-        {
-            ref readonly UInt256 words = ref Unsafe.As<Crypto.ValueHash256, UInt256>(ref Unsafe.AsRef(in seed));
-            SeedHashes(in words);
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static Vector128<byte> ComputeAesSeed(int len)
@@ -746,13 +741,11 @@ namespace Nethermind.Core.Extensions
             return hashes;
         }
 
-        private static ulong MixShortBytes(ReadOnlySpan<byte> input)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ReadShortWords(ReadOnlySpan<byte> input, out ulong low, out ulong high)
         {
-            ref ulong seeds = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in InstanceRandom));
-            ulong hash = ShortHashSeeds![input.Length];
             ref byte start = ref MemoryMarshal.GetReference(input);
-            ulong low;
-            ulong high = 0;
+            high = 0;
             if (input.Length >= sizeof(ulong))
             {
                 low = Unsafe.ReadUnaligned<ulong>(ref start);
@@ -764,7 +757,13 @@ namespace Nethermind.Core.Extensions
             {
                 low = ReadPartialWord(ref start, input.Length);
             }
+        }
 
+        private static ulong MixShortBytes(ReadOnlySpan<byte> input)
+        {
+            ref ulong seeds = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in InstanceRandom));
+            ulong hash = ShortHashSeeds![input.Length];
+            ReadShortWords(input, out ulong low, out ulong high);
             ulong tail = MultiplyFold(low ^ seeds, high ^ Unsafe.Add(ref seeds, 1));
             if (input.Length == 16)
             {
@@ -788,12 +787,7 @@ namespace Nethermind.Core.Extensions
             }
 
             // The length participates before the blocks, so zero-padding the tail is unambiguous.
-            ulong low = 0, high = 0;
-            for (int i = 0; i < input.Length; i++)
-            {
-                if (i < 8) low |= (ulong)input[i] << (i * 8);
-                else high |= (ulong)input[i] << ((i - 8) * 8);
-            }
+            ReadShortWords(input, out ulong low, out ulong high);
             ulong tail = MultiplyFold(low ^ seeds, high ^ Unsafe.Add(ref seeds, 1));
             return (ulong)MumFold(hash ^ tail, Unsafe.Add(ref seeds, 3));
         }
