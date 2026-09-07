@@ -559,72 +559,77 @@ namespace Nethermind.Trie
             /// <inheritdoc cref="WriteChildrenRlpBranch" />
             private static int WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                RlpReader rlpReader = item.RlpReader;
-                item.SeekChild(ref rlpReader, 0);
+                // Walking the old RLP with a plain cursor rather than an RlpReader: handing the reader
+                // to SeekChild by reference exposes its address, after which every read and write of
+                // its Position is a real 4-byte memory access, which the zkVM charges about eight
+                // times an aligned 8-byte read and eleven times an 8-byte write.
+                ReadOnlySpan<byte> source = item.FullRlp.AsSpan();
+                int cursor = RlpHelpers.GetPrefixLength(source[0]);
                 int position = 0;
                 // Unchanged children are consecutive bytes of the old RLP, so a run of them is one
                 // copy rather than one per child. Most branches change a single child, so this turns
-                // sixteen short copies into two.
+                // sixteen short copies into two. The run's length is how far the cursor has moved
+                // since it started, so it needs no separate accumulator.
                 int runStart = -1;
-                int runLength = 0;
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
                 BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                // Native-width index over the inline array: the loop counter gets a stack home here,
+                // and a 4-byte spill slot costs the zkVM about eight times an aligned 8-byte one.
+                ref object children = ref branchData[0];
+                for (nint i = 0; i < BranchesCount; i++)
                 {
-                    object data = branchData[i];
+                    object data = Unsafe.Add(ref children, i);
                     if (data is null)
                     {
-                        int length = rlpReader.PeekNextRlpLength();
-                        if (runStart < 0) runStart = rlpReader.Position;
-                        runLength += length;
-                        rlpReader.SkipBytes(length);
+                        if (runStart < 0) runStart = cursor;
+                        cursor += RlpHelpers.PeekNextRlpLength(source, cursor);
+                        continue;
+                    }
+
+                    if (runStart >= 0)
+                    {
+                        int runLength = cursor - runStart;
+                        source.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                        position += runLength;
+                        runStart = -1;
+                    }
+
+                    if (ReferenceEquals(data, _nullNode))
+                    {
+                        destination[position++] = 128;
+                    }
+                    else if (data is Hash256 hash)
+                    {
+                        position = Rlp.Encode(destination, position, hash);
                     }
                     else
                     {
-                        if (runStart >= 0)
-                        {
-                            rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
-                            position += runLength;
-                            runStart = -1;
-                            runLength = 0;
-                        }
+                        path.AppendMut((int)i);
+                        Debug.Assert(data is TrieNode, "Data is not TrieNode");
+                        TrieNode childNode = Unsafe.As<TrieNode>(data);
+                        childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        path.TruncateOne();
 
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        hash = childNode.Keccak;
+                        if (hash is null)
                         {
-                            destination[position++] = 128;
-                        }
-                        else if (data is Hash256 hash)
-                        {
-                            position = Rlp.Encode(destination, position, hash);
+                            Span<byte> fullRlp = childNode.FullRlp.AsSpan();
+                            fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
+                            position += fullRlp.Length;
                         }
                         else
                         {
-                            path.AppendMut(i);
-                            Debug.Assert(data is TrieNode, "Data is not TrieNode");
-                            TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
-
-                            hash = childNode.Keccak;
-                            if (hash is null)
-                            {
-                                Span<byte> fullRlp = childNode.FullRlp.AsSpan();
-                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
-                                position += fullRlp.Length;
-                            }
-                            else
-                            {
-                                position = Rlp.Encode(destination, position, hash);
-                            }
+                            position = Rlp.Encode(destination, position, hash);
                         }
-
-                        rlpReader.SkipItem();
                     }
+
+                    cursor += RlpHelpers.PeekNextRlpLength(source, cursor);
                 }
 
                 if (runStart >= 0)
                 {
-                    rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                    int runLength = cursor - runStart;
+                    source.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                     position += runLength;
                 }
 

@@ -1397,13 +1397,16 @@ namespace Nethermind.Trie
                 return;
             }
 
-            SeekChildNotNull(ref rlpReader, index);
+            rlpReader.Position = SeekChildPosition(rlpReader.Data, index);
         }
 
-        private void SeekChildNotNull(ref RlpReader rlpReader, int index)
+        /// <summary>Offset of child <paramref name="index"/> within this node's RLP.</summary>
+        /// <remarks>The walk keeps its cursor in a local rather than in the reader: a reader's Position
+        /// is a 4-byte field access, which the zkVM charges about eight times an aligned 8-byte read and
+        /// eleven times an 8-byte write.</remarks>
+        private int SeekChildPosition(ReadOnlySpan<byte> source, int index)
         {
-            rlpReader.Reset();
-            rlpReader.SkipLength();
+            int cursor = RlpHelpers.GetPrefixLength(source[0]);
             if (index == 0 && IsExtension)
             {
                 // Corner case, index is zero, but we are an extension
@@ -1411,7 +1414,12 @@ namespace Nethermind.Trie
                 index = 1;
             }
 
-            rlpReader.SkipItems(index);
+            for (int i = 0; i < index; i++)
+            {
+                cursor += RlpHelpers.PeekNextRlpLength(source, cursor);
+            }
+
+            return cursor;
         }
 
         private TrieNode CreateInlineChild(ReadOnlySpan<byte> fullRlp)
@@ -1441,8 +1449,8 @@ namespace Nethermind.Trie
                 {
                     // Allows to load children in parallel
                     RlpReader rlpReader = new(rlp);
-                    SeekChild(ref rlpReader, i);
-                    int prefix = rlpReader.ReadByte();
+                    rlpReader.Position = SeekChildPosition(rlp.AsSpan(), i);
+                    int prefix = rlpReader.PeekByte();
 
                     switch (prefix)
                     {
@@ -1454,7 +1462,6 @@ namespace Nethermind.Trie
                             }
                         case 160:
                             {
-                                rlpReader.Position--;
                                 Hash256 keccak = rlpReader.DecodeKeccak();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
@@ -1464,7 +1471,6 @@ namespace Nethermind.Trie
                             }
                         default:
                             {
-                                rlpReader.Position--;
                                 ReadOnlySpan<byte> fullRlp = rlpReader.PeekNextItem();
                                 TrieNode child = CreateInlineChild(fullRlp);
                                 data = childOrRef = child;
