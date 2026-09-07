@@ -38,8 +38,18 @@ available_bytes() {
   if ! output="$("${DF_COMMAND}" -B1 --output=avail -- "${path}" 2>/dev/null)"; then
     return 1
   fi
-  value="$(printf '%s\n' "${output}" | awk '$1 ~ /^[0-9]+$/ { value=$1 } END { print value }')"
-  [[ "${value}" =~ ^[0-9]+$ ]] || return 1
+  value="$(printf '%s\n' "${output}" | awk '
+    NR == 1 { next }
+    {
+      line=$0
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+      if (line !~ /^[0-9]+$/ || value != "") exit 1
+      value=line
+    }
+    END {
+      if (value == "") exit 1
+      print value
+    }')" || return 1
   printf '%s\n' "${value}"
 }
 

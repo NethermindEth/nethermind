@@ -90,7 +90,8 @@ class StorageSpaceTests(unittest.TestCase):
             "  *) exit 1 ;;\n"
             "esac\n"
             "if [[ \"${DF_ERROR_PATH:-}\" == \"${path}\" ]]; then exit 1; fi\n"
-            "if [[ \"${DF_FAIL_VALID_PATH:-}\" == \"${path}\" ]]; then exit 1; fi\n"
+            "if [[ \"${DF_FAIL_VALID_PATH:-}\" == \"${path}\" ]]; then printf 'Avail\\n%s\\n' \"${value}\"; exit 1; fi\n"
+            "if [[ \"${DF_MALFORMED_PATH:-}\" == \"${path}\" ]]; then printf 'Avail\\n%s junk\\n' \"${value}\"; exit 0; fi\n"
             "printf 'Avail\\n%s\\n' \"${value}\"\n"
         ).encode())
         for stub in (self.bin / "docker", self.bin / "df"):
@@ -115,6 +116,7 @@ class StorageSpaceTests(unittest.TestCase):
             "DF_SCRATCH": str(7 * GIB),
             "DOCKER_FAIL": "0",
             "DF_ERROR_PATH": "",
+            "DF_MALFORMED_PATH": "",
         })
         environment["PATH"] = f"{self._bash_path(self.bin)}:{environment.get('PATH', '')}"
         return environment
@@ -167,6 +169,10 @@ class StorageSpaceTests(unittest.TestCase):
         self.assertIn("DockerRootDir", result.stderr)
 
         result = self._run({"DF_FAIL_VALID_PATH": root_path})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("df did not return numeric", result.stderr)
+
+        result = self._run({"DF_MALFORMED_PATH": root_path})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("df did not return numeric", result.stderr)
 
