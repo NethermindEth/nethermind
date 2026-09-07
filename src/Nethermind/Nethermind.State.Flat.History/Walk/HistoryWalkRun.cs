@@ -19,6 +19,7 @@ internal sealed class HistoryWalkRun
     private const int AccountPartitions = 1 << (4 * AccountPartitionDepth);
     private const int StorageRanges = 256;
     public const int WorkItems = AccountPartitions + StorageRanges;
+    public const long DefaultMinRowsToBorrowASlot = 1 << 12;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly ISortedKeyValueStore _accountHistory;
@@ -31,6 +32,7 @@ internal sealed class HistoryWalkRun
     private readonly ulong _to;
     private readonly ulong _checkpointBlocks;
     private readonly int _checkpointGroups;
+    private readonly long _minRowsToBorrow;
     private readonly Action<int, ulong>? _onCheckpoint;
     private readonly Action<int>? _onItemDone;
     private readonly CancellationToken _token;
@@ -44,6 +46,7 @@ internal sealed class HistoryWalkRun
     private readonly AccountSubtreeReplayer _accounts;
     private readonly StorageSubtreeReplayer _storages;
     private readonly SubtreeCombiner _combiner;
+    private WalkSlots _slots = null!;
 
     public HistoryWalkRun(
         IColumnsDb<FlatHistoryColumns> history,
@@ -59,11 +62,13 @@ internal sealed class HistoryWalkRun
         int checkpointGroups,
         Action<int, ulong>? onCheckpoint,
         Action<int>? onItemDone,
-        CancellationToken token)
+        CancellationToken token,
+        long minRowsToBorrow = DefaultMinRowsToBorrowASlot)
     {
         _history = history;
         _checkpointBlocks = checkpointBlocks;
         _checkpointGroups = checkpointGroups;
+        _minRowsToBorrow = minRowsToBorrow;
         _onCheckpoint = onCheckpoint;
         _onItemDone = onItemDone;
         _accountHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
@@ -131,12 +136,12 @@ internal sealed class HistoryWalkRun
             else
             {
                 byte firstByte = (byte)index;
-                partitions.Add(() =>
+                partitions.Add(() => WithSlot(() =>
                 {
                     MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
                     ProcessStorageRange(firstByte, storageItem, found);
                     CompleteItem(storageItem, found);
-                });
+                }));
             }
 
             int accountItem = index;
@@ -148,16 +153,17 @@ internal sealed class HistoryWalkRun
             }
 
             TreePath prefix = TreePath.FromNibble([(byte)(index >> 4), (byte)(index & 0x0F)]);
-            partitions.Add(() =>
+            partitions.Add(() => WithSlot(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
                 ProcessAccountPartition(prefix, accountItem, found);
                 CompleteItem(accountItem, found);
-            });
+            }));
         }
 
         if (resuming && _logger.IsInfo) _logger.Info($"History walk resuming: {previouslyCompleted} of {WorkItems} subtrees were finished before the restart, {partitions.Count} remain.");
         using (_progress)
+        using (_slots = new WalkSlots(Math.Max(1, workers)))
         {
             _progress.Start();
             RunParallel(partitions, workers);
@@ -175,6 +181,19 @@ internal sealed class HistoryWalkRun
             _metadata.ClearWalk(WorkItems);
             List<HistoryWalkMismatch> mismatches = _sink.Drain();
             return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
+        }
+    }
+
+    private void WithSlot(Action item)
+    {
+        _slots.Take(_token);
+        try
+        {
+            item();
+        }
+        finally
+        {
+            _slots.Return();
         }
     }
 
@@ -269,28 +288,58 @@ internal sealed class HistoryWalkRun
             found.Decode(persisted);
         }
 
-        int groupsSinceCheckpoint = 0;
-        _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, afterPrefix, group =>
+        StorageGroupFrontier frontier = new(found, _checkpointGroups, prefix => Checkpoint(item, prefix, found, pending: null));
+        BorrowedWork borrowed = new(_slots);
+        Exception? failure = null;
+        try
         {
-            using (StoragePartitionRows rows = group.Rows)
+            _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, afterPrefix, group =>
             {
-                if (group.Overflow)
+                bool owned = false;
+                try
                 {
-                    rows.Reset();
-                    ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);
+                    _token.ThrowIfCancellationRequested();
+                    borrowed.ThrowIfFailed();
+                    MismatchSink groupFound = new(MismatchSink.MaxRecordedPerItem);
+                    long sequence = frontier.Issue(BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), groupFound);
+                    Action replay = () =>
+                    {
+                        ReplayGroup(group, item, groupFound);
+                        frontier.Complete(sequence);
+                    };
+                    owned = (group.Overflow || group.Rows.Count >= _minRowsToBorrow) && borrowed.TryStart(replay);
+                    if (owned) return;
+
+                    owned = true;
+                    replay();
                 }
-                else
+                finally
                 {
-                    ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item, found);
+                    if (!owned) group.Rows.Dispose();
                 }
-            }
+            }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
+        }
+        catch (Exception e)
+        {
+            failure = e;
+        }
 
-            if (++groupsSinceCheckpoint < _checkpointGroups) return;
+        borrowed.Finish(failure);
+        _token.ThrowIfCancellationRequested();
+    }
 
-            groupsSinceCheckpoint = 0;
-            Checkpoint(item, BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), found, pending: null);
-            _token.ThrowIfCancellationRequested();
-        }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
+    private void ReplayGroup(StorageGroup group, int item, MismatchSink found)
+    {
+        using StoragePartitionRows rows = group.Rows;
+        if (group.Overflow)
+        {
+            rows.Reset();
+            ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);
+        }
+        else
+        {
+            ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item, found);
+        }
     }
 
     private WalkReplayContext Context(CommitmentEmitter? emitter, SeriesWriter series, int item) => new(_from, _to, emitter, series, _progress, item, _token);
@@ -320,14 +369,33 @@ internal sealed class HistoryWalkRun
         }
 
         rows.Reset();
-        HashSet<ValueHash256> seen = [];
-        for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+        HashSet<ValueHash256>[] seenPerChild = new HashSet<ValueHash256>[BranchRlp.ChildCount];
+        MismatchSink[] foundPerChild = new MismatchSink[BranchRlp.ChildCount];
+        BorrowedWork borrowed = new(_slots);
+        Exception? failure = null;
+        try
         {
-            ProcessStoragePartition(storagePrefix, slotPrefix.Append(nibble), clears, seen, item, found);
+            for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+            {
+                HashSet<ValueHash256> seen = seenPerChild[nibble] = [];
+                MismatchSink childFound = foundPerChild[nibble] = new MismatchSink(MismatchSink.MaxRecordedPerItem);
+                TreePath child = slotPrefix.Append(nibble);
+                Action replay = () => ProcessStoragePartition(storagePrefix, child, clears, seen, item, childFound);
+                if (!borrowed.TryStart(replay)) replay();
+            }
+        }
+        catch (Exception e)
+        {
+            failure = e;
         }
 
-        identities?.UnionWith(seen);
-        foreach (ValueHash256 identity in seen)
+        borrowed.Finish(failure);
+
+        HashSet<ValueHash256> all = [];
+        foreach (HashSet<ValueHash256> seen in seenPerChild) all.UnionWith(seen);
+        foreach (MismatchSink childFound in foundPerChild) found.AddRange(childFound);
+        identities?.UnionWith(all);
+        foreach (ValueHash256 identity in all)
         {
             CombineStorage(identity, slotPrefix, found);
         }
