@@ -13,9 +13,9 @@ using NUnit.Framework;
 namespace Nethermind.Taiko.Test;
 
 /// <summary>Taiko registers the only in-tree precompiles outside Ethereum's range, at 0x10001 and
-/// 0x10002, which makes it the chain that exercises the limits of resolving one by its number.</summary>
+/// 0x10002, which makes it the chain that exercises membership beyond the mask and the index array.</summary>
 [TestFixture]
-public class TaikoPrecompileShapeTests
+public class TaikoPrecompileMembershipTests
 {
     /// <summary>Every Taiko fork spec, with the flags that register the two far precompiles set.</summary>
     /// <remarks>The flags are set before <c>Precompiles</c> is first read, which is what builds the set, so
