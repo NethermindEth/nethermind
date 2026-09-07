@@ -37,7 +37,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly PersistedSnapshotBucket _largeCompacted;
     private readonly PersistedSnapshotBucket _compactSized;
     private readonly Lock _finalizedRootsLock = new();
-    private readonly Dictionary<ulong, Hash256> _finalizedRoots = [];
+    private readonly SortedDictionary<ulong, Hash256> _finalizedRoots = [];
     private int _disposed;
 
     // ---- In-memory tier: only the recent unpersisted snapshots (bounded by
@@ -640,41 +640,55 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _compactSized.PruneBefore(blockNumber);
 
         using Lock.Scope scope = _finalizedRootsLock.EnterScope();
+        PruneFinalizedRootsBefore(blockNumber);
+    }
+
+    private void PruneFinalizedRootsBefore(ulong blockNumber)
+    {
         using ArrayPoolList<ulong> expired = new(0);
         foreach (ulong height in _finalizedRoots.Keys)
-            if (height < blockNumber) expired.Add(height);
+        {
+            if (height >= blockNumber) break;
+            expired.Add(height);
+        }
         foreach (ulong height in expired) _finalizedRoots.Remove(height);
     }
 
     /// <inheritdoc />
     public void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState)
     {
+        ulong firstBlock = currentPersistedState == StateId.PreGenesis ? 0 : currentPersistedState.BlockNumber;
+        using Lock.Scope scope = _finalizedRootsLock.EnterScope();
+        PruneFinalizedRootsBefore(firstBlock);
+
         StateId? committed = GetLastCommittedStateId();
         ulong finalizedBlock = finalizedStateProvider.FinalizedBlockNumber;
         if (committed is null || committed == StateId.PreGenesis || finalizedBlock > committed.Value.BlockNumber) return;
 
-        ulong firstBlock = currentPersistedState == StateId.PreGenesis ? 0 : currentPersistedState.BlockNumber + 1;
         using ArrayPoolList<StateId> states = GetPersistedStatesInRange(firstBlock, finalizedBlock);
         if (states.Count == 0) return;
 
-        using Lock.Scope scope = _finalizedRootsLock.EnterScope();
         HashSet<ulong> queriedHeights = [];
-        Hash256? anchorRoot = GetRoot(finalizedBlock);
-        if (anchorRoot is null) return;
-
-        // During catch-up or a reorg, canonical header marking can lag the branch being built.
-        if (!CanReachState(committed.Value, new StateId(finalizedBlock, anchorRoot))
-            || (currentPersistedState != StateId.PreGenesis && !CanReachState(committed.Value, currentPersistedState)))
-        {
-            _finalizedRoots.Clear();
-            return;
-        }
-
+        bool ancestryVerified = false;
         int totalPruned = 0;
         foreach (StateId state in states)
         {
+            if (state == currentPersistedState) continue;
             Hash256? finalizedRoot = GetRoot(state.BlockNumber);
             if (finalizedRoot is null || state.StateRoot == finalizedRoot.ValueHash256) continue;
+
+            if (!ancestryVerified)
+            {
+                // Canonical marking can lag local processing; an unavailable tip root must not gate known lower roots.
+                Hash256? anchorRoot = GetRoot(finalizedBlock);
+                if (anchorRoot is not null && !CanReachState(committed.Value, new StateId(finalizedBlock, anchorRoot)))
+                {
+                    _finalizedRoots.Remove(finalizedBlock);
+                    break;
+                }
+                if (currentPersistedState != StateId.PreGenesis && !CanReachState(committed.Value, currentPersistedState)) break;
+                ancestryVerified = true;
+            }
             if (GetLastCommittedStateId() != committed) break;
 
             if (CanReachState(committed.Value, state))

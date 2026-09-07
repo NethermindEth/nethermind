@@ -78,12 +78,15 @@ public interface ISnapshotRepository
     void MarkPersistedTierForShutdown();
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
+    /// <remarks>Also evicts cached finalized roots below that height.</remarks>
     void RemovePersistedStatesUntil(ulong blockNumber);
 
     /// <summary>Remove persisted snapshots at or below finality whose state root differs from the
     /// known finalized root at that height. Retains the current persisted base and locally committed ancestry.</summary>
-    /// <remarks>Defers when finality is ahead of, unknown on, or inconsistent with the locally committed chain.
-    /// Known roots are cached until their heights are pruned; unknown roots are retried on later passes.</remarks>
+    /// <remarks>Defers when finality is ahead of the committed head, a known finalized tip conflicts with its ancestry,
+    /// or the committed chain cannot reach the current persisted state. Unknown roots retain only their own heights.
+    /// Known roots are cached until their heights are pruned or fall below the current persisted state;
+    /// conflicting roots are invalidated and unknown roots are retried on later passes.</remarks>
     void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState);
 
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
