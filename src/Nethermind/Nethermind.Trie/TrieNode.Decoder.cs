@@ -507,6 +507,8 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
+            /// <summary>Writes a branch's sixteen children into <paramref name="destination" />, each as a hash
+            /// item or an embedded node.</summary>
             /// <returns>The number of bytes written.</returns>
             private static int WriteChildrenRlpBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel) =>
                 // Tail call optimized.
