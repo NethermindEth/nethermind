@@ -2567,11 +2567,11 @@ jobs:
                  printf "memory PSI avg10 mean %.3f\n", psi/n
                  printf "cpu              %.1f s\n", (last-first)/1000000
                  printf "nr_throttled     %s\n", thr
-               }' "${samples}" | tee "${{ runner.temp }}/pressure-summary.txt"
+               }' "${samples}" | tee "${{ runner.temp }}/pressure-summary-${{ matrix.tag }}-run${{ matrix.run }}.txt"
           {
             echo "### Pressure: ${{ matrix.tag }} run ${{ matrix.run }}"
             echo '```'
-            cat "${{ runner.temp }}/pressure-summary.txt"
+            cat "${{ runner.temp }}/pressure-summary-${{ matrix.tag }}-run${{ matrix.run }}.txt"
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
 
@@ -2583,7 +2583,7 @@ jobs:
           path: |
             ${{ runner.temp }}/pressure-${{ matrix.tag }}-run${{ matrix.run }}.csv
             ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
-            ${{ runner.temp }}/pressure-summary.txt
+            ${{ runner.temp }}/pressure-summary-${{ matrix.tag }}-run${{ matrix.run }}.txt
           retention-days: 30
           if-no-files-found: warn
 
@@ -2635,6 +2635,13 @@ jobs:
             echo "Found invalid block lines in benchmark output:"
             head -n 40 "${invalid_block_lines}"
           fi
+
+          {
+            echo "exception_found=${exception_found}"
+            echo "exception_lines_file=${exception_lines}"
+            echo "invalid_block_found=${invalid_block_found}"
+            echo "invalid_block_lines_file=${invalid_block_lines}"
+          } >> "${GITHUB_OUTPUT}"
 
           # Flag additional severe runtime signals (warn, don't hard-fail)
           for pattern in "Unhandled" "Fatal" "^.*ERROR.*$"; do
@@ -2790,6 +2797,10 @@ jobs:
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
             echo "Continuing multi-image run (fail-fast is disabled)."
+            quality_failed=true
+          fi
+          if [[ "${{ steps.analyze.outcome }}" != "success" ]]; then
+            echo "Benchmark output analysis did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
             quality_failed=true
           fi
           if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
