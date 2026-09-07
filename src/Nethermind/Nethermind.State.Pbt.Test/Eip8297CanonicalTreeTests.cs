@@ -906,7 +906,9 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(partition.UsedMask, Is.EqualTo(expectedMask));
-            Assert.That(partition.Plan.BranchDepth, Is.InRange(groupDepth, expectedBranchDepth));
+            Assert.That(partition.Plan.BranchDepth, occupiedSlots == 1
+                ? Is.EqualTo(expectedBranchDepth)
+                : Is.InRange(groupDepth, expectedBranchDepth));
             Assert.That(destinations, Is.Ordered);
             Assert.That(operations, Is.EquivalentTo(original));
             Assert.That(offsets[0], Is.Zero);
@@ -1208,6 +1210,84 @@ public class Eip8297CanonicalTreeTests
             Assert.That(filtered.IsSorted, Is.EqualTo(preservesOrder));
             Assert.That(filtered.PrefixesValidated, Is.True);
         }
+    }
+
+    [Test]
+    public void Single_bucket_prefix_is_reused_across_sort_levels(
+        [Values(2, 3, 16, 17, 33)] int count,
+        [Values(0, 4)] int depth,
+        [Values(false, true)] bool sorted)
+    {
+        PbtWriteOperation[] operations = new PbtWriteOperation[count];
+        for (int index = 0; index < count; index++)
+        {
+            byte[] key = Bytes.FromHexString("0xAAAAAAAA0000");
+            key[^1] = (byte)(sorted ? index : count - index - 1);
+            operations[index] = PbtWriteOperation.Set(new PbtFullKey(key), new ValueHash256(Value(1)));
+        }
+        int[] offsets = new int[17];
+        TrieUpdaterMetrics metrics = new();
+        TrieUpdater.BucketPlan plan = new(default, depth, depth, sorted, false);
+        TrieUpdater.PartitionOutcome outcome = plan.BucketSort(operations, offsets, metrics);
+        int branchDepth = operations[0].Key.BitLength;
+        foreach (PbtWriteOperation operation in operations)
+            branchDepth = Math.Min(branchDepth, operations[0].Key.FirstDifferingBit(operation.Key));
+        int comparisons = metrics.OperationPrefixComparisons;
+        int partitions = metrics.RadixPartitions;
+        int sorts = metrics.FullKeySorts;
+        int synthesized = 0;
+        Assert.That(outcome.Plan.BranchDepth, Is.EqualTo(branchDepth));
+        for (int childDepth = depth + 4; childDepth + 4 <= branchDepth; childDepth += 4)
+        {
+            int slot = System.Numerics.BitOperations.TrailingZeroCount(outcome.UsedMask);
+            outcome = outcome.Plan.ForChild(slot).BucketSort(operations, offsets, metrics);
+            synthesized++;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(System.Numerics.BitOperations.IsPow2(outcome.UsedMask), Is.True);
+                Assert.That(outcome.Plan.BranchDepth, Is.EqualTo(branchDepth));
+                Assert.That(offsets[^1], Is.EqualTo(count));
+                Assert.That(metrics.OperationPrefixComparisons, Is.EqualTo(comparisons));
+                Assert.That(metrics.RadixPartitions, Is.EqualTo(partitions));
+                Assert.That(metrics.FullKeySorts, Is.EqualTo(sorts));
+            }
+        }
+        Assert.That(metrics.SynthesizedSingleBuckets, Is.EqualTo(synthesized));
+    }
+
+    [TestCase(17)]
+    [TestCase(33)]
+    public void Single_bucket_prefix_survives_existing_sibling_branches(int count)
+    {
+        List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, 40, 16, 2);
+        initial.Add((Bytes.FromHexString("0xAA8000000000"), Value(1)));
+        initial.Add((Bytes.FromHexString("0xAAAA80000000"), Value(2)));
+        initial.Add((Bytes.FromHexString("0xAAAAAA800000"), Value(3)));
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        using PbtWriteBatchBuilder builder = new(1);
+        for (int index = 0; index < count; index++)
+        {
+            byte[] key = initial[index].Key;
+            changes.Add((key, Value(0xEF)));
+            builder.Set(new PbtFullKey(key), new ValueHash256(Value(0xEF)));
+        }
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, initial);
+        ApplyAll(bulk, serial, oracle, changes);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "single bucket with shallower siblings");
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(initial.ToArray()));
+        TrieUpdaterMetrics metrics = new();
+        root = TrieUpdater.UpdateRoot(store, root, builder.Build(), metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(bulk.RootHash));
+            Assert.That(metrics.RadixPartitions, Is.EqualTo(2));
+            Assert.That(metrics.SynthesizedSingleBuckets, Is.GreaterThan(1));
+        }
+        AssertAllMemoryReleased(store);
     }
 
     [TestCase(2)]
