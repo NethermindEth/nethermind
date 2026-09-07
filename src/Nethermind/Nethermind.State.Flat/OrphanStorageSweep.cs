@@ -343,7 +343,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     private static bool IsOrphan(IReadOnlyKeyValueStore accounts, in ValueHash256 identity, out bool missing)
     {
         Span<byte> buffer = stackalloc byte[AccountBuffer];
-        int length = accounts.Get(identity.Bytes[..IdentityLength], buffer);
+        int length = accounts.Get(identity.Bytes[..IdentityLength], buffer, ReadFlags.HintCacheMiss);
         missing = length <= 0;
         if (missing) return true;
 
