@@ -784,10 +784,15 @@ namespace Nethermind.Core.Test
                 int hash1 = forceScalar
                     ? SpanExtensions.FastHashFallback(input1)
                     : input1.FastHash();
-                if (hash0 == hash1) equalPairs++;
+                foreach (uint seed in HashSeeds)
+                {
+                    Assert.That(SpanExtensions.CombineHash(seed, word ^ pairedDelta),
+                        Is.EqualTo(SpanExtensions.CombineHash(seed, word)), "raw CRC collision survives changing the seed");
+                    if (SpanExtensions.CombineHash(seed, (uint)hash0) == SpanExtensions.CombineHash(seed, (uint)hash1)) equalPairs++;
+                }
             }
 
-            Assert.That(equalPairs, Is.LessThan(4), $"structured pairs produced {equalPairs}/{count} equal hashes");
+            Assert.That(equalPairs, Is.LessThan(4), $"structured pairs produced {equalPairs}/{count * HashSeeds.Length} equal chained hashes");
         }
 #endif
 
