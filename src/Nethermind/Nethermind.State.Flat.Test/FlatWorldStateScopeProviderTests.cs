@@ -976,7 +976,7 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        SnapshotBundle bundle = new(readOnlyBundle, new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         FlatWorldStateScope scope = new(
@@ -1180,7 +1180,7 @@ public class FlatWorldStateScopeProviderTests
         TrackingResourcePool resourcePool = new();
         ReadOnlySnapshotBundle snapshotBundle = new(
             new SnapshotPooledList(0), new RecordingPersistenceReader(), false, PersistedSnapshotStack.Empty());
-        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance));
+        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, Substitute.For<ITrieNodeCache>());
         using DeferredTrieWarmer trieWarmer = new();
         using FlatScopeProvider provider = new(
             new TestMemDb(),
@@ -1215,7 +1215,7 @@ public class FlatWorldStateScopeProviderTests
         RecordingPersistenceReader reader = new();
         ReadOnlySnapshotBundle snapshotBundle = new(
             new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty());
-        ITrieNodeCache trieNodeCache = new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance);
+        ITrieNodeCache trieNodeCache = Substitute.For<ITrieNodeCache>();
         FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, trieNodeCache);
         using DeferredTrieWarmer trieWarmer = new();
         using FlatScopeProvider provider = new(
@@ -1251,6 +1251,7 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(trieWarmer.ExitCount, Is.EqualTo(1));
             Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
             Assert.That(reader.DisposeCount, Is.EqualTo(1));
+            trieNodeCache.DidNotReceive().Add(Arg.Any<TransientResource>());
         }
     }
 
@@ -1265,10 +1266,9 @@ public class FlatWorldStateScopeProviderTests
     {
         TrackingResourcePool resourcePool = new();
         RecordingPersistenceReader reader = new();
-        TrieNodeCache trieNodeCache = new(new FlatDbConfig(), LimboLogs.Instance);
         using SnapshotBundle snapshotBundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            trieNodeCache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
         using DeferredTrieWarmer trieWarmer = new(acceptJob);
         using IWorldStateScopeProvider.ITrieWarmupSession session = snapshotBundle.CreateTrieWarmupSession(
             new StateId(0, TestItem.KeccakA), trieWarmer, LimboLogs.Instance);
@@ -1293,8 +1293,6 @@ public class FlatWorldStateScopeProviderTests
         }
         if (acceptJob && !stopWarming)
         {
-            Assert.That(trieNodeCache.TryGet(storage ? TestItem.AddressA.ToAccountPath.ToHash256() : null,
-                TreePath.Empty, TestItem.KeccakA, out _), Is.True);
             TrieNode sharedNode = storage
                 ? snapshotBundle.FindStorageNodeOrUnknown(TestItem.AddressA.ToAccountPath.ToHash256(), TreePath.Empty, TestItem.KeccakA)
                 : snapshotBundle.FindStateNodeOrUnknown(TreePath.Empty, TestItem.KeccakA);
@@ -1310,73 +1308,6 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
             Assert.That(reader.DisposeCount, Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public void TrieWarmup_TracksSharedNodeForRetirementAfterCacheEviction(
-        [Values] bool storage, [Values] bool ownedSession, [Values] bool alreadyCached)
-    {
-        using TrackingResourcePool resourcePool = new();
-        TrieNodeCache trieNodeCache = new(new FlatDbConfig(), LimboLogs.Instance);
-        TreePath path = TreePath.Empty;
-        Hash256? address = storage ? TestItem.AddressA.ToAccountPath.ToHash256() : null;
-        TrieNode parent = new(NodeType.Branch);
-        parent.SetChild(0, new TrieNode(NodeType.Unknown, TestItem.KeccakB));
-        parent.ResolveKey(NullTrieStore.Instance, ref path);
-        Hash256 hash = parent.Keccak!;
-        using SnapshotBundle snapshotBundle = new(
-            FlatTestHelpers.MakeBundle(new ResourcePool(new FlatDbConfig()), content =>
-            {
-                content.Accounts[TestItem.AddressA] = new Account(0, UInt256.Zero, hash, Keccak.OfAnEmptyString);
-                if (storage) content.StorageNodes[(address!, path)] = parent;
-                else content.StateNodes[path] = parent;
-            }), trieNodeCache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        TrieNode expectedNode = alreadyCached
-            ? trieNodeCache.GetOrAdd(address, in path, new TrieNode(NodeType.Unknown, hash, parent.FullRlp))
-            : parent;
-        using DeferredTrieWarmer trieWarmer = new();
-        if (ownedSession)
-        {
-            using IWorldStateScopeProvider.ITrieWarmupSession session = snapshotBundle.CreateTrieWarmupSession(
-                new StateId(0, hash), trieWarmer, LimboLogs.Instance);
-            if (storage) session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), UInt256.Zero);
-            else session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-            Assert.That(trieWarmer.CompleteJob(), Is.True);
-        }
-        else
-        {
-            TrieNode warmedNode = storage
-                ? snapshotBundle.FindStorageNodeOrUnknownTrieWarmer(address!, in path, hash)
-                : snapshotBundle.FindStateNodeOrUnknownForTrieWarmer(in path, hash);
-            Assert.That(warmedNode, Is.SameAs(expectedNode));
-        }
-
-        Assert.That(trieNodeCache.TryGet(address, in path, hash, out TrieNode? sharedNode), Is.True);
-        Assert.That(sharedNode, Is.SameAs(expectedNode));
-        trieNodeCache.Clear();
-        // A traversal can resolve children after eviction has already pruned the shared node.
-        sharedNode!.TryResolveNode(NullTrieStore.Instance, ref path);
-        TrieNode retainedChild = sharedNode.GetChild(NullTrieStore.Instance, ref path, 0)!;
-        (Snapshot? snapshot, TransientResource? retired) = snapshotBundle.CollectAndApplySnapshot(
-            StateId.PreGenesis, new StateId(1, TestItem.KeccakC));
-        using (snapshot)
-        {
-            try
-            {
-                Assert.That(retired!.Nodes.TryGet(address, in path, hash, out TrieNode? trackedNode), Is.True);
-                Assert.That(trackedNode, Is.SameAs(sharedNode));
-                trieNodeCache.Add(retired);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(trieNodeCache.TryGet(address, in path, hash, out _), Is.False);
-                    Assert.That(sharedNode.GetChild(NullTrieStore.Instance, ref path, 0), Is.Not.SameAs(retainedChild));
-                }
-            }
-            finally
-            {
-                retired!.ReleaseLease();
-            }
         }
     }
 
@@ -1397,7 +1328,7 @@ public class FlatWorldStateScopeProviderTests
         };
         using SnapshotBundle snapshotBundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
         using DeferredTrieWarmer trieWarmer = new();
         using IWorldStateScopeProvider.ITrieWarmupSession session = snapshotBundle.CreateTrieWarmupSession(
             new StateId(0, TestItem.KeccakA), trieWarmer, LimboLogs.Instance);
