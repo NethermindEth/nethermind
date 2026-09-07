@@ -68,11 +68,8 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
         bool ITxTracer.IsCancelable => cancelable;
     }
 
-    [TestCase(Instruction.EXTCODESIZE, 0)]
-    [TestCase(Instruction.EXTCODESIZE, -1)]
-    [TestCase(Instruction.EXTCODECOPY, 0)]
-    [TestCase(Instruction.EXTCODECOPY, -1)]
-    public void ExtCode_access_obeys_exact_gas_boundary(Instruction instruction, int gasDelta)
+    [Test]
+    public void ExtCode_access_obeys_exact_gas_boundary([Values(Instruction.EXTCODESIZE, Instruction.EXTCODECOPY)] Instruction instruction, [Values(0, -1)] int gasDelta)
     {
         byte[] code = instruction == Instruction.EXTCODESIZE
             ? Prepare.EvmCode.PushData(Target).Op(instruction).STOP().Done
@@ -89,11 +86,8 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
         }
     }
 
-    [TestCase(Instruction.SLOAD, false)]
-    [TestCase(Instruction.SLOAD, true)]
-    [TestCase(Instruction.SSTORE, false)]
-    [TestCase(Instruction.SSTORE, true)]
-    public void Storage_access_charges_cold_then_warm(Instruction instruction, bool repeat)
+    [Test]
+    public void Storage_access_charges_cold_then_warm([Values(Instruction.SLOAD, Instruction.SSTORE)] Instruction instruction, [Values] bool repeat)
     {
         byte[] operation = instruction == Instruction.SLOAD
             ? Prepare.EvmCode.PushData(0).Op(instruction).Op(Instruction.POP).Done
@@ -113,9 +107,8 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
         }
     }
 
-    [TestCase((byte)0)]
-    [TestCase((byte)1)]
-    public void Storage_reversal_refunds_first_write(byte originalValue)
+    [Test]
+    public void Storage_reversal_refunds_first_write([Values((byte)0, (byte)1)] byte originalValue)
     {
         StorageCell cell = new(Recipient, 0);
         TestState.CreateAccount(Recipient, 1.Ether);
@@ -140,9 +133,8 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Selfdestruct_charges_beneficiary_access_and_creation(bool newBeneficiary)
+    [Test]
+    public void Selfdestruct_charges_beneficiary_access_and_creation([Values] bool newBeneficiary)
     {
         Address beneficiary = newBeneficiary ? TestItem.AddressE : Target;
         byte[] code = Prepare.EvmCode.SELFDESTRUCT(beneficiary).Done;

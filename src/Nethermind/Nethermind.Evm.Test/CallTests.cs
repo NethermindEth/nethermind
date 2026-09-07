@@ -29,11 +29,7 @@ namespace Nethermind.Evm.Test
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
 
         [Test]
-        [TestCase(Instruction.CALL)]
-        [TestCase(Instruction.CALLCODE)]
-        [TestCase(Instruction.DELEGATECALL)]
-        [TestCase(Instruction.STATICCALL)]
-        public void Stack_underflow_on_call(Instruction instruction)
+        public void Stack_underflow_on_call([Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction instruction)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
@@ -48,11 +44,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        [TestCase(Instruction.CALL)]
-        [TestCase(Instruction.CALLCODE)]
-        [TestCase(Instruction.DELEGATECALL)]
-        [TestCase(Instruction.STATICCALL)]
-        public void Out_of_gas_on_call(Instruction instruction)
+        public void Out_of_gas_on_call([Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction instruction)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
@@ -106,9 +98,8 @@ namespace Nethermind.Evm.Test
             Assert.That(TestState.AccountExists(target), Is.False);
         }
 
-        [TestCase(Instruction.INVALID)]
-        [TestCase(Instruction.REVERT)]
-        public void Nested_halt_preserves_ripemd_empty_account_deletion(Instruction halt)
+        [Test]
+        public void Nested_halt_preserves_ripemd_empty_account_deletion([Values(Instruction.INVALID, Instruction.REVERT)] Instruction halt)
         {
             Address child = TestItem.AddressC;
             TestState.CreateAccount(child, UInt256.Zero);
@@ -122,9 +113,8 @@ namespace Nethermind.Evm.Test
             AssertRipemdTouchPreserved(code, (MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000);
         }
 
-        [TestCase(Instruction.INVALID)]
-        [TestCase(Instruction.REVERT)]
-        public void Top_level_halt_preserves_ripemd_empty_account_deletion(Instruction halt)
+        [Test]
+        public void Top_level_halt_preserves_ripemd_empty_account_deletion([Values(Instruction.INVALID, Instruction.REVERT)] Instruction halt)
         {
             byte[] code = BuildRipemdTouchThenHalt(halt);
             AssertRipemdTouchPreserved(code, (MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000);
@@ -202,9 +192,8 @@ namespace Nethermind.Evm.Test
             .Op(Instruction.RETURN)
             .Done;
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Child_output_copy_preserves_memory_beyond_returned_bytes(bool revert)
+        [Test]
+        public void Child_output_copy_preserves_memory_beyond_returned_bytes([Values] bool revert)
         {
             Address target = TestItem.AddressC;
             Prepare childBuilder = Prepare.EvmCode

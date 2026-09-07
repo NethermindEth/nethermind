@@ -121,9 +121,8 @@ public class Eth68ProtocolHandlerTests
             Is.EqualTo(canGossipTransactions ? txCount : 0));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Should_throw_when_sizes_do_not_match(bool removeSize)
+    [Test]
+    public void Should_throw_when_sizes_do_not_match([Values] bool removeSize)
     {
         GenerateLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 
@@ -203,9 +202,8 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
     }
 
-    [TestCase(-8)]
-    [TestCase(8)]
-    public void Should_reject_inexact_blob_size_estimate(int sizeDifference)
+    [Test]
+    public void Should_reject_inexact_blob_size_estimate([Values(-8, 8)] int sizeDifference)
     {
         RecreateHandlerWithBlobSupport();
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
@@ -356,9 +354,8 @@ public class Eth68ProtocolHandlerTests
         _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void should_announce_completed_blob_tx_after_skipping_sparse_version(bool sendBatch)
+    [Test]
+    public void should_announce_completed_blob_tx_after_skipping_sparse_version([Values] bool sendBatch)
     {
         Transaction fullTx = BuildFullBlobTransaction();
         Transaction sparseTx = BuildSparseBlobTransaction(fullTx);
