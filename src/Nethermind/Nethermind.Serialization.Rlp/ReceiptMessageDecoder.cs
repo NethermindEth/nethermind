@@ -72,6 +72,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
             }
+
+            // The item count only requires each log to start before the declared end, so without this the last
+            // one may overrun it: an under-declared header consumes the same bytes and the receipt checkpoint holds.
+            ctx.Check(lastCheck);
             txReceipt.Logs = entries;
 
             // Handle any remaining extra bytes
@@ -148,6 +152,10 @@ namespace Nethermind.Serialization.Rlp
                 {
                     logs[j] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
                 }
+
+                // Closes the logs sequence the same way as the regular path: the frame checkpoint below sits one
+                // level out, so on its own it accepts a last log that overruns the logs header.
+                ctx.Check(logsEnd);
 
                 frameReceipts[i] = new TxFrameReceipt(status, executionGasUsed, stateGasUsed, logs);
                 ctx.Check(frameEnd);
