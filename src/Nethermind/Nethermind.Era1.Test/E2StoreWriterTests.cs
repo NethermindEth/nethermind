@@ -27,10 +27,8 @@ internal class E2StoreWriterTests
         Assert.That(BinaryPrimitives.ReadInt16LittleEndian(stream.ToArray()), Is.EqualTo(type));
     }
 
-    [TestCase(6)]
-    [TestCase(20)]
-    [TestCase(32)]
-    public async Task WriteEntry_WritingAnEntry_WritesCorrectLengthInHeader(int length)
+    [Test]
+    public async Task WriteEntry_WritingAnEntry_WritesCorrectLengthInHeader([Values(6, 20, 32)] int length)
     {
         using MemoryStream stream = new();
         using E2StoreWriter sut = new(stream);
@@ -40,10 +38,8 @@ internal class E2StoreWriterTests
         Assert.That(BinaryPrimitives.ReadInt32LittleEndian(stream.ToArray().Slice(2)), Is.EqualTo(length));
     }
 
-    [TestCase(1)]
-    [TestCase(5)]
-    [TestCase(12)]
-    public async Task WriteEntry_WritingAnEntry_ReturnCorrectNumberOfBytesWritten(int length)
+    [Test]
+    public async Task WriteEntry_WritingAnEntry_ReturnCorrectNumberOfBytesWritten([Values(1, 5, 12)] int length)
     {
         using MemoryStream stream = new();
         using E2StoreWriter sut = new(stream);

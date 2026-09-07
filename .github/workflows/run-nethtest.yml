@@ -25,12 +25,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests-glamsterdam-devnet@v8.1.2
+        default: tests-glamsterdam-devnet@v8.1.4
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.8.2
+        default: tests-zkevm@v0.8.4
         type: string
       focil_version:
         description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
@@ -76,12 +76,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests-glamsterdam-devnet@v8.1.2
+        default: tests-glamsterdam-devnet@v8.1.4
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.8.2
+        default: tests-zkevm@v0.8.4
         type: string
       focil_version:
         description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
@@ -111,14 +111,14 @@ env:
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
   # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
   # fixtures for all forks (Frontier..Amsterdam) with the devnet-8 Amsterdam semantics
-  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v8.1.2) to pin.
+  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v8.1.4) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.2' }}
+  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.4' }}
   EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to the release whose stateless
   # input/output schemas this branch implements.
-  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.8.2' }}
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.8.4' }}
   # FOCIL fixtures ship in their own release line, resolved instead of EEST_VERSION. Keep it an exact
   # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
   FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.2.0' }}

@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
@@ -26,12 +25,12 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
+    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager = iteratorManager;
-    private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
+    private readonly IColumnFamilyHandle? _columnFamily = columnFamily;
 
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
@@ -41,7 +40,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
-        ColumnFamilyHandle? columnFamily = null)
+        IColumnFamilyHandle? columnFamily = null)
         : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
         _ownsReadOptions = true;
@@ -55,27 +54,15 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             return;
         }
 
-        DestroyReadOptions(_options);
-        DestroyReadOptions(_hintCacheMissOptions);
-    }
-
-    /// <summary>
-    /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
-    /// finalizer queue buildup from short-lived ReadOptions instances.
-    /// </summary>
-    internal static void DestroyReadOptions(ReadOptions? options)
-    {
-        if (options is null) return;
-
-        Native.Instance.rocksdb_readoptions_destroy(options.Handle);
-        GC.SuppressFinalize(options);
+        _options.Dispose();
+        _hintCacheMissOptions.Dispose();
     }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)
         {
-            byte[]? result = _mainDb.GetWithIterator(key, _columnFamily, _iteratorManager.Value, flags, out bool success);
+            byte[]? result = _mainDb.GetWithIterator(key, _iteratorManager.Value, flags, out bool success);
             if (success)
             {
                 return result;
@@ -129,22 +116,9 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
         if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_mainDb.ReadAheadSize);
         if (_mainDb.CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
-
-        IntPtr iterateLowerBound = IntPtr.Zero;
-        IntPtr iterateUpperBound = IntPtr.Zero;
-
-        unsafe
-        {
-            iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
-            firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
-            Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
-
-            iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
-            lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
-            Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
-        }
+        readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions);
     }
 }

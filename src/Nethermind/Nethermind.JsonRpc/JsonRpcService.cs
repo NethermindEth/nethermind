@@ -87,9 +87,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
-        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(rpcRequest, ex)}", ex);
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
+
+    // Formatting the request parses and stringifies its params, which for engine_newPayload is a
+    // multi-megabyte payload. When the heap is already exhausted that would just throw again.
+    private static string DescribeForErrorLog(JsonRpcRequest request, Exception ex) =>
+        ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
+            ? $"Id:{request.Id}, {request.Method}(params omitted)"
+            : request.ToString();
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
@@ -112,8 +119,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             contextAwareModule.Context = context;
         }
+        void ReturnRental() => _rpcModuleProvider.Return(method, rpcModule);
         bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
+        Action? returnAction = returnImmediately ? null : ReturnRental;
         IResultWrapper? resultWrapper = null;
         try
         {
@@ -137,6 +145,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 default:
                     break;
             }
+
+            // A streamed result executes while the response is written, after this method has returned, on state the
+            // module owns (its overridable world state env). Returning the module now would let the next rental run on
+            // that same env concurrently, so the rental has to last until the response is disposed.
+            if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
+            {
+                returnImmediately = false;
+                returnAction = ReturnRental;
+            }
         }
         catch (Exception ex)
         {
@@ -146,7 +163,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                _rpcModuleProvider.Return(method, rpcModule);
+                ReturnRental();
             }
         }
 
@@ -558,7 +575,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
-            if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(request, ex)}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), in request.IdRef, returnAction);
         }
 

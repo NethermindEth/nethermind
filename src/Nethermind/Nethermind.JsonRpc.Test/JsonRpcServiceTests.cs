@@ -3,8 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -24,6 +27,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -329,9 +333,8 @@ public class JsonRpcServiceTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"Nethermind/test\",\"id\":67}"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Admin_peers_is_working_with_empty_or_null_params(bool useNullParams)
+    [Test]
+    public async Task Admin_peers_is_working_with_empty_or_null_params([Values] bool useNullParams)
     {
         IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
         PeerInfo[] expectedPeers = [new PeerInfo { Enode = "enode://expected-peer" }];
@@ -396,6 +399,28 @@ public class JsonRpcServiceTests
 
         response.Dispose();
         pool.Received().ReturnModule(rpcModule);
+    }
+
+    // A streamed trace executes while the response is written, on the module's own overridable env; the module must
+    // therefore stay rented until the response is disposed, or the next rental races it on that env.
+    [Test]
+    public void Returns_module_to_pool_only_after_a_streamed_result_is_disposed([Values] bool streamed)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        using CancellationTokenSource timeoutCts = new();
+        IEnumerable<ParityTxTraceFromReplay> traces = streamed
+            ? new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(static (_, _, _) => { }, timeoutCts, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())
+            : [];
+        rpcModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces));
+
+        JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayBlockTransactions", "latest", new[] { "trace" });
+
+        pool.Received(streamed ? 0 : 1).ReturnModule(rpcModule);
+        response.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
     }
 
     [Test]
@@ -621,6 +646,40 @@ public class JsonRpcServiceTests
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         AssertJsonRpcError(response, ErrorCodes.InternalError);
+    }
+
+    private static IEnumerable<TestCaseData> OutOfMemoryPools()
+    {
+        static IRpcModulePool<IEthRpcModule> Throwing(Exception ex)
+        {
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>()).Throws(ex);
+            return new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true);
+        }
+
+        static IRpcModulePool<IEthRpcModule> FaultedRental()
+        {
+            IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+            pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
+            return pool;
+        }
+
+        yield return new TestCaseData(Throwing(new OutOfMemoryException())).SetName("{m}(module throws)");
+        yield return new TestCaseData(Throwing(new TargetInvocationException(new OutOfMemoryException()))).SetName("{m}(module throws wrapped)");
+        yield return new TestCaseData(FaultedRental()).SetName("{m}(module rental faults)");
+    }
+
+    [TestCaseSource(nameof(OutOfMemoryPools))]
+    public void OutOfMemory_logs_without_request_parameters(IRpcModulePool<IEthRpcModule> pool)
+    {
+        const string marker = "0x00000000000000000000000000000000deadbeef";
+        TestErrorLogManager logManager = new();
+        _logManager = logManager;
+
+        AssertJsonRpcError(TestRequestWithPool(pool, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
+
+        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException or { InnerException: OutOfMemoryException });
+        Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
     }
 
     [Test]
