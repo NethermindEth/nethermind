@@ -339,6 +339,12 @@ gh workflow run run-rpc-benchmarks.yml --ref master -f benchmark_tool=corpus-bas
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f arch=arm64 \
   -f docker_image=nethermindeth/nethermind:<pr-tag> -f baseline_image=nethermindeth/nethermind:master-<sha>
 
+# Nethermind vs another client on the corpus (amd64 only): name the arms in `tool_config.clients`; the first is
+# the parity baseline. Each type runs from its own `<root>/<client>-<block>` set; reth on `direct` isolation.
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f docker_image=nethermindeth/nethermind:<pr-tag> \
+  -f baseline_image=nethermindeth/nethermind:master-<sha> -f rounds=1 \
+  -f tool_config='{"clients":"nethermind@nethermindeth/nethermind:<pr-tag> reth@ethpandaops/reth:main"}'
+
 # Smoke test of the harness itself (~10 min): tiny cells, one round, short warm-up
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f docker_image=nethermindeth/nethermind:master-<sha> \
   -f requests_per_cell=3000 -f rounds=1 -f timings_passes=4 -f warmup=30

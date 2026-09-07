@@ -82,15 +82,46 @@ case "$CORPUS_BASELINE" in
   none|save|use) ;;
   *) echo "::error::CORPUS_BASELINE must be none, save or use, got '$CORPUS_BASELINE'"; exit 1 ;;
 esac
-for entry in $CLIENTS; do
-  entry="${entry%%#*}"
-  [[ "${entry%%@*}" == "nethermind" ]] || { echo "::error::sweep mode resolves one Nethermind snapshot set; client '${entry%%@*}' cannot run here (use benchmark_tool=jsonbench with reference_client)"; exit 1; }
+# Each client type has its own block-tagged snapshot set under SNAPSHOT_ROOT, mirroring the single-node
+# path's `<root>/<client>-<block>`; the Nethermind set is the layout-resolved one above. `ctype@image`
+# variants share their type's set, so within one type the image is the only variable.
+snap_path() {
+  case "$1" in
+    nethermind) printf '%s' "$SNAPSHOT_PATH" ;;
+    *)          printf '%s' "${SNAPSHOT_ROOT}/$1-${SNAPSHOT_BLOCK}" ;;
+  esac
+}
+# A client whose set is absent reaches start-node.sh with a DB_SOURCE that does not exist, which is only a
+# per-client warning there: the sweep would report a partly empty matrix as success and, in corpus mode, a
+# baseline with no candidate. Check every requested type up front instead.
+declare -A SWEEP_CTYPES=()
+for entry in $CLIENTS; do entry="${entry%%#*}"; SWEEP_CTYPES["${entry%%@*}"]=1; done
+for ctype in "${!SWEEP_CTYPES[@]}"; do
+  case "$ctype" in
+    nethermind|geth|reth) ;;
+    *) echo "::error::unknown sweep client type '${ctype}' (expected nethermind | geth | reth)"; exit 1 ;;
+  esac
+  if [[ ! -d "$(snap_path "$ctype")" ]]; then
+    echo "::error::no ${ctype} snapshot set at $(snap_path "$ctype") — this box cannot serve that client"
+    ls -1d "${SNAPSHOT_ROOT}"/*-"${SNAPSHOT_BLOCK}" 2>/dev/null | sed 's|^|::error::  present: |' || true
+    exit 1
+  fi
 done
 # direct bind-mounts the expb-shared snapshot read-write; one such run replaces the fixture every later benchmark uses.
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
   echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot; use 'copy', or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot"; exit 1
 fi
-DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
+# One isolation mode per client type, so storage counters stay comparable between the images of one type.
+# reth's DB is a single large mdbx.dat whose startup write forces overlayfs to copy the whole file up before
+# the node opens (~200 s), so reth runs `direct` on its own, reth-only set; the consent guard above exists
+# for the Nethermind sets expb shares. Never read a cross-type disk-read delta as a code difference.
+db_isolation_for() {
+  if [[ -n "$DB_ISOLATION_ALL" ]]; then printf '%s' "$DB_ISOLATION_ALL"; return; fi
+  case "$1" in
+    reth) printf 'direct' ;;
+    *)    printf 'overlay' ;;
+  esac
+}
 
 # $1 config $2 rps $3 duration $4 cell dir $5 ctype $6 label [$7 corpus file] [$8 node container to sample]
 run_cell() {
@@ -338,8 +369,9 @@ for entry in "${schedule[@]}"; do
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${SNAPSHOT_PATH}, head=${SNAPSHOT_BLOCK})"
-  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
+  snap="$(snap_path "$ctype")"; iso="$(db_isolation_for "$ctype")"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${snap}, isolation=${iso}, head=${SNAPSHOT_BLOCK})"
+  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
        LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
