@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -540,13 +541,6 @@ public static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionBalance<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag =>
-        InstructionBalance<TGasPolicy, TTracingInst, DynamicAccessSpec>(ref stack, ref gas, vm);
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType InstructionBalance<TGasPolicy, TTracingInst, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -556,7 +550,7 @@ public static partial class EvmInstructions
         // Deduct gas cost for balance operation as per specification.
         TGasPolicy.Consume<BalanceGasCost>(ref gas, spec);
 
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
@@ -614,13 +608,6 @@ public static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionExtCodeHash<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag =>
-        InstructionExtCodeHash<TGasPolicy, TTracingInst, DynamicAccessSpec>(ref stack, ref gas, vm);
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType InstructionExtCodeHash<TGasPolicy, TTracingInst, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -629,7 +616,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         TGasPolicy.Consume<ExtCodeHashGasCost>(ref gas, spec);
 
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         if (!TSpec.ConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
@@ -725,13 +712,17 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         // Retrieve the array of versioned blob hashes from the execution context.
-        byte[][] versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
+        byte[]?[]? versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
 
         // If versioned hashes are available and the index is within range, push the corresponding blob hash.
-        // Otherwise, push zero.
-        return versionedHashes is not null && result < versionedHashes.Length
-            ? stack.PushBytes<TTracingInst>(versionedHashes[result.u0])
-            : stack.PushZero<TTracingInst>();
+        if (versionedHashes is not null && result < versionedHashes.Length)
+        {
+            byte[] versionedHash = versionedHashes[result.u0]
+                ?? throw new InvalidOperationException("Blob versioned hashes must not contain null elements.");
+            return stack.PushBytes<TTracingInst>(versionedHash);
+        }
+
+        return stack.PushZero<TTracingInst>();
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

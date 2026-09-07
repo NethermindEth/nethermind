@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
@@ -73,10 +74,11 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public void AnalyzeInBackgroundIfRequired()
     {
-#if !ZK_EVM
+        // Analysis only runs ahead of execution on another processor; the guest folds the queue away.
+        if (RuntimeInformation.IsSingleProcessor) return;
+
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-#endif
     }
 
     public override bool Equals(object? obj)
