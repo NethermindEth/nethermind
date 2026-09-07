@@ -1148,7 +1148,7 @@ esac
         self.assertIn("warmup_fail=0", sweep)
         self.assertIn("delivered * 10 >= requested * 8", sweep)
         self.assertIn("usable aggregate delivered", sweep)
-        self.assertIn("requested warm-up(s) failed the usable-aggregate/80%-delivery contract", sweep)
+        self.assertIn("one or more requested warm-up(s) failed the usable-aggregate/80%-delivery contract", sweep)
         self.assertIn("if (( health_exception_count > 0 )); then", sweep)
         self.assertIn("node log is missing; cannot confirm clean shutdown", sweep)
         # The per-client loop remains unconditional after the warm-up branch; the final gate is
@@ -1161,8 +1161,8 @@ esac
         self.assertEqual(run_jsonbench.count('tee_exit_code="${pipeline_status[1]:--1}"'), 2)
         self.assertEqual(run_jsonbench.count("tool_exit_code != 0 || tee_exit_code != 0"), 2)
 
-    def test_corpus_warmup_gate_executes_all_failure_cases_and_runs_next_client(self) -> None:
-        """Exercise the real delivery predicate with a shell harness, including final failure."""
+    def test_corpus_warmup_predicate_and_final_gate_behavior(self) -> None:
+        """Exercise the extracted delivery predicate and final gate under no-errexit shell rules."""
         sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
         start = sweep.index("warmup_delivery_is_valid()")
         end = sweep.index("\n}", start) + 2
@@ -1192,10 +1192,10 @@ run_case() {{
     [[ "$warmup_fail" -eq 0 ]]
   fi
 }}
-run_case aggregate 80 100 0
-run_case aggregate 79 100 1
-run_case failed 0 100 1
-run_case missing 0 100 1
+run_case aggregate 80 100 0 || exit 1
+run_case aggregate 79 100 1 || exit 1
+run_case failed 0 100 1 || exit 1
+run_case missing 0 100 1 || exit 1
 warmup_fail=1
 fail=0
 {final_gate}

@@ -711,6 +711,6 @@ if [[ "$parity_fail" -gt 0 ]]; then
   echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline client or a replay failed"; fail=1
 fi
 if [[ "$warmup_fail" -gt 0 ]]; then
-  echo "::error::${warmup_fail} requested warm-up(s) failed the usable-aggregate/80%-delivery contract — measured results are invalid"; fail=1
+  echo "::error::one or more requested warm-up(s) failed the usable-aggregate/80%-delivery contract — measured results are invalid"; fail=1
 fi
 exit "$fail"
