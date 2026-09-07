@@ -67,7 +67,7 @@ public static class RocksDbFeatureBenchmarkSelection
 
     private static TEnum? ParseEnvironmentValue<TEnum>(string variable) where TEnum : struct, Enum
     {
-        string? value = Environment.GetEnvironmentVariable(variable);
+        string value = Environment.GetEnvironmentVariable(variable);
         return Enum.TryParse(value, ignoreCase: true, out TEnum result) ? result : null;
     }
 }
@@ -228,7 +228,7 @@ public static class RocksDbFeatureDatasetFactory
     {
         public static ByteArrayComparer Instance { get; } = new();
 
-        public bool Equals(byte[]? left, byte[]? right) =>
+        public bool Equals(byte[] left, byte[] right) =>
             ReferenceEquals(left, right) || left is not null && right is not null && left.AsSpan().SequenceEqual(right);
 
         public int GetHashCode(byte[] value)
@@ -422,7 +422,7 @@ public class RocksDbFeatureBenchmarks
     [Benchmark]
     public int ReadHit()
     {
-        byte[]? value = _store.Get(_dataset.Keys[_readIndex]);
+        byte[] value = _store.Get(_dataset.Keys[_readIndex]);
         _readIndex = (_readIndex + ReadStep) % _dataset.Keys.Length;
         return value?.Length ?? 0;
     }
@@ -430,7 +430,7 @@ public class RocksDbFeatureBenchmarks
     [Benchmark]
     public int ReadMiss()
     {
-        byte[]? value = _store.Get(_dataset.MissingKeys[_missingIndex]);
+        byte[] value = _store.Get(_dataset.MissingKeys[_missingIndex]);
         _missingIndex = (_missingIndex + 1) % _dataset.MissingKeys.Length;
         return value?.Length ?? -1;
     }
@@ -438,7 +438,7 @@ public class RocksDbFeatureBenchmarks
     [Benchmark]
     public int MultiGetMixed()
     {
-        KeyValuePair<byte[], byte[]?>[] results = _db[_multiGetBatches[_multiGetIndex]];
+        KeyValuePair<byte[], byte[]>[] results = _db[_multiGetBatches[_multiGetIndex]];
         _multiGetIndex = (_multiGetIndex + 1) % _multiGetBatches.Length;
 
         int checksum = 0;
@@ -449,7 +449,7 @@ public class RocksDbFeatureBenchmarks
     [Benchmark]
     public int MultiGetMemtableResident()
     {
-        KeyValuePair<byte[], byte[]?>[] results = _db[_memtableBatches[_multiGetIndex]];
+        KeyValuePair<byte[], byte[]>[] results = _db[_memtableBatches[_multiGetIndex]];
         _multiGetIndex = (_multiGetIndex + 1) % _memtableBatches.Length;
 
         int checksum = 0;
@@ -496,7 +496,7 @@ public static class RocksDbFeatureStandaloneRunner
         string rootPath = Path.Combine(Path.GetTempPath(), "nethermind-rocksdb-feature-standalone", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(rootPath);
 
-        DbOnTheRocks? db = null;
+        DbOnTheRocks db = null;
         using Process process = Process.GetCurrentProcess();
         try
         {
@@ -594,13 +594,13 @@ public static class RocksDbFeatureStandaloneRunner
 
             if ((i & 31) == 0)
             {
-                KeyValuePair<byte[], byte[]?>[] results = db[batches[(i / 32) % batches.Length]];
+                KeyValuePair<byte[], byte[]>[] results = db[batches[(i / 32) % batches.Length]];
                 for (int j = 0; j < results.Length; j++) checksum += results[j].Value?.Length ?? -1;
             }
 
             if ((i & 31) == 0)
             {
-                KeyValuePair<byte[], byte[]?>[] results = db[memtableBatches[(i / 32) % memtableBatches.Length]];
+                KeyValuePair<byte[], byte[]>[] results = db[memtableBatches[(i / 32) % memtableBatches.Length]];
                 for (int j = 0; j < results.Length; j++) checksum += results[j].Value?.Length ?? -1;
             }
         }
