@@ -142,16 +142,6 @@ public static partial class EvmInstructions
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionCountLeadingZeros<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        if (!TGasPolicy.UpdateGas<LowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-
-        return CountLeadingZerosCore<OnFlag>(ref stack);
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType CountLeadingZerosCore<TCheckDepth>(ref EvmStack stack)
         where TCheckDepth : struct, IFlag
     {

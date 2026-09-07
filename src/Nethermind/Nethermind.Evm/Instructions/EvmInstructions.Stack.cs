@@ -14,25 +14,6 @@ namespace Nethermind.Evm;
 public static partial class EvmInstructions
 {
     /// <summary>
-    /// Pops a value from the EVM stack.
-    /// Deducts the base gas cost and returns an exception if the stack is underflowed.
-    /// </summary>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <returns><see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>.</returns>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPop<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // Deduct the minimal gas cost for a POP operation.
-        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        // Pop from the stack; if nothing to pop, signal a stack underflow.
-        return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
-    }
-
-    /// <summary>
     /// Interface for series of items based operations.
     /// The <c>Count</c> property specifies the expected number of items.
     /// </summary>
