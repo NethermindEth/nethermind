@@ -24,6 +24,7 @@ public class OrphanStorageSweepTests
     private static readonly Address EmptyRoot = TestItem.AddressC;
     private static readonly byte[] Node = [0xC2, 0x80, 0x80];
     private static readonly byte[] EncodedValue = Rlp.Encode(new byte[] { 0x0A }).Bytes;
+    private static readonly StateId Persisted = new(1, Keccak.EmptyTreeHash);
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private IPersistence _persistence = null!;
@@ -34,8 +35,12 @@ public class OrphanStorageSweepTests
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _persistence = new RocksDbPersistence(_db, LimboLogs.Instance);
+        using (_persistence.CreateWriteBatch(StateId.PreGenesis, Persisted))
+        {
+        }
+
         IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.GetCurrentPersistedStateId().Returns(new StateId(1, Keccak.EmptyTreeHash));
+        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
         manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
             .Do(call =>
             {
@@ -231,7 +236,7 @@ public class OrphanStorageSweepTests
 
         _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
         IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.GetCurrentPersistedStateId().Returns(new StateId(1, Keccak.EmptyTreeHash));
+        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
         manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
             .Do(call =>
             {
@@ -249,9 +254,11 @@ public class OrphanStorageSweepTests
     [Test]
     public void A_database_without_a_persisted_state_is_stamped_without_a_scan()
     {
+        using SnapshotableMemColumnsDb<FlatDbColumns> freshDb = new();
+        IPersistence freshPersistence = new RocksDbPersistence(freshDb, LimboLogs.Instance);
         IPersistenceManager fresh = Substitute.For<IPersistenceManager>();
-        fresh.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
-        using OrphanStorageSweep sweep = new(_db, fresh, LimboLogs.Instance);
+        fresh.LeaseReader().Returns(_ => freshPersistence.CreateReader());
+        using OrphanStorageSweep sweep = new(freshDb, fresh, LimboLogs.Instance);
 
         bool stamped = sweep.TryStampFresh();
 
@@ -261,6 +268,67 @@ public class OrphanStorageSweepTests
             Assert.That(sweep.AlreadyHandled, Is.True);
             Assert.That(_sweep.TryStampFresh(), Is.False, "a database with a persisted block state is swept");
         }
+    }
+
+    [Test]
+    public void A_database_cleared_under_the_pass_stops_the_sweep_before_it_deletes_anything()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        ValueHash256 orphan = PathWithPrefix(0x10000000, tail: 0x01);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
+        }
+
+        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
+        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
+        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
+            .Do(call =>
+            {
+                _persistence.Clear();
+                using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+                batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
+                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
+            });
+        using OrphanStorageSweep sweep = new(_db, manager, LimboLogs.Instance);
+
+        Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
+            "a state sync that starts under the pass clears the database and rebuilds it with storage landing before accounts; the sweep must read that on disk, where the manager's cached state id does not show it, and stop");
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        SlotValue value = default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted from a database another writer is assembling");
+            Assert.That(sweep.AlreadyHandled, Is.False);
+        }
+    }
+
+    [Test]
+    public void A_slot_removed_while_the_pass_runs_is_judged_against_the_account_of_the_same_moment()
+    {
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetAccount(WithStorage, new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+            batch.SetStorage(WithStorage, 1, SlotValue.FromSpanWithoutLeadingZero([0x0A]));
+        }
+
+        IColumnsDb<FlatDbColumns> racing = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        racing.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _db.GetColumnDb(call.Arg<FlatDbColumns>()));
+        racing.CreateSnapshot().Returns(_ =>
+        {
+            IColumnDbSnapshot<FlatDbColumns> snapshot = _db.CreateSnapshot();
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            batch.SetStorage(WithStorage, 1, null);
+            batch.SetAccount(WithStorage, new Account(1, 1));
+            return snapshot;
+        });
+        using OrphanStorageSweep sweep = new(racing, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+
+        OrphanStorageReport report = sweep.RunToCompletion(repair: false, CancellationToken.None);
+
+        Assert.That(report.OrphanAccounts, Is.Zero,
+            "block processing that empties a contract's storage between the iterator and the account read must not read as an orphan: both columns come from one snapshot, so the slot is judged against the account that still owned it");
     }
 
     [Test]

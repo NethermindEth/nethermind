@@ -15,8 +15,8 @@ namespace Nethermind.State.Flat;
 public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenceManager persistenceManager, ILogManager logManager) : IDisposable
 {
     private static readonly byte[] MarkerKey = Keccak.Compute("OrphanStorageSwept").BytesToArray();
-    private static readonly byte[] CursorKey = Keccak.Compute("OrphanStorageSweepCursor").BytesToArray();
-    private static readonly byte[] TallyKey = Keccak.Compute("OrphanStorageSweepTally").BytesToArray();
+    private static readonly byte[] ProgressKey = Keccak.Compute("OrphanStorageSweepProgress").BytesToArray();
+    private const int ProgressLength = sizeof(uint) + 5 * sizeof(long);
     private const byte Swept = 1;
     private const byte LayoutUnsupported = 2;
     private const int IdentitiesPerBatch = 256;
@@ -66,12 +66,12 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
     internal bool RunOnePass(bool repair, long maxSlots, TimeSpan budget, CancellationToken token)
     {
-        ISortedKeyValueStore storage = (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage);
-        IReadOnlyKeyValueStore accounts = db.GetColumnDb(FlatDbColumns.Account);
-        long startPrefix = repair ? ReadCursor() : _checkCursor;
+        using IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
+        IReadOnlyKeyValueStore accounts = snapshot.GetColumn(FlatDbColumns.Account);
+        long startPrefix = repair ? ReadProgress() : _checkCursor;
         if (startPrefix > uint.MaxValue) return true;
         if (startPrefix == 0) ResetTally();
-        else if (repair && !_tallyLoaded) LoadTally();
         _tallyLoaded = true;
 
         Dictionary<ValueHash256, bool> decided = [];
@@ -131,19 +131,19 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
         if (repair)
         {
-            Delete(accounts, orphans, token);
+            if (orphans.Count > 0)
+            {
+                WriteProgress((uint)startPrefix);
+                Delete(db.GetColumnDb(FlatDbColumns.Account), orphans, token);
+            }
+
             IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
             if (completed)
             {
-                metadata.Remove(CursorKey);
-                metadata.Remove(TallyKey);
+                metadata.Remove(ProgressKey);
                 metadata.PutSpan(MarkerKey, [Swept]);
             }
-            else
-            {
-                WriteCursor((uint)nextPrefix);
-                WriteTally();
-            }
+            else WriteProgress((uint)nextPrefix);
         }
         else _checkCursor = nextPrefix;
 
@@ -152,8 +152,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
     internal bool TryStampFresh()
     {
-        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
-        if (persisted != StateId.PreGenesis && persisted != StateId.Sync) return false;
+        if (Drained(0)) return false;
 
         db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
         return true;
@@ -161,7 +160,8 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
     private bool Drained(ulong drainedAtBlock)
     {
-        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        using IPersistence.IPersistenceReader reader = persistenceManager.LeaseReader();
+        StateId persisted = reader.CurrentState;
         return persisted != StateId.PreGenesis && persisted != StateId.Sync && persisted.BlockNumber >= drainedAtBlock;
     }
 
@@ -225,15 +225,13 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         for (int first = 0; first < orphans.Count; first += IdentitiesPerBatch)
         {
             token.ThrowIfCancellationRequested();
-            if (!Drained(0))
-            {
-                if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it, so a state sync is rebuilding it and nothing in it may be judged until that sync has persisted. The sweep starts over on the next start.");
-                throw new OperationCanceledException();
-            }
-
             int last = Math.Min(orphans.Count, first + IdentitiesPerBatch);
+            bool rebuilt = false;
             persistenceManager.RunMaintenance(batch =>
             {
+                rebuilt = !Drained(0);
+                if (rebuilt) return;
+
                 for (int index = first; index < last; index++)
                 {
                     ValueHash256 identity = orphans[index];
@@ -243,6 +241,12 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
                     batch.DeleteStorageTrieNodeRange(identity, ValueKeccak.Zero, ValueKeccak.MaxValue);
                 }
             }, token);
+
+            if (rebuilt)
+            {
+                if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it, so a state sync is rebuilding it and nothing in it may be judged until that sync has persisted. The sweep starts over on the next start.");
+                throw new OperationCanceledException();
+            }
         }
     }
 
@@ -264,41 +268,38 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         _emptyRootAccounts = 0;
     }
 
-    private void LoadTally()
+    private long ReadProgress()
     {
-        byte[]? value = db.GetColumnDb(FlatDbColumns.Metadata).Get(TallyKey);
-        if (value is not { Length: 5 * sizeof(long) }) return;
+        byte[]? value = db.GetColumnDb(FlatDbColumns.Metadata).Get(ProgressKey);
+        if (value is not { Length: ProgressLength }) return 0;
 
-        _slotsScanned = BinaryPrimitives.ReadInt64BigEndian(value);
-        _orphanSlots = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(8));
-        _orphanAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(16));
-        _missingAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(24));
-        _emptyRootAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(32));
+        if (!_tallyLoaded)
+        {
+            ReadOnlySpan<byte> tally = value.AsSpan(sizeof(uint));
+            _slotsScanned = BinaryPrimitives.ReadInt64BigEndian(tally);
+            _orphanSlots = BinaryPrimitives.ReadInt64BigEndian(tally[sizeof(long)..]);
+            _orphanAccounts = BinaryPrimitives.ReadInt64BigEndian(tally[(2 * sizeof(long))..]);
+            _missingAccounts = BinaryPrimitives.ReadInt64BigEndian(tally[(3 * sizeof(long))..]);
+            _emptyRootAccounts = BinaryPrimitives.ReadInt64BigEndian(tally[(4 * sizeof(long))..]);
+        }
+
+        return BinaryPrimitives.ReadUInt32BigEndian(value);
     }
 
-    private void WriteTally()
+    private void WriteProgress(uint cursor)
     {
-        Span<byte> value = stackalloc byte[5 * sizeof(long)];
-        BinaryPrimitives.WriteInt64BigEndian(value, _slotsScanned);
-        BinaryPrimitives.WriteInt64BigEndian(value[8..], _orphanSlots);
-        BinaryPrimitives.WriteInt64BigEndian(value[16..], _orphanAccounts);
-        BinaryPrimitives.WriteInt64BigEndian(value[24..], _missingAccounts);
-        BinaryPrimitives.WriteInt64BigEndian(value[32..], _emptyRootAccounts);
-        db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(TallyKey, value);
+        Span<byte> value = stackalloc byte[ProgressLength];
+        BinaryPrimitives.WriteUInt32BigEndian(value, cursor);
+        Span<byte> tally = value[sizeof(uint)..];
+        BinaryPrimitives.WriteInt64BigEndian(tally, _slotsScanned);
+        BinaryPrimitives.WriteInt64BigEndian(tally[sizeof(long)..], _orphanSlots);
+        BinaryPrimitives.WriteInt64BigEndian(tally[(2 * sizeof(long))..], _orphanAccounts);
+        BinaryPrimitives.WriteInt64BigEndian(tally[(3 * sizeof(long))..], _missingAccounts);
+        BinaryPrimitives.WriteInt64BigEndian(tally[(4 * sizeof(long))..], _emptyRootAccounts);
+        db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(ProgressKey, value);
     }
 
-    private long ReadCursor()
-    {
-        byte[]? value = db.GetColumnDb(FlatDbColumns.Metadata).Get(CursorKey);
-        return value is { Length: sizeof(uint) } ? BinaryPrimitives.ReadUInt32BigEndian(value) : 0;
-    }
 
-    private void WriteCursor(uint prefix)
-    {
-        Span<byte> value = stackalloc byte[sizeof(uint)];
-        BinaryPrimitives.WriteUInt32BigEndian(value, prefix);
-        db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(CursorKey, value);
-    }
 
     private static ValueHash256 IdentityOf(ReadOnlySpan<byte> storageKey)
     {

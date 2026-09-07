@@ -20,8 +20,8 @@ public sealed class OrphanStorageRowSweep(
     ILogManager logManager) : IDisposable
 {
     private static readonly byte[] MarkerKey = Keccak.Compute("OrphanStorageRowsSwept").BytesToArray();
-    private static readonly byte[] CursorKey = Keccak.Compute("OrphanStorageRowsSweepCursor").BytesToArray();
-    private static readonly byte[] TallyKey = Keccak.Compute("OrphanStorageRowsSweepTally").BytesToArray();
+    private static readonly byte[] ProgressKey = Keccak.Compute("OrphanStorageRowsSweepProgress").BytesToArray();
+    private const int ProgressLength = sizeof(uint) + 3 * sizeof(long);
     private const byte Swept = 1;
     private const byte FormatUnsupported = 2;
     private const int RowsPerBatch = 1 << 16;
@@ -76,10 +76,9 @@ public sealed class OrphanStorageRowSweep(
 
         ISortedKeyValueStore storageRows = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageHistory);
         ISortedKeyValueStore accountRows = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        long startPrefix = repair ? ReadCursor() : _checkCursor;
+        long startPrefix = repair ? ReadProgress() : _checkCursor;
         if (startPrefix > uint.MaxValue) return true;
         if (startPrefix == 0) ResetTally();
-        else if (repair && !_tallyLoaded) LoadTally();
         _tallyLoaded = true;
 
         Dictionary<ValueHash256, AccountTimeline> timelines = [];
@@ -137,26 +136,30 @@ public sealed class OrphanStorageRowSweep(
                 if (!repair) continue;
 
                 orphanRows.Add(key.ToArray());
-                if (orphanRows.Count >= RowsPerBatch) Delete(orphanRows);
+                if (orphanRows.Count >= RowsPerBatch)
+                {
+                    WriteProgress((uint)startPrefix);
+                    Delete(orphanRows);
+                }
             }
         }
 
         if (repair)
         {
-            Delete(orphanRows);
+            if (orphanRows.Count > 0)
+            {
+                WriteProgress((uint)startPrefix);
+                Delete(orphanRows);
+            }
+
             IDb metadata = flat.GetColumnDb(FlatDbColumns.Metadata);
             if (completed)
             {
                 Announce(Report);
-                metadata.Remove(CursorKey);
-                metadata.Remove(TallyKey);
+                metadata.Remove(ProgressKey);
                 metadata.PutSpan(MarkerKey, [Swept]);
             }
-            else
-            {
-                WriteCursor((uint)nextPrefix);
-                WriteTally();
-            }
+            else WriteProgress((uint)nextPrefix);
         }
         else _checkCursor = nextPrefix;
 
@@ -255,6 +258,7 @@ public sealed class OrphanStorageRowSweep(
             foreach (byte[] row in rows) storage.Remove(row);
         }
 
+        history.GetColumnDb(FlatHistoryColumns.StorageHistory).Flush(onlyWal: true);
         rows.Clear();
     }
 
@@ -274,37 +278,34 @@ public sealed class OrphanStorageRowSweep(
         _orphanAccounts = 0;
     }
 
-    private void LoadTally()
+    private long ReadProgress()
     {
-        byte[]? value = flat.GetColumnDb(FlatDbColumns.Metadata).Get(TallyKey);
-        if (value is not { Length: 3 * sizeof(long) }) return;
+        byte[]? value = flat.GetColumnDb(FlatDbColumns.Metadata).Get(ProgressKey);
+        if (value is not { Length: ProgressLength }) return 0;
 
-        _rowsScanned = BinaryPrimitives.ReadInt64BigEndian(value);
-        _orphanRows = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(8));
-        _orphanAccounts = BinaryPrimitives.ReadInt64BigEndian(value.AsSpan(16));
+        if (!_tallyLoaded)
+        {
+            ReadOnlySpan<byte> tally = value.AsSpan(sizeof(uint));
+            _rowsScanned = BinaryPrimitives.ReadInt64BigEndian(tally);
+            _orphanRows = BinaryPrimitives.ReadInt64BigEndian(tally[sizeof(long)..]);
+            _orphanAccounts = BinaryPrimitives.ReadInt64BigEndian(tally[(2 * sizeof(long))..]);
+        }
+
+        return BinaryPrimitives.ReadUInt32BigEndian(value);
     }
 
-    private void WriteTally()
+    private void WriteProgress(uint cursor)
     {
-        Span<byte> value = stackalloc byte[3 * sizeof(long)];
-        BinaryPrimitives.WriteInt64BigEndian(value, _rowsScanned);
-        BinaryPrimitives.WriteInt64BigEndian(value[8..], _orphanRows);
-        BinaryPrimitives.WriteInt64BigEndian(value[16..], _orphanAccounts);
-        flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(TallyKey, value);
+        Span<byte> value = stackalloc byte[ProgressLength];
+        BinaryPrimitives.WriteUInt32BigEndian(value, cursor);
+        Span<byte> tally = value[sizeof(uint)..];
+        BinaryPrimitives.WriteInt64BigEndian(tally, _rowsScanned);
+        BinaryPrimitives.WriteInt64BigEndian(tally[sizeof(long)..], _orphanRows);
+        BinaryPrimitives.WriteInt64BigEndian(tally[(2 * sizeof(long))..], _orphanAccounts);
+        flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(ProgressKey, value);
     }
 
-    private long ReadCursor()
-    {
-        byte[]? value = flat.GetColumnDb(FlatDbColumns.Metadata).Get(CursorKey);
-        return value is { Length: sizeof(uint) } ? BinaryPrimitives.ReadUInt32BigEndian(value) : 0;
-    }
 
-    private void WriteCursor(uint prefix)
-    {
-        Span<byte> value = stackalloc byte[sizeof(uint)];
-        BinaryPrimitives.WriteUInt32BigEndian(value, prefix);
-        flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(CursorKey, value);
-    }
 
     private static ValueHash256 IdentityOf(ReadOnlySpan<byte> storageRowKey)
     {

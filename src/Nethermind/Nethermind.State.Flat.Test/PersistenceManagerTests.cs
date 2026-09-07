@@ -125,6 +125,24 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void RunMaintenance_HandsOutABatchAtTheCurrentStateAndDisposesIt()
+    {
+        IPersistence.IWriteBatch batch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Block0, Block0, Arg.Any<WriteFlags>()).Returns(batch);
+        IPersistence.IWriteBatch? received = null;
+
+        _persistenceManager.RunMaintenance(b => received = b, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.SameAs(batch));
+            _persistence.Received(1).CreateWriteBatch(Block0, Block0, WriteFlags.None);
+            batch.Received(1).Dispose();
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "a maintenance batch is written under the state the base already holds, so the persisted state id does not move and the batch keeps its WAL");
+        }
+    }
+
+    [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
         // Gate passes (60+16=76 > 64) but GetFinalizedStateRootAt(16) is not configured → seed = null.
