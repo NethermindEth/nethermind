@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.Tracing;
@@ -123,6 +124,23 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(
             () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
             Throws.Nothing);
+
+    [Test]
+    public void Warm_up_code_preserves_each_opcodes_jump_bitmap([Values(Instruction.JUMP, Instruction.JUMPI)] Instruction instruction)
+    {
+        MethodInfo factory = typeof(VirtualMachine<EthereumGasPolicy>).GetMethod("CreateWarmUpCodeInfo", BindingFlags.Static | BindingFlags.NonPublic)!;
+        CodeInfo jump = (CodeInfo)factory.Invoke(null, [instruction])!;
+        Assert.That(jump.ValidateJump(1), Is.True);
+
+        CodeInfo push = (CodeInfo)factory.Invoke(null, [Instruction.PUSH32])!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(push.ValidateJump(1), Is.False);
+            Assert.That(jump.ValidateJump(1), Is.True);
+            Assert.That(jump.CodeSpan[0], Is.EqualTo((byte)instruction));
+            Assert.That(push.CodeSpan[0], Is.EqualTo((byte)Instruction.PUSH32));
+        }
+    }
 
     [TestCase(0UL, 0UL)]
     [TestCase(MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]

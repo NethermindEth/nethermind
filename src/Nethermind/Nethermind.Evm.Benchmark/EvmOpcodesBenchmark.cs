@@ -230,16 +230,6 @@ public unsafe class EvmOpcodesBenchmark
             }
         }
 
-        ReadOnlyMemory<byte> inputData = Opcode == Instruction.CALLDATACOPY ? CopySource : default;
-        _env = ExecutionEnvironment.Rent(
-            codeInfo: new CodeInfo(bytecode),
-            executingAccount: address,
-            caller: address,
-            codeSource: address,
-            callDepth: 0,
-            value: 0,
-            inputData: inputData);
-
         _opcodeCode = (byte[])bytecode.Clone();
         _opcodeCode[0] = (byte)Opcode;
         if (Opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
@@ -248,11 +238,20 @@ public unsafe class EvmOpcodesBenchmark
         }
         else if (Opcode is Instruction.JUMP or Instruction.JUMPI)
         {
-            // Byte 0 is the opcode under test, so the destination must be a JUMPDEST elsewhere in the executed
-            // code, or the cell measures the invalid-destination early-out rather than a taken jump.
+            // Keep the taken destination separate from the opcode under test.
             _opcodeCode[(int)JumpDestination] = (byte)Instruction.JUMPDEST;
         }
         _opcodeCodeInfo = new CodeInfo(_opcodeCode);
+
+        ReadOnlyMemory<byte> inputData = Opcode == Instruction.CALLDATACOPY ? CopySource : default;
+        _env = ExecutionEnvironment.Rent(
+            codeInfo: _opcodeCodeInfo,
+            executingAccount: address,
+            caller: address,
+            codeSource: address,
+            callDepth: 0,
+            value: 0,
+            inputData: inputData);
 
         _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(ulong.MaxValue),
