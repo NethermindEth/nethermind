@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
@@ -236,6 +237,7 @@ public static partial class EvmInstructions
             }
 
             if (TCheckDepth.IsActive) return stack.PushUInt256<TTracingInst>(in result);
+            Debug.Assert(!IsNullRef(ref slot), "The unchecked path peeked the destination slot.");
             EvmStack.WriteUInt256ToSlot(ref slot, in result);
             if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
             return EvmExceptionType.None;
