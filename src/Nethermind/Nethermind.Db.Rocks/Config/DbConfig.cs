@@ -44,6 +44,7 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        "max_compaction_trigger_wakeup_seconds=60;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -312,6 +313,7 @@ public class DbConfig : IDbConfig
 
         "ttl=0;" +
         "periodic_compaction_seconds=0;" +
+        "read_triggered_compaction_threshold=0.01;" +
         "compression=kLZ4Compression;" +
 
         // Reduce num of files. Tend to be a good thing.
