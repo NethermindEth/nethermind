@@ -481,19 +481,8 @@ namespace Nethermind.Evm.Test
             TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
 
             // The destination fits a PUSH1 in both builds, so the probe has the layout of the real code.
-            int jumpDest = Prepare.EvmCode
-                .Call(TestItem.AddressC, 50000)
-                .Op(Instruction.POP)
-                .PushData(1)
-                .Op(Instruction.JUMP)
-                .Op(Instruction.INVALID)
-                .Done.Length;
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 50000)
-                .Op(Instruction.POP)
-                .PushData(jumpDest)
-                .Op(Instruction.JUMP)
-                .Op(Instruction.INVALID)
+            int jumpDest = CallThenJump(1).Done.Length;
+            byte[] code = CallThenJump(jumpDest)
                 .Op(Instruction.JUMPDEST)
                 .PushData(1)
                 .PushData(0)
@@ -502,8 +491,18 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.That(result.Error, Is.Null);
-            AssertStorage(UInt256.Zero, new byte[] { 1 });
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Error, Is.Null);
+                AssertStorage(UInt256.Zero, new byte[] { 1 });
+            }
+
+            static Prepare CallThenJump(int destination) => Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.POP)
+                .PushData(destination)
+                .Op(Instruction.JUMP)
+                .Op(Instruction.INVALID);
         }
     }
 }
