@@ -122,9 +122,8 @@ public class ReceiptsRecoveryTests
         return Build.A.Block.WithTransactions(tx).TestObject;
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void TryRecover_should_restore_missing_transaction_hash(int missingHashIndex)
+    [Test]
+    public void TryRecover_should_restore_missing_transaction_hash([Values(0, 1)] int missingHashIndex)
     {
         Transaction[] transactions =
         [

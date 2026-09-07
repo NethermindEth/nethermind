@@ -453,9 +453,8 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void IntrinsicGasMemo_WhenEip2780ClassificationIsUnchanged_IsReused(bool contractCreation)
+        [Test]
+        public void IntrinsicGasMemo_WhenEip2780ClassificationIsUnchanged_IsReused([Values] bool contractCreation)
         {
             Transaction tx = (contractCreation
                     ? Build.A.Transaction.WithTo(null)

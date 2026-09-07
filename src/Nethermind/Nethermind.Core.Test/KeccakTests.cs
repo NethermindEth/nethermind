@@ -277,12 +277,8 @@ namespace Nethermind.Core.Test
         // The sponge squeezes a single block, so it can only serve an output that fits the rate,
         // STATE_SIZE - 2 * size. Larger sizes used to be accepted: at 100 the rate is zero and the absorb
         // loop never advanced, and above that it is negative and the state was indexed backwards.
-        [TestCase(0)]
-        [TestCase(67)]
-        [TestCase(100)]
-        [TestCase(137)]
-        [TestCase(201)]
-        public void Unsupported_output_sizes_are_rejected(int outputLength)
+        [Test]
+        public void Unsupported_output_sizes_are_rejected([Values(0, 67, 100, 137, 201)] int outputLength)
         {
             byte[] input = new byte[200];
             byte[] output = new byte[outputLength];

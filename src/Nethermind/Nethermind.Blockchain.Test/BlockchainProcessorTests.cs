@@ -33,9 +33,8 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
-    [TestCase("null_hash")]
-    [TestCase("default_either")]
-    public void LogDiagnosticTrace_does_not_throw_for_edge_cases(string variant)
+    [Test]
+    public void LogDiagnosticTrace_does_not_throw_for_edge_cases([Values("null_hash", "default_either")] string variant)
     {
         ILogger logger = LimboLogs.Instance.GetClassLogger<BlockchainProcessorTests>();
         Either<Hash256, IList<Block>> input = variant == "null_hash"

@@ -76,9 +76,8 @@ public class ProofRpcModuleTests
     [TearDown]
     public void TearDown() => _container.Dispose();
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Can_get_transaction(bool withHeader)
+    [Test]
+    public async Task Can_get_transaction([Values] bool withHeader)
     {
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
         TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
@@ -97,18 +96,16 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
+    [Test]
+    public async Task When_getting_non_existing_tx_correct_error_code_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, withHeader);
         Assert.That(response.Contains($"{ErrorCodes.ResourceNotFound}"), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
+    [Test]
+    public async Task When_getting_non_existing_receipt_correct_error_code_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
