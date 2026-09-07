@@ -29,18 +29,7 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
-    {
-        Head = head;
-        _tracer = txTracer;
-        _stack = ref stack;
-        Code = ref MemoryMarshal.GetReference(codeSpan);
-        CodeLength = codeSpan.Length;
-        _codeInfo = null;
-        _jumpDestinations = null;
-    }
-
-    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo codeInfo)
+    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo = null)
     {
         Head = head;
         _tracer = txTracer;
@@ -48,21 +37,9 @@ public ref partial struct EvmStack
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
         _codeInfo = codeInfo;
-        _jumpDestinations = null;
     }
 
-    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
-    {
-        Head = head;
-        _tracer = null!;
-        _stack = ref stack;
-        Code = ref MemoryMarshal.GetReference(codeSpan);
-        CodeLength = codeSpan.Length;
-        _codeInfo = null;
-        _jumpDestinations = null;
-    }
-
-    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo codeInfo)
+    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo = null)
     {
         Head = head;
         _tracer = null!;
@@ -70,7 +47,6 @@ public ref partial struct EvmStack
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
         _codeInfo = codeInfo;
-        _jumpDestinations = null;
     }
 
     // Null only for stacks whose compile-time tracing flag eliminates every tracer read.
