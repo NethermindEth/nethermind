@@ -189,7 +189,8 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxGossipPolicy>(),
                     [
                         new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
-                        new BlackListedAddressFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>())
+                        new BlackListedAddressFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>()),
+                        new MinGasPriceFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>())
                     ]);
 
                 return txPool;
