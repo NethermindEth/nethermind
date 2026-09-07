@@ -12,13 +12,13 @@ namespace Nethermind.Core;
 
 /// <summary>Hashes a <see cref="UInt256"/> key through the run-seeded mixer.</summary>
 /// <remarks>
-/// <see cref="UInt256.GetHashCode"/> is seeded by Nethermind.Numerics.Int256 itself: per process on the
-/// host, but from a compile-time constant in its guest build, where there is no entropy source. EIP-8025
-/// requires a guest's state containers to hash under a per-payload seed, so slot-keyed containers go
-/// through this instead, which reaches the seed <see cref="SpanExtensions.SeedHashes(in UInt256)"/> installs.
+/// Slot-keyed containers use the span mixer directly. In the guest,
+/// <see cref="SpanExtensions.SeedHashes(in UInt256)"/> installs the same full-width seed for both this
+/// mixer and <see cref="UInt256.GetHashCode"/>; on the host each uses its own process-random seed.
 /// </remarks>
 public sealed class UInt256Comparer : IEqualityComparer<UInt256>
 {
+    /// <summary>Gets the shared comparer using the currently installed hash seed.</summary>
     public static UInt256Comparer Instance { get; } = new();
 
     private UInt256Comparer() { }
@@ -36,9 +36,11 @@ public sealed class UInt256Comparer : IEqualityComparer<UInt256>
         null;
 #endif
 
+    /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Equals(UInt256 x, UInt256 y) => x.Equals(in y);
 
+    /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int GetHashCode([DisallowNull] UInt256 obj)
         => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();

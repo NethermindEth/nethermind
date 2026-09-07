@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -11,6 +12,22 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TreePathTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Hashing_distinguishes_zero_paths_of_different_lengths(bool tiny)
+    {
+        HashSet<int> hashes = [];
+        int maximum = tiny ? TinyTreePath.MaxNibbleLength : 64;
+        for (int length = 0; length <= maximum; length++)
+        {
+            TreePath path = new(Keccak.Zero, length);
+            int hash = tiny ? new TinyTreePath(path).GetHashCode() : path.GetHashCode();
+            hashes.Add(hash);
+        }
+
+        Assert.That(hashes.Count, Is.GreaterThanOrEqualTo(maximum));
+    }
+
     [Test]
     public void TestAppend()
     {

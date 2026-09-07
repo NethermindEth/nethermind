@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -96,7 +95,7 @@ namespace Nethermind.Core
         }
         public override bool Equals(object? obj) => Equals(obj as Account);
         public static bool operator ==(Account? left, Account? right) => left?.Equals(right) ?? right is null;
-        public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
+        public override int GetHashCode() => CodeHash.ValueHash256.GetChainedHashCode(Nonce) ^ StorageRoot.ValueHash256.GetChainedHashCode((uint)Balance.GetHashCode());
         public static bool operator !=(Account? left, Account? right) => !(left == right);
         public Account WithChangedBalance(in UInt256 newBalance) => new(this, Nonce, newBalance);
         public Account WithChangedNonce(in ulong newNonce) => new(this, newNonce, Balance);

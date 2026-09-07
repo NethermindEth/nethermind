@@ -21,7 +21,7 @@ public class FastHashBenchmarks
 #endif
     private byte[] _data = null!;
 
-    [Params(16, 20, 32, 64, 128, 256, 512, 1024)]
+    [Params(8, 16, 20, 32, 64, 128, 256, 512, 1024)]
     public int Size;
 
     [GlobalSetup]
@@ -29,6 +29,9 @@ public class FastHashBenchmarks
     {
         _data = new byte[Size * OperationsPerInvoke];
         Random.Shared.NextBytes(_data);
+#if ZK_EVM
+        SpanExtensions.SeedHashes(new Int256.UInt256(0x243F6A8885A308D3UL, 0x13198A2E03707344UL, 0xA4093822299F31D0UL, 0x082EFA98EC4E6C89UL));
+#endif
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = OperationsPerInvoke)]
@@ -58,21 +61,19 @@ public class FastHashBenchmarks
         return hash;
     }
 
-#if ZK_EVM
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int FastHashCrc()
+    public int FastHashScalar()
     {
         int hash = 0;
         ref byte data = ref MemoryMarshal.GetArrayDataReference(_data);
-        uint seed = SpanExtensions.ComputeSeed(Size);
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
             ref byte start = ref Unsafe.Add(ref data, i * Size);
-            hash = unchecked(hash + SpanExtensions.FastHashCrc(ref start, Size, seed));
+            hash = unchecked(hash + SpanExtensions.FastHashFallback(MemoryMarshal.CreateReadOnlySpan(ref start, Size)));
         }
         return hash;
     }
-#else
+#if !ZK_EVM
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
     public int FastHashXxHash3()
     {
@@ -107,6 +108,9 @@ public class FastHash64Benchmarks
     {
         _data = new byte[Size * OperationsPerInvoke];
         Random.Shared.NextBytes(_data);
+#if ZK_EVM
+        SpanExtensions.SeedHashes(new Int256.UInt256(0x243F6A8885A308D3UL, 0x13198A2E03707344UL, 0xA4093822299F31D0UL, 0x082EFA98EC4E6C89UL));
+#endif
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = OperationsPerInvoke)]
@@ -125,24 +129,22 @@ public class FastHash64Benchmarks
         return hash;
     }
 
-#if ZK_EVM
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public long FastHash64Crc()
+    public long FastHash64Scalar()
     {
         long hash = 0;
         ref byte data = ref MemoryMarshal.GetArrayDataReference(_data);
-        uint seed = SpanExtensions.ComputeSeed(Size);
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
             ref byte start = ref Unsafe.Add(ref data, i * Size);
             long next = Size == 20
-                ? SpanExtensions.FastHash64For20BytesCrc(ref start, seed)
-                : SpanExtensions.FastHash64For32BytesCrc(ref start, seed);
+                ? SpanExtensions.FastHash64For20BytesFallback(ref start)
+                : SpanExtensions.FastHash64For32BytesFallback(ref start);
             hash = unchecked(hash + next);
         }
         return hash;
     }
-#else
+#if !ZK_EVM
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
     public long FastHash64XxHash3()
     {

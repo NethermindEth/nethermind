@@ -51,8 +51,6 @@ internal static class InputDecoder
         // witness, execution itself - reaches a hash-keyed container. SSZ decoding above keys nothing.
         SpanExtensions.SeedHashes(in root);
 
-        // Slot-keyed containers use UInt256Comparer to share the installed seed.
-
         TExecutionPayload executionPayload = input.NewPayloadRequest.ExecutionPayload;
         ForkActivation activation = new(executionPayload.BlockNumber, executionPayload.Timestamp);
         ISpecProvider specProvider = StatelessSpecProvider.Create(input.ChainId, protocolFork, activation);

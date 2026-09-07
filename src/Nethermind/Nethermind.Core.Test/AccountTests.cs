@@ -8,6 +8,29 @@ namespace Nethermind.Core.Test;
 
 public class AccountTests
 {
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void Hashing_includes_each_account_field(int field)
+    {
+        Account original = new(1UL, 2, TestItem.KeccakA, TestItem.KeccakB);
+        Account changed = field switch
+        {
+            0 => original.WithChangedNonce(0x100000000UL),
+            1 => original.WithChangedBalance(3),
+            2 => original.WithChangedStorageRoot(TestItem.KeccakC),
+            _ => original.WithChangedCodeHash(TestItem.KeccakC)
+        };
+        Account equal = new(1UL, 2, TestItem.KeccakA, TestItem.KeccakB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(equal.GetHashCode(), Is.EqualTo(original.GetHashCode()));
+            Assert.That(changed.GetHashCode(), Is.Not.EqualTo(original.GetHashCode()));
+        }
+    }
+
     [Test]
     public void Test_totally_empty()
     {

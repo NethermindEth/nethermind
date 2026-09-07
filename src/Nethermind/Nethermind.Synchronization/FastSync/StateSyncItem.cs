@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.InteropServices;
 
 using Nethermind.Core.Crypto;
@@ -64,9 +63,8 @@ namespace Nethermind.Synchronization.FastSync
 
             public override int GetHashCode()
             {
-                uint hash0 = (uint)Hash.GetHashCode();
                 ulong hash1 = ((ulong)(uint)(Address.GetHashCode()) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
-                return (int)BitOperations.Crc32C(hash0, hash1);
+                return Hash.GetChainedHashCode(hash1);
             }
 
             public static bool operator ==(in NodeKey left, in NodeKey right) => left.Equals(right);
