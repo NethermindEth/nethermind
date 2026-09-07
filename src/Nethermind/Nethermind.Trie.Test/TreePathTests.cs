@@ -12,20 +12,32 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TreePathTests
 {
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Hashing_distinguishes_zero_paths_of_different_lengths(bool tiny)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Hashing_distinguishes_zero_paths_of_different_lengths(bool tiny, bool chained)
     {
         HashSet<int> hashes = [];
         int maximum = tiny ? TinyTreePath.MaxNibbleLength : 64;
         for (int length = 0; length <= maximum; length++)
         {
             TreePath path = new(Keccak.Zero, length);
-            int hash = tiny ? new TinyTreePath(path).GetHashCode() : path.GetHashCode();
+            int hash = chained ? new TinyTreePath(path).GetChainedHashCode(0x55555555)
+                : tiny ? new TinyTreePath(path).GetHashCode() : path.GetHashCode();
             hashes.Add(hash);
         }
 
-        Assert.That(hashes.Count, Is.GreaterThanOrEqualTo(maximum));
+        Assert.That(hashes.Count, Is.EqualTo(maximum + 1));
+    }
+
+    [TestCase(0u)]
+    [TestCase(uint.MaxValue)]
+    public void Tiny_path_hash_includes_each_chained_seed_bit(uint seed)
+    {
+        TinyTreePath path = new(new TreePath(Keccak.Zero, TinyTreePath.MaxNibbleLength));
+        int original = path.GetChainedHashCode(seed);
+        for (int bit = 0; bit < 32; bit++)
+            Assert.That(path.GetChainedHashCode(seed ^ (1u << bit)), Is.Not.EqualTo(original), $"bit {bit}");
     }
 
     [Test]

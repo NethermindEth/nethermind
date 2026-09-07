@@ -763,11 +763,10 @@ namespace Nethermind.Core.Test
 
 #if !ZK_EVM
         [TestCase(false, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_PublicPath")]
-        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_XxHash3Fallback")]
-        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceXxHash3)
+        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_ScalarFallback")]
+        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceScalar)
         {
             const int count = 1024;
-            const long seed = 0x510E527FADE682D1L;
             ulong pairedDelta = SolveCrcInput(0);
             byte[] input0 = new byte[sizeof(ulong)];
             byte[] input1 = new byte[sizeof(ulong)];
@@ -779,11 +778,11 @@ namespace Nethermind.Core.Test
                 BinaryPrimitives.WriteUInt64LittleEndian(input0, word);
                 BinaryPrimitives.WriteUInt64LittleEndian(input1, word ^ pairedDelta);
 
-                int hash0 = forceXxHash3
-                    ? SpanExtensions.FastHashXxHash3(input0, seed)
+                int hash0 = forceScalar
+                    ? SpanExtensions.FastHashFallback(input0)
                     : input0.FastHash();
-                int hash1 = forceXxHash3
-                    ? SpanExtensions.FastHashXxHash3(input1, seed)
+                int hash1 = forceScalar
+                    ? SpanExtensions.FastHashFallback(input1)
                     : input1.FastHash();
                 if (hash0 == hash1) equalPairs++;
             }
@@ -1090,10 +1089,6 @@ namespace Nethermind.Core.Test
             byte[] input = new byte[length];
             long[] hashes = new long[count];
             long[] scalarHashes = new long[count];
-#if !ZK_EVM
-            long[] xxHashes = new long[count];
-#endif
-            const long seed = 0x510E527FADE682D1L;
             for (ulong value = 0; value < count; value++)
             {
                 BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(length - 8), value);
@@ -1104,16 +1099,10 @@ namespace Nethermind.Core.Test
                 scalarHashes[value] = length == 20
                     ? SpanExtensions.FastHash64For20BytesFallback(ref start)
                     : SpanExtensions.FastHash64For32BytesFallback(ref start);
-#if !ZK_EVM
-                xxHashes[value] = SpanExtensions.FastHash64XxHash3(ref start, length, seed);
-#endif
             }
 
             AssertHash64WindowsAreDistributed(hashes, $"{length}-byte hashes");
             AssertHash64WindowsAreDistributed(scalarHashes, $"{length}-byte scalar hashes");
-#if !ZK_EVM
-            AssertHash64WindowsAreDistributed(xxHashes, $"{length}-byte XXH3 hashes");
-#endif
         }
 
         private static void AssertHash64WindowsAreDistributed(long[] hashes, string context)

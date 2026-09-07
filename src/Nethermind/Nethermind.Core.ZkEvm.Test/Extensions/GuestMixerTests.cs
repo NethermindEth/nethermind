@@ -296,9 +296,10 @@ public class GuestMixerTests
         static int BoxedHash(object key) => key.GetHashCode();
     }
 
-    [TestCase(0UL)]
-    [TestCase(0xBF58476D1CE4E5B9UL)]
-    [TestCase(ulong.MaxValue)]
+    private static IEnumerable<ulong> ChainedHashes() =>
+        [0UL, 0xBF58476D1CE4E5B9UL, ulong.MaxValue, SeedGuestHashes.Seed.u0 ^ 0xBF58476D1CE4E5B9UL];
+
+    [TestCaseSource(nameof(ChainedHashes))]
     public void Chained_hash_includes_the_key_and_both_halves_of_the_previous_hash(ulong previousHash)
     {
         ValueHash256 first = new(SeedGuestHashes.Seed.ToLittleEndian());

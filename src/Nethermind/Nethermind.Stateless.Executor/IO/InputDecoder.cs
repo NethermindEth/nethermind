@@ -45,7 +45,6 @@ internal static class InputDecoder
     {
         StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
-        Hash256 newPayloadRequestRoot = new(root.ToLittleEndian());
 
         // The earliest point the root exists, and everything below it - the spec provider, the block, the
         // witness, execution itself - reaches a hash-keyed container. SSZ decoding above keys nothing.
@@ -64,7 +63,7 @@ internal static class InputDecoder
             SchemaId: schemaId,
             PublicKeys: input.PublicKeys,
             VersionedHashes: input.NewPayloadRequest.VersionedHashes,
-            NewPayloadRequestRoot: newPayloadRequestRoot,
+            NewPayloadRequestRoot: new Hash256(root.ToLittleEndian()),
             SpecProvider: specProvider
         );
     }

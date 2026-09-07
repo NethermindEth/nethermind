@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Hashing;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -27,6 +27,10 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static partial void SeedHashes(in Int256.UInt256 seed) { }
 
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static partial int CombineHash(uint hash, ulong value) => (int)BitOperations.Crc32C(hash, value);
+
         private static readonly Vector128<byte> AesHashSeed = CreateAesHashSeed();
         private static readonly Vector128<byte> AesHash20Seed = CreateAesHashSeed();
         private static readonly Vector128<byte> AesHashPairSeed = CreateAesHashSeed();
@@ -40,17 +44,6 @@ namespace Nethermind.Core.Extensions
             System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
             return Unsafe.ReadUnaligned<Vector128<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int FastHashXxHash3(ReadOnlySpan<byte> input, long seed)
-        {
-            ulong hash = XxHash3.HashToUInt64(input, seed);
-            return (int)(hash ^ (hash >> 32));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static long FastHash64XxHash3(ref byte start, int length, long seed)
-            => unchecked((long)XxHash3.HashToUInt64(MemoryMarshal.CreateReadOnlySpan(ref start, length), seed));
 
     }
 }

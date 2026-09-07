@@ -44,6 +44,10 @@ namespace Nethermind.Core.Extensions
         /// </remarks>
         public static partial void SeedHashes(in UInt256 seed);
 
+        /// <summary>Combines a hash with the next value for in-memory bucketing.</summary>
+        /// <remarks>Uses CRC on the host and the run-seeded mixer in the guest.</remarks>
+        public static partial int CombineHash(uint hash, ulong value);
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static Vector128<byte> ComputeAesSeed(int len)
         {

@@ -49,11 +49,7 @@ public readonly struct TinyTreePath : IEquatable<TinyTreePath>
     public override int GetHashCode() => AsSpan.FastHash();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal int GetChainedHashCode(uint seed)
-    {
-        ReadOnlySpan<ulong> words = [(ulong)_data, seed];
-        return MemoryMarshal.AsBytes(words).FastHash();
-    }
+    internal int GetChainedHashCode(uint seed) => SpanExtensions.CombineHash(seed, (uint)GetHashCode());
 
     public static bool operator ==(in TinyTreePath left, in TinyTreePath right) => left.Equals(in right);
 

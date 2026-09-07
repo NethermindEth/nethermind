@@ -74,9 +74,6 @@ public partial class Rlp
 
 public readonly partial struct RlpDecoderKey
 {
-    public override int GetHashCode()
-    {
-        ReadOnlySpan<int> hashes = [_type.GetHashCode(), MemoryMarshal.AsBytes(_key.AsSpan()).FastHash()];
-        return MemoryMarshal.AsBytes(hashes).FastHash();
-    }
+    public override int GetHashCode() =>
+        SpanExtensions.CombineHash((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 }

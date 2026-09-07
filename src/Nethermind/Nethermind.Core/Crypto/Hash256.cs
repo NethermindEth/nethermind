@@ -77,11 +77,8 @@ namespace Nethermind.Core.Crypto
         public int GetChainedHashCode(uint previousHash) => GetChainedHashCode((ulong)previousHash);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetChainedHashCode(ulong previousHash)
-        {
-            ulong hash = (ulong)SpanExtensions.MumFold((ulong)GetHashCode64(), previousHash ^ SpanExtensions.InstanceRandom.u0);
-            return (int)(hash ^ (hash >> 32));
-        }
+        public int GetChainedHashCode(ulong previousHash) =>
+            SpanExtensions.CombineHash((uint)previousHash, (previousHash & ~(ulong)uint.MaxValue) | (uint)Bytes.FastHash());
 
         public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 

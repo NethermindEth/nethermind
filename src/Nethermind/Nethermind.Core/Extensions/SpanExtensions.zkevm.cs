@@ -1,12 +1,23 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 
 namespace Nethermind.Core.Extensions
 {
     public static partial class SpanExtensions
     {
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static partial int CombineHash(uint hash, ulong value)
+        {
+            ReadOnlySpan<ulong> words = [hash, value];
+            return MemoryMarshal.AsBytes(words).FastHash();
+        }
+
         private static ulong AesHashSeed0;
         private static ulong AesHashSeed1;
         private static ulong AesHash20Seed0;
