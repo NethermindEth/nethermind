@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,9 @@ namespace Nethermind.Benchmarks.Core
         private const int Contracts = 4;
         private const int TopicsPerLog = 3;
 
+        /// <summary>Roughly the coupon-collector count for the host cache's 16,384 pages.</summary>
+        private const int KeccakCacheProbes = 300_000;
+
         private LogEntry[] _logs;
         private LogEntry[] _coldLogs;
         private Bloom _blockBloom;
@@ -33,11 +37,19 @@ namespace Nethermind.Benchmarks.Core
         [Params(8, 64)]
         public int Logs { get; set; }
 
+        /// <remarks>
+        /// The master bloom is built once and folded into for the whole run, so it saturates.
+        /// <see cref="Bloom.Add(LogEntry[], Bloom)"/> writes its words unconditionally, so a saturated
+        /// master costs what an empty one costs; rebuilding it per iteration instead forces
+        /// BenchmarkDotNet to one invocation per iteration and takes the warm case from ~790 ns to a
+        /// ~19 us cold-start reading.
+        /// </remarks>
         [GlobalSetup]
         public void Setup()
         {
             _logs = BuildLogs(recurringSignature: true);
             _blockBloom = new Bloom();
+            PopulateKeccakCache();
         }
 
         /// <remarks>
@@ -48,6 +60,24 @@ namespace Nethermind.Benchmarks.Core
         /// </remarks>
         [IterationSetup(Target = nameof(BuildCold))]
         public void SetupCold() => _coldLogs = BuildLogs(recurringSignature: false);
+
+        /// <remarks>
+        /// The host cache is 64 MB of lazily paged memory, so a miss on an untouched page also pays a
+        /// page fault. The cold case hits fresh slots every iteration, which without this would leave
+        /// it measuring first-touch faults - half of its reading - rather than the miss path itself.
+        /// Enough probes to bring the table's pages in and leave it populated, so a miss displaces an
+        /// entry as it would on a running node.
+        /// </remarks>
+        private static void PopulateKeccakCache()
+        {
+            byte[] key = new byte[Hash256.Size];
+            Random random = new(0);
+            for (int i = 0; i < KeccakCacheProbes; i++)
+            {
+                random.NextBytes(key);
+                KeccakCache.Compute(key);
+            }
+        }
 
         private LogEntry[] BuildLogs(bool recurringSignature)
         {
@@ -75,7 +105,7 @@ namespace Nethermind.Benchmarks.Core
             return logs;
         }
 
-        [Benchmark(Baseline = true)]
+        [Benchmark]
         public Bloom Build()
         {
             Bloom receiptBloom = new();
