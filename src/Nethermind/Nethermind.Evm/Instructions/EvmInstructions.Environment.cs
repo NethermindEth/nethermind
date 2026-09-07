@@ -765,7 +765,7 @@ public static partial class EvmInstructions
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
-        if (DispatchFlags.Tracing(isTracing: true) && vm.TxTracer.IsTracingBlockHash && blockHash is not null)
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash && blockHash is not null)
         {
             vm.TxTracer.ReportBlockHash(blockHash);
         }

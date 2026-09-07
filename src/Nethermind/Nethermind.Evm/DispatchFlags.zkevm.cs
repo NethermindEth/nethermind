@@ -21,8 +21,8 @@ internal static partial class DispatchFlags
 
     /// <summary>Rejects a tracer whose capabilities this build compiled away.</summary>
     /// <remarks>
-    /// Without this a tracing tracer would silently see no opcodes, and a cancelable one would run
-    /// past its cancellation, because neither specialization was compiled.
+    /// Unsupported tracers would lose reports or access-list gas simulation, and cancelable tracers
+    /// would run past cancellation. Receipt collection remains supported.
     /// </remarks>
     public static void Validate(ITxTracer tracer)
     {
@@ -30,5 +30,8 @@ internal static partial class DispatchFlags
             throw new NotSupportedException("The zkEVM guest compiles no instruction-tracing dispatch.");
         if (tracer.IsCancelable != ConstCancelable)
             throw new NotSupportedException("The zkEVM guest compiles no cancelable dispatch.");
+        if (tracer.IsTracingActions || tracer.IsTracingRefunds || tracer.IsTracingAccess
+            || tracer.IsTracingOpLevelStorage || tracer.IsTracingLogs || tracer.IsTracingBlockHash)
+            throw new NotSupportedException("The zkEVM guest compiles no EVM tracing.");
     }
 }

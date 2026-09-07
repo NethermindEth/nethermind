@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -160,4 +161,48 @@ public class GuestJumpDestinationTests
     }
 
     private static bool IsMarked(long[] bitmap, int position) => (bitmap[position / BitsPerSegment] & (1L << position)) != 0;
+}
+
+public class GuestDispatchFlagsTests
+{
+    [TestCase(nameof(ITxTracer.IsTracingInstructions))]
+    [TestCase(nameof(ITxTracer.IsCancelable))]
+    [TestCase(nameof(ITxTracer.IsTracingActions))]
+    [TestCase(nameof(ITxTracer.IsTracingRefunds))]
+    [TestCase(nameof(ITxTracer.IsTracingAccess))]
+    [TestCase(nameof(ITxTracer.IsTracingOpLevelStorage))]
+    [TestCase(nameof(ITxTracer.IsTracingLogs))]
+    [TestCase(nameof(ITxTracer.IsTracingBlockHash))]
+    public void Rejects_unsupported_tracer_capability(string capability)
+    {
+        using CapabilityTracer tracer = new(capability);
+
+        Assert.Throws<NotSupportedException>(() => DispatchFlags.Validate(tracer));
+    }
+
+    [Test]
+    public void Accepts_supported_tracer([Values("", nameof(ITxTracer.IsTracingReceipt))] string capability)
+    {
+        using CapabilityTracer tracer = new(capability);
+
+        Assert.DoesNotThrow(() => DispatchFlags.Validate(tracer));
+    }
+
+    private sealed class CapabilityTracer : TxTracer, ITxTracer
+    {
+        public CapabilityTracer(string capability)
+        {
+            IsTracingInstructions = capability == nameof(IsTracingInstructions);
+            IsCancelable = capability == nameof(IsCancelable);
+            IsTracingActions = capability == nameof(IsTracingActions);
+            IsTracingRefunds = capability == nameof(IsTracingRefunds);
+            IsTracingAccess = capability == nameof(IsTracingAccess);
+            IsTracingOpLevelStorage = capability == nameof(IsTracingOpLevelStorage);
+            IsTracingLogs = capability == nameof(IsTracingLogs);
+            IsTracingBlockHash = capability == nameof(IsTracingBlockHash);
+            IsTracingReceipt = capability == nameof(IsTracingReceipt);
+        }
+
+        public bool IsCancelable { get; }
+    }
 }

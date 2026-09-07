@@ -1384,7 +1384,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
-        if (DispatchFlags.Tracing(isTracing: true) && _txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
+        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
 
         return exceptionType switch
         {
@@ -1435,7 +1435,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         VmState.AccessTracker.Logs.Add(logEntry);
 
-        if (DispatchFlags.Tracing(isTracing: true) && TxTracer.IsTracingLogs)
+        if (DispatchFlags.ConstTracing && TxTracer.IsTracingLogs)
         {
             TxTracer.ReportLog(logEntry);
         }
