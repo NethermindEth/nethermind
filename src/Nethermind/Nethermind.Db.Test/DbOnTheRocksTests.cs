@@ -160,6 +160,71 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GlobalSeparatedKeyValueSst_RoundTripsAfterCompactionAndReopen()
+        {
+            DbConfig config = new();
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            string dbName = "Blocks";
+            byte[][] keys = new byte[64][];
+            byte[][] values = new byte[64][];
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                keys[i] = [0, (byte)i];
+                values[i] = new byte[128];
+                values[i].AsSpan().Fill((byte)i);
+            }
+
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, configFactory, LimboLogs.Instance))
+            {
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    db.PutSpan(keys[i], values[i], WriteFlags.None);
+                }
+
+                db.Flush();
+                Assert.That(Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories), Is.Not.Empty);
+                db.Compact();
+                AssertSstReads(db, keys, values);
+
+                byte[] replacement = [0xEE];
+                using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot();
+                db.PutSpan(keys[0], replacement, WriteFlags.None);
+                db.Flush();
+
+                Assert.That(snapshot.Get(keys[0]), Is.EqualTo(values[0]));
+                Assert.That(snapshot.Get([0xFF, 0xFF]), Is.Null);
+
+                values[0] = replacement;
+            }
+
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, configFactory, LimboLogs.Instance);
+            AssertSstReads(reopened, keys, values);
+        }
+
+        private static void AssertSstReads(DbOnTheRocks db, byte[][] keys, byte[][] values)
+        {
+            for (int i = 0; i < keys.Length; i++)
+            {
+                Assert.That(db.Get(keys[i]), Is.EqualTo(values[i]));
+                Assert.That(db.KeyExists(keys[i]), Is.True);
+            }
+
+            Assert.That(db.Get([0xFF, 0xFF]), Is.Null);
+
+            int index = 0;
+            using ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween([0, 0], [0xFF, 0xFF]);
+            while (view.MoveNext())
+            {
+                Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[index]));
+                Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[index]));
+                index++;
+            }
+
+            Assert.That(index, Is.EqualTo(keys.Length));
+        }
+
+        [Test]
         public void SharedCacheCanBeCreatedAndDisposed()
         {
             HyperClockCacheWrapper cache = new((ulong)10.KiB);

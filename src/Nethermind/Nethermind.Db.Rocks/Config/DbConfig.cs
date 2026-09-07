@@ -74,6 +74,8 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
         "block_based_table_factory.partition_filters=true;" +
         "block_based_table_factory.metadata_block_size=4096;" +
+        // This data-block layout is incompatible with RocksDB versions before 11; format_version alone does not provide compatibility.
+        "block_based_table_factory.separate_key_value_in_data_block=true;" +
 
         "block_based_table_factory.filter_policy=bloomfilter:10;" +
         "";
