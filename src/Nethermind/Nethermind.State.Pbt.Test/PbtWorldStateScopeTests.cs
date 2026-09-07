@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -131,6 +133,62 @@ public class PbtWorldStateScopeTests
 
         for (int chunkId = 1; chunkId < 4; chunkId++)
             Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
+    }
+
+    [TestCase(7u)]
+    [TestCase(1000u)]
+    public async Task RootUpdates_PreservePartitionLeavesThroughRepeatedFoldsAndCommit(uint updatedSlot)
+    {
+        byte[] code = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * PbtKeyDerivation.CodeChunkSize];
+        Array.Fill(code, (byte)0x01);
+        Hash256 codeHash = Keccak.Compute(code);
+        await using PbtTestContext ctx = new();
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
+            codeWriter.Set(codeHash.ValueHash256, code);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).WithCode(code).TestObject);
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 2);
+            storage.Set(7, Bytes.FromHexString("ab"));
+            storage.Set(1000, Bytes.FromHexString("cd"));
+        }
+
+        scope.UpdateRootHash();
+        Dictionary<PbtFullKey, ValueHash256?> pending = new(scope.Bundle.PendingLeafMutations());
+        Hash256 initialRoot = scope.RootHash;
+        scope.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.RootHash, Is.EqualTo(initialRoot));
+            Assert.That(scope.Bundle.PendingLeafMutations(), Is.EquivalentTo(pending));
+            Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
+            Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
+            Assert.That(pending.ContainsKey(PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.HeaderCodeChunks)), Is.True);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+            storage.Set(updatedSlot, Bytes.FromHexString("ef"));
+        scope.UpdateRootHash();
+        PbtFullKey updatedKey = PbtStateKey.Storage(TestItem.AddressA, updatedSlot);
+        foreach ((PbtFullKey key, ValueHash256? value) in pending)
+            if (!key.Equals(updatedKey)) Assert.That(scope.Bundle.GetLeaf(key), Is.EqualTo(value), key.Bytes.ToArray().ToHexString());
+
+        EipReferenceTree reference = new();
+        Dictionary<PbtFullKey, ValueHash256> expectedLeaves = new(scope.Bundle.EnumerateLeaves());
+        foreach ((PbtFullKey key, ValueHash256 value) in expectedLeaves)
+            reference.Insert(key.Bytes, value.Bytes.ToArray());
+        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
+        scope.Commit(0);
+
+        IPbtDbManager manager = ctx.Manager;
+        using PbtSnapshotBundle reopened = manager.GatherBundle(new StateId(0, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expectedLeaves));
+            Assert.That(reopened.TreeRoot.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
+        }
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)

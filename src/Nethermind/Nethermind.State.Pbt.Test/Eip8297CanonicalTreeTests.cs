@@ -579,7 +579,8 @@ public class Eip8297CanonicalTreeTests
 
         int[] offsets = new int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
         Array.Fill(offsets, -1);
-        TrieUpdater.PartitionOutcome partition = TrieUpdater.BucketizeByGroupBoundary(operations, groupDepth, offsets);
+        TrieUpdater.BucketPlan plan = new(default, groupDepth, 0, false, false);
+        TrieUpdater.PartitionOutcome partition = plan.BucketSort(operations, offsets, null);
         int expectedMask = 0;
         int expectedBranchDepth = count == 0 ? groupDepth : original[0].Key.BitLength;
         for (int index = 0; index < count; index++)
@@ -602,7 +603,7 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(partition.UsedMask, Is.EqualTo(expectedMask));
-            Assert.That(partition.BranchDepth, Is.EqualTo(expectedBranchDepth));
+            Assert.That(partition.Plan.BranchDepth, Is.InRange(groupDepth, expectedBranchDepth));
             Assert.That(destinations, Is.Ordered);
             Assert.That(operations, Is.EquivalentTo(original));
             Assert.That(offsets[0], Is.Zero);
@@ -616,6 +617,316 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(offsets[bucket + 1], Is.EqualTo(expectedOffset), $"bucket {bucket} end");
             }
         }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Prepared_partition_tables_match_every_range_and_preserve_public_batch(bool fallback)
+    {
+        PbtWriteBatch batch = new();
+        foreach (byte zone in new byte[] { 0xFF, 0x01, 0x00 })
+        foreach (byte shard in new byte[] { 0xFF, 0x00, 0x31, 0x3F })
+        {
+            byte[] key = new byte[zone == 0xFF ? 66 : 34];
+            key[0] = zone;
+            key[1] = shard;
+            PbtFullKey fullKey = new(key);
+            batch.Set(fullKey, new ValueHash256(Value(1)));
+            batch.Delete(fullKey);
+            batch.Set(fullKey, new ValueHash256(Value(2)));
+            key[^1] = 1;
+            batch.Delete(new PbtFullKey(key));
+        }
+        if (fallback) batch.Set(new PbtFullKey(Bytes.FromHexString("0x42")), new ValueHash256(Value(3)));
+        PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch);
+        PbtWriteOperation[] original = [.. batch.Operations];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prepared.Count, Is.EqualTo(batch.Count));
+            Assert.That(prepared.Entries.ToArray(), Is.EquivalentTo(original));
+            Assert.That(prepared.Precalculated.IsEmpty, Is.EqualTo(fallback));
+            foreach (PbtPartition partition in new[] { PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage })
+            {
+                ReadOnlySpan<PbtWriteOperation> entries = prepared[partition];
+                Assert.That(entries.Length, Is.EqualTo(fallback ? 0 : 8));
+                byte zone = partition == PbtPartition.Storage ? (byte)0xFF : (byte)partition;
+                foreach (PbtWriteOperation entry in entries) Assert.That(entry.Key.Bytes[0], Is.EqualTo(zone));
+            }
+        }
+        if (!fallback) AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
+        prepared.Consume(out PbtWriteOperation[] operations, out int[] table);
+        Array.Reverse(operations);
+        Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.Operations, Is.EqualTo(original));
+            Assert.That(PbtWriteBatchSet.Create(batch).Entries.ToArray(), Is.EquivalentTo(original));
+            Assert.That(table.Length, Is.LessThanOrEqualTo(54 * 33));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Prepared_partition_fold_matches_generic_and_consumes_producer_levels(bool persisted)
+    {
+        PbtWriteBatch batch = new();
+        EipReferenceTree oracle = new();
+        foreach (byte zone in new byte[] { 0x00, 0x01, 0xFF })
+        foreach (byte shard in new byte[] { 0x00, 0x01, 0xF0, 0xFF })
+        {
+            byte[] key = new byte[zone == 0xFF ? 66 : 34];
+            key[0] = zone;
+            key[1] = shard;
+            batch.Set(new PbtFullKey(key), new ValueHash256(Value(1)));
+            oracle.Insert(key, Value(1));
+        }
+        using PbtNodeGroupStore preparedStore = new();
+        using PbtNodeGroupStore genericStore = new();
+        ValueHash256 initialRoot = persisted ? TrieUpdater.UpdateRoot(preparedStore, default, batch) : default;
+        if (persisted) TrieUpdater.UpdateRoot(genericStore, default, batch);
+        TrieUpdaterMetrics metrics = new();
+        ValueHash256 preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, PbtWriteBatchSet.Create(batch), metrics);
+        ValueHash256 genericRoot = TrieUpdater.UpdateRoot(genericStore, initialRoot, batch);
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(preparedStore.ExportPhysicalPayloads());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preparedRoot, Is.EqualTo(genericRoot));
+            Assert.That(preparedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(12));
+            Assert.That(metrics.FullKeySorts, Is.Zero);
+            Assert.That(metrics.RadixPartitions, Is.Zero);
+            Assert.That(TrieUpdater.UpdateRoot(reopened, preparedRoot, batch), Is.EqualTo(preparedRoot));
+        }
+    }
+
+    [Test]
+    public void Prepared_mixed_partition_batches_match_generic_and_reopen(
+        [Values(0, 1, 2, 3, 4, 16, 17, 31, 32, 33, 256)] int count,
+        [Values(1, 16, 256)] int shards,
+        [Values(false, true)] bool fallback)
+    {
+        using PbtNodeGroupStore preparedStore = new();
+        using PbtNodeGroupStore genericStore = new();
+        EipReferenceTree oracle = new();
+        PbtFullKey[] keys = new PbtFullKey[count];
+        for (int index = 0; index < count; index++)
+        {
+            byte zone = index % 3 == 2 ? (byte)0xFF : (byte)(index % 3);
+            byte[] key = new byte[(zone == 0xFF ? 65 : 34) + index % 2];
+            key[0] = zone;
+            key[1] = (byte)(index % shards);
+            key[^3] = (byte)(index >> 8);
+            key[^2] = (byte)index;
+            key[^1] = 1;
+            keys[index] = new(key);
+        }
+
+        ValueHash256 preparedRoot = default;
+        ValueHash256 genericRoot = default;
+        for (int round = 0; round < 3; round++)
+        {
+            PbtWriteBatch batch = new();
+            for (int index = count - 1; index >= 0; index--)
+            {
+                // Leave one zone untouched during the mixed update, then remove everything.
+                if (round == 1 && index % 3 == 1) continue;
+                PbtFullKey key = keys[index];
+                batch.Set(key, new ValueHash256(Value(1)));
+                batch.Delete(key);
+                if (round == 0 || (round == 1 && index % 2 == 0))
+                    batch.Set(key, new ValueHash256(Value((byte)(round + 2))));
+            }
+            if (round == 1)
+                batch.Delete(new PbtFullKey(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000FF")));
+            if (fallback)
+                batch.Set(new PbtFullKey(Bytes.FromHexString("0x42")), new ValueHash256(Value(4)));
+
+            foreach (PbtWriteOperation operation in batch.Operations)
+            {
+                if (operation.Kind == PbtWriteOperationKind.Delete) oracle.Delete(operation.Key.Bytes);
+                else oracle.Insert(operation.Key.Bytes, operation.Value.Bytes.ToArray());
+            }
+            PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch);
+            if (!prepared.Precalculated.IsEmpty) AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
+            preparedRoot = TrieUpdater.UpdateRoot(preparedStore, preparedRoot, prepared);
+            genericRoot = TrieUpdater.UpdateRoot(genericStore, genericRoot, batch);
+            IReadOnlyList<PbtPhysicalPayload> preparedPayloads = preparedStore.ExportPhysicalPayloads();
+            IReadOnlyList<PbtPhysicalPayload> genericPayloads = genericStore.ExportPhysicalPayloads();
+            using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(preparedPayloads);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preparedRoot, Is.EqualTo(genericRoot), $"round {round}");
+                Assert.That(preparedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), $"round {round}");
+                Assert.That(preparedPayloads.Count, Is.EqualTo(genericPayloads.Count));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, preparedRoot, PbtWriteBatchSet.Create(batch)), Is.EqualTo(preparedRoot), "reprepare and replay after reopen");
+            }
+            for (int index = 0; index < preparedPayloads.Count; index++)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(preparedPayloads[index].Key.ToArray(), Is.EqualTo(genericPayloads[index].Key.ToArray()));
+                    Assert.That(preparedPayloads[index].Payload.ToArray(), Is.EqualTo(genericPayloads[index].Payload.ToArray()));
+                }
+            }
+        }
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Prepared_prefix_replacement_and_conflict_preserve_terminal_semantics(bool shorterReplacement, bool conflict)
+    {
+        byte[] shortKey = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000000001");
+        byte[] longKey = new byte[shortKey.Length + 1];
+        shortKey.CopyTo(longKey, 0);
+        PbtFullKey original = new(shorterReplacement ? longKey : shortKey);
+        PbtFullKey replacement = new(shorterReplacement ? shortKey : longKey);
+        PbtWriteBatch initial = new();
+        initial.Set(original, new ValueHash256(Value(1)));
+        using PbtNodeGroupStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, initial);
+        PbtWriteBatch changes = new();
+        if (!conflict) changes.Delete(original);
+        changes.Set(replacement, new ValueHash256(Value(2)));
+        if (conflict)
+        {
+            Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, PbtWriteBatchSet.Create(changes)));
+            return;
+        }
+
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, PbtWriteBatchSet.Create(changes));
+        EipReferenceTree oracle = new();
+        oracle.Insert(replacement.Bytes, Value(2));
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(TrieUpdater.UpdateRoot(reopened, result, PbtWriteBatchSet.Create(changes)), Is.EqualTo(result));
+        }
+    }
+
+    private static void AssertPreparedLevel(ReadOnlySpan<PbtWriteOperation> entries, ReadOnlySpan<int> table, int depth)
+    {
+        int[] counts = new int[16];
+        foreach (PbtWriteOperation entry in entries) counts[(entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15]++;
+        int expectedMask = 0;
+        int countIndex = 1;
+        int offset = 0;
+        for (int slot = 0; slot < 16; slot++)
+        {
+            if (counts[slot] == 0)
+            {
+                Assert.That(table[17 + slot], Is.Zero);
+                continue;
+            }
+            expectedMask |= 1 << slot;
+            Assert.That(table[countIndex++], Is.EqualTo(counts[slot]));
+            ReadOnlySpan<PbtWriteOperation> bucket = entries.Slice(offset, counts[slot]);
+            foreach (PbtWriteOperation entry in bucket)
+                Assert.That((entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15, Is.EqualTo(slot));
+            int childOffset = table[17 + slot];
+            if (depth < 12)
+            {
+                Assert.That(childOffset, Is.InRange(33, table.Length - 33));
+                AssertPreparedLevel(bucket, table[childOffset..], depth + 4);
+            }
+            else Assert.That(childOffset, Is.Zero);
+            offset += counts[slot];
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(table[0], Is.EqualTo(expectedMask));
+            Assert.That(offset, Is.EqualTo(entries.Length));
+            for (; countIndex <= 16; countIndex++) Assert.That(table[countIndex], Is.Zero);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Bucket_plan_transitions_keep_only_valid_range_knowledge(bool preservesOrder)
+    {
+        int[] table = new int[66];
+        table[0] = 1 << 3;
+        table[1] = 2;
+        table[20] = 33;
+        table[33] = 1 << 1;
+        table[34] = 2;
+        TrieUpdater.BucketPlan plan = new(table, 0, 4, true, true);
+        TrieUpdater.BucketPlan known = plan.WithRangeKnowledge(7, true);
+        TrieUpdater.BucketPlan child = known.ForChild(3);
+        TrieUpdater.BucketPlan jumped = known.AfterJump(4);
+        TrieUpdater.BucketPlan filtered = known.AfterFiltering(preservesOrder);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Precalculated.ToArray(), Is.EqualTo(table[33..]));
+            Assert.That(child.Depth, Is.EqualTo(4));
+            Assert.That(child.BranchDepth, Is.EqualTo(7));
+            Assert.That(child.IsSorted && child.PrefixesValidated, Is.True);
+            Assert.That(jumped.Precalculated.IsEmpty, Is.True);
+            Assert.That(jumped.Depth, Is.EqualTo(4));
+            Assert.That(jumped.BranchDepth, Is.EqualTo(7));
+            Assert.That(jumped.IsSorted && jumped.PrefixesValidated, Is.True);
+            Assert.That(filtered.Precalculated.IsEmpty, Is.True);
+            Assert.That(filtered.Depth, Is.Zero);
+            Assert.That(filtered.BranchDepth, Is.EqualTo(7));
+            Assert.That(filtered.IsSorted, Is.EqualTo(preservesOrder));
+            Assert.That(filtered.PrefixesValidated, Is.True);
+        }
+    }
+
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(16)]
+    [TestCase(17)]
+    [TestCase(33)]
+    public void Bucket_plan_dispatch_preserves_full_key_sortedness(int count)
+    {
+        PbtWriteOperation[] operations = new PbtWriteOperation[count];
+        for (int index = 0; index < count; index++)
+        {
+            byte[] key = Bytes.FromHexString("0x0000");
+            key[0] = (byte)((index % 2 == 0 ? 0x10 : 0xF0) | ((count - index) & 15));
+            key[1] = (byte)index;
+            operations[index] = PbtWriteOperation.Set(new PbtFullKey(key), new ValueHash256(Value(1)));
+        }
+        int[] offsets = new int[17];
+        TrieUpdaterMetrics metrics = new();
+        TrieUpdater.PartitionOutcome outcome = default(TrieUpdater.BucketPlan).BucketSort(operations, offsets, metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outcome.Plan.IsSorted, Is.EqualTo(count <= 16));
+            Assert.That(metrics.FullKeySorts, Is.EqualTo(count <= 16 ? 1 : 0));
+            Assert.That(metrics.RadixPartitions, Is.EqualTo(count > 16 ? 1 : 0));
+        }
+        if (count <= 16)
+        {
+            for (int index = 1; index < count; index++) Assert.That(operations[index - 1].Key.CompareTo(operations[index].Key), Is.LessThan(0));
+            int start = offsets[1];
+            int length = offsets[2] - start;
+            TrieUpdater.PartitionOutcome child = outcome.Plan.ForChild(1).BucketSort(operations.AsSpan(start, length), offsets, metrics);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(child.Plan.IsSorted, Is.True);
+                Assert.That(metrics.FullKeySorts, Is.EqualTo(1));
+                Assert.That(metrics.SortedLevels, Is.EqualTo(length > 1 ? 1 : 0));
+            }
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Variable_length_prefix_conflict_is_not_hidden_by_parent_validation(bool reverse)
+    {
+        List<(byte[] Key, byte[]? Value)> writes =
+        [
+            (Bytes.FromHexString("0x00"), Value(1)),
+            (Bytes.FromHexString("0x80"), Value(2)),
+            (Bytes.FromHexString("0x8000"), Value(3)),
+        ];
+        if (reverse) writes.Reverse();
+        using PbtTreeHarness tree = new();
+        Assert.Throws<ArgumentException>(() => tree.ApplyBatch(writes));
     }
 
     [Test]
