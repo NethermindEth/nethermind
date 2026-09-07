@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -78,6 +79,11 @@ public interface ISnapshotRepository
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
     void RemovePersistedStatesUntil(ulong blockNumber);
+
+    /// <summary>Remove persisted snapshots at or below finality whose state root differs from the
+    /// known finalized root at that height. Canonical snapshots and heights with unknown roots are retained.</summary>
+    void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider);
+
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
     /// <paramref name="targetStateId"/> across both tiers, returning the in-memory and persisted snapshots
     /// along the winning path (oldest-first). Empty when no path reaches the target; caller disposes the result.</summary>

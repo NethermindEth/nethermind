@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -635,6 +636,26 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _smallCompacted.PruneBefore(blockNumber);
         _largeCompacted.PruneBefore(blockNumber);
         _compactSized.PruneBefore(blockNumber);
+    }
+
+    /// <inheritdoc />
+    public void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider)
+    {
+        using ArrayPoolList<StateId> states = GetPersistedStatesInRange(0, finalizedStateProvider.FinalizedBlockNumber);
+        if (states.Count == 0) return;
+
+        Dictionary<ulong, Hash256?> finalizedRoots = [];
+        foreach (StateId state in states)
+        {
+            if (!finalizedRoots.TryGetValue(state.BlockNumber, out Hash256? finalizedRoot))
+            {
+                finalizedRoot = finalizedStateProvider.GetFinalizedStateRootAt(state.BlockNumber);
+                finalizedRoots.Add(state.BlockNumber, finalizedRoot);
+            }
+
+            if (finalizedRoot is not null && state.StateRoot != finalizedRoot.ValueHash256)
+                RemovePersistedStateExact(state);
+        }
     }
 
     /// <summary>
