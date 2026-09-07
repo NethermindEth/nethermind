@@ -955,10 +955,8 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(2));
     }
 
-    [TestCase(null)]
-    [TestCase(1000000000)]
-    [TestCase(1000001)]
-    public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
+    [Test]
+    public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd([Values(null, 1000000000, 1000001)] long? terminalTotalDifficulty)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -971,10 +969,8 @@ public partial class EngineModuleTests
         Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
     }
 
-    [TestCase(null)]
-    [TestCase(1000000000)]
-    [TestCase(1000001)]
-    public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
+    [Test]
+    public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd([Values(null, 1000000000, 1000001)] long? terminalTotalDifficulty)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -1202,9 +1198,8 @@ public partial class EngineModuleTests
         await rpc.engine_getPayloadV1(Bytes.FromHexString(fcu1.Data.PayloadId!));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task executePayloadV1_processes_passed_transactions(bool moveHead)
+    [Test]
+    public async Task executePayloadV1_processes_passed_transactions([Values] bool moveHead)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -1715,16 +1710,20 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.IsMainChain(a3.BlockHash), Is.False, "precondition: a3's marker was flipped to b3");
         }
 
-        // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
-        // ValidateBlockHash lookup. Baseline: 1 to resolve head, 1 for finalized validation,
-        // 1 for IsOnMainChainBehindFinalized (FindFinalizedHeader), plus the IsInconsistent walk
-        // (1 under the optimization, 2 without).
-        spy!.ResetCounters();
+        // Watch the parent probes of the repeated FCU only. The walk steps a3 -> a2 and has to stop
+        // there; continuing would step a2 -> a1. Only the walk passes a height, so a probe of a1 at
+        // H=1 is its unambiguous signature - the finalized hash a1 is resolved without one.
+        spy!.Reset();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
         Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        Assert.That(spy.FindHeaderCalls, Is.EqualTo(4), "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spy.WasProbedAsParent(a2.BlockHash, a2.BlockNumber), Is.True, "the walk has to step a3 -> a2");
+            Assert.That(spy.WasProbedAsParent(a1.BlockHash, a1.BlockNumber), Is.False,
+                "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        }
     }
 
     [Test]

@@ -189,7 +189,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) =>
         _currentTxTracer.ReportBalanceChange(address, before, after);
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after) =>
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) =>
         _currentTxTracer.ReportCodeChange(address, before, after);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) =>

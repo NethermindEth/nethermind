@@ -4,6 +4,7 @@
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -177,7 +178,7 @@ public class EthereumGasPolicyTests
 
     private static IReleaseSpec CreateAccessSpec(bool hotAndCold, bool eip8038)
     {
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.UseHotAndColdStorage.Returns(hotAndCold);
         spec.IsEip8038Enabled.Returns(eip8038);
         spec.Precompiles.Returns(((IReleaseSpec)Cancun.Instance).Precompiles);

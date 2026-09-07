@@ -346,9 +346,8 @@ public class ForkInfoTests
             Is.EqualTo(expected),
             description);
 
-    [TestCase(0ul)]
-    [TestCase(9_999_999_999ul)]
-    public void Test_last_known_fork_id_compatibility_mainnet(ulong next)
+    [Test]
+    public void Test_last_known_fork_id_compatibility_mainnet([Values(0ul, 9_999_999_999ul)] ulong next)
     {
         ForkInfo forkInfo = CreateMainnetForkInfo();
         Fork lastFork = forkInfo.GetForkActivationsSummary(null).Last!.Value;

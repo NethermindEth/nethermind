@@ -79,6 +79,26 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public void WhenTheFlagIsOff_ALeftoverWalkCheckpointIsAbandoned_SoReclaimIsNotHeldBack()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.BeginWalk(0, 100, HistoryWalkRun.WorkItems);
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, new FakeHeaders(), availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+
+        bool reclaimed = metadata.TryReclaimOutsideWalk(() => { });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a checkpoint nobody will resume must not survive a start with the flag off, or it holds reclaim back across every restart");
+            Assert.That(reclaimed, Is.True);
+        }
+    }
+
+    [Test]
     public async Task WhenTheWatermarkAppears_RunsTheWalkOnceAndReportsTheVerdict()
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, HistoryVerifySegments = 2 };
