@@ -63,6 +63,7 @@ public static class RlpWriterExtensions
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteEncodedLength(int value)
         {
             switch (value)
