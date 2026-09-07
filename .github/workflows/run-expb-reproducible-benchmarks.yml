@@ -2397,6 +2397,7 @@ jobs:
           cat > "${{ runner.temp }}/sampler.sh" <<'SAMPLER'
           #!/bin/bash
           out=$1
+          trap 'exit 0' TERM INT
           echo "epoch,mem_current,anon,mem_psi_avg10,cpu_usec,nr_throttled" > "$out"
           dir=
           while :; do
@@ -2421,7 +2422,11 @@ jobs:
           done
           SAMPLER
           chmod +x "${{ runner.temp }}/sampler.sh"
-          nohup "${{ runner.temp }}/sampler.sh" "${samples}" >/dev/null 2>&1 &
+          if command -v setsid >/dev/null 2>&1; then
+            setsid "${{ runner.temp }}/sampler.sh" "${samples}" >/dev/null 2>&1 &
+          else
+            nohup "${{ runner.temp }}/sampler.sh" "${samples}" >/dev/null 2>&1 &
+          fi
           echo "SAMPLER_PID=$!" >> "${GITHUB_ENV}"
           echo "Sampling the client cgroup every 5s into ${samples}"
 
@@ -2532,7 +2537,18 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          [ -n "${SAMPLER_PID:-}" ] && kill "${SAMPLER_PID}" 2>/dev/null || true
+          sampler_pid="${SAMPLER_PID:-}"
+          if [[ -n "${sampler_pid}" ]] && kill -0 "${sampler_pid}" 2>/dev/null; then
+            kill -TERM -- "-${sampler_pid}" 2>/dev/null || kill -TERM "${sampler_pid}" 2>/dev/null || true
+            deadline=$((SECONDS + 10))
+            while kill -0 "${sampler_pid}" 2>/dev/null && (( SECONDS < deadline )); do
+              sleep 1
+            done
+            if kill -0 "${sampler_pid}" 2>/dev/null; then
+              kill -KILL -- "-${sampler_pid}" 2>/dev/null || true
+              kill -KILL "${sampler_pid}" 2>/dev/null || true
+            fi
+          fi
           samples="${PRESSURE_SAMPLES:-}"
           if [ ! -s "${samples}" ]; then
             echo "No pressure samples were collected."
@@ -2558,6 +2574,18 @@ jobs:
             cat "${{ runner.temp }}/pressure-summary.txt"
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload pressure and raw EXPB log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expb-pressure-${{ matrix.tag }}-run${{ matrix.run }}
+          path: |
+            ${{ runner.temp }}/pressure-${{ matrix.tag }}-run${{ matrix.run }}.csv
+            ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+            ${{ runner.temp }}/pressure-summary.txt
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Analyze benchmark output
         id: analyze
@@ -2758,15 +2786,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          quality_failed=false
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
             echo "Continuing multi-image run (fail-fast is disabled)."
+            quality_failed=true
           fi
           if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
             echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            if [[ -f "${{ steps.analyze.outputs.exception_lines_file }}" ]]; then
+              head -n 40 "${{ steps.analyze.outputs.exception_lines_file }}"
+            fi
+            quality_failed=true
           fi
           if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
             echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            if [[ -f "${{ steps.analyze.outputs.invalid_block_lines_file }}" ]]; then
+              head -n 40 "${{ steps.analyze.outputs.invalid_block_lines_file }}"
+            fi
+            quality_failed=true
+          fi
+          if [[ "${quality_failed}" == "true" ]]; then
+            echo "::error::Quality gates failed for ${{ matrix.tag }} run ${{ matrix.run }}."
+            exit 1
           fi
 
       - name: Collect and upload profiling artifacts
