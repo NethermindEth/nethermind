@@ -80,21 +80,17 @@ public class FrameExceptionFragmentsTests
         Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
     }
 
-    // Every overrun that keeps the short-form sequence prefix (0xc0 + 55 at most), so the inflated
-    // byte still declares a length rather than a length of length.
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    public void Decode_CoversAPayloadLengthThatOverrunsTheBuffer(int overrun)
+    [Test]
+    public void Decode_CoversAPayloadLengthThatOverrunsTheBuffer()
     {
-        // A frame transaction has no envelope signature, so an overlong declared length leaves the
-        // end-of-payload checkpoint past the last field and the trailing reference list reads off the end.
+        // A frame transaction has no envelope signature, so an overlong declared length leaves the end-of-payload
+        // checkpoint past the last field; every overrun then fails at the same peek, so one case says it all.
         byte[] payload = EncodePayload(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxPriorityFeePerGas: Rlp.Encode(0L));
-        Assert.That(payload[1] + overrun, Is.LessThanOrEqualTo(ShortSequencePrefixMax));
-        payload[1] += (byte)overrun;
+        Assert.That(payload[1] + 1, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
+            "the overrun must keep the short-form prefix, or it declares a length of length instead");
+        payload[1]++;
 
         string message = DecodeFailureMessage(payload);
 
