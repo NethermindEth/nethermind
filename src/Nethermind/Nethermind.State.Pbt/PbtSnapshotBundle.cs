@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -72,10 +73,18 @@ public sealed class PbtSnapshotBundle(
             }
             _accountsAwaitingCode.Clear();
         }
-        Dictionary<PbtPartition, PbtWriteBatch> changes = [];
-        foreach ((PbtPartition partition, PbtWriteBatchBuilder batch) in _writeBatches)
-            if (batch.Count != 0) changes.Add(partition, batch.Build());
-        return changes;
+        Dictionary<PbtPartition, PbtWriteBatch> changes = new(_writeBatches.Count);
+        try
+        {
+            foreach ((PbtPartition partition, PbtWriteBatchBuilder batch) in _writeBatches)
+                if (batch.Count != 0) changes.Add(partition, batch.Build());
+            return changes;
+        }
+        catch
+        {
+            foreach (PbtWriteBatch batch in changes.Values) batch.Dispose();
+            throw;
+        }
     }
 
     internal void CompleteLeafChanges()
@@ -258,7 +267,7 @@ public sealed class PbtSnapshotBundle(
         lock (_accountLock)
         {
             WriteBuffer.Codes[codeHash] = code;
-            List<ValueHash256> resolved = [];
+            using ArrayPoolListRef<ValueHash256> resolved = new(0);
             foreach ((ValueHash256 addressHash, ValueHash256 pendingHash) in _accountsAwaitingCode)
             {
                 if (pendingHash != codeHash) continue;

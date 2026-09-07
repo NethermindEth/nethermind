@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
@@ -39,15 +40,18 @@ public class Eip8297CanonicalTreeTests
         builder.Set(deleteKey, new ValueHash256(Value(1)));
         builder.SetLeaf(deleteKey, default(ValueHash256));
         builder.Set(zeroKey, default);
-        PbtWriteBatch first = builder.Build();
-        PbtWriteBatch second = builder.Build();
-        first.Consume(out PbtWriteOperation[] operations, out int[] table);
+        using PbtWriteBatch first = builder.Build();
+        using PbtWriteBatch second = builder.Build();
+        first.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation> ownedOperations = operations;
+        using ArrayPoolList<int> ownedTable = table;
+        first.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.ShardNibbleIndex, Is.EqualTo(shardNibbleIndex));
             Assert.That(builder.Count, Is.EqualTo(3));
             Assert.That(table[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
-            Assert.That(table.AsSpan(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
+            Assert.That(table.AsSpan().Slice(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
             Assert.That(operations, Is.EqualTo(new[]
             {
                 PbtWriteOperation.Delete(deleteKey),
@@ -57,18 +61,76 @@ public class Eip8297CanonicalTreeTests
             Assert.Throws<InvalidOperationException>(() => first.Consume(out _, out _));
             Assert.Throws<InvalidOperationException>(() => _ = first.Count);
         }
-        PbtWriteOperation[] expected = (PbtWriteOperation[])operations.Clone();
-        Array.Clear(operations);
-        Array.Clear(table);
+        PbtWriteOperation[] expected = operations.AsSpan().ToArray();
+        operations.AsSpan().Clear();
+        table.AsSpan().Clear();
         builder.Reset();
-        second.Consume(out PbtWriteOperation[] independentOperations, out int[] independentTable);
+        second.Consume(out ArrayPoolList<PbtWriteOperation> independentOperations, out ArrayPoolList<int> independentTable);
+        using ArrayPoolList<PbtWriteOperation> ownedIndependentOperations = independentOperations;
+        using ArrayPoolList<int> ownedIndependentTable = independentTable;
+        using PbtWriteBatch empty = builder.Build();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(independentOperations, Is.EqualTo(expected));
             Assert.That(independentTable[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
-            Assert.That(builder.Build().Count, Is.Zero);
-            Assert.That(builder.Build().ShardNibbleIndex, Is.EqualTo(shardNibbleIndex));
+            Assert.That(empty.Count, Is.Zero);
+            Assert.That(empty.ShardNibbleIndex, Is.EqualTo(shardNibbleIndex));
         }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Disposed_prepared_batches_release_owned_lists(bool grouped)
+    {
+        using ArrayPoolList<PbtWriteOperation> operations = new(1, 1);
+        using ArrayPoolList<int> table = new(33, 33);
+        using PbtWriteBatch batch = new(operations, table, 0);
+        using PbtWriteBatchSet? prepared = grouped ? PbtWriteBatchSet.Create(batch) : null;
+
+        if (prepared is not null) prepared.Dispose();
+        else batch.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ObjectDisposedException>(() => operations.AsSpan());
+            Assert.Throws<ObjectDisposedException>(() => table.AsSpan());
+            Assert.Throws<InvalidOperationException>(() => batch.Consume(out _, out _));
+            if (prepared is not null) Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
+        }
+    }
+
+    [TestCase(0, false)]
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    [TestCase(2, true)]
+    public void Updater_releases_consumed_lists_on_success_and_failure(int mode, bool fail)
+    {
+        CountingPbtStore store = new() { ThrowOnApply = fail };
+        using ArrayPoolList<PbtWriteOperation> operations = new(1);
+        operations.Add(PbtWriteOperation.Set(new PbtFullKey(Bytes.FromHexString("0000")), new ValueHash256(Value(1))));
+        using ArrayPoolList<int> table = new(33, 33);
+        table[0] = 1;
+        table[1] = 1;
+        using PbtWriteBatch batch = new(operations, table, mode == 2 ? 2 : 0);
+        using PbtWriteBatchSet? prepared = mode == 1 ? PbtWriteBatchSet.Create(batch) : null;
+        Action update = () =>
+        {
+            if (mode == 2) TrieUpdater.UpdateRoot(store, default, new Dictionary<PbtPartition, PbtWriteBatch> { [PbtPartition.Account] = batch });
+            else if (prepared is not null) TrieUpdater.UpdateRoot(store, default, prepared);
+            else TrieUpdater.UpdateRoot(store, default, batch);
+        };
+
+        if (fail) Assert.Throws<InvalidOperationException>(update);
+        else update();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ObjectDisposedException>(() => operations.AsSpan());
+            Assert.Throws<ObjectDisposedException>(() => table.AsSpan());
+        }
+        AssertAllMemoryReleased(store);
     }
 
     [TestCase(-1)]
@@ -868,7 +930,7 @@ public class Eip8297CanonicalTreeTests
             batch.Delete(new PbtFullKey(key));
         }
         if (fallback) batch.Set(new PbtFullKey(Bytes.FromHexString("0x42")), new ValueHash256(Value(3)));
-        PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch.Build());
+        using PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch.Build());
         PbtWriteOperation[] original = [.. batch.Operations];
         using (Assert.EnterMultipleScope())
         {
@@ -884,14 +946,18 @@ public class Eip8297CanonicalTreeTests
             }
         }
         if (!fallback) AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
-        prepared.Consume(out PbtWriteOperation[] operations, out int[] table);
-        Array.Reverse(operations);
+        prepared.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation> ownedOperations = operations;
+        using ArrayPoolList<int> ownedTable = table;
+        prepared.Dispose();
+        operations.Reverse();
+        using PbtWriteBatchSet independent = PbtWriteBatchSet.Create(batch.Build());
         Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(batch.Operations, Is.EqualTo(original));
-            Assert.That(PbtWriteBatchSet.Create(batch.Build()).Entries.ToArray(), Is.EquivalentTo(original));
-            Assert.That(table.Length, Is.LessThanOrEqualTo(54 * 33));
+            Assert.That(independent.Entries.ToArray(), Is.EquivalentTo(original));
+            Assert.That(table.Count, Is.LessThanOrEqualTo(54 * 33));
         }
     }
 
@@ -938,7 +1004,7 @@ public class Eip8297CanonicalTreeTests
         }
         else
         {
-            PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch.Build());
+            using PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch.Build());
             AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
             preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
         }
@@ -1002,7 +1068,7 @@ public class Eip8297CanonicalTreeTests
                 if (operation.Kind == PbtWriteOperationKind.Delete) oracle.Delete(operation.Key.Bytes);
                 else oracle.Insert(operation.Key.Bytes, operation.Value.Bytes.ToArray());
             }
-            PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch.Build());
+            using PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch.Build());
             if (!prepared.Precalculated.IsEmpty) AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
             preparedRoot = TrieUpdater.UpdateRoot(preparedStore, preparedRoot, prepared);
             genericRoot = TrieUpdater.UpdateRoot(genericStore, genericRoot, batch.Build());

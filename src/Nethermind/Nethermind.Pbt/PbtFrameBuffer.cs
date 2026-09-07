@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Pbt;
@@ -13,7 +12,7 @@ namespace Nethermind.Pbt;
 internal ref struct PbtFrameBuffer<T>
 {
     private RefList64<T> _inline;
-    private T[]? _rented;
+    private ArrayPoolListRef<T> _rented;
     private readonly int _length;
 
     public PbtFrameBuffer(int length)
@@ -22,27 +21,19 @@ internal ref struct PbtFrameBuffer<T>
         if (length <= 64)
         {
             _inline = new RefList64<T>(length);
-            _rented = null;
+            _rented = default;
         }
         else
         {
             _inline = default;
-            _rented = ArrayPool<T>.Shared.Rent(length);
-            _rented.AsSpan(0, length).Clear();
+            _rented = new(length, length);
         }
     }
 
     // Not readonly: a readonly getter would return a span over a defensive copy of the mutable inline list.
-    public Span<T> Span => _rented is null ? _inline.AsSpan() : _rented.AsSpan(0, _length);
+    public Span<T> Span => _length <= 64 ? _inline.AsSpan() : _rented.AsSpan();
 
-    public void Dispose()
-    {
-        if (_rented is not { } rented) return;
-
-        rented.AsSpan(0, _length).Clear();
-        ArrayPool<T>.Shared.Return(rented);
-        _rented = null;
-    }
+    public void Dispose() => _rented.Dispose();
 }
 
 /// <summary><inheritdoc cref="PbtFrameBuffer{T}" path="/summary"/> Disposes leased elements left when descent unwinds.</summary>

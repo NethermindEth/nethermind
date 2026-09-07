@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
@@ -21,12 +22,14 @@ internal static class PbtFlatState
         if (basicData != default) yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
         yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
         if (code is null) yield break;
-        byte[] chunks = PbtKeyDerivation.ChunkifyCode(includeOverflowCode
-            ? code.CodeSpan
-            : code.CodeSpan[..Math.Min(code.Code.Length, PbtKeyDerivation.HeaderCodeChunks * 31)]);
-        for (int chunkId = 0; chunkId < chunks.Length / PbtKeyDerivation.CodeChunkSize; chunkId++)
+        int codeLength = includeOverflowCode ? code.Code.Length : Math.Min(code.Code.Length, PbtKeyDerivation.HeaderCodeChunks * 31);
+        int chunkCount = (codeLength + 30) / 31;
+        int chunksLength = chunkCount * PbtKeyDerivation.CodeChunkSize;
+        using ArrayPoolList<byte> chunks = new(chunksLength, chunksLength);
+        PbtKeyDerivation.ChunkifyCode(code.CodeSpan[..codeLength], chunks.AsSpan());
+        for (int chunkId = 0; chunkId < chunkCount; chunkId++)
         {
-            ValueHash256 value = new(chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
+            ValueHash256 value = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
             if (value != default) yield return new(PbtStateKey.Code(addressHash, account.CodeHash.ValueHash256, chunkId), value);
         }
     }
@@ -56,7 +59,7 @@ internal static class PbtFlatState
         foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses)
         {
             if (addressFilter is not null && addressHash != addressFilter.Value) continue;
-            List<PbtFullKey> removed = [];
+            using ArrayPoolListRef<PbtFullKey> removed = new(0);
             foreach (PbtFullKey key in visible.Keys)
                 if (StorageAddress(key) == addressHash) removed.Add(key);
             foreach (PbtFullKey key in removed) visible.Remove(key);

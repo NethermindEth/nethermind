@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -14,7 +16,7 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
     // Full inline keys and values make dictionary entries substantially larger than stem-map entries.
     private const int RetainedShardEntries = 512;
     private const int ShardCount = 16;
-    private readonly Shard[] _shards = CreateShards();
+    private ShardBuffer _shards = CreateShards();
 
     private readonly int _shardNibbleIndex = ValidateShardNibbleIndex(shardNibbleIndex);
 
@@ -30,11 +32,17 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
         internal Dictionary<PbtFullKey, ValueHash256?>? Entries;
     }
 
-    private static Shard[] CreateShards()
+    private static ShardBuffer CreateShards()
     {
-        Shard[] shards = new Shard[ShardCount];
-        for (int index = 0; index < shards.Length; index++) shards[index] = new();
+        ShardBuffer shards = default;
+        for (int index = 0; index < ShardCount; index++) shards[index] = new();
         return shards;
+    }
+
+    [InlineArray(ShardCount)]
+    private struct ShardBuffer
+    {
+        private Shard _element;
     }
 
     private int ShardOf(PbtFullKey key)
@@ -84,8 +92,9 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
     {
         get
         {
-            foreach (Shard shard in _shards)
+            for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
+                Shard shard = _shards[shardIndex];
                 if (shard.Entries is null) continue;
                 foreach (KeyValuePair<PbtFullKey, ValueHash256?> entry in shard.Entries) yield return entry;
             }
@@ -104,39 +113,50 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
     }
 
     /// <summary>Builds an independent, single-use batch without clearing pending mutations.</summary>
-    /// <remarks>Writers must be joined before building. Reset only after a successful fold to retain mutations for retry.</remarks>
+    /// <remarks>Writers must be joined before building. Dispose the batch if it is not consumed by the updater.
+    /// Reset only after a successful fold to retain mutations for retry.</remarks>
     public PbtWriteBatch Build()
     {
         Span<int> deleteCounts = stackalloc int[ShardCount];
         deleteCounts.Clear();
-        int[] table = new int[33];
-        int compactCount = 0;
-        int count = 0;
-        for (int shardIndex = 0; shardIndex < _shards.Length; shardIndex++)
+        ArrayPoolList<int> table = new(33, 33);
+        ArrayPoolList<PbtWriteOperation>? operations = null;
+        try
         {
-            if (_shards[shardIndex].Entries is not { Count: > 0 } entries) continue;
-            foreach (ValueHash256? value in entries.Values)
-                if (value is null) deleteCounts[shardIndex]++;
-            table[0] |= 1 << shardIndex;
-            table[1 + compactCount++] = entries.Count;
-            count += entries.Count;
-        }
-
-        PbtWriteOperation[] operations = new PbtWriteOperation[count];
-        int offset = 0;
-        for (int shardIndex = 0; shardIndex < _shards.Length; shardIndex++)
-        {
-            if (_shards[shardIndex].Entries is not { } entries) continue;
-            int deleteOffset = offset;
-            int setOffset = offset + deleteCounts[shardIndex];
-            foreach ((PbtFullKey key, ValueHash256? value) in entries)
+            int compactCount = 0;
+            int count = 0;
+            for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
-                if (value is null) operations[deleteOffset++] = PbtWriteOperation.Delete(key);
-                else operations[setOffset++] = PbtWriteOperation.Set(key, value.Value);
+                if (_shards[shardIndex].Entries is not { Count: > 0 } entries) continue;
+                foreach (ValueHash256? value in entries.Values)
+                    if (value is null) deleteCounts[shardIndex]++;
+                table[0] |= 1 << shardIndex;
+                table[1 + compactCount++] = entries.Count;
+                count += entries.Count;
             }
-            offset += entries.Count;
+
+            operations = new(count, count);
+            int offset = 0;
+            for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
+            {
+                if (_shards[shardIndex].Entries is not { } entries) continue;
+                int deleteOffset = offset;
+                int setOffset = offset + deleteCounts[shardIndex];
+                foreach ((PbtFullKey key, ValueHash256? value) in entries)
+                {
+                    if (value is null) operations[deleteOffset++] = PbtWriteOperation.Delete(key);
+                    else operations[setOffset++] = PbtWriteOperation.Set(key, value.Value);
+                }
+                offset += entries.Count;
+            }
+            return new PbtWriteBatch(operations, table, _shardNibbleIndex);
         }
-        return new PbtWriteBatch(operations, table, _shardNibbleIndex);
+        catch
+        {
+            operations?.Dispose();
+            table.Dispose();
+            throw;
+        }
     }
 
     internal void CompleteDrain() => Reset();

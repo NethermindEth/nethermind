@@ -31,26 +31,30 @@ public static class TrieUpdater
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
-        changes.Consume(out PbtWriteOperation[] operations, out int[] table);
+        changes.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation> ownedOperations = operations;
+        using ArrayPoolList<int> ownedTable = table;
         if (changes.ShardNibbleIndex == 0)
-            return UpdateRoot(store, currentRoot, operations, new(table, 0, 0, false, false), metrics);
+            return UpdateRoot(store, currentRoot, operations.AsSpan(), new(table.AsSpan(), 0, 0, false, false), metrics);
 
         int deleteCount = 0;
-        for (int index = 0; index < operations.Length; index++)
+        for (int index = 0; index < operations.Count; index++)
         {
             if (operations[index].Kind != PbtWriteOperationKind.Delete) continue;
             (operations[deleteCount], operations[index]) = (operations[index], operations[deleteCount]);
             deleteCount++;
         }
-        return UpdateRoot(store, currentRoot, operations, default, metrics);
+        return UpdateRoot(store, currentRoot, operations.AsSpan(), default, metrics);
     }
 
     internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet changes, TrieUpdaterMetrics? metrics = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
-        changes.Consume(out PbtWriteOperation[] operations, out int[] precalculated);
-        return UpdateRoot(store, currentRoot, operations, new(precalculated, 0, 0, false, false), metrics);
+        changes.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> precalculated);
+        using ArrayPoolList<PbtWriteOperation> ownedOperations = operations;
+        using ArrayPoolList<int> ownedTable = precalculated;
+        return UpdateRoot(store, currentRoot, operations.AsSpan(), new(precalculated.AsSpan(), 0, 0, false, false), metrics);
     }
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
@@ -66,10 +70,10 @@ public static class TrieUpdater
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
-        List<PartitionFold> workers = new(3);
-        GroupMutationFrame?[] sharedGroups = new GroupMutationFrame[16];
-        Subtree[][] zoneBoundaries = new Subtree[16][];
-        Subtree[] rootBoundaries = new Subtree[16];
+        using ArrayPoolList<PartitionFold> workers = new(3);
+        using ArrayPoolListRef<GroupMutationFrame?> sharedGroups = new(16, 16);
+        using ArrayPoolListRef<ArrayPoolList<Subtree>?> zoneBoundaries = new(16, 16);
+        using ArrayPoolListRef<Subtree> rootBoundaries = new(16, 16);
         try
         {
             foreach ((PbtPartition partition, PbtWriteBatch batch) in changes)
@@ -82,13 +86,15 @@ public static class TrieUpdater
                     _ => throw new ArgumentOutOfRangeException(nameof(changes)),
                 };
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
-                batch.Consume(out PbtWriteOperation[] operations, out int[] table);
-                if (operations.Length != 0) workers.Add(new(store, zone, operations, table, metrics is not null));
+                batch.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
+                PartitionFold worker = new(store, zone, operations, table, metrics is not null);
+                if (operations.Count != 0) workers.Add(worker);
+                else worker.Dispose();
             }
             if (workers.Count == 0) return currentRoot;
 
             using GroupMutationFrame rootGroup = new(store, RootPath, metrics);
-            Decompose(rootGroup, rootGroup.Take(RootPath, allowAbsent: true), 0, rootBoundaries);
+            Decompose(rootGroup, rootGroup.Take(RootPath, allowAbsent: true), 0, rootBoundaries.AsSpan());
             foreach (PartitionFold worker in workers)
             {
                 int slot = worker.Zone >> 4;
@@ -96,39 +102,41 @@ public static class TrieUpdater
                 {
                     sharedGroup = new(store, new PbtNodePath([(byte)(slot << 4)], 4), metrics);
                     sharedGroups[slot] = sharedGroup;
-                    zoneBoundaries[slot] = new Subtree[16];
-                    Decompose(sharedGroup, Resolve(rootGroup, rootBoundaries[slot]), 4, zoneBoundaries[slot]);
+                    zoneBoundaries[slot] = new(16, 16);
+                    Decompose(sharedGroup, Resolve(rootGroup, rootBoundaries[slot]), 4, zoneBoundaries[slot]!.AsSpan());
                 }
                 // Depth-eight roots still belong to the shared depth-four group. Resolve them before dispatch;
                 // those frames retain their immutable leases until every worker and the ancestor merge finish.
-                worker.Current = Resolve(sharedGroup, zoneBoundaries[slot][worker.Zone & 15]);
+                worker.Current = Resolve(sharedGroup, zoneBoundaries[slot]![worker.Zone & 15]);
             }
 
             Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
 
             foreach (PartitionFold worker in workers)
             {
-                zoneBoundaries[worker.Zone >> 4][worker.Zone & 15] = worker.Result;
+                zoneBoundaries[worker.Zone >> 4]![worker.Zone & 15] = worker.Result;
                 if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
             }
-            for (int slot = 0; slot < sharedGroups.Length; slot++)
+            for (int slot = 0; slot < sharedGroups.Count; slot++)
             {
                 if (sharedGroups[slot] is not { } sharedGroup) continue;
-                rootBoundaries[slot] = Compose(sharedGroup, zoneBoundaries[slot]);
+                rootBoundaries[slot] = Compose(sharedGroup, zoneBoundaries[slot]!.AsSpan());
                 sharedGroup.Flush();
             }
-            ValueHash256 hash = Place(rootGroup, Compose(rootGroup, rootBoundaries), PbtFourLevelGroupGeometry.RootPosition, 0);
+            ValueHash256 hash = Place(rootGroup, Compose(rootGroup, rootBoundaries.AsSpan()), PbtFourLevelGroupGeometry.RootPosition, 0);
             rootGroup.Flush();
 
             return hash;
         }
         finally
         {
+            foreach (PartitionFold worker in workers) worker.Dispose();
             foreach (GroupMutationFrame? sharedGroup in sharedGroups) sharedGroup?.Dispose();
+            foreach (ArrayPoolList<Subtree>? boundaries in zoneBoundaries) boundaries?.Dispose();
         }
     }
 
-    private sealed class PartitionFold(IPbtStore store, byte zone, PbtWriteOperation[] operations, int[] table, bool collectMetrics)
+    private sealed class PartitionFold(IPbtStore store, byte zone, ArrayPoolList<PbtWriteOperation> operations, ArrayPoolList<int> table, bool collectMetrics) : IDisposable
     {
         internal byte Zone { get; } = zone;
         internal TrieUpdaterMetrics? Metrics { get; } = collectMetrics ? new() : null;
@@ -139,9 +147,15 @@ public static class TrieUpdater
         {
             using GroupMutationFrame group = new(store, new PbtNodePath([Zone], 8), Metrics);
             // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
-            Result = FoldBoundary(store, Metrics, group, Current, operations, new(table, 8, 8, false, false));
+            Result = FoldBoundary(store, Metrics, group, Current, operations.AsSpan(), new(table.AsSpan(), 8, 8, false, false));
             group.Flush();
             Result = Result.PreserveBeyond(group);
+        }
+
+        public void Dispose()
+        {
+            operations.Dispose();
+            table.Dispose();
         }
     }
 
@@ -761,11 +775,11 @@ public static class TrieUpdater
         internal void Flush()
         {
             if (_changed == 0) return;
-            ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
-            bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
+            using ArrayPoolListRef<ReadOnlyMemory<byte>> encodings = new(PbtNodeGroupCodec.PositionCount, PbtNodeGroupCodec.PositionCount);
+            Span<bool> present = stackalloc bool[PbtNodeGroupCodec.PositionCount];
             int changedNodes = 0;
             bool anyPresent = false;
-            for (int position = 0; position < encodings.Length; position++)
+            for (int position = 0; position < encodings.Count; position++)
             {
                 ReadOnlyMemory<byte> previous = _reader.GetEncoding(position);
                 ReadOnlyMemory<byte> encoding = previous;
@@ -789,7 +803,7 @@ public static class TrieUpdater
                 BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
                 try
                 {
-                    PbtNodeGroupCodec.Encode(ref writer, GroupKey, encodings, present);
+                    PbtNodeGroupCodec.Encode(ref writer, GroupKey, encodings.AsSpan(), present);
                     using RefCountingMemory payload = writer.Detach()!;
                     _store.SetNodeGroup(GroupKey, payload);
                 }

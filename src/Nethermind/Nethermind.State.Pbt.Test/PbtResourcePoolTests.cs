@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -57,13 +58,15 @@ public class PbtResourcePoolTests
         else for (int index = 0; index < keys.Count; index++) Write(index);
 
         Dictionary<PbtFullKey, ValueHash256?> leaves = new(batch.Leaves);
-        PbtWriteBatch prepared = batch.Build();
+        using PbtWriteBatch prepared = batch.Build();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(batch.Count, Is.EqualTo(keys.Count));
             Assert.That(prepared.Count, Is.EqualTo(keys.Count));
         }
-        prepared.Consume(out PbtWriteOperation[] operations, out int[] table);
+        prepared.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation> operationsLease = operations;
+        using ArrayPoolList<int> tableLease = table;
         int[] expectedTable = new int[33];
         expectedTable[0] = touchedMask;
         int compactCount = 0;
@@ -74,7 +77,7 @@ public class PbtResourcePoolTests
             expectedTable[1 + compactCount++] = entriesPerShard;
             bool sawSet = false;
             HashSet<PbtFullKey> shardKeys = [];
-            foreach (PbtWriteOperation operation in operations.AsSpan(offset, entriesPerShard))
+            foreach (PbtWriteOperation operation in operations.AsSpan().Slice(offset, entriesPerShard))
             {
                 using (Assert.EnterMultipleScope())
                 {
@@ -90,9 +93,10 @@ public class PbtResourcePoolTests
         }
         Assert.That(table, Is.EqualTo(expectedTable));
         Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
-        Array.Clear(operations);
+        operations.AsSpan().Clear();
         Assert.That(batch.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
-        Assert.That(batch.Build().Count, Is.EqualTo(keys.Count), "a failed fold can retry");
+        using PbtWriteBatch retry = batch.Build();
+        Assert.That(retry.Count, Is.EqualTo(keys.Count), "a failed fold can retry");
         for (int index = 0; index < keys.Count; index++)
         {
             using (Assert.EnterMultipleScope())
@@ -102,17 +106,20 @@ public class PbtResourcePoolTests
             }
         }
         batch.CompleteDrain();
-        Assert.That(batch.Build().Count, Is.Zero);
+        using PbtWriteBatch drained = batch.Build();
+        Assert.That(drained.Count, Is.Zero);
         batch.SetLeaf(keys[0], TestItem.KeccakA.ValueHash256);
-        Assert.That(batch.Build().Count, Is.EqualTo(1));
+        using PbtWriteBatch pending = batch.Build();
+        Assert.That(pending.Count, Is.EqualTo(1));
         _pool.ReturnWriteBatch(usage, batch);
         PbtWriteBatchBuilder rented = _pool.GetWriteBatch(usage);
+        using PbtWriteBatch empty = rented.Build();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented, Is.SameAs(batch));
             Assert.That(rented.Count, Is.Zero);
-            Assert.That(rented.Build().Count, Is.Zero);
-            Assert.That(rented.Build().ShardNibbleIndex, Is.EqualTo(2));
+            Assert.That(empty.Count, Is.Zero);
+            Assert.That(empty.ShardNibbleIndex, Is.EqualTo(2));
             Assert.That(rented.TryGetLeaf(keys[0], out _), Is.False);
         }
         _pool.ReturnWriteBatch(usage, rented);

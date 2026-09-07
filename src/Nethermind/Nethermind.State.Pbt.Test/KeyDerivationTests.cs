@@ -88,6 +88,22 @@ public class KeyDerivationTests
         Assert.That(Chunk(chunks, 2)[0], Is.EqualTo(1), "one PUSHDATA byte remains in the last chunk");
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(31)]
+    [TestCase(32)]
+    [TestCase(63)]
+    public void ChunkifyCodeClearsReusedDestination(int codeLength)
+    {
+        byte[] code = new byte[codeLength];
+        byte[] chunks = new byte[(codeLength + 30) / 31 * PbtKeyDerivation.CodeChunkSize];
+        chunks.AsSpan().Fill(0xFF);
+
+        PbtKeyDerivation.ChunkifyCode(code, chunks);
+
+        Assert.That(chunks.AsSpan().IsZero(), "opcode markers and padding must not retain pooled contents");
+    }
+
     [Test]
     public void PackBasicDataLayout()
     {

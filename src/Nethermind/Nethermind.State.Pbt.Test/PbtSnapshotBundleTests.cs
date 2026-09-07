@@ -547,6 +547,42 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(40)]
+    public void Code_resolution_preserves_other_pending_accounts_and_survives_scratch_reuse(int accountCount)
+    {
+        using TrackingTransientPool pool = new();
+        using PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
+        byte[] bytes = Bytes.FromHexString("6001600055");
+        byte[] otherBytes = Bytes.FromHexString("6002600055");
+        Account account = Build.An.Account.WithCode(bytes).TestObject;
+        Account otherAccount = Build.An.Account.WithCode(otherBytes).TestObject;
+        bundle.SetAccount(TestItem.AddressA, otherAccount);
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 0, 0, otherBytes);
+        for (int index = 0; index < accountCount; index++)
+        {
+            byte[] addressBytes = new byte[Address.Size];
+            addressBytes[^1] = (byte)index;
+            Address address = new(addressBytes);
+            bundle.SetAccount(address, account);
+            PbtReferenceModel.SetAccount(model, address, 0, 0, bytes);
+        }
+
+        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
+        Assert.Throws<InvalidDataException>(() => Fold(bundle, default));
+        bundle.SetCode(otherAccount.CodeHash.ValueHash256, new CodeInfo(otherBytes));
+        ValueHash256 root = Fold(bundle, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(accountCount));
+            Assert.That(bundle.GetCodeReference(otherAccount.CodeHash.ValueHash256), Is.EqualTo(1));
+            Assert.That(bundle.PendingMutationCount, Is.Zero);
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Pending_code_replacement_and_final_reference_readdition_stage_latest_values(bool resolveAbandonedCode)
@@ -650,9 +686,17 @@ public class PbtSnapshotBundleTests
 
     private static ValueHash256 Fold(PbtSnapshotBundle bundle, ValueHash256 root)
     {
-        ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, bundle.PrepareLeafChanges());
-        bundle.CompleteLeafChanges();
-        return updated;
+        IReadOnlyDictionary<PbtPartition, PbtWriteBatch> changes = bundle.PrepareLeafChanges();
+        try
+        {
+            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes);
+            bundle.CompleteLeafChanges();
+            return updated;
+        }
+        finally
+        {
+            foreach (PbtWriteBatch batch in changes.Values) batch.Dispose();
+        }
     }
 
     private static PbtSnapshotPooledList Snapshots(PbtResourcePool pool, params PbtSnapshotContent[] contents)

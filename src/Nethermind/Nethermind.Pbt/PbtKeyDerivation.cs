@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -159,10 +160,19 @@ public static class PbtKeyDerivation
     {
         int chunkCount = (code.Length + 30) / 31;
         byte[] chunks = new byte[chunkCount * CodeChunkSize];
-        if (chunkCount == 0) return chunks;
+        ChunkifyCode(code, chunks);
+        return chunks;
+    }
+
+    internal static void ChunkifyCode(ReadOnlySpan<byte> code, Span<byte> chunks)
+    {
+        int chunkCount = (code.Length + 30) / 31;
+        ArgumentOutOfRangeException.ThrowIfNotEqual(chunks.Length, chunkCount * CodeChunkSize);
+        chunks.Clear();
+        if (chunkCount == 0) return;
 
         // pushDataRemaining[i] = how many PUSHDATA bytes remain from position i (0 when i is an opcode)
-        byte[] pushDataRemaining = new byte[code.Length];
+        using ArrayPoolListRef<byte> pushDataRemaining = new(code.Length, code.Length);
         int pos = 0;
         while (pos < code.Length)
         {
@@ -179,12 +189,10 @@ public static class PbtKeyDerivation
         for (int i = 0; i < chunkCount; i++)
         {
             int start = i * 31;
-            Span<byte> chunk = chunks.AsSpan(i * CodeChunkSize, CodeChunkSize);
+            Span<byte> chunk = chunks.Slice(i * CodeChunkSize, CodeChunkSize);
             chunk[0] = Math.Min(pushDataRemaining[start], (byte)31);
             code[start..Math.Min(start + 31, code.Length)].CopyTo(chunk[1..]);
         }
-
-        return chunks;
     }
 
     /// <summary>

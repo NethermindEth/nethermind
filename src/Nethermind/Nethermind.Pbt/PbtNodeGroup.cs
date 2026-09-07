@@ -105,11 +105,9 @@ public static class PbtNodeGroupCodec
         }
     }
 
-    internal static void Encode(ref BufferWriter writer, PbtNodePath groupKey, ReadOnlyMemory<byte>[] encodings, bool[] present)
+    internal static void Encode(ref BufferWriter writer, PbtNodePath groupKey, scoped ReadOnlySpan<ReadOnlyMemory<byte>> encodings, scoped ReadOnlySpan<bool> present)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
-        ArgumentNullException.ThrowIfNull(encodings);
-        ArgumentNullException.ThrowIfNull(present);
         ValidateGroupKey(groupKey);
         if (encodings.Length != PositionCount || present.Length != PositionCount)
             throw new ArgumentException("A PBT node group must have one slot per position.");

@@ -144,9 +144,16 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         if (!_rootDirty) return;
         long start = Stopwatch.GetTimestamp();
         IReadOnlyDictionary<PbtPartition, PbtWriteBatch> changes = Bundle.PrepareLeafChanges();
-        LastFoldMutationCount = Bundle.PendingMutationCount;
-        _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes);
-        Bundle.CompleteLeafChanges();
+        try
+        {
+            LastFoldMutationCount = Bundle.PendingMutationCount;
+            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes);
+            Bundle.CompleteLeafChanges();
+        }
+        finally
+        {
+            foreach (PbtWriteBatch batch in changes.Values) batch.Dispose();
+        }
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
         _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
