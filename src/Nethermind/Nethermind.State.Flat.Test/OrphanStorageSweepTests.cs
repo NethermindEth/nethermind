@@ -39,15 +39,7 @@ public class OrphanStorageSweepTests
         {
         }
 
-        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
-        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
-            .Do(call =>
-            {
-                using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
-                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
-            });
-        _sweep = new OrphanStorageSweep(_db, manager, LimboLogs.Instance);
+        _sweep = new OrphanStorageSweep(_db, ManagerLikeTheReal(), LimboLogs.Instance);
     }
 
     [TearDown]
@@ -55,6 +47,27 @@ public class OrphanStorageSweepTests
     {
         _sweep.Dispose();
         _db.Dispose();
+    }
+
+    private IPersistenceManager ManagerLikeTheReal(Action? beforeTheBatch = null, Action? afterTheBatch = null)
+    {
+        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
+        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
+        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
+            .Do(call =>
+            {
+                beforeTheBatch?.Invoke();
+                StateId current;
+                using (IPersistence.IPersistenceReader reader = _persistence.CreateReader()) current = reader.CurrentState;
+                StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
+                using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(unchanged, unchanged))
+                {
+                    call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
+                }
+
+                afterTheBatch?.Invoke();
+            });
+        return manager;
     }
 
     [Test]
@@ -235,20 +248,35 @@ public class OrphanStorageSweepTests
         }
 
         _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
-        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
-        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
-            .Do(call =>
-            {
-                using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
-                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
-            });
-        using OrphanStorageSweep resumed = new(_db, manager, LimboLogs.Instance);
+        using OrphanStorageSweep resumed = new(_db, ManagerLikeTheReal(), LimboLogs.Instance);
 
         OrphanStorageReport report = resumed.RunToCompletion(repair: true, CancellationToken.None);
 
         Assert.That(report, Is.EqualTo(new OrphanStorageReport(SlotsScanned: 2, OrphanSlots: 2, OrphanAccounts: 2, MissingAccounts: 2, EmptyRootAccounts: 0)),
             "the tally travels with the cursor, so a sweep finished by a later process reports everything the sweep did, not the last leg");
+    }
+
+    [Test]
+    public void A_sweep_interrupted_right_after_its_first_deletes_keeps_their_tally_when_resumed()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(PathWithPrefix(0x10000000, tail: 0x01), slot, EncodedValue);
+            batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
+        }
+
+        using (OrphanStorageSweep interrupted = new(_db, ManagerLikeTheReal(afterTheBatch: () => throw new OperationCanceledException()), LimboLogs.Instance))
+        {
+            Assert.That(() => interrupted.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>());
+        }
+
+        using OrphanStorageSweep resumed = new(_db, ManagerLikeTheReal(), LimboLogs.Instance);
+
+        OrphanStorageReport report = resumed.RunToCompletion(repair: true, CancellationToken.None);
+
+        Assert.That(report, Is.EqualTo(new OrphanStorageReport(SlotsScanned: 2, OrphanSlots: 2, OrphanAccounts: 2, MissingAccounts: 2, EmptyRootAccounts: 0)),
+            "the first pass persists its tally under cursor zero before it deletes; a resume from that record is a resume, not a fresh sweep, or the deleted slots vanish from the count");
     }
 
     [Test]
@@ -280,17 +308,12 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
         }
 
-        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
-        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
-            .Do(call =>
-            {
-                _persistence.Clear();
-                using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
-                batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
-                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
-            });
-        using OrphanStorageSweep sweep = new(_db, manager, LimboLogs.Instance);
+        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(beforeTheBatch: () =>
+        {
+            _persistence.Clear();
+            using IPersistence.IWriteBatch rebuilding = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            rebuilding.SetStorageRawEncoded(orphan, slot, EncodedValue);
+        }), LimboLogs.Instance);
 
         Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
             "a state sync that starts under the pass clears the database and rebuilds it with storage landing before accounts; the sweep must read that on disk, where the manager's cached state id does not show it, and stop");

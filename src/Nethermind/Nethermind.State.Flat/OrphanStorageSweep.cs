@@ -66,68 +66,21 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
     internal bool RunOnePass(bool repair, long maxSlots, TimeSpan budget, CancellationToken token)
     {
-        using IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
-        ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
-        IReadOnlyKeyValueStore accounts = snapshot.GetColumn(FlatDbColumns.Account);
-        long startPrefix = repair ? ReadProgress() : _checkCursor;
+        bool resuming;
+        long startPrefix;
+        if (repair) resuming = TryReadProgress(out startPrefix);
+        else
+        {
+            startPrefix = _checkCursor;
+            resuming = startPrefix != 0;
+        }
+
         if (startPrefix > uint.MaxValue) return true;
-        if (startPrefix == 0) ResetTally();
+        if (!resuming) ResetTally();
         _tallyLoaded = true;
 
-        Dictionary<ValueHash256, bool> decided = [];
         List<ValueHash256> orphans = [];
-        long passStartedAt = Stopwatch.GetTimestamp();
-        long slotsThisPass = 0;
-        long currentPrefix = -1;
-        long nextPrefix = uint.MaxValue + 1L;
-        bool completed = true;
-
-        Span<byte> lower = stackalloc byte[sizeof(uint)];
-        BinaryPrimitives.WriteUInt32BigEndian(lower, (uint)startPrefix);
-        Span<byte> upper = stackalloc byte[StorageKeyLength + 1];
-        upper.Fill(0xFF);
-        using (ISortedView view = storage.GetViewBetween(startPrefix == 0 ? ReadOnlySpan<byte>.Empty : lower, upper, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead))
-        {
-            while (view.MoveNext())
-            {
-                token.ThrowIfCancellationRequested();
-                ReadOnlySpan<byte> key = view.CurrentKey;
-                if (key.Length != StorageKeyLength) continue;
-
-                long prefix = BinaryPrimitives.ReadUInt32BigEndian(key);
-                if (prefix != currentPrefix)
-                {
-                    if (currentPrefix >= 0 && (slotsThisPass >= maxSlots || Stopwatch.GetElapsedTime(passStartedAt) >= budget))
-                    {
-                        nextPrefix = prefix;
-                        completed = false;
-                        break;
-                    }
-
-                    currentPrefix = prefix;
-                    decided.Clear();
-                    LogProgress(repair, prefix);
-                }
-
-                slotsThisPass++;
-                _slotsScanned++;
-                ValueHash256 identity = IdentityOf(key);
-                if (!decided.TryGetValue(identity, out bool orphan))
-                {
-                    orphan = IsOrphan(accounts, identity, out bool missing);
-                    decided[identity] = orphan;
-                    if (orphan)
-                    {
-                        _orphanAccounts++;
-                        if (missing) _missingAccounts++;
-                        else _emptyRootAccounts++;
-                        if (repair) orphans.Add(identity);
-                    }
-                }
-
-                if (orphan) _orphanSlots++;
-            }
-        }
+        bool completed = Scan(repair, startPrefix, maxSlots, budget, orphans, out long nextPrefix, token);
 
         if (repair)
         {
@@ -148,6 +101,64 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         else _checkCursor = nextPrefix;
 
         return completed;
+    }
+
+    private bool Scan(bool repair, long startPrefix, long maxSlots, TimeSpan budget, List<ValueHash256> orphans, out long nextPrefix, CancellationToken token)
+    {
+        using IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
+        IReadOnlyKeyValueStore accounts = snapshot.GetColumn(FlatDbColumns.Account);
+        Dictionary<ValueHash256, bool> decided = [];
+        long passStartedAt = Stopwatch.GetTimestamp();
+        long slotsThisPass = 0;
+        long currentPrefix = -1;
+        nextPrefix = uint.MaxValue + 1L;
+
+        Span<byte> lower = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(lower, (uint)startPrefix);
+        Span<byte> upper = stackalloc byte[StorageKeyLength + 1];
+        upper.Fill(0xFF);
+        using ISortedView view = storage.GetViewBetween(startPrefix == 0 ? ReadOnlySpan<byte>.Empty : lower, upper, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
+        while (view.MoveNext())
+        {
+            token.ThrowIfCancellationRequested();
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length != StorageKeyLength) continue;
+
+            long prefix = BinaryPrimitives.ReadUInt32BigEndian(key);
+            if (prefix != currentPrefix)
+            {
+                if (currentPrefix >= 0 && (slotsThisPass >= maxSlots || Stopwatch.GetElapsedTime(passStartedAt) >= budget))
+                {
+                    nextPrefix = prefix;
+                    return false;
+                }
+
+                currentPrefix = prefix;
+                decided.Clear();
+                LogProgress(repair, prefix);
+            }
+
+            slotsThisPass++;
+            _slotsScanned++;
+            ValueHash256 identity = IdentityOf(key);
+            if (!decided.TryGetValue(identity, out bool orphan))
+            {
+                orphan = IsOrphan(accounts, identity, out bool missing);
+                decided[identity] = orphan;
+                if (orphan)
+                {
+                    _orphanAccounts++;
+                    if (missing) _missingAccounts++;
+                    else _emptyRootAccounts++;
+                    if (repair) orphans.Add(identity);
+                }
+            }
+
+            if (orphan) _orphanSlots++;
+        }
+
+        return true;
     }
 
     internal bool TryStampFresh()
@@ -244,6 +255,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
             if (rebuilt)
             {
+                db.GetColumnDb(FlatDbColumns.Metadata).Remove(ProgressKey);
                 if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it, so a state sync is rebuilding it and nothing in it may be judged until that sync has persisted. The sweep starts over on the next start.");
                 throw new OperationCanceledException();
             }
@@ -268,10 +280,11 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         _emptyRootAccounts = 0;
     }
 
-    private long ReadProgress()
+    private bool TryReadProgress(out long cursor)
     {
+        cursor = 0;
         byte[]? value = db.GetColumnDb(FlatDbColumns.Metadata).Get(ProgressKey);
-        if (value is not { Length: ProgressLength }) return 0;
+        if (value is not { Length: ProgressLength }) return false;
 
         if (!_tallyLoaded)
         {
@@ -283,7 +296,8 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             _emptyRootAccounts = BinaryPrimitives.ReadInt64BigEndian(tally[(4 * sizeof(long))..]);
         }
 
-        return BinaryPrimitives.ReadUInt32BigEndian(value);
+        cursor = BinaryPrimitives.ReadUInt32BigEndian(value);
+        return true;
     }
 
     private void WriteProgress(uint cursor)
@@ -298,8 +312,6 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
         BinaryPrimitives.WriteInt64BigEndian(tally[(4 * sizeof(long))..], _emptyRootAccounts);
         db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(ProgressKey, value);
     }
-
-
 
     private static ValueHash256 IdentityOf(ReadOnlySpan<byte> storageKey)
     {
