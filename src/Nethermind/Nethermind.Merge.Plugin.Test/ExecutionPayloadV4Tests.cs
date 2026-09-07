@@ -8,6 +8,7 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
@@ -72,12 +73,11 @@ public class ExecutionPayloadV4Tests
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(block.BlockAccessList!.WireHash));
     }
 
-    // Two devnet fixture lines both call their Amsterdam successor Bogota while meaning different
-    // things by it, so the label a genesis carries has to decide which newPayload version the node
-    // accepts: inclusion lists move it to V6, frame transactions leave it on Amsterdam's V5.
-    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6)]
-    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V5)]
-    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted)
+    // On this deployment image bogotaTime is the frame-transaction devnet's label and selects frame
+    // transactions, which leaves newPayload on Amsterdam's V5; inclusion lists would move it to V6.
+    [TestCase("bogotaTime", true)]
+    [TestCase("eip8141PrototypeTime", false)]
+    public void ValidateForkOnNewPayload_accepts_V5_for_a_bogota_labelled_genesis(string label, bool selectsFrames)
     {
         string genesis = $$"""
             {
@@ -102,12 +102,13 @@ public class ExecutionPayloadV4Tests
             StateRoot = Keccak.EmptyTreeHash,
         };
 
+        IReleaseSpec spec = specProvider.GetSpec(ForkActivation.TimestampOnly(15));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V5),
-                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V5));
-            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6),
-                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V6));
+            Assert.That(spec.IsEip8141Enabled, Is.EqualTo(selectsFrames));
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V5), Is.True);
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6), Is.False);
         }
     }
 

@@ -50,7 +50,12 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [];
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp =
+    [
+        // This image spends the bogotaTime label on EIP-8141, so inclusion lists are scheduled through
+        // the chainspec's eip7805TransitionTimestamp instead.
+        "Bogota",
+    ];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
@@ -301,20 +306,19 @@ public class GethGenesisLoaderTests
         }
     }
 
-    // Two devnet fixture lines both call their fork Bogota while meaning different things by it, so a
-    // genesis says which it means by the label it carries: bogotaTime is inclusion lists, and frame
-    // transactions have their own. Neither may drag the other's EIP in — they sit on different
+    // This image's genesis generator emits bogotaTime for the fork carrying EIP-8141, so that is the one
+    // label that schedules anything here and it must not drag EIP-7805 in: the two sit on different
     // engine_newPayload versions, and the frame-transaction predeploy shifts every EIP-7928 access list.
-    [TestCase("bogotaTime", true, false)]
-    [TestCase("eip8141PrototypeTime", false, true)]
-    public void Genesis_fork_label_picks_one_of_the_two_amsterdam_successors(string label, bool eip7805, bool eip8141)
+    [TestCase("bogotaTime", true)]
+    [TestCase("eip8141PrototypeTime", false)]
+    public void Genesis_bogota_label_schedules_frame_transactions_alone(string label, bool eip8141)
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.EqualTo(eip7805 ? (ulong?)15 : null));
             Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(eip8141 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
         }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -324,8 +328,8 @@ public class GethGenesisLoaderTests
         {
             Assert.That(before.IsEip7805Enabled, Is.False);
             Assert.That(before.IsEip8141Enabled, Is.False);
-            Assert.That(after.IsEip7805Enabled, Is.EqualTo(eip7805));
             Assert.That(after.IsEip8141Enabled, Is.EqualTo(eip8141));
+            Assert.That(after.IsEip7805Enabled, Is.False);
         }
     }
 

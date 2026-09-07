@@ -22,7 +22,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// <c>&lt;ForkClass&gt;Block</c> or <c>&lt;ForkClass&gt;Time</c> and the helper strips that suffix
 /// from <see cref="CallerMemberNameAttribute"/> to derive the dict key — properties whose
 /// Geth-wire name doesn't match the Nethermind fork-class name (Petersburg / Constantinople-fix,
-/// merge-netsplit / Paris, Dao-fork / Dao, Bpo / BPO casing) pass an explicit override.
+/// merge-netsplit / Paris, Dao-fork / Dao, Bpo / BPO casing, Bogota / Eip8141Prototype) pass an
+/// explicit override.
 /// Per-EIP overrides (<c>Eip150Block</c>, <c>Eip155Block</c>, <c>Eip158Block</c>) are NOT routed —
 /// they're EIP-level fallbacks consumed inline by <c>GethGenesisLoader</c>.
 /// </remarks>
@@ -60,15 +61,14 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? PragueTime { get => GetTime(); set => SetTime(value); }
     public ulong? OsakaTime { get => GetTime(); set => SetTime(value); }
     public ulong? AmsterdamTime { get => GetTime(); set => SetTime(value); }
-    // Devnet fork on top of Amsterdam. The genesis generator emits this as bogotaTime; the fork
-    // class is Bogota.
-    public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     /// <remarks>
-    /// They schedule on their own rather than with Bogota: the expiry-verifier predeploy they install shifts
-    /// every block's EIP-7928 access list, which the Bogota consensus fixtures pin.
+    /// The frame-transaction devnet's genesis generator emits this label for Amsterdam plus EIP-8141, which
+    /// is <see cref="Eip8141Prototype"/> here, so it routes there rather than to the <see cref="Bogota"/>
+    /// fork class of the same name. A genesis wanting EIP-7805 inclusion lists instead schedules them
+    /// through the chainspec's <c>eip7805TransitionTimestamp</c>.
     /// </remarks>
-    public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
+    public ulong? BogotaTime { get => GetTime(nameof(Eip8141Prototype)); set => SetTime(value, nameof(Eip8141Prototype)); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
