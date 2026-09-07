@@ -254,6 +254,10 @@ public class FrameTxFloodMeasurement
         int Shed,
         List<double> ProcessMicros);
 
+    /// <summary>Single source of truth for shed percentage, so rate-ramp and flood-delay rows agree.</summary>
+    private static double ShedPct(FloodOutcome outcome) =>
+        outcome.Submitted > 0 ? 100.0 * outcome.Shed / outcome.Submitted : 0;
+
     [SetUp]
     public void Setup()
     {
@@ -482,7 +486,7 @@ public class FrameTxFloodMeasurement
         double lagBudgetUs = offeredRate > 0 ? 1_000_000.0 / offeredRate * MaxSustainedLagPeriods : 0;
         bool lagBounded = offeredRate == 0 || flooded.MaxLagUs <= lagBudgetUs;
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
-        double shedPct = flooded.Submitted > 0 ? 100.0 * flooded.Shed / flooded.Submitted : 0;
+        double shedPct = ShedPct(flooded);
 
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
@@ -507,7 +511,8 @@ public class FrameTxFloodMeasurement
         using (Assert.EnterMultipleScope())
         {
             Assert.That(worstDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
-                $"the two idle baselines disagree by {baselineDriftPct:F1}%, so they describe different machine "
+                $"the two idle baselines disagree by up to {worstDriftPct:F1}% (p50 {baselineDriftPct:F1}%, "
+                + $"p99 {baselineTailDriftPct:F1}%), so they describe different machine "
                 + "states and no delta can be recovered from them. Re-run on a quieter machine. Rows between "
                 + $"{MaxBaselineDriftPercent}% and {BrokenBaselineDriftPercent}% are emitted with valid=no "
                 + "instead of failing.");
@@ -518,7 +523,7 @@ public class FrameTxFloodMeasurement
                 "the baseline window collected too few samples for a percentile to mean anything");
             Assert.That(flooded.Submitted, Is.GreaterThan(10),
                 "too few transactions landed inside the sampled window for this to be a sustained flood");
-            if (shape == "signature-stuffed" && _shedding)
+            if (shape == "signature-stuffed")
             {
                 Assert.That(flooded.Shed, Is.Zero,
                     "a signature refusal is charged before the simulator, so the admission budget must never see it");
@@ -607,7 +612,7 @@ public class FrameTxFloodMeasurement
                  + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
                  + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
                  + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
-                 + $"shed_pct={(outcome.Submitted > 0 ? outcome.Shed * 100.0 / outcome.Submitted : 0):F0} "
+                 + $"shed_pct={ShedPct(outcome):F1} "
                  + $"pending_pool_growth={outcome.PendingPoolGrowth} "
                  + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
 
