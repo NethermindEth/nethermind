@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -58,6 +58,9 @@ public class OpcodeChainBenchmarks
         _vm = _processingScope.Resolve<IVirtualMachine>();
         _stateScope = _state.BeginScope(IWorldState.PreGenesis);
         _state.CreateAccount(Address.Zero, UInt256.One);
+        if (Chain == "BalanceColdExistingPair")
+            for (int i = 2; i <= BodyOpcodeCount / 8 + 1; i++)
+                _state.CreateAccount(Address.FromNumber((uint)i), UInt256.One);
         if (Chain is "CallReturn" or "CallRevert" or "CallInput")
         {
             _state.CreateAccount(TestItem.AddressC, UInt256.One);
@@ -66,6 +69,7 @@ public class OpcodeChainBenchmarks
             _state.InsertCode(TestItem.AddressC, childCode, Osaka.Instance);
         }
         _state.Commit(Osaka.Instance);
+        if (Chain == "BalanceColdExistingPair") _state.CommitTree(0);
         _vm.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Osaka.Instance));
         _vm.SetTxExecutionContext(new TxExecutionContext(Address.Zero, _processingScope.Resolve<ICodeInfoRepository>(), null, 0));
         _tracer = Cancelable ? new CancellationTxTracer(NullTxTracer.Instance) : NullTxTracer.Instance;
@@ -79,6 +83,9 @@ public class OpcodeChainBenchmarks
         ReadOnlyMemory<byte> output = ExecuteContract();
         UInt256 expected = Chain switch
         {
+            "MulDup" => (UInt256)System.Numerics.BigInteger.ModPow(3, BodyOpcodeCount / 4, System.Numerics.BigInteger.One << 256),
+            "BalanceColdPair" or "BalanceColdExistingPair" => (UInt256)(BodyOpcodeCount / 8 + 1),
+            "BalanceColdSingle" => (UInt256)(BodyOpcodeCount / 5 + 1),
             "Arithmetic" => (UInt256)(BodyOpcodeCount / 2 + 1),
             "AddMod" => (UInt256)((BodyOpcodeCount / 4 + 1) % 251),
             "MulMod" => (UInt256)(ulong)System.Numerics.BigInteger.ModPow(3, BodyOpcodeCount / 4, 251),
@@ -116,7 +123,7 @@ public class OpcodeChainBenchmarks
             codeInfo: code, callDepth: 0, value: 0, inputData: _input);
         using StackAccessTracker accessTracker = new();
         using VmState<EthereumGasPolicy> state = VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, environment,
+            EthereumGasPolicy.FromULong(10_000_000), ExecutionType.TRANSACTION, environment,
             accessTracker, _state.TakeSnapshot());
         TransactionSubstate result = _vm.ExecuteTransaction<OffFlag>(state, _state, _tracer);
         if (result.IsError || result.ShouldRevert)
@@ -158,7 +165,7 @@ public class OpcodeChainBenchmarks
             code.AddRange(body);
             code.Add((byte)Instruction.JUMPDEST);
         }
-        else if (Chain.StartsWith("Div", StringComparison.Ordinal) || Chain.StartsWith("Mod", StringComparison.Ordinal))
+        else if (Chain != "DivIsZero" && (Chain.StartsWith("Div", StringComparison.Ordinal) || Chain.StartsWith("Mod", StringComparison.Ordinal)))
         {
             bool wide = Chain.EndsWith("Wide", StringComparison.Ordinal);
             UInt256 divisor = Chain.EndsWith("Zero", StringComparison.Ordinal) ? UInt256.Zero
@@ -190,6 +197,19 @@ public class OpcodeChainBenchmarks
         {
             (byte[] Sequence, int Opcodes) body = Chain switch
             {
+                "DivIsZero" => ([(byte)Instruction.PUSH1, 3, (byte)Instruction.PUSH1, 7,
+                    (byte)Instruction.DIV, (byte)Instruction.ISZERO, (byte)Instruction.POP], 5),
+                "MulDup" => ([(byte)Instruction.PUSH1, 3, (byte)Instruction.MUL, (byte)Instruction.DUP1, (byte)Instruction.POP], 4),
+                "SarAnd" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH1, 0, (byte)Instruction.SAR, (byte)Instruction.AND], 4),
+                "MemoryCopy" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH0,
+                    (byte)Instruction.PUSH0, (byte)Instruction.CALLDATACOPY], 4),
+                "MemoryHash" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH0,
+                    (byte)Instruction.KECCAK256, (byte)Instruction.POP], 4),
+                "BalanceColdSingle" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.ADD,
+                    (byte)Instruction.DUP1, (byte)Instruction.BALANCE, (byte)Instruction.POP], 5),
+                "BalanceColdPair" or "BalanceColdExistingPair" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.ADD,
+                    (byte)Instruction.DUP1, (byte)Instruction.BALANCE, (byte)Instruction.POP,
+                    (byte)Instruction.DUP1, (byte)Instruction.BALANCE, (byte)Instruction.POP], 8),
                 "Arithmetic" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.ADD], 2),
                 "AddMod" or "MulMod" or "AddModZero" or "MulModZero" => ([(byte)Instruction.PUSH1, Chain is "AddModZero" or "MulModZero" ? (byte)0 : (byte)251,
                     (byte)Instruction.SWAP1, (byte)Instruction.PUSH1, Chain is "MulMod" or "MulModZero" ? (byte)3 : (byte)1,

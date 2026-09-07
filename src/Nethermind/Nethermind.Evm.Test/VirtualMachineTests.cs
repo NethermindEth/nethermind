@@ -353,6 +353,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         ];
         foreach ((Instruction opcode, int depth, ulong cost) in operations)
         {
+            if (opcode is not (>= Instruction.DUP1 and <= Instruction.DUP16))
+                foreach (int fullDepth in new[] { 1023, 1024 })
+                    foreach (int tracerMode in new[] { 0, 1, 2 })
+                        foreach (bool sufficientGas in new[] { false, true })
+                            yield return new TestCaseData(opcode, fullDepth, cost, tracerMode, true, sufficientGas, false)
+                                .SetName($"Fixed_cost_full_stack_{opcode}_tracer_{tracerMode}_depth_{fullDepth}_gas_{sufficientGas}");
             foreach (int tracerMode in new[] { 0, 1, 2 })
             {
                 foreach (bool sufficientStack in new[] { false, true })
@@ -404,6 +410,69 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
             Assert.That(Machine.OpCodeCount, Is.EqualTo(pushes + 1 + (appendStop && expectedError is null ? 1 : 0)));
         }
+    }
+
+    [Test]
+    public void Checked_opcode_bodies_have_boundary_cases()
+    {
+        Dictionary<string, Instruction[]> coveredBodies = new()
+        {
+            ["Math2Opcode"] = [Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT],
+            ["Math3Opcode"] = [Instruction.ADDMOD, Instruction.MULMOD],
+            ["Math1Opcode"] = [Instruction.ISZERO, Instruction.NOT],
+            ["BitwiseOpcode"] = [Instruction.EQ, Instruction.AND, Instruction.OR, Instruction.XOR],
+            ["CountLeadingZerosOpcode"] = [Instruction.CLZ],
+            ["ByteOpcode"] = [Instruction.BYTE],
+            ["ShiftOpcode"] = [Instruction.SHL, Instruction.SHR],
+            ["SarOpcode"] = [Instruction.SAR],
+            ["EnvAddressOpcode"] = [Instruction.ADDRESS, Instruction.CALLER],
+            ["Env32BytesOpcode"] = [Instruction.ORIGIN, Instruction.CHAINID],
+            ["EnvUInt256Opcode"] = [Instruction.CALLVALUE],
+            ["EnvUInt32Opcode"] = [Instruction.CALLDATASIZE],
+            ["EnvUInt64Opcode"] = [Instruction.MSIZE],
+            ["BlkAddressOpcode"] = [Instruction.COINBASE],
+            ["BlkUInt256Opcode"] = [Instruction.GASPRICE, Instruction.BASEFEE],
+            ["BlkUInt64Opcode"] = [Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.GASLIMIT],
+            ["CallDataLoadOpcode"] = [Instruction.CALLDATALOAD],
+            ["CodeSizeOpcode"] = [Instruction.CODESIZE],
+            ["ReturnDataSizeOpcode"] = [Instruction.RETURNDATASIZE],
+            ["PrevRandaoOpcode"] = [Instruction.PREVRANDAO],
+            ["SelfBalanceOpcode"] = [Instruction.SELFBALANCE],
+            ["PopOpcode"] = [Instruction.POP],
+            ["ProgramCounterOpcode"] = [Instruction.PC],
+            ["GasOpcode"] = [Instruction.GAS],
+            ["Push0Opcode"] = [Instruction.PUSH0],
+            ["PushOpcode"] = OpcodeRange(Instruction.PUSH1, Instruction.PUSH32),
+            ["DupOpcode"] = OpcodeRange(Instruction.DUP1, Instruction.DUP16),
+            ["SwapOpcode"] = OpcodeRange(Instruction.SWAP1, Instruction.SWAP16),
+        };
+        HashSet<Instruction> coveredOpcodes = [.. StackGrowingOpcodes()];
+        foreach (TestCaseData testCase in FixedCostOpcodeGasCases())
+            coveredOpcodes.Add((Instruction)testCase.Arguments[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Type body in typeof(VirtualMachine<>).GetNestedTypes(BindingFlags.NonPublic))
+            {
+                if (!body.IsValueType || body.GetProperty("HasCheckedBody", BindingFlags.Public | BindingFlags.Static) is null)
+                    continue;
+
+                // Include conditional checked bodies even when this host disables their fast path.
+                string name = body.Name.Split('`')[0];
+                bool covered = coveredBodies.TryGetValue(name, out Instruction[] opcodes);
+                Assert.That(covered, Is.True, $"Add boundary cases for {name}.");
+                if (covered)
+                    foreach (Instruction opcode in opcodes)
+                        Assert.That(coveredOpcodes, Does.Contain(opcode), $"Missing {name}: {opcode}.");
+            }
+        }
+    }
+
+    private static Instruction[] OpcodeRange(Instruction first, Instruction last)
+    {
+        Instruction[] opcodes = new Instruction[last - first + 1];
+        for (int i = 0; i < opcodes.Length; i++) opcodes[i] = (Instruction)((int)first + i);
+        return opcodes;
     }
 
     private static IEnumerable<TestCaseData> StackGrowthCases()

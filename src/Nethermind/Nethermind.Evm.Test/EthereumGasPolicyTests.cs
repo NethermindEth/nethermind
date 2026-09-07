@@ -39,6 +39,26 @@ public class EthereumGasPolicyTests
         }
     }
 
+    [Test]
+    public void Memory_cost_rejects_full_width_length(
+        [Values] bool maxOffset, [Values(0UL, ulong.MaxValue)] ulong availableGas)
+    {
+        EvmPooledMemory memory = new();
+        memory.CalculateMemoryCost(UInt256.Zero, 64, out _);
+        UInt256 position = maxOffset ? UInt256.MaxValue : UInt256.Zero;
+        UInt256 length = new(0, 1, 0, 0);
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(availableGas);
+
+        bool success = EthereumGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref memory);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(memory.Size, Is.EqualTo(64));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(availableGas));
+        }
+    }
+
     [Test, Combinatorial]
     public void Specialized_account_access_matches_dynamic_policy_without_reading_fork_flags(
         [Values] bool eip8038,

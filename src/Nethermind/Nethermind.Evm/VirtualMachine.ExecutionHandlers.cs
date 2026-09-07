@@ -13,8 +13,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 {
     private ExecutionHandlers? _executionHandlers;
 
-    /// <remarks>Keeping this call boundary reduces guest execution cost.</remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(ExecutionHandlersInlining)]
     private ExecutionHandlers GetExecutionHandlers()
     {
         Debug.Assert(_executionHandlers is not null, "PrepareOpcodes resolves frame handlers before execution.");

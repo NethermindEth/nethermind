@@ -943,7 +943,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _cachedEpoch = _epoch;
             return _cachedAccount = _changes[head].Account;
         }
-        return GetAndAddToCache(address);
+        Account? account = GetAndAddToCache(address);
+        _cachedAddress = address;
+        _cachedEpoch = _epoch;
+        return _cachedAccount = account;
     }
 
     private void PushJustCache(Address address, Account account)

@@ -13,6 +13,9 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    // Keeping this call boundary reduces guest execution cost.
+    private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
+
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
     private static readonly OpcodeTable _opcodeTable = new();

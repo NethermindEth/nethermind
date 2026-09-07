@@ -10,6 +10,8 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.AggressiveInlining;
+
     // Weak keys: transient state-override specs in eth_simulateV1 must not be retained forever by this
     // process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
