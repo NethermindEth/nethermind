@@ -322,7 +322,7 @@ chmod -R a+rwX "$work/io"
 read -ra extra_args_arr <<< "$JB_EXTRA_ARGS"
 
 docker_common=(
-  --rm --name "$CONTAINER_NAME"
+  --name "$CONTAINER_NAME"
   --network host
   # CWD at the checkout root so a config's relative ./rpc-calls/*.jsonl fixtures
   # resolve (json-bench's loader forbids absolute paths).
@@ -332,6 +332,17 @@ docker_common=(
 )
 # A stale same-name container from a hard-interrupted run would fail docker run.
 docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+container_state_path="$work/container-state.json"
+tool_exit_code=""
+rm -f "$container_state_path"
+
+# Keep the short-lived runner container until its state has been inspected. A --rm container
+# erased the only evidence that distinguishes an OOM kill from a k6 write/exit failure, leaving
+# corpus warm-ups with the content-free "summary missing" message and no quality signal.
+capture_container_state() {
+  docker inspect --format '{{json .State}}' "$CONTAINER_NAME" > "$container_state_path" 2>/dev/null || :
+  docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+}
 
 # Resource sampling brackets container execution only. Cloning and building json-bench, converting
 # the corpus fixture and post-processing the summary all happen outside this window, so they cannot
@@ -348,7 +359,11 @@ stop_resource_sampler() {
   wait "$sampler_pid" 2>/dev/null
   sampler_pid=""
 }
-trap stop_resource_sampler EXIT
+cleanup_on_exit() {
+  stop_resource_sampler
+  [[ -s "$container_state_path" ]] || capture_container_state
+}
+trap cleanup_on_exit EXIT
 
 # Run the selected mode.
 tool_failed=0
@@ -360,6 +375,7 @@ if [[ "$JB_MODE" == "compare" ]]; then
   validate=()
   [[ "$JB_VALIDATE_SCHEMA" == "true" ]] && validate=(--validate-schema)
   log "json-bench compare: $LABEL vs $REFERENCE_LABEL (config: $JB_COMPARE_CONFIG)..."
+  set +e
   docker run "${docker_common[@]}" "$image_tag" \
     compare \
     --config "$compare_cfg" \
@@ -369,8 +385,11 @@ if [[ "$JB_MODE" == "compare" ]]; then
     --timeout "$JB_TIMEOUT" \
     --output /io/out \
     ${validate[@]+"${validate[@]}"} \
-    ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
-    || tool_failed=1
+    ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log"
+  tool_exit_code="${PIPESTATUS[0]}"
+  set -e
+  (( tool_exit_code == 0 )) || tool_failed=1
+  capture_container_state
 else
   # No --prometheus: json-bench builds per-client/per-method metrics from k6's
   # summary.json (which k6 writes anyway); per-call thresholds give the sub-metrics.
@@ -379,33 +398,58 @@ else
   log "json-bench benchmark (config: ${JB_BENCHMARK_CONFIG:-<generated default>}, summary.json metrics)..."
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     # Tool output may echo call contents — keep it in VM scratch (wiped next run), not the job log.
+    set +e
     docker run "${docker_common[@]}" "$image_tag" \
       benchmark \
       --config "$bench_cfg" \
       --clients /io/clients.yaml \
       --output /io/out \
-      ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 \
-      || tool_failed=1
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1
+    tool_exit_code="$?"
+    set -e
+    (( tool_exit_code == 0 )) || tool_failed=1
+    capture_container_state
     # Kept for the next invocation under JB_REUSE_PREPARED, which stretches the retention window
     # for the converted call bodies from "until the tool exits" to "until job cleanup": cleanup.sh
     # wipes scratch, and it runs if: always().
     [[ "$JB_REUSE_PREPARED" == "true" ]] || rm -f "$corpus_fixture"
-    if [[ "$tool_failed" == "1" ]]; then
-      die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"
-    fi
   else
+    set +e
     docker run "${docker_common[@]}" "$image_tag" \
       benchmark \
       --config "$bench_cfg" \
       --clients /io/clients.yaml \
       --output /io/out \
       ${html[@]+"${html[@]}"} \
-      ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
-      || tool_failed=1
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log"
+    tool_exit_code="${PIPESTATUS[0]}"
+    set -e
+    (( tool_exit_code == 0 )) || tool_failed=1
+    capture_container_state
   fi
 fi
 # Close the window before summary post-processing; the EXIT trap only covers an early exit.
 stop_resource_sampler
+
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  # This file contains only fixed aggregate fields. The raw summary and json-bench tool log stay
+  # in runner scratch, even when the warm-up fails before k6 writes a summary.
+  diagnose_args=(
+    "$work/io/out/summary.json" "$OUT_DIR/diagnostic.json"
+    --state "$container_state_path"
+    --output-root "$work/io/out"
+    --requested-duration "$JB_DURATION"
+    --tool-log "$work/jsonbench-tool.log"
+  )
+  [[ -n "$tool_exit_code" ]] && diagnose_args+=(--tool-exit-code "$tool_exit_code")
+  [[ -n "${RESOURCE_SAMPLER_OUT:-}" ]] && diagnose_args+=(--resources "$RESOURCE_SAMPLER_OUT")
+  python3 "$HERE/corpus_results.py" diagnose \
+    "${diagnose_args[@]}" \
+    || log "counts-only corpus diagnostic could not be written"
+  if [[ "$tool_failed" == "1" ]]; then
+    die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"
+  fi
+fi
 
 # Deep-check capture: replay each request once after the timed load (won't perturb k6),
 # storing raw responses keyed by request fingerprint for offline cross-client diff. Non-fatal.

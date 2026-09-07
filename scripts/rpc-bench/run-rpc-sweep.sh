@@ -217,6 +217,20 @@ print(v if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 el
 PY
 }
 
+# Requests actually replayed by the fixture-free warm-up. A missing/invalid sidecar means the
+# replay did not produce a usable aggregate and must not silently certify a cold measured cell.
+warm_replay_requests() {
+  [[ -s "$1" ]] || { echo 0; return 0; }
+  python3 - "$1" <<'PY' 2>/dev/null || echo 0
+import json, sys
+try:
+    value = (json.load(open(sys.argv[1])) or {}).get("requests")
+except Exception:
+    value = None
+print(int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else 0)
+PY
+}
+
 # Corpus mode raises start-node's uniform RPC_GAS_CAP (default 1e9) to 1e12: captured calls
 # carry explicit gas up to billions, and clamping them would make calls fail artificially.
 CORPUS_RPC_GAS_CAP="1000000000000"
@@ -258,6 +272,7 @@ node_issue=0
 cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
+warmup_fail=0 # requested warm-up missing a usable aggregate or delivering under 80% of its target
 BASELINE_LABEL=""  # first successfully started client; all later clients diff against it
 
 case "$JB_ETH_CALL_CORPUS" in
@@ -345,6 +360,7 @@ for entry in $CLIENTS; do
       # purpose: different corpora can touch disjoint state.
       WARMED_SECONDS=0
       WARMED_RPS=0
+      warm_cell=""
       if (( WARMUP_SECONDS > 0 )); then
         # Warm at CORPUS_WARMUP_RPS, which sizes the warm-up by the requests it delivers rather
         # than by the rate the cells are measured at — a short window at a high rate reaches the
@@ -375,32 +391,32 @@ for entry in $CLIENTS; do
           # status (a warm-up that did its job would report failure).
           if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
               "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS="$WARMUP_SECONDS"
             # The (seconds, rps) pair is read as the count the node absorbed, so the rate has to
             # be the delivered one. A short delivery is the failure mode this change can have —
             # 400 rps is above the 300 rps that already drove a 1.22% fail rate on arm64 — and
             # the warm-up's own fail gate is lifted, so nothing else would report it.
             warm_got="$(warm_delivered "$warm_cell/summary.json")"
             warm_want=$(( warm_rps * WARMUP_SECONDS ))
-            if (( warm_got > 0 )); then
+            if (( warm_got > 0 && warm_got * 10 >= warm_want * 8 )); then
+              WARMED_SECONDS="$WARMUP_SECONDS"
               WARMED_RPS=$(( warm_got / WARMUP_SECONDS ))
-              if (( warm_got * 10 < warm_want * 8 )); then
-                echo "::warning::warmup for ${label} delivered ${warm_got} of ${warm_want} requests (${WARMED_RPS} of ${warm_rps} rps) — measured cells may be under-warmed"
-              else
-                echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
-              fi
+              echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
             else
-              WARMED_RPS="$warm_rps"
-              echo "::warning::warmup for ${label}: no usable http_reqs count — recorded warmup_rps is the requested pace, not the delivered one"
+              WARMED_SECONDS=0
+              WARMED_RPS=0
+              warmup_fail=1
+              echo "::warning::warmup for ${label}: usable aggregate delivered ${warm_got} of ${warm_want} requests; measured cells are not a valid warm-up result"
             fi
           else
-            echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
+            warmup_fail=1
+            echo "::warning::warmup for ${label} failed — measured cells are not a valid warm-up result (recorded warmup_seconds=0)"
           fi
           report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
         elif [[ -z "${CORPUS_RECORDS[$corpus]:-}" ]]; then
           # Cannot size the replay without the record count (validate fills it for every corpus,
           # so this is defensive). A wrong guess would multiply by the real count inside
           # timings() and run for hours; skipping states the truth: not warmed.
+          warmup_fail=1
           echo "::warning::no record count for $(corpus_label "$corpus") — skipping warmup (recorded warmup_seconds=0)"
         else
           # Fixture-free mode: an empty rps_list exists so a large corpus never materializes the
@@ -416,24 +432,34 @@ for entry in $CLIENTS; do
           # short) window instead would truncate delivery below what the 240s default managed.
           warm_timeout=$(( WARMUP_SECONDS + 60 ))
           (( warm_timeout < 300 )) && warm_timeout=300
+          set +e
           timeout "$warm_timeout" python3 "$here/corpus_parity.py" timings \
               --corpus "$corpus" --rpc-url "http://localhost:8545" \
               --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
               --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"
           warm_status=$?
+          set -e
           # 124 = the timeout fired: the node still absorbed warm load for the whole window.
           if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
-            WARMED_SECONDS=$(( SECONDS - warm_started ))
+            warm_got="$(warm_replay_requests "$warm_cell/timings.meta.json")"
+            warm_want=$(( warm_rps * WARMUP_SECONDS ))
             # The replay writes its own meta beside the CSV, and achieved_rps there is measured.
-            # A fired timeout kills it before that write, so fall back to the pace it was asked
-            # for and say so rather than pairing measured seconds with a silent target.
-            WARMED_RPS="$(warm_replay_rps "$warm_cell/timings.meta.json")"
-            if [[ -z "$WARMED_RPS" ]]; then
-              WARMED_RPS="$warm_rps"
-              echo "::warning::warmup replay for ${label}: no achieved rate recorded — warmup_rps is the requested pace, not the delivered one"
+            # A fired timeout can kill it before that write; without the aggregate, the warm-up is
+            # invalid even though the next client is still allowed to run.
+            if (( warm_got > 0 && warm_got * 10 >= warm_want * 8 )); then
+              WARMED_SECONDS=$(( SECONDS - warm_started ))
+              warmup_replay_rps="$(warm_replay_rps "$warm_cell/timings.meta.json")"
+              WARMED_RPS="${warmup_replay_rps:-$warm_rps}"
+              echo "   warmup ${clabel}/${label}: replay delivered ${warm_got}/${warm_want} requests"
+            else
+              WARMED_SECONDS=0
+              WARMED_RPS=0
+              warmup_fail=1
+              echo "::warning::warmup replay for ${label}: usable aggregate delivered ${warm_got} of ${warm_want} requests; measured cells are not a valid warm-up result"
             fi
           else
-            echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
+            warmup_fail=1
+            echo "::warning::warmup replay for ${label} failed — measured cells are not a valid warm-up result (recorded warmup_seconds=0)"
           fi
         fi
       fi
@@ -448,6 +474,13 @@ for entry in $CLIENTS; do
         slot="$rps"
         (( ${RPS_SEEN["$rps"]} > 1 )) && slot="${rps}_r${RPS_SEEN["$rps"]}"
         cell="$OUT_DIR/corpus/${clabel}/${label}/${slot}"
+        # Keep the discarded load's fixed diagnostic beside every measured cell. The warm-up
+        # directory is scratch-only, so this is the aggregate evidence that a published result
+        # was warmed (or why it was not) without copying its raw corpus/tool output.
+        mkdir -p "$cell"
+        if [[ -n "$warm_cell" && -s "$warm_cell/diagnostic.json" ]]; then
+          cp "$warm_cell/diagnostic.json" "$cell/warmup-diagnostic.json"
+        fi
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
         echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
         run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname" \
@@ -522,11 +555,25 @@ for entry in $CLIENTS; do
   fi
   # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here with the same four checks.
   # Corpus mode prints COUNTS only (log lines could quote private call data) and deletes the log afterwards.
+  health_exception_count=0
+  health_gated_exception_count=0
+  health_invalid_block_count=0
+  health_clean_shutdown=true
+  [[ "$ctype" == "nethermind" ]] && health_clean_shutdown=false
+  health_unhandled_count=0
+  health_fatal_count=0
+  health_error_count=0
   if [[ -f "$cst/node.log" ]]; then
     clean="$cst/node.clean.log"
     sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$cst/node.log" > "$clean"
     grep -in "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' > "$cst/node.exc" || true
     exc_count="$(wc -l < "$cst/node.exc" | tr -d ' ')"
+    health_exception_count="$(grep -ci 'Exception' "$clean" || true)"
+    health_gated_exception_count="$exc_count"
+    health_invalid_block_count="$(grep -ciE 'invalid[[:space:]_-]*block' "$clean" || true)"
+    health_unhandled_count="$(grep -ci 'Unhandled' "$clean" || true)"
+    health_fatal_count="$(grep -ci 'Fatal' "$clean" || true)"
+    health_error_count="$(grep -ci 'ERROR' "$clean" || true)"
     if [[ "$ctype" == "nethermind" ]]; then
       # Exception / invalid-block / shutdown-marker wording is Nethermind-specific — gate only on NM cells.
       if [[ -s "$cst/node.exc" ]]; then
@@ -536,7 +583,10 @@ for entry in $CLIENTS; do
       fi
       if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${label}: invalid block in node log"; node_issue=1; fi
       # A missing marker means docker SIGKILLed a hung node or shutdown crashed — run untrustworthy.
-      if ! grep -q "Nethermind is shut down" "$clean"; then
+      if grep -q "Nethermind is shut down" "$clean"; then
+        health_clean_shutdown=true
+      else
+        health_clean_shutdown=false
         echo "::warning::${label}: 'Nethermind is shut down' marker not found — node did not shut down cleanly"; node_issue=1
       fi
     elif [[ -s "$cst/node.exc" ]]; then
@@ -554,6 +604,29 @@ for entry in $CLIENTS; do
     if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
       rm -f "$cst/node.log" "$clean" "$cst/node.exc"
     fi
+  fi
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    mkdir -p "$OUT_DIR/node-health/${label}"
+    python3 - "$OUT_DIR/node-health/${label}/node-health.json" \
+      "$health_exception_count" "$health_gated_exception_count" "$health_invalid_block_count" "$health_clean_shutdown" \
+      "$health_unhandled_count" "$health_fatal_count" "$health_error_count" <<'PY'
+import json
+import sys
+
+path, exception_count, gated_exception_count, invalid_block_count, clean_shutdown, unhandled_count, fatal_count, error_count = sys.argv[1:]
+data = {
+    "exception_count": int(exception_count),
+    "gated_exception_count": int(gated_exception_count),
+    "invalid_block_count": int(invalid_block_count),
+    "clean_shutdown": clean_shutdown == "true",
+    "unhandled_count": int(unhandled_count),
+    "fatal_count": int(fatal_count),
+    "error_count": int(error_count),
+}
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
+PY
   fi
   echo "::endgroup::"
 done
@@ -625,5 +698,8 @@ if [[ "$stop_fail" -eq 1 ]]; then
 fi
 if [[ "$parity_fail" -gt 0 ]]; then
   echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline client or a replay failed"; fail=1
+fi
+if [[ "$warmup_fail" -gt 0 ]]; then
+  echo "::error::${warmup_fail} requested warm-up(s) failed the usable-aggregate/80%-delivery contract — measured results are invalid"; fail=1
 fi
 exit "$fail"

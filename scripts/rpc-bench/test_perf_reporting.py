@@ -871,7 +871,7 @@ printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
 case "$1 $2" in
   "build -q") prev=""; for a in "$@"; do [[ "$prev" == "-t" ]] && : > "$FAKE_STATE/images/${a//:/_}"; prev="$a"; done ;;
   "image inspect") [[ -f "$FAKE_STATE/images/${3//:/_}" ]] ;;
-  "run --rm")
+  "run --rm"|"run --name")
     n=$(( $(cat "$FAKE_STATE/runs" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$FAKE_STATE/runs"
     for a in "$@"; do [[ "$a" == *:/io ]] && printf 'run %s\n' "$n" > "${a%:/io}/out/results.csv"; done
     true ;;
@@ -1139,6 +1139,16 @@ esac
         self.assertIn("exit 1", warmup)
         # The unprofiled path must still only warn.
         self.assertIn("::warning::warm-up failed", warmup)
+
+    def test_corpus_sweep_requires_a_usable_warmup_but_continues_to_the_next_client(self) -> None:
+        sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
+        self.assertIn("warmup_fail=0", sweep)
+        self.assertIn("warm_got * 10 >= warm_want * 8", sweep)
+        self.assertIn("usable aggregate delivered", sweep)
+        self.assertIn("requested warm-up(s) failed the usable-aggregate/80%-delivery contract", sweep)
+        # The per-client loop remains unconditional after the warm-up branch; the final gate is
+        # deliberately after all node/cell/parity work so a failed arm does not suppress its pair.
+        self.assertLess(sweep.index('for entry in $CLIENTS'), sweep.index('if [[ "$warmup_fail" -gt 0 ]]'))
 
     def test_dotnet_trace_sidecar_is_stopped_before_the_node_and_shipped_as_its_own_artifact(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
