@@ -172,6 +172,9 @@ internal static class RlpHelpers
     /// <summary>
     /// Counts the number of top-level RLP items in the given data range.
     /// </summary>
+    /// <remarks>Inlined despite the loop: trie node decoding calls it once per node with
+    /// <paramref name="maxSearch"/> of three, so the call frame cost more than the walk.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CountItems(ReadOnlySpan<byte> data, int position, int end, int maxSearch)
     {
         int numberOfItems = 0;

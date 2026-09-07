@@ -48,6 +48,7 @@ public ref struct RlpReader
         _isNotNull = true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public RlpReader(CappedArray<byte> data)
     {
         Data = data.AsSpan();
@@ -71,9 +72,11 @@ public ref struct RlpReader
 
     public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipLength() => Position += PeekPrefixLength();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,6 +136,7 @@ public ref struct RlpReader
         return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public byte ReadByte() => Data[Position++];
 
     public ReadOnlySpan<byte> Read(int length)
@@ -224,20 +228,23 @@ public ref struct RlpReader
         return DecodeKeccakPayload();
     }
 
+    /// <remarks>Compares through <see cref="ValueHash256"/>, whose equality is a whole-word 32-byte
+    /// compare, rather than <c>SequenceEqual</c>: the latter is an out-of-line call, and the zkVM guest
+    /// has no SIMD behind it.</remarks>
     private Hash256 DecodeKeccakPayload()
     {
-        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+        ValueHash256 keccak = new(Read(Hash256.Size));
+        if (keccak == Keccak.OfAnEmptyString)
         {
             return Keccak.OfAnEmptyString;
         }
 
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+        if (keccak == Keccak.EmptyTreeHash)
         {
             return Keccak.EmptyTreeHash;
         }
 
-        return new Hash256(keccakSpan);
+        return new Hash256(in keccak);
     }
 
     public ValueHash256? DecodeValueKeccak()
@@ -247,18 +254,8 @@ public ref struct RlpReader
             return null;
         }
 
-        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-        {
-            return Keccak.OfAnEmptyString.ValueHash256;
-        }
-
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-        {
-            return Keccak.EmptyTreeHash.ValueHash256;
-        }
-
-        return new ValueHash256(keccakSpan);
+        // No interning to do for a value: the well-known hashes decode to the same bits anyway.
+        return new ValueHash256(Read(Hash256.Size));
     }
 
     public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
