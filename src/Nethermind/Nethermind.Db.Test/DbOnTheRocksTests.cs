@@ -850,10 +850,42 @@ namespace Nethermind.Db.Test
             byte[][] keys = [[5], [2], [1], [3], [9]];
             KeyValuePair<byte[], byte[]?>[] results = _db[keys];
 
-            using (Assert.EnterMultipleScope())
+            AssertMultiGetResults(results, [[5], [2], [1], [3], [9]], [[55], null, [11], [33], null]);
+        }
+
+        [Test]
+        public void MultiGet_preserves_duplicate_requests()
+        {
+            _db[[7]] = [77];
+
+            KeyValuePair<byte[], byte[]?>[] results = _db[[7], [7]];
+
+            AssertMultiGetResults(results, [[7], [7]], [[77], [77]]);
+        }
+
+        [Test]
+        public void MultiGet_empty_batch_returns_empty_result()
+        {
+            KeyValuePair<byte[], byte[]?>[] results = _db[Array.Empty<byte[]>()];
+
+            Assert.That(results, Is.Empty);
+        }
+
+        private static void AssertMultiGetResults(
+            KeyValuePair<byte[], byte[]?>[] results,
+            byte[][] expectedKeys,
+            byte[]?[] expectedValues)
+        {
+            Assert.That(results, Has.Length.EqualTo(expectedKeys.Length));
+            Assert.That(results, Has.Length.EqualTo(expectedValues.Length));
+
+            for (int i = 0; i < results.Length; i++)
             {
-                Assert.That(results.Select(static result => result.Key), Is.EqualTo(new byte[][] { [5], [2], [1], [3], [9] }));
-                Assert.That(results.Select(static result => result.Value), Is.EqualTo(new byte[]?[] { [55], null, [11], [33], null }));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(results[i].Key, Is.EqualTo(expectedKeys[i]));
+                    Assert.That(results[i].Value, Is.EqualTo(expectedValues[i]));
+                }
             }
         }
 
