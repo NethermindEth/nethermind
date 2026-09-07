@@ -767,7 +767,6 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
         {
             inFlightDuringInvocation = _gate.InFlight;
-            _timeProvider.Advance(TimeSpan.FromMilliseconds(1));
             return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
         });
 
@@ -776,7 +775,6 @@ public class JsonRpcServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(inFlightDuringInvocation, Is.EqualTo(1), "the permit must be held while the method runs");
-            Assert.That(_gate.ServiceTimeMs, Is.EqualTo(1), "admission did not observe the call");
             Assert.That(_gate.InFlight, Is.EqualTo(0), "permit was not released");
         }
     }
@@ -833,7 +831,6 @@ public class JsonRpcServiceTests
         {
             Assert.That(_gate.InFlight, Is.EqualTo(0));
             Assert.That(_gate.Queued, Is.EqualTo(0));
-            Assert.That(_gate.ServiceTimeMs, Is.EqualTo(0));
         }
     }
 
@@ -914,21 +911,26 @@ public class JsonRpcServiceTests
         RpcTest.AssertSuccess<HexBytes>(await SendEthCallAsync(service));
     }
 
-    [TestCase(true, 0, false, TestName = "Raw params below one unit weigh one")]
-    [TestCase(true, 2, true, TestName = "Raw params are weighed by size")]
-    [TestCase(false, 0, false, TestName = "Parsed params below one unit weigh one")]
-    [TestCase(false, 2, true, TestName = "Parsed params are weighed by size")]
-    public async Task Evm_request_weight_follows_its_params_size(bool rawParams, int paddingUnits, bool shed)
+    [TestCase(true, 0, true, TestName = "Raw params below one unit overtake a heavier waiter")]
+    [TestCase(true, 2, false, TestName = "Raw params of the same weight queue behind it")]
+    [TestCase(false, 0, true, TestName = "Parsed params below one unit overtake a heavier waiter")]
+    [TestCase(false, 2, false, TestName = "Parsed params of the same weight queue behind it")]
+    public async Task Evm_request_weight_follows_its_params_size(bool rawParams, int paddingUnits, bool overtakes)
     {
-        // Predicted wait = queued work no heavier than the request x service time / permits: behind one queued
-        // three-unit request, at a 5 s service time and a 10 s budget, a request weighing up to two units overtakes
-        // it and queues while three or more units are shed up front.
         UseGate(SinglePermitConfig(maxQueueWaitMs: 10_000));
+        List<int> servedInputLengths = [];
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
+        {
+            lock (servedInputLengths)
+            {
+                servedInputLengths.Add(callInfo.Arg<SignableTransactionForRpc>() is LegacyTransactionForRpc { Input: { } input } ? input.Length : -1);
+            }
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
         IJsonRpcService service = CreateService(ethRpcModule);
-        // Calldata is hex-encoded on the wire, so half a unit of bytes pads the params by one unit.
-        LegacyTransactionForRpc transaction = new() { Input = new byte[paddingUnits * EvmAdmissionGate.BytesPerWeightUnit / 2] };
+        // Calldata is hex-encoded on the wire, so half a unit of bytes pads the params by one unit; the extra byte tells the two apart.
+        LegacyTransactionForRpc transaction = new() { Input = new byte[paddingUnits * EvmAdmissionGate.BytesPerWeightUnit / 2 + 1] };
         LegacyTransactionForRpc threeUnitTransaction = new() { Input = new byte[2 * EvmAdmissionGate.BytesPerWeightUnit / 2] };
         JsonRpcRequest request = rawParams
             ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)}]")
@@ -940,22 +942,16 @@ public class JsonRpcServiceTests
         {
             queued = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", threeUnitTransaction), _context).AsTask();
             await WaitUntil(() => _gate.Queued == 1);
-            _gate.SetServiceTimeMs(5_000);
-
             weighed = service.SendRequestAsync(request, _context).AsTask();
-            Assert.That(weighed.IsCompleted, Is.EqualTo(shed), "a shed request is answered up front, an admitted one waits for the permit");
+            await WaitUntil(() => _gate.Queued == 2);
         }
 
         RpcTest.AssertSuccess<HexBytes>(await queued.WaitAsync(TestTimeout));
-        JsonRpcResponse response = await weighed.WaitAsync(TestTimeout);
-        if (shed)
-        {
-            using JsonRpcErrorResponse error = AssertJsonRpcError(response, ErrorCodes.LimitExceeded, "Too many requests");
-        }
-        else
-        {
-            RpcTest.AssertSuccess<HexBytes>(response);
-        }
+        RpcTest.AssertSuccess<HexBytes>(await weighed.WaitAsync(TestTimeout));
+        int[] expectedOrder = overtakes
+            ? [transaction.Input!.Length, threeUnitTransaction.Input!.Length]
+            : [threeUnitTransaction.Input!.Length, transaction.Input!.Length];
+        Assert.That(servedInputLengths, Is.EqualTo(expectedOrder), "lighter requests are served first, equal weights FIFO");
     }
 
     [TestCase(true, ErrorCodes.LimitExceeded, 0, TestName = "Saturated gate sheds before binding")]

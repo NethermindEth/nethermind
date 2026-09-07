@@ -237,30 +237,12 @@ public class EvmAdmissionGateTests
         }
     }
 
-    [Test]
-    public async Task Rejects_immediately_when_predicted_wait_exceeds_budget()
-    {
-        long rejectionsBefore = Metrics.RpcAdmissionPredictedWaitRejections;
-        // Two permits: the first waiter has nothing queued ahead and always queues, however slow the gate; the second
-        // one predicts a wait of EWMA / 2, so this makes it 2x the budget.
-        _gate.SetServiceTimeMs(4.0 * MaxQueueWaitMs);
-        Lease[] held = [await Admit(), await Admit()];
-        Task<Lease> queued = Admit().AsTask();
-
-        Assert.Throws<LimitExceededException>(() => Admit());
-        Assert.That(Metrics.RpcAdmissionPredictedWaitRejections, Is.GreaterThan(rejectionsBefore));
-
-        held[0].Dispose();
-        held[1].Dispose();
-        (await queued.WaitAsync(WaitBudget)).Dispose();
-    }
-
     [TestCase(0, TestName = "Zero budget: shed on the calling thread, nothing queued")]
     [TestCase(100, TestName = "Positive budget: shed by the wait timeout")]
     public async Task Rejects_when_permits_never_free(int maxQueueWaitMs)
     {
         EvmAdmissionGate gate = CreateGate(SinglePermit(maxQueueWaitMs));
-        long rejectionsBefore = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionPredictedWaitRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
+        long rejectionsBefore = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionQueueFullRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
         Lease held = await Admit(gate);
 
         if (maxQueueWaitMs == 0)
@@ -275,7 +257,7 @@ public class EvmAdmissionGateTests
             Assert.ThrowsAsync<LimitExceededException>(() => waiting);
         }
 
-        long rejectionsAfter = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionPredictedWaitRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
+        long rejectionsAfter = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionQueueFullRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rejectionsAfter, Is.GreaterThan(rejectionsBefore));
@@ -293,13 +275,12 @@ public class EvmAdmissionGateTests
         fresh.Result.Dispose();
     }
 
-    [TestCase(QueueLimit, TestName = "RequestQueueLimit caps the waiters")]
-    [TestCase(0, TestName = "RequestQueueLimit zero lifts the cap")]
-    public async Task Queued_waiters_are_capped_by_the_request_queue_limit(int requestQueueLimit)
+    [TestCase(QueueLimit, TestName = "EvmExecutionQueueLimit caps the waiters")]
+    [TestCase(0, TestName = "EvmExecutionQueueLimit zero lifts the cap")]
+    public async Task Queued_waiters_are_capped_by_the_queue_limit(int queueLimit)
     {
-        EvmAdmissionGate gate = CreateGate(SinglePermit(requestQueueLimit: requestQueueLimit));
-        long rejectionsBefore = Metrics.RpcAdmissionPredictedWaitRejections;
-        // With the EWMA unseeded every arrival predicts a zero wait, so only the cap can stop the queue from growing.
+        EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
+        long rejectionsBefore = Metrics.RpcAdmissionQueueFullRejections;
         Lease held = await Admit(gate);
         List<Task<Lease>> queued = [];
         for (int i = 0; i < QueueLimit; i++)
@@ -308,7 +289,7 @@ public class EvmAdmissionGateTests
         }
         Assert.That(gate.Queued, Is.EqualTo(QueueLimit), "waiters up to the limit must be queued");
 
-        if (requestQueueLimit == 0)
+        if (queueLimit == 0)
         {
             queued.Add(Admit(gate).AsTask());
             Assert.That(gate.Queued, Is.EqualTo(QueueLimit + 1));
@@ -318,7 +299,7 @@ public class EvmAdmissionGateTests
             Assert.Throws<LimitExceededException>(() => Admit(gate), "the waiter over the limit must be shed synchronously");
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(Metrics.RpcAdmissionPredictedWaitRejections, Is.GreaterThan(rejectionsBefore));
+                Assert.That(Metrics.RpcAdmissionQueueFullRejections, Is.GreaterThan(rejectionsBefore));
                 Assert.That(gate.Queued, Is.EqualTo(QueueLimit));
             }
         }
@@ -331,12 +312,11 @@ public class EvmAdmissionGateTests
         Assert.That(gate.InFlight, Is.EqualTo(0));
     }
 
-    // The prediction is zero until the first request has been served, so only the budget and the cap bound an unseeded gate.
     [TestCase(0, TestName = "Uncapped queue")]
     [TestCase(QueueLimit, TestName = "Capped queue")]
-    public async Task Unseeded_gate_expires_every_waiter_at_the_budget(int requestQueueLimit)
+    public async Task Every_waiter_expires_at_the_budget(int queueLimit)
     {
-        EvmAdmissionGate gate = CreateGate(SinglePermit(requestQueueLimit: requestQueueLimit));
+        EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
         using Lease held = await Admit(gate);
         List<Task<Lease>> queued = [];
         for (int i = 0; i < QueueLimit; i++)
@@ -344,7 +324,7 @@ public class EvmAdmissionGateTests
             queued.Add(Admit(gate).AsTask());
         }
 
-        if (requestQueueLimit == 0)
+        if (queueLimit == 0)
         {
             queued.Add(Admit(gate).AsTask());
         }
@@ -488,28 +468,6 @@ public class EvmAdmissionGateTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(4)]
-    public async Task Service_time_ewma_is_normalised_by_weight(int weight)
-    {
-        const int holdMs = 40;
-
-        using (await Admit(weight))
-        {
-            _timeProvider.Advance(TimeSpan.FromMilliseconds(holdMs));
-        }
-
-        Assert.That(_gate.ServiceTimeMs, Is.EqualTo((double)holdMs / weight));
-    }
-    [Test]
-    public async Task Service_time_ewma_folds_each_release_in()
-    {
-        _gate.SetServiceTimeMs(1_000);
-
-        (await Admit()).Dispose();
-
-        Assert.That(_gate.ServiceTimeMs, Is.EqualTo(900), "one ~0 ms observation at alpha 0.1");
-    }
     [Test]
     [NonParallelizable]
     public async Task Queued_and_in_flight_gauges_follow_the_gate()
@@ -529,9 +487,9 @@ public class EvmAdmissionGateTests
         {
             Assert.That(Metrics.RpcAdmissionInFlight, Is.EqualTo(0));
             Assert.That(Metrics.RpcAdmissionQueued, Is.EqualTo(0));
-            Assert.That(Metrics.RpcAdmissionServiceTimeMs, Is.EqualTo(_gate.ServiceTimeMs));
         }
     }
+
     [Test]
     public async Task Lighter_waiters_are_served_first_and_fifo_within_a_weight()
     {
@@ -560,40 +518,6 @@ public class EvmAdmissionGateTests
         {
             Assert.That(_gate.Queued, Is.EqualTo(0));
             Assert.That(_gate.InFlight, Is.EqualTo(0));
-        }
-    }
-
-    // EWMA = budget / 4 per unit with two permits; a weight-8 and a weight-4 waiter are queued when the request under test arrives.
-    [TestCase(1, false, TestName = "Weight 1 overtakes both waiters: 0 x budget / 8 is admitted")]
-    [TestCase(4, false, TestName = "Weight 4 queues behind the weight-4 waiter only: 4 x budget / 8 is admitted")]
-    [TestCase(8, true, TestName = "Weight 8 queues behind both: (4 + 8) x budget / 8 is shed")]
-    public async Task Predicted_wait_counts_only_the_queued_work_a_request_cannot_overtake(int weight, bool shed)
-    {
-        _gate.SetServiceTimeMs(MaxQueueWaitMs / 4.0);
-        Lease[] held = [await Admit(), await Admit()];
-        Task<Lease> heavy = Admit(MaxWeight).AsTask();
-        Task<Lease> medium = Admit(4).AsTask();
-        List<Task<Lease>> serviceOrder = [medium, heavy];
-
-        if (shed)
-        {
-            Assert.Throws<LimitExceededException>(() => Admit(weight));
-        }
-        else
-        {
-            Task<Lease> admitted = Admit(weight).AsTask();
-            Assert.That(admitted.IsCompleted, Is.False, "an admitted request waits for a permit");
-            // Lightest first, FIFO within a weight: a request of the medium weight is served after the medium waiter.
-            serviceOrder.Insert(weight < 4 ? 0 : 1, admitted);
-        }
-
-        Assert.That(_gate.Queued, Is.EqualTo(serviceOrder.Count));
-        held[0].Dispose();
-        held[1].Dispose();
-        // Drained in service order, so each disposed lease frees the permit the next waiter is granted.
-        foreach (Task<Lease> admission in serviceOrder)
-        {
-            (await admission.WaitAsync(WaitBudget)).Dispose();
         }
     }
 
@@ -669,8 +593,8 @@ public class EvmAdmissionGateTests
             Assert.That(admitted + shed, Is.EqualTo(requests));
             Assert.That(admitted, Is.GreaterThan(0));
             Assert.That(shed, Is.GreaterThan(0));
-            // Deliberately not asserting which shed path ran: with a 1 ms budget the byte-weighted prediction can reject
-            // every waiter up front, so no queue timeout need fire at all.
+            // Deliberately not asserting which shed path ran: the default queue limit can reject up front before any
+            // 1 ms budget expires.
             Assert.That(gate.InFlight, Is.EqualTo(0));
             Assert.That(gate.Queued, Is.EqualTo(0));
         }
@@ -708,12 +632,12 @@ public class EvmAdmissionGateTests
     private EvmAdmissionGate CreateGate(JsonRpcConfig config, TimeProvider? timeProvider = null) =>
         new(config, LimboLogs.Instance, timeProvider ?? _timeProvider);
 
-    private static JsonRpcConfig SinglePermit(int maxQueueWaitMs = MaxQueueWaitMs, int requestQueueLimit = 500) => new()
+    private static JsonRpcConfig SinglePermit(int maxQueueWaitMs = MaxQueueWaitMs, int queueLimit = 500) => new()
     {
         EvmExecutionConcurrency = 1,
         EthModuleConcurrentInstances = 1,
         EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
-        RequestQueueLimit = requestQueueLimit,
+        EvmExecutionQueueLimit = queueLimit,
     };
 
     private ValueTask<Lease> Admit(int weight = MinWeight) => Admit(_gate, weight);
