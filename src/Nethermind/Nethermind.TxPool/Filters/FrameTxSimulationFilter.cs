@@ -14,7 +14,9 @@ namespace Nethermind.TxPool.Filters;
 /// frame may spend here — with no simulator-side floor under it, unlike execution gas, so zeroing
 /// <see cref="ITxPoolConfig.FrameTxMaxVerifyStateGas"/> lifts that bound entirely. Runs inside the pool's
 /// head read lock, so the simulator has to bound its own wait.
-/// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.</remarks>
+/// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.
+/// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
+/// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.</remarks>
 internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)

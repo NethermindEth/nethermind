@@ -482,7 +482,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong grossGasBeforeCorrection = intrinsicGas + totalFrameGasUsed;
         ulong stateGasCorrectionApplied = (ulong)Math.Max(0, stateGasCorrection);
         ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionApplied ? grossGasBeforeCorrection - stateGasCorrectionApplied : 0;
-        System.Diagnostics.Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
+        Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
         ulong gasAfterRefund = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
         // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.

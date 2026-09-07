@@ -15,7 +15,8 @@ namespace Nethermind.Serialization.Rlp
     public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
+        internal const int MaxReceiptLogs = 270_000;
+        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(MaxReceiptLogs, nameof(TxReceipt.Logs));
         private static readonly RlpLimit FrameReceiptsRlpLimit = RlpLimit.For<TxReceipt>(Eip8141Constants.MaxFrames, nameof(TxReceipt.FrameReceipts));
 
         [return: MaybeNull]
@@ -120,6 +121,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 int frameEnd = ctx.ReadSequenceLength() + ctx.Position;
                 byte status = ctx.DecodeByte();
+                if (status > TxFrameReceipt.StatusSkipped)
+                {
+                    // AggregateStatus folds anything but success to failure while RPC surfaces the raw byte,
+                    // so an out-of-range status would read differently at the two ends of the same receipt.
+                    ThrowUnknownFrameStatus(status);
+                }
                 int gasUsedEnd = ctx.ReadSequenceLength() + ctx.Position;
                 ulong executionGasUsed = ctx.DecodeULong();
                 ulong stateGasUsed = ctx.DecodeULong();
@@ -128,6 +135,14 @@ namespace Nethermind.Serialization.Rlp
                 int logsEnd = ctx.ReadSequenceLength() + ctx.Position;
                 int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, LogsRlpLimit.Limit + 1);
                 ctx.GuardLimit(logCount, LogsRlpLimit);
+                // The limit is derived from a whole transaction's gas, so it budgets the receipt rather than
+                // each frame; spending it per frame would admit MaxFrames times the emissions it stands for.
+                totalLogs += logCount;
+                if (totalLogs > LogsRlpLimit.Limit)
+                {
+                    ThrowTooManyFrameLogs(totalLogs);
+                }
+
                 LogEntry[] logs = new LogEntry[logCount];
                 for (int j = 0; j < logCount; j++)
                 {
@@ -135,7 +150,6 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 frameReceipts[i] = new TxFrameReceipt(status, executionGasUsed, stateGasUsed, logs);
-                totalLogs += logCount;
                 ctx.Check(frameEnd);
             }
 
@@ -165,6 +179,14 @@ namespace Nethermind.Serialization.Rlp
             [DoesNotReturn, StackTraceHidden]
             static void ThrowEmptyFrameReceipts()
                 => throw new RlpException("Frame transaction receipt carries no frame receipts");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnknownFrameStatus(byte status)
+                => throw new RlpException($"Frame receipt status {status} is not one of failure, success or skipped");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowTooManyFrameLogs(int totalLogs)
+                => throw new RlpException($"Frame transaction receipt carries {totalLogs} logs, over the {LogsRlpLimit.Limit} a receipt may hold");
         }
 
         private static (int Total, int Frames) GetFrameTxContentLength(TxReceipt item)
