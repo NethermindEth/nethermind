@@ -769,8 +769,10 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
 - Per node: `Network.Bootnodes` (running a dedicated bootnode and leaving the chainspec's `nodes` array empty
   keeps the chain description free of deployment detail — `Network.StaticPeers` works instead when there is no
   bootnode), `Network.P2PPort` and `Network.DiscoveryPort` (keep the two equal), `Network.ExternalIp` set to
-  the address peers should dial, `KeyStore.TestNodeKey`, `--data-dir`, and the `JsonRpc` settings — with `Xdc`
-  among `JsonRpc.EnabledModules`, since the `XDPoS_*` methods are not in the default set.
+  the address peers should dial, `KeyStore.TestNodeKey`, `--data-dir`, and the `JsonRpc` settings.
+  `JsonRpc.EnabledModules` replaces the default list rather than adding to it, so name `Xdc` for the
+  `XDPoS_*` methods *and* everything else the node should still serve — `Net` for `net_peerCount`, for
+  instance.
 - Sanity checks once it runs: `net_peerCount` should see the other nodes, `XDPoS_getMasternodesByNumber`
   should list the committee, and `XDPoS_getV2BlockByNumber` should show rounds advancing and blocks being
   committed.
