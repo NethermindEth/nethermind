@@ -12,9 +12,9 @@ namespace Nethermind.Core;
 
 /// <summary>Hashes a <see cref="UInt256"/> key through the run-seeded mixer.</summary>
 /// <remarks>
-/// Slot-keyed containers use the span mixer directly. In the guest,
-/// <see cref="SpanExtensions.SeedHashes(in UInt256)"/> installs the same full-width seed for both this
-/// mixer and <see cref="UInt256.GetHashCode"/>; on the host each uses its own process-random seed.
+/// Guest slot-keyed containers use the span mixer directly so that
+/// <see cref="SpanExtensions.SeedHashes(in UInt256)"/> controls their hashes independently of the
+/// int256 package. Host containers use the package's process-seeded default comparer.
 /// </remarks>
 public sealed class UInt256Comparer : IEqualityComparer<UInt256>
 {

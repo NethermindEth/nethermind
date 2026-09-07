@@ -33,7 +33,6 @@ namespace Nethermind.Core.Extensions
         public static partial void SeedHashes(in Int256.UInt256 seed)
         {
             InstanceRandom = seed;
-            Int256.UInt256.SeedHashes(in InstanceRandom);
             ShortHashSeeds = CreateShortHashSeeds(in InstanceRandom);
             AddressSeeds = [DeriveAddressSeed(seed.u0), DeriveAddressSeed(seed.u1),
                 DeriveAddressSeed(seed.u2), DeriveAddressSeed(seed.u3)];

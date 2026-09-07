@@ -111,7 +111,7 @@ public class GuestMixerTests
         long before = Hash(key);
         long publicBefore = PublicHash(key);
         UInt256 slot = new(0xAB, 0xCD, 0xEF, 0x01);
-        int slotBefore = slot.GetHashCode();
+        int slotBefore = UInt256Comparer.Instance.GetHashCode(slot);
 
         UInt256 changed = SeedGuestHashes.Seed ^ (UInt256.One << bit);
         Span<byte> bytes = stackalloc byte[32];
@@ -119,7 +119,7 @@ public class GuestMixerTests
         SpanExtensions.SeedHashes(new ValueHash256(bytes));
         long after = Hash(key);
         long publicAfter = PublicHash(key);
-        int slotAfter = slot.GetHashCode();
+        int slotAfter = UInt256Comparer.Instance.GetHashCode(slot);
         SpanExtensions.SeedHashes(changed);
 
         using (Assert.EnterMultipleScope())
@@ -127,7 +127,7 @@ public class GuestMixerTests
             Assert.That(after, Is.Not.EqualTo(before), "changed seed bit");
             Assert.That(Hash(key), Is.EqualTo(after), "equivalent seed overloads");
             Assert.That(publicAfter, Is.Not.EqualTo(publicBefore), "public hash uses every seed bit");
-            Assert.That(slotAfter, Is.Not.EqualTo(slotBefore), "Int256 receives every seed bit");
+            Assert.That(slotAfter, Is.Not.EqualTo(slotBefore), "The guest slot comparer receives every seed bit");
             Assert.That(SpanExtensions.InstanceRandom, Is.EqualTo(changed), "full-width seed retained");
         }
     }
