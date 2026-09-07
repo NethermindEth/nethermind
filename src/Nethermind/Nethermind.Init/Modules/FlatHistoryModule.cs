@@ -49,6 +49,8 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
                 ctx.Resolve<HistoryScopeGate>()))
             .AddStep(typeof(SeedFlatHistoryGenesis))
+            .AddSingleton<OrphanStorageRowSweep>()
+            .AddStep(typeof(StartFlatOrphanStorageRowSweep))
             .AddStep(typeof(StartHistoryWindowPruner))
             // Only a node configuring slices tells the history pruner to keep any receipts; everyone else keeps
             // the default that never retains, and never pays for the bloom probe or the log-index lookup.
