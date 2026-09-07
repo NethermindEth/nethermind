@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
@@ -86,8 +85,12 @@ public partial class DebugRpcModuleTests
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, "0x0");
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockParameter, "0x0");
 
-        Assert.That(JToken.Parse(expected)["result"], Is.Not.Null, "the numeric baseline must actually trace, otherwise the comparison below is vacuous");
-        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+        JToken expectedToken = JToken.Parse(expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedToken["result"]?["failed"]?.Value<bool>(), Is.False, "the numeric baseline must actually trace, otherwise the comparison below is vacuous");
+            Assert.That(JToken.Parse(response), Is.EqualTo(expectedToken).Using(JToken.EqualityComparer));
+        }
     }
 
     [Test]
@@ -113,9 +116,27 @@ public partial class DebugRpcModuleTests
         string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", canonical.Number, "0x0");
         string byHash = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", sideChain.Hash!, "0x0");
 
-        Assert.That(JToken.Parse(byNumber)["result"]?["failed"]?.Value<bool>(), Is.False, "the canonical block at that height does have a transaction to trace");
-        Assert.That(JToken.Parse(byHash)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
-            "a non-canonical hash must not silently trace the canonical block at the same height");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(byNumber)["result"]?["failed"]?.Value<bool>(), Is.False, "the canonical block at that height does have a transaction to trace");
+            Assert.That(JToken.Parse(byHash)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
+                "a non-canonical hash must not silently trace the canonical block at the same height");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_rejects_a_negative_index()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+        Block head = context.Blockchain.BlockTree.Head!;
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, -1);
+
+        Assert.That(JToken.Parse(response)["result"]?["error"]?.Value<string>(),
+            Does.Contain($"has only {head.Transactions.Length} transactions and the requested tx index was -1"),
+            "a negative index must be reported by the bounds check, not indexed into the transaction array");
     }
 
     private static async Task<Transaction> AddBlockWithTransfer(Context context)

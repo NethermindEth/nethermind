@@ -149,6 +149,10 @@ public class DebugBridge : IDebugBridge
         return block?.Transactions[txReceipt.Index];
     }
 
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
+    public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
+
     public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
