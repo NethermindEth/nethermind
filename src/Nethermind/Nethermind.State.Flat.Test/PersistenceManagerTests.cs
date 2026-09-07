@@ -66,7 +66,7 @@ public class PersistenceManagerTests
 
         _persistenceManager = new PersistenceManager(
             _config,
-            ScheduleHelper.CreateWithOffset(_config, 0),
+            _tier.Resolve<ICompactionSchedule>(),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,

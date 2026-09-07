@@ -66,15 +66,15 @@ public class PersistedSnapshotCompactor(
     /// <inheritdoc/>
     public async ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
-        // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
-        _ = EnsureStarted();
         try
         {
+            // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
+            _ = EnsureStarted();
             // Awaits a free slot on the bounded queue, providing backpressure without blocking a thread;
             // the caller's token releases the wait on shutdown.
             await _compactPersistedJobs.Writer.WriteAsync((batch, persistedBlockNumber), cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
             // The batch never entered the channel, so dispose the handoff we still own.
             batch.Dispose();

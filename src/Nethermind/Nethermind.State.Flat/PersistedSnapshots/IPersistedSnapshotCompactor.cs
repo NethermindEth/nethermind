@@ -13,9 +13,9 @@ public interface IPersistedSnapshotCompactor : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// Takes ownership of <paramref name="batch"/> and disposes it once the batch has been
-    /// processed (or drained on cancellation). Asynchronously awaits a free slot when the internal
-    /// queue is full, providing backpressure to the block-processing pipeline without blocking a
-    /// thread.
+    /// processed, rejected during enqueue, or drained on cancellation. Asynchronously awaits a free
+    /// slot when the internal queue is full, providing backpressure to the block-processing pipeline
+    /// without blocking a thread.
     /// </remarks>
     /// <param name="batch">The converted states to compact; ownership transfers to the compactor.</param>
     /// <param name="persistedBlockNumber">The current persistence point (RocksDB persisted state block).
