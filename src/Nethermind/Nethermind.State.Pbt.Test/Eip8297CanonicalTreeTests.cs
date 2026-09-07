@@ -749,6 +749,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.EmittedNodeWrites, Is.Zero);
             Assert.That(store.LastNodeWrites, Is.Zero);
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     [Test]

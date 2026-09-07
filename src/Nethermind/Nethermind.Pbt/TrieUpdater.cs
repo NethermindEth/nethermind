@@ -35,7 +35,7 @@ public static class TrieUpdater
         if (changes.Count == 0) return currentRoot;
 
         PbtWriteOperation[] operations = [.. changes.Operations];
-        using GroupFrameReader group = new(store, RootPath, metrics);
+        using GroupMutationFrame group = new(store, RootPath, metrics);
         PbtNode? root = group.Take(RootPath, allowAbsent: true);
         Subtree result = FoldMutations(store, metrics, group, new(root, RootPath), 0, operations);
         ValueHash256 hash = Place(group, result, RootPath);
@@ -46,7 +46,7 @@ public static class TrieUpdater
     private static Subtree FoldMutations(
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
-        GroupFrameReader ownerGroup,
+        GroupMutationFrame ownerGroup,
         Subtree current,
         int depth,
         Span<PbtWriteOperation> operations)
@@ -122,7 +122,7 @@ public static class TrieUpdater
         if (ownerGroup.BitDepth == depth)
             return FoldBoundary(store, metrics, ownerGroup, current, depth, operations);
 
-        using GroupFrameReader group = new(store, PbtNodePath.FromKey(operations[0].Key, depth), metrics);
+        using GroupMutationFrame group = new(store, PbtNodePath.FromKey(operations[0].Key, depth), metrics);
         Subtree result = FoldBoundary(store, metrics, group, current, depth, operations);
         group.Flush();
         return result;
@@ -131,7 +131,7 @@ public static class TrieUpdater
     private static Subtree FoldBoundary(
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
-        GroupFrameReader group,
+        GroupMutationFrame group,
         Subtree current,
         int depth,
         Span<PbtWriteOperation> operations)
@@ -175,7 +175,7 @@ public static class TrieUpdater
         return Resolve(group, boundaries[0]);
     }
 
-    private static void Decompose(GroupFrameReader group, Subtree current, int depth, Span<Subtree> boundaries)
+    private static void Decompose(GroupMutationFrame group, Subtree current, int depth, Span<Subtree> boundaries)
     {
         if (current.IsEmpty) return;
         int boundaryDepth = depth + PbtFourLevelGroupGeometry.LevelsPerGroup;
@@ -241,10 +241,10 @@ public static class TrieUpdater
         return new(new PbtLeafNode(operation.Key, operation.Value), null);
     }
 
-    private static Subtree Resolve(GroupFrameReader group, Subtree subtree) =>
+    private static Subtree Resolve(GroupMutationFrame group, Subtree subtree) =>
         subtree.IsEmpty || subtree.Node is not null ? subtree : new(group.Take(subtree.Path!)!, subtree.Path);
 
-    private static ValueHash256 Place(GroupFrameReader group, Subtree subtree, PbtNodePath path)
+    private static ValueHash256 Place(GroupMutationFrame group, Subtree subtree, PbtNodePath path)
     {
         if (subtree.IsEmpty) return default;
         if (subtree.Node is null && path.Equals(subtree.Path)) return subtree.Hash;
@@ -452,22 +452,15 @@ public static class TrieUpdater
         return index;
     }
 
-    private sealed class GroupFrameReader : IDisposable
+    private readonly struct GroupFrameReader : IDisposable
     {
-        private readonly IPbtStore _store;
-        private readonly TrieUpdaterMetrics? _metrics;
         private readonly RefCountingMemory? _lease;
-        private OffsetBuffer _offsets;
-        private LengthBuffer _lengths;
-        private NodeBuffer _nodes;
-        private uint _changed;
+        private readonly OffsetBuffer _offsets;
+        private readonly LengthBuffer _lengths;
 
         internal GroupFrameReader(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics)
         {
-            _store = store;
             GroupKey = groupKey;
-            _metrics = metrics;
-            metrics?.IncrementGroupFrameResolutions();
             metrics?.IncrementPhysicalGroupFetches();
             _lease = store.GetNodeGroup(groupKey);
             if (_lease is null) return;
@@ -493,12 +486,64 @@ public static class TrieUpdater
         internal PbtNodePath GroupKey { get; }
         internal int BitDepth => GroupKey.BitDepth;
 
+        internal ReadOnlyMemory<byte> GetEncoding(int position) => _lengths[position] == 0
+            ? default
+            : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+
+        internal int Position(PbtNodePath path)
+        {
+            int completeBytes = BitDepth >> 3;
+            int remainingBits = BitDepth & 7;
+            if (PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) != BitDepth
+                || !path.Path[..completeBytes].SequenceEqual(GroupKey.Path[..completeBytes])
+                || (remainingBits != 0 && ((path.Path[completeBytes] ^ GroupKey.Path[completeBytes]) & 0xF0) != 0))
+                throw new InvalidOperationException("The PBT node does not belong to the active group.");
+            return PbtFourLevelGroupGeometry.PositionOf(path);
+        }
+
+        public void Dispose() => ((IDisposable?)_lease)?.Dispose();
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct OffsetBuffer
+        {
+            private int _element;
+        }
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct LengthBuffer
+        {
+            private int _element;
+        }
+    }
+
+    private sealed class GroupMutationFrame : IDisposable
+    {
+        private readonly IPbtStore _store;
+        private readonly TrieUpdaterMetrics? _metrics;
+        private readonly GroupFrameReader _reader;
+        private NodeBuffer _nodes;
+        private uint _changed;
+
+        internal GroupMutationFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics)
+        {
+            _store = store;
+            _metrics = metrics;
+            metrics?.IncrementGroupFrameResolutions();
+            _reader = new(store, groupKey, metrics);
+        }
+
+        internal PbtNodePath GroupKey => _reader.GroupKey;
+        internal int BitDepth => _reader.BitDepth;
+
         internal PbtNode? Take(PbtNodePath path, bool allowAbsent = false)
         {
-            int position = Position(path);
+            int position = _reader.Position(path);
             PbtNode? node = _nodes[position];
-            if ((_changed & (1U << position)) == 0 && _lengths[position] != 0)
-                node ??= PbtNodeCodec.Decode(_lease!.GetSpan().Slice(_offsets[position], _lengths[position]));
+            if ((_changed & (1U << position)) == 0)
+            {
+                ReadOnlyMemory<byte> encoding = _reader.GetEncoding(position);
+                if (!encoding.IsEmpty) node ??= PbtNodeCodec.Decode(encoding.Span);
+            }
             if (node is null && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
             _nodes[position] = null;
             _changed |= 1U << position;
@@ -507,7 +552,7 @@ public static class TrieUpdater
 
         internal void Store(PbtNodePath path, PbtNode node)
         {
-            int position = Position(path);
+            int position = _reader.Position(path);
             _nodes[position] = node;
             _changed |= 1U << position;
         }
@@ -521,9 +566,7 @@ public static class TrieUpdater
             bool anyPresent = false;
             for (int position = 0; position < encodings.Length; position++)
             {
-                ReadOnlyMemory<byte> previous = _lengths[position] == 0
-                    ? default
-                    : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+                ReadOnlyMemory<byte> previous = _reader.GetEncoding(position);
                 ReadOnlyMemory<byte> encoding = previous;
                 if ((_changed & (1U << position)) != 0)
                 {
@@ -558,30 +601,7 @@ public static class TrieUpdater
             _metrics?.AddEmittedNodeWrites(changedNodes);
         }
 
-        private int Position(PbtNodePath path)
-        {
-            int completeBytes = BitDepth >> 3;
-            int remainingBits = BitDepth & 7;
-            if (PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) != BitDepth
-                || !path.Path[..completeBytes].SequenceEqual(GroupKey.Path[..completeBytes])
-                || (remainingBits != 0 && ((path.Path[completeBytes] ^ GroupKey.Path[completeBytes]) & 0xF0) != 0))
-                throw new InvalidOperationException("The PBT node does not belong to the active group.");
-            return PbtFourLevelGroupGeometry.PositionOf(path);
-        }
-
-        public void Dispose() => ((IDisposable?)_lease)?.Dispose();
-
-        [InlineArray(PbtNodeGroupCodec.PositionCount)]
-        private struct OffsetBuffer
-        {
-            private int _element;
-        }
-
-        [InlineArray(PbtNodeGroupCodec.PositionCount)]
-        private struct LengthBuffer
-        {
-            private int _element;
-        }
+        public void Dispose() => _reader.Dispose();
 
         [InlineArray(PbtNodeGroupCodec.PositionCount)]
         private struct NodeBuffer
