@@ -47,9 +47,8 @@ public class SortedMergeDictionaryTests
         Assert.That(keys, Is.EquivalentTo(source.Keys));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void EdgeCases_EmptyAndSingleEntry(int count)
+    [Test]
+    public void EdgeCases_EmptyAndSingleEntry([Values(0, 1)] int count)
     {
         Dictionary<int, int> source = [];
         for (int i = 0; i < count; i++) source[i] = i + 42;
@@ -360,13 +359,8 @@ public class SortedMergeDictionaryTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(5)]
-    [TestCase(11)]
-    [TestCase(22)]
-    [TestCase(89)]
-    [TestCase(1000)]
-    public void BucketSize_MatchesLegacyLoadFactorRounding(int count)
+    [Test]
+    public void BucketSize_MatchesLegacyLoadFactorRounding([Values(1, 5, 11, 22, 89, 1000)] int count)
     {
         using SortedMergeDictionary<int, int> dict = new();
         Dictionary<int, int> source = new(count);
@@ -436,11 +430,8 @@ public class SortedMergeDictionaryTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(37)]
-    [TestCase(400)]
-    public void SingleBucketChain_WalksItsFullLength(int count)
+    [Test]
+    public void SingleBucketChain_WalksItsFullLength([Values(1, 2, 37, 400)] int count)
     {
         // Multiples of 65536 share the low bits, so every key lands in one bucket and the first-written key
         // sits at the very end of the chain - the walk must reach it, and a same-bucket miss must terminate.

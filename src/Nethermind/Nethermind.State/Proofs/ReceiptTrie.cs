@@ -39,7 +39,7 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
             | RlpBehaviors.SkipTypedWrapping;
         int key = 0;
 
-        foreach (TxReceipt? receipt in receipts)
+        foreach (TxReceipt receipt in receipts)
         {
             CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, rlpBehaviors: behavior, bufferPool: _bufferPool);
             CappedArray<byte> keyBuffer = Rlp.EncodeToCappedArray(key, _bufferPool);

@@ -112,9 +112,8 @@ public class FilterTests
         Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ReadJson_materializes_topics_before_json_document_is_disposed(bool filterAsString)
+    [Test]
+    public void ReadJson_materializes_topics_before_json_document_is_disposed([Values] bool filterAsString)
     {
         string filterJson = JsonSerializer.Serialize(
             new

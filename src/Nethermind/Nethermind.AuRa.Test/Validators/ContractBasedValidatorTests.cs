@@ -164,9 +164,8 @@ public class ContractBasedValidatorTests
         Assert.That(validator.Validators, Is.EqualTo(validators));
     }
 
-    [TestCase(1UL)]
-    [TestCase(10UL)]
-    public void loads_initial_validators_from_contract(ulong blockNumber)
+    [Test]
+    public void loads_initial_validators_from_contract([Values(1UL, 10UL)] ulong blockNumber)
     {
         Address initialValidator = TestItem.AddressA;
         Block block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, []).TestObject;

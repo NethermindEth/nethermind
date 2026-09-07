@@ -46,7 +46,9 @@ public readonly struct ValueAddress : IEquatable<ValueAddress>
 
     public override bool Equals(object? obj) => obj is ValueAddress other && Equals(other);
 
-    public override int GetHashCode() => AsSpan.FastHash();
+    // Always 20 bytes, so skip the length-dispatching FastHash. Must stay equal to
+    // Address.GetHashCode: the two wrap the same bytes and are used interchangeably.
+    public override int GetHashCode() => unchecked((int)SpanExtensions.FastHash64For20Bytes(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes))));
 
     public static bool operator ==(in ValueAddress left, in ValueAddress right) => left.Equals(right);
 

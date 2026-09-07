@@ -40,15 +40,8 @@ public class EvmStackTests
     private const string PopAddress_out = "PopAddress_out";
     private const string PopLimbo = nameof(EvmStack.PopLimbo);
 
-    [TestCase(PushByte)]
-    [TestCase(PushOne)]
-    [TestCase(PushZero)]
-    [TestCase(PushUInt32)]
-    [TestCase(PushUInt64)]
-    [TestCase(PushUInt256)]
-    [TestCase(PushBytes)]
-    [TestCase(Dup)]
-    public void Push_when_full_returns_StackOverflow_and_preserves_head(string op)
+    [Test]
+    public void Push_when_full_returns_StackOverflow_and_preserves_head([Values(PushByte, PushOne, PushZero, PushUInt32, PushUInt64, PushUInt256, PushBytes, Dup)] string op)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         vmState.InitializeStacks(default, out EvmStack stack);
@@ -60,7 +53,7 @@ public class EvmStackTests
         EvmExceptionType result = InvokePush(op, ref stack);
 
         Assert.That(result, Is.EqualTo(EvmExceptionType.StackOverflow));
-        Assert.That(stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
+        Assert.That((int)stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
     }
 
     [TestCase(PopUInt256_1, 0)]
@@ -79,13 +72,11 @@ public class EvmStackTests
         bool result = InvokePopBool(op, ref stack);
 
         Assert.That(result, Is.False);
-        Assert.That(stack.Head, Is.EqualTo(preFilled));
+        Assert.That((int)stack.Head, Is.EqualTo(preFilled));
     }
 
-    [TestCase(Dup)]
-    [TestCase(Swap)]
-    [TestCase(Exchange)]
-    public void StackReshuffle_with_insufficient_depth_returns_StackUnderflow_and_preserves_head(string op)
+    [Test]
+    public void StackReshuffle_with_insufficient_depth_returns_StackUnderflow_and_preserves_head([Values(Dup, Swap, Exchange)] string op)
     {
         // DUPN / SWAPN / EXCHANGE delegate through stack.Dup/Swap/Exchange; all three must
         // return StackUnderflow (not corrupt Head) when the addressed slot is past the bottom.
@@ -103,7 +94,7 @@ public class EvmStackTests
         };
 
         Assert.That(result, Is.EqualTo(EvmExceptionType.StackUnderflow));
-        Assert.That(stack.Head, Is.EqualTo(1));
+        Assert.That((int)stack.Head, Is.EqualTo(1));
     }
 
     [Test]
@@ -117,7 +108,7 @@ public class EvmStackTests
         int result = stack.PopByte();
 
         Assert.That(result, Is.EqualTo(-1));
-        Assert.That(stack.Head, Is.EqualTo(0));
+        Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
     [Test]
@@ -129,15 +120,11 @@ public class EvmStackTests
         Address? result = stack.PopAddress();
 
         Assert.That(result, Is.Null);
-        Assert.That(stack.Head, Is.EqualTo(0));
+        Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(5)]
-    [TestCase(16)]
-    [TestCase(31)]
-    public void Truncated_PUSH32_preserves_leading_bytes_and_zero_pads_tail(int used)
+    [Test]
+    public void Truncated_PUSH32_preserves_leading_bytes_and_zero_pads_tail([Values(0, 1, 5, 16, 31)] int used)
     {
         // EVM spec: truncated PUSH{n} (where code ends before n bytes of immediate) must push
         // <available-bytes, 00...00> in big-endian. Available bytes go to the high end;
@@ -159,12 +146,8 @@ public class EvmStackTests
         for (int i = used; i < 32; i++) Assert.That(word[i], Is.EqualTo(0), $"byte {i} zero-pad tail");
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(17)]
-    [TestCase(31)]
-    [TestCase(32)]
-    public void PushRightPaddedBytes_traces_the_completed_word(int length)
+    [Test]
+    public void PushRightPaddedBytes_traces_the_completed_word([Values(0, 1, 17, 31, 32)] int length)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         StackPushTracer tracer = new();
@@ -198,7 +181,7 @@ public class EvmStackTests
         Assert.That(stack.PopUInt256(out UInt256 popped), Is.True);
 
         Assert.That(popped, Is.EqualTo(value));
-        Assert.That(stack.Head, Is.EqualTo(0));
+        Assert.That((int)stack.Head, Is.EqualTo(0));
     }
 
     [Test]
@@ -221,7 +204,7 @@ public class EvmStackTests
             Assert.That(a, Is.EqualTo(z));
             Assert.That(b, Is.EqualTo(y));
             Assert.That(c, Is.EqualTo(x));
-            Assert.That(stack.Head, Is.EqualTo(0));
+            Assert.That((int)stack.Head, Is.EqualTo(0));
         }
     }
 
