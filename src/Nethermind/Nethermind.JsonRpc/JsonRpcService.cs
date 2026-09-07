@@ -94,7 +94,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     // Formatting the request parses and stringifies its params, which for engine_newPayload is a
     // multi-megabyte payload. When the heap is already exhausted that would just throw again.
     private static string DescribeForErrorLog(JsonRpcRequest request, Exception ex) =>
-        ex is OutOfMemoryException ? $"Id:{request.Id}, {request.Method}(params omitted)" : request.ToString();
+        ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
+            ? $"Id:{request.Id}, {request.Method}(params omitted)"
+            : request.ToString();
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {

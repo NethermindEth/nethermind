@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -649,33 +650,37 @@ public class JsonRpcServiceTests
         AssertJsonRpcError(response, ErrorCodes.InternalError);
     }
 
-    [Test]
-    public void OutOfMemory_during_invocation_logs_without_request_parameters()
+    private static IEnumerable<TestCaseData> OutOfMemoryPools()
     {
-        const string marker = "0x00000000000000000000000000000000deadbeef";
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>()).Throws(new OutOfMemoryException());
-        TestErrorLogManager logManager = new();
-        _logManager = logManager;
+        static IRpcModulePool<IEthRpcModule> Throwing(Exception ex)
+        {
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>()).Throws(ex);
+            return new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true);
+        }
 
-        AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
+        static IRpcModulePool<IEthRpcModule> FaultedRental()
+        {
+            IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+            pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
+            return pool;
+        }
 
-        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException);
-        Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
+        yield return new TestCaseData(Throwing(new OutOfMemoryException())).SetName("{m}(module throws)");
+        yield return new TestCaseData(Throwing(new TargetInvocationException(new OutOfMemoryException()))).SetName("{m}(module throws wrapped)");
+        yield return new TestCaseData(FaultedRental()).SetName("{m}(module rental faults)");
     }
 
-    [Test]
-    public void OutOfMemory_before_invocation_logs_without_request_parameters()
+    [TestCaseSource(nameof(OutOfMemoryPools))]
+    public void OutOfMemory_logs_without_request_parameters(IRpcModulePool<IEthRpcModule> pool)
     {
         const string marker = "0x00000000000000000000000000000000deadbeef";
-        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
-        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
         TestErrorLogManager logManager = new();
         _logManager = logManager;
 
         AssertJsonRpcError(TestRequestWithPool(pool, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
 
-        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException);
+        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException or { InnerException: OutOfMemoryException });
         Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
     }
 
