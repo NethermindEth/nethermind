@@ -66,6 +66,39 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GlobalRocksDbOption_AllowsFlushAndReopen()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] value = [4, 5, 6];
+            DbConfig config = new();
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance))
+            {
+                db.Set(key, value);
+                db.Flush();
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("optimize_manifest_for_recovery=true"));
+            }
+
+            using (DbOnTheRocks reopenedEnabled = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance))
+            {
+                Assert.That(reopenedEnabled.Get(key), Is.EqualTo(value));
+                reopenedEnabled.Set([10, 11, 12], [13, 14, 15]);
+                reopenedEnabled.Flush();
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("optimize_manifest_for_recovery=true"));
+            }
+
+            config.AdditionalRocksDbOptions = "optimize_manifest_for_recovery=false;";
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reopened.Get(key), Is.EqualTo(value));
+                Assert.That(reopened.Get([10, 11, 12]), Is.EqualTo([13, 14, 15]));
+            }
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain("optimize_manifest_for_recovery=false"));
+        }
+
+        [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
@@ -679,6 +712,21 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        private static string ReadOptionsFile(string dbPath)
+        {
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
+            string? latestOptionsPath = null;
+            foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
+            {
+                if (latestOptionsPath is null || string.CompareOrdinal(Path.GetFileName(optionsPath), Path.GetFileName(latestOptionsPath)) > 0)
+                {
+                    latestOptionsPath = optionsPath;
+                }
+            }
+
+            return File.ReadAllText(latestOptionsPath!).Replace(" ", string.Empty, StringComparison.Ordinal);
+        }
 
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
