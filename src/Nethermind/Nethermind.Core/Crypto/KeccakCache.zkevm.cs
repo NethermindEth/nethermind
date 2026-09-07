@@ -31,11 +31,11 @@ public static partial class KeccakCache
     private const int MemoSlotShift = 4;
     private const int MemoSlotWords = 1 << MemoSlotShift;
     private const nuint MemoValueWord = MaxMemoLength / sizeof(ulong);
-    private const nuint MemoLengthWord = MemoSlotWords - 1;
+    private const nuint MemoLengthWord = MemoValueWord + ValueHash256.MemorySize / sizeof(ulong);
 
-    // Constant arithmetic is checked, so this underflows and fails the build if the padded key and the
-    // digest ever reach the length word - which would otherwise silently alias the next slot.
-    private const nuint MemoSlotHeadroom = MemoLengthWord - (MemoValueWord + ValueHash256.MemorySize / sizeof(ulong));
+    // Constant arithmetic is checked, so this underflows and fails the build if the padded key, the
+    // digest and the length word ever stop fitting in one slot - which would silently alias the next.
+    private const nuint MemoSlotHeadroom = MemoSlotWords - (MemoLengthWord + 1);
 
     private static readonly ulong[] Memo = new ulong[MemoSlotCount * MemoSlotWords];
 
