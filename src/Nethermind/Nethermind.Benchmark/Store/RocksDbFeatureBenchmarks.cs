@@ -476,7 +476,7 @@ public class RocksDbFeatureBenchmarks
         for (int i = 0; i < RewriteCount; i++)
         {
             int index = (start + i) % _dataset.Keys.Length;
-            _store.Set(_dataset.Keys[index], _rewriteValue, WriteFlags.DisableWAL);
+            _db.Set(_dataset.Keys[index], _rewriteValue, WriteFlags.DisableWAL);
         }
 
         _rewriteOffset = (start + RewriteCount) % _dataset.Keys.Length;
