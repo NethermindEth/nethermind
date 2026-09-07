@@ -81,8 +81,10 @@ public interface ISnapshotRepository
     void RemovePersistedStatesUntil(ulong blockNumber);
 
     /// <summary>Remove persisted snapshots at or below finality whose state root differs from the
-    /// known finalized root at that height. Canonical snapshots and heights with unknown roots are retained.</summary>
-    void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider);
+    /// known finalized root at that height. Retains the current persisted base and locally committed ancestry.</summary>
+    /// <remarks>Defers when finality is ahead of, unknown on, or inconsistent with the locally committed chain.
+    /// Known roots are cached until their heights are pruned; unknown roots are retried on later passes.</remarks>
+    void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState);
 
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
     /// <paramref name="targetStateId"/> across both tiers, returning the in-memory and persisted snapshots

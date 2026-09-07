@@ -36,6 +36,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly PersistedSnapshotBucket _smallCompacted;
     private readonly PersistedSnapshotBucket _largeCompacted;
     private readonly PersistedSnapshotBucket _compactSized;
+    private readonly Lock _finalizedRootsLock = new();
+    private readonly Dictionary<ulong, Hash256> _finalizedRoots = [];
     private int _disposed;
 
     // ---- In-memory tier: only the recent unpersisted snapshots (bounded by
@@ -636,25 +638,64 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _smallCompacted.PruneBefore(blockNumber);
         _largeCompacted.PruneBefore(blockNumber);
         _compactSized.PruneBefore(blockNumber);
+
+        using Lock.Scope scope = _finalizedRootsLock.EnterScope();
+        using ArrayPoolList<ulong> expired = new(0);
+        foreach (ulong height in _finalizedRoots.Keys)
+            if (height < blockNumber) expired.Add(height);
+        foreach (ulong height in expired) _finalizedRoots.Remove(height);
     }
 
     /// <inheritdoc />
-    public void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider)
+    public void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState)
     {
-        using ArrayPoolList<StateId> states = GetPersistedStatesInRange(0, finalizedStateProvider.FinalizedBlockNumber);
+        StateId? committed = GetLastCommittedStateId();
+        ulong finalizedBlock = finalizedStateProvider.FinalizedBlockNumber;
+        if (committed is null || committed == StateId.PreGenesis || finalizedBlock > committed.Value.BlockNumber) return;
+
+        ulong firstBlock = currentPersistedState == StateId.PreGenesis ? 0 : currentPersistedState.BlockNumber + 1;
+        using ArrayPoolList<StateId> states = GetPersistedStatesInRange(firstBlock, finalizedBlock);
         if (states.Count == 0) return;
 
-        Dictionary<ulong, Hash256?> finalizedRoots = [];
+        using Lock.Scope scope = _finalizedRootsLock.EnterScope();
+        HashSet<ulong> queriedHeights = [];
+        Hash256? anchorRoot = GetRoot(finalizedBlock);
+        if (anchorRoot is null) return;
+
+        // During catch-up or a reorg, canonical header marking can lag the branch being built.
+        if (!CanReachState(committed.Value, new StateId(finalizedBlock, anchorRoot))
+            || (currentPersistedState != StateId.PreGenesis && !CanReachState(committed.Value, currentPersistedState)))
+        {
+            _finalizedRoots.Clear();
+            return;
+        }
+
+        int totalPruned = 0;
         foreach (StateId state in states)
         {
-            if (!finalizedRoots.TryGetValue(state.BlockNumber, out Hash256? finalizedRoot))
+            Hash256? finalizedRoot = GetRoot(state.BlockNumber);
+            if (finalizedRoot is null || state.StateRoot == finalizedRoot.ValueHash256) continue;
+            if (GetLastCommittedStateId() != committed) break;
+
+            if (CanReachState(committed.Value, state))
             {
-                finalizedRoot = finalizedStateProvider.GetFinalizedStateRootAt(state.BlockNumber);
-                finalizedRoots.Add(state.BlockNumber, finalizedRoot);
+                _finalizedRoots.Remove(state.BlockNumber);
+                continue;
             }
 
-            if (finalizedRoot is not null && state.StateRoot != finalizedRoot.ValueHash256)
-                RemovePersistedStateExact(state);
+            if (RemovePersistedStateExact(state)) totalPruned++;
+        }
+
+        if (totalPruned > 0 && _logger.IsInfo)
+            _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock}.");
+
+        Hash256? GetRoot(ulong height)
+        {
+            if (_finalizedRoots.TryGetValue(height, out Hash256? root)) return root;
+            if (!queriedHeights.Add(height)) return null;
+            root = finalizedStateProvider.GetFinalizedStateRootAt(height);
+            if (root is not null) _finalizedRoots.Add(height, root);
+            return root;
         }
     }
 
