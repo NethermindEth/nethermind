@@ -10,11 +10,13 @@ using Nethermind.Int256;
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFees, DateTimeOffset startDateTime)
-    : NoBlockProductionContext(currentBestBlock, blockFees), IBlockImprovementContext
+    : BlockProductionSnapshot(currentBestBlock, blockFees), IBlockImprovementContext
 {
     void IDisposable.Dispose() { }
 
     public void CancelOngoingImprovements() { }
+
+    public IBlockProductionContext Snapshot() => this;
 
     public bool Disposed => true;
 

@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -58,20 +59,19 @@ public partial class EngineModuleTests
             _ => Parts((await rpc.engine_getPayloadV6(id)).Data!)
         };
 
-        Block served = Array.Find(candidates, c => c.Hash == blockHash)!;
+        Block? served = Array.Find(candidates, c => c.Hash == blockHash);
+        Assert.That(served, Is.Not.Null, "payload is not one of the candidates");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(served, Is.Not.Null, "payload is not one of the candidates");
             Assert.That(factory.Created!.Reads, Is.LessThanOrEqualTo(candidates.Length), "reads wrapped around, so two reads may have aliased to one candidate");
             // engine_getPayloadV3 item 3: commitments must match the payload's blob versioned hashes.
-            Assert.That(commitments, Is.EqualTo(new BlobsBundleV1(served).Commitments), "blobs bundle came from the other candidate");
+            Assert.That(commitments, Is.EqualTo(new BlobsBundleV1(served).Commitments), "blobs bundle came from another candidate");
             if (version >= 4)
             {
-                Assert.That(requests, Is.EqualTo(served.ExecutionRequests), "execution requests came from the other candidate");
+                Assert.That(requests, Is.EqualTo(served.ExecutionRequests), "execution requests came from another candidate");
             }
 
-            Assert.That(blockValue, Is.EqualTo(AlternatingBlockImprovementContext.FeesOf(Array.IndexOf(candidates, served))).Or.EqualTo(AlternatingBlockImprovementContext.FeesOf(Array.IndexOf(candidates, served) - 1)),
-                "blockValue is neither the served candidate's fees nor the previous one's");
+            Assert.That(blockValue, Is.EqualTo(AlternatingBlockImprovementContext.FeesOf(Array.IndexOf(candidates, served))), "blockValue came from another candidate");
         }
     }
 
@@ -107,9 +107,7 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// Returns a different candidate on every read, standing in for an improvement that publishes
-    /// between two reads. Any response built from more than one read therefore mixes candidates.
-    /// The improvement task never completes, so the service schedules no reads of its own.
+    /// Advances to the next candidate on every read, so a response built from more than one read mixes candidates.
     /// </summary>
     private class AlternatingBlockImprovementContext(Block[] candidates, DateTimeOffset startDateTime) : IBlockImprovementContext
     {
@@ -117,11 +115,18 @@ public partial class EngineModuleTests
 
         public static UInt256 FeesOf(int candidate) => (UInt256)(candidate + 1);
 
-        /// <summary>How many times the block was read; above the candidate count, reads alias.</summary>
+        /// <summary>How many times the candidate was read; above the candidate count, reads alias.</summary>
         public int Reads => Volatile.Read(ref _reads);
 
-        public Block? CurrentBestBlock => candidates[(Interlocked.Increment(ref _reads) - 1) % candidates.Length];
+        public Block? CurrentBestBlock => candidates[NextCandidate()];
         public UInt256 BlockFees => FeesOf((Math.Max(Volatile.Read(ref _reads), 1) - 1) % candidates.Length);
+        public IBlockProductionContext Snapshot()
+        {
+            int candidate = NextCandidate();
+            return new BlockProductionSnapshot(candidates[candidate], FeesOf(candidate));
+        }
+
+        private int NextCandidate() => (Interlocked.Increment(ref _reads) - 1) % candidates.Length;
         public Task<Block?> ImprovementTask { get; } = new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; } = startDateTime;

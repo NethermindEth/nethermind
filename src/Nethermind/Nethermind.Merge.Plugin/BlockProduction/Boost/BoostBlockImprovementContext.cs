@@ -24,6 +24,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
+    private volatile BlockProductionSnapshot _best;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -40,7 +41,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
-        CurrentBestBlock = currentBestBlock;
+        _best = new(currentBestBlock, UInt256.Zero);
         StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
     }
@@ -59,9 +60,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
-            // Block before fees, for the same reason as in BlockImprovementContext.
-            CurrentBestBlock = block;
-            BlockFees = _feesTracer.Fees;
+            _best = new(block, _feesTracer.Fees);
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
@@ -70,8 +69,9 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     }
 
     public Task<Block?> ImprovementTask { get; }
-    public Block? CurrentBestBlock { get; private set; }
-    public UInt256 BlockFees { get; private set; }
+    public Block? CurrentBestBlock => _best.CurrentBestBlock;
+    public UInt256 BlockFees => _best.BlockFees;
+    public IBlockProductionContext Snapshot() => _best;
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 

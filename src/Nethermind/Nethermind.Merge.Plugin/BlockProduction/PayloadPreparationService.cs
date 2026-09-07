@@ -409,7 +409,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
-                return blockContext;
+                return blockContext.Snapshot();
             }
             finally
             {

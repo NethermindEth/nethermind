@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,6 +54,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     public DateTimeOffset StartDateTime { get; }
 
     public UInt256 BlockFees => 0;
+    public IBlockProductionContext Snapshot() => new BlockProductionSnapshot(CurrentBestBlock, BlockFees);
 
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private readonly CancellationToken _improvementToken;

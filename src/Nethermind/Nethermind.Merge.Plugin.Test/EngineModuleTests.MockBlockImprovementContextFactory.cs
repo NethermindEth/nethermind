@@ -30,5 +30,6 @@ public partial class EngineModuleTests
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; } = startDateTime;
+        public IBlockProductionContext Snapshot() => this;
     }
 }

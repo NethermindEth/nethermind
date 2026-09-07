@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -95,6 +96,7 @@ public partial class EngineModuleTests
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
+        public IBlockProductionContext Snapshot() => new BlockProductionSnapshot(CurrentBestBlock, BlockFees);
 
         public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 

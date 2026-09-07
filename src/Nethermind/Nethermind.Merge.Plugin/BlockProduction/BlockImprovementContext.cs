@@ -20,6 +20,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private readonly FeesTracer _feesTracer = new();
+    private volatile BlockProductionSnapshot _best;
 
     public BlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -32,8 +33,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     {
         _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
-        CurrentBestBlock = currentBestBlock;
-        BlockFees = currentBlockFees;
+        _best = new(currentBestBlock, currentBlockFees);
         StartDateTime = startDateTime;
 
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
@@ -46,8 +46,9 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     public Task<Block?> ImprovementTask { get; }
 
-    public Block? CurrentBestBlock { get; private set; }
-    public UInt256 BlockFees { get; private set; }
+    public Block? CurrentBestBlock => _best.CurrentBestBlock;
+    public UInt256 BlockFees => _best.BlockFees;
+    public IBlockProductionContext Snapshot() => _best;
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
     {
@@ -57,15 +58,13 @@ public class BlockImprovementContext : IBlockImprovementContext
             if (block is not null)
             {
                 UInt256 fees = _feesTracer.Fees;
-                if (CurrentBestBlock is null ||
-                    fees > BlockFees ||
-                    (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
+                BlockProductionSnapshot best = _best;
+                if (best.CurrentBestBlock is null ||
+                    fees > best.BlockFees ||
+                    (fees == best.BlockFees && block.GasUsed > best.CurrentBestBlock.GasUsed))
                 {
                     // Only update block if block has actually improved.
-                    // Block before fees: GetPayloadHandlerBase reads fees first, so a concurrent read
-                    // can only pair a new block with old fees and under-report blockValue.
-                    CurrentBestBlock = block;
-                    BlockFees = fees;
+                    _best = new(block, fees);
                 }
             }
         }
