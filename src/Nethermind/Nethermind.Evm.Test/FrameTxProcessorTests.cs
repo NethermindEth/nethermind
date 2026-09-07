@@ -980,6 +980,37 @@ public class FrameTxProcessorTests
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
+    /// <remarks>EIP-8037 gives execution and state a block budget each, so a transaction whose combined
+    /// reservation exceeds the block gas limit is still includable while neither dimension does.</remarks>
+    [Test]
+    public void EstimateGas_FrameTxWhoseDimensionsFitTheBlockButWhoseCombinedBudgetDoesNot_IsEstimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        const ulong blockGasLimit = 30_000_000;
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient,
+                executionGasLimit: 200_000, stateGasLimit: 29_900_000, UInt256.Zero, default));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(blockGasLimit).TestObject;
+
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        ulong estimate = estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(execution, Is.LessThanOrEqualTo(blockGasLimit), "the execution dimension fits the block");
+            Assert.That(state, Is.LessThanOrEqualTo(blockGasLimit), "the state dimension fits the block");
+            Assert.That(maxGas, Is.GreaterThan(blockGasLimit), "only the combined budget exceeds it");
+            Assert.That(error, Is.Null);
+            Assert.That(estimate, Is.EqualTo(maxGas));
+        }
+    }
+
     /// <remarks>
     /// A type-6 transaction reaches the frame estimator on its type alone, so a frame count EIP-8141 never
     /// admits must be reported as such: an absent list is not the gas-limit overflow the estimator blamed,
