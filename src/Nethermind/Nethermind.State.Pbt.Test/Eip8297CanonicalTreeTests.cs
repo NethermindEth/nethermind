@@ -579,7 +579,18 @@ public class Eip8297CanonicalTreeTests
 
         int[] offsets = new int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
         Array.Fill(offsets, -1);
-        TrieUpdater.BucketizeByGroupBoundary(operations, groupDepth, offsets);
+        TrieUpdater.PartitionOutcome partition = TrieUpdater.BucketizeByGroupBoundary(operations, groupDepth, offsets);
+        int expectedMask = 0;
+        int expectedBranchDepth = count == 0 ? groupDepth : original[0].Key.BitLength;
+        for (int index = 0; index < count; index++)
+        {
+            PbtFullKey key = original[index].Key;
+            expectedMask |= 1 << ((key.Bytes[groupDepth / 8] >> (4 - groupDepth % 8)) & 15);
+            int bit = groupDepth;
+            int end = Math.Min(original[0].Key.BitLength, key.BitLength);
+            while (bit < end && original[0].Key.GetBit(bit) == key.GetBit(bit)) bit++;
+            expectedBranchDepth = Math.Min(expectedBranchDepth, bit);
+        }
 
         int[] destinations = new int[count];
         int[] bucketCounts = new int[PbtFourLevelGroupGeometry.BoundarySlots];
@@ -590,6 +601,8 @@ public class Eip8297CanonicalTreeTests
         }
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(partition.UsedMask, Is.EqualTo(expectedMask));
+            Assert.That(partition.BranchDepth, Is.EqualTo(expectedBranchDepth));
             Assert.That(destinations, Is.Ordered);
             Assert.That(operations, Is.EquivalentTo(original));
             Assert.That(offsets[0], Is.Zero);
@@ -817,6 +830,7 @@ public class Eip8297CanonicalTreeTests
     [TestCase("mixed-delete-set")]
     [TestCase("shuffled-mixed-delete-set")]
     [TestCase("mixed-canonicalization-boundaries")]
+    [TestCase("shorter-terminal-replacement")]
     public void Bulk_mutation_kinds_match_oracle_serial_outcome_and_reopen(string scenarioName)
     {
         (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) = Scenario(scenarioName);
@@ -865,6 +879,42 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(1));
             Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(PbtNodeCodec.Encode(expectedLeaf)));
         }
+    }
+
+    [Test]
+    public void Shared_operation_prefix_is_compared_once_across_depth_jumps(
+        [Values(3, 4, 7, 8, 13, 128, 260)] int divergenceBit,
+        [Values(false, true)] bool persisted)
+    {
+        byte[] leftKey = new byte[(divergenceBit + 8) >> 3];
+        byte[] rightKey = new byte[leftKey.Length + 1];
+        rightKey[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
+        byte[] untouchedKey = Bytes.FromHexString("0x80");
+        List<(byte[] Key, byte[]? Value)> initial = persisted
+            ? [(leftKey, Value(1)), (rightKey, Value(2)), (untouchedKey, Value(3))]
+            : [];
+        List<(byte[] Key, byte[]? Value)> changes = [(leftKey, Value(4)), (rightKey, Value(5))];
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(initial.ToArray()));
+        store.ResetReads();
+        TrieUpdaterMetrics metrics = new();
+        root = TrieUpdater.UpdateRoot(store, root, Batch(changes.ToArray()), metrics);
+
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, initial);
+        ApplyAll(bulk, serial, oracle, changes);
+        AssertEquivalentAfterReopen(bulk, serial, oracle, $"prefix at bit {divergenceBit}, persisted {persisted}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(bulk.RootHash));
+            Assert.That(metrics.OperationPrefixComparisons, Is.EqualTo(1));
+            Assert.That(metrics.SynthesizedSingleBuckets, Is.EqualTo(persisted && divergenceBit >= 4 ? 1 : 0));
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
+        }
+        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -1082,6 +1132,9 @@ public class Eip8297CanonicalTreeTests
 
     private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch
     {
+        "shorter-terminal-replacement" => (
+            [(Bytes.FromHexString("0x123400"), Value(1)), (Bytes.FromHexString("0x123480"), Value(2)), (Bytes.FromHexString("0x80"), Value(3))],
+            [(Bytes.FromHexString("0x123400"), null), (Bytes.FromHexString("0x123480"), null), (Bytes.FromHexString("0x1234"), Value(4))]),
         "insert-only" => ([], [([0x10], Value(1)), ([0x20], Value(2))]),
         "delete-only" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], null), ([0xFF], null)]),
         "replacements" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], Value(3)), ([0x20], Value(4))]),

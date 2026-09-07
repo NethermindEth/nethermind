@@ -49,7 +49,9 @@ public static class TrieUpdater
         GroupMutationFrame ownerGroup,
         Subtree current,
         int depth,
-        Span<PbtWriteOperation> operations)
+        Span<PbtWriteOperation> operations,
+        int operationsBranchDepth = -1,
+        bool prefixesValidated = false)
     {
         current = Resolve(ownerGroup, current);
         if (operations.IsEmpty) return current;
@@ -102,26 +104,27 @@ public static class TrieUpdater
             }
             if (remainingCount != operations.Length)
             {
-                Subtree remaining = FoldMutations(store, metrics, ownerGroup, current, depth, operations[..remainingCount]);
+                Subtree remaining = FoldMutations(store, metrics, ownerGroup, current, depth, operations[..remainingCount], operationsBranchDepth);
                 if (terminalSet is not { } replacement) return remaining;
                 if (!remaining.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
                 return CreateLeaf(replacement);
             }
         }
 
-        int branchDepth = FindBranchDepth(current, depth, operations);
+        int branchDepth = FindBranchDepth(current, depth, operations, ref operationsBranchDepth, prefixesValidated, metrics);
         int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
         if (groupDepth != depth)
         {
-            // Like the old chain fold, jump over an unbranched run without allocating virtual frames or prefixes.
-            return FoldMutations(store, metrics, ownerGroup, current, groupDepth, operations);
+            // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
+            return FoldMutations(store, metrics, ownerGroup, current, groupDepth, operations,
+                operationsBranchDepth, current.Node is not PbtBranchNode);
         }
 
         if (ownerGroup.BitDepth == depth)
-            return FoldBoundary(store, metrics, ownerGroup, current, depth, operations);
+            return FoldBoundary(store, metrics, ownerGroup, current, depth, operations, operationsBranchDepth);
 
         using GroupMutationFrame group = new(store, PbtNodePath.FromKey(operations[0].Key, depth), metrics);
-        Subtree result = FoldBoundary(store, metrics, group, current, depth, operations);
+        Subtree result = FoldBoundary(store, metrics, group, current, depth, operations, operationsBranchDepth);
         group.Flush();
         return result;
     }
@@ -132,20 +135,21 @@ public static class TrieUpdater
         GroupMutationFrame group,
         Subtree current,
         int depth,
-        Span<PbtWriteOperation> operations)
+        Span<PbtWriteOperation> operations,
+        int operationsBranchDepth)
     {
         Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
-        BucketizeByGroupBoundary(operations, depth, offsets);
+        PartitionOutcome partition = BucketizeByGroupBoundary(operations, depth, offsets, operationsBranchDepth, metrics);
         RefList16<Subtree> boundaryBuffer = new(PbtFourLevelGroupGeometry.BoundarySlots);
         Span<Subtree> boundaries = boundaryBuffer.AsSpan();
         Decompose(group, current, depth, boundaries);
 
-        for (int slot = 0; slot < boundaries.Length; slot++)
+        for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
         {
+            int slot = BitOperations.TrailingZeroCount(mask);
             Span<PbtWriteOperation> bucket = operations[offsets[slot]..offsets[slot + 1]];
-            if (bucket.IsEmpty) continue;
             boundaries[slot] = FoldMutations(
-                store, metrics, group, boundaries[slot], depth + PbtFourLevelGroupGeometry.LevelsPerGroup, bucket);
+                store, metrics, group, boundaries[slot], depth + PbtFourLevelGroupGeometry.LevelsPerGroup, bucket, partition.BranchDepth);
         }
 
         for (int level = PbtFourLevelGroupGeometry.LevelsPerGroup - 1; level >= 0; level--)
@@ -207,18 +211,14 @@ public static class TrieUpdater
         Decompose(group, new(branch.RightHash, current.Path.Append(branch.Prefix, 1)), depth, boundaries);
     }
 
-    private static int FindBranchDepth(Subtree current, int depth, Span<PbtWriteOperation> operations)
+    private static int FindBranchDepth(Subtree current, int depth, Span<PbtWriteOperation> operations, ref int operationsBranchDepth, bool prefixesValidated, TrieUpdaterMetrics? metrics)
     {
         PbtFullKey firstKey = operations[0].Key;
-        int branchDepth = firstKey.BitLength;
-        for (int index = 1; index < operations.Length; index++)
+        if (operationsBranchDepth < depth || (current.Node is not PbtBranchNode && !prefixesValidated))
         {
-            PbtFullKey key = operations[index].Key;
-            int difference = firstKey.FirstDifferingBit(key, depth);
-            if (current.Node is not PbtBranchNode && difference == Math.Min(firstKey.BitLength, key.BitLength))
-                throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-            branchDepth = Math.Min(branchDepth, difference);
+            operationsBranchDepth = FindOperationsBranchDepth(operations, depth, current.Node is not PbtBranchNode, metrics);
         }
+        int branchDepth = operationsBranchDepth;
 
         if (current.Node is PbtLeafNode leaf)
         {
@@ -232,6 +232,24 @@ public static class TrieUpdater
             int prefixStart = current.Path!.BitDepth;
             branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(branch.Prefix, firstKey, prefixStart));
         }
+        return branchDepth;
+    }
+
+    private static int FindOperationsBranchDepth(Span<PbtWriteOperation> operations, int depth, bool validatePrefixes = false, TrieUpdaterMetrics? metrics = null)
+    {
+        if (operations.IsEmpty) return depth;
+        PbtFullKey firstKey = operations[0].Key;
+        int branchDepth = firstKey.BitLength;
+        for (int index = 1; index < operations.Length; index++)
+        {
+            PbtFullKey key = operations[index].Key;
+            metrics?.IncrementOperationPrefixComparisons();
+            int difference = firstKey.FirstDifferingBit(key, depth);
+            if (validatePrefixes && difference == Math.Min(firstKey.BitLength, key.BitLength))
+                throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+            branchDepth = Math.Min(branchDepth, difference);
+        }
+
         return branchDepth;
     }
 
@@ -300,12 +318,26 @@ public static class TrieUpdater
         internal bool IsEmpty => Hash == default;
     }
 
-    internal static void BucketizeByGroupBoundary(Span<PbtWriteOperation> operations, int groupDepth, Span<int> offsets)
+    /// <summary>Partition metadata for one operation range; only the prefix bound survives a depth jump.</summary>
+    internal readonly record struct PartitionOutcome(int UsedMask, int BranchDepth);
+
+    internal static PartitionOutcome BucketizeByGroupBoundary(
+        Span<PbtWriteOperation> operations, int groupDepth, Span<int> offsets, int operationsBranchDepth = -1, TrieUpdaterMetrics? metrics = null)
     {
+        if (operationsBranchDepth < groupDepth)
+            operationsBranchDepth = FindOperationsBranchDepth(operations, groupDepth, metrics: metrics);
+        if (!operations.IsEmpty && operationsBranchDepth >= groupDepth + PbtFourLevelGroupGeometry.LevelsPerGroup)
+        {
+            metrics?.IncrementSynthesizedSingleBuckets();
+            int slot = BoundarySlot(operations[0].Key, groupDepth);
+            offsets[..(slot + 1)].Clear();
+            offsets[(slot + 1)..(PbtFourLevelGroupGeometry.BoundarySlots + 1)].Fill(operations.Length);
+            return new(1 << slot, operationsBranchDepth);
+        }
+
         if (operations.Length >= InPlaceSortThreshold)
         {
-            BucketizeLarge(operations, groupDepth, offsets);
-            return;
+            return new(BucketizeLarge(operations, groupDepth, offsets), operationsBranchDepth);
         }
 
         if (operations.Length is 2 or 3)
@@ -314,10 +346,16 @@ public static class TrieUpdater
             BucketizeSmall(operations, groupDepth);
 
         offsets[..(PbtFourLevelGroupGeometry.BoundarySlots + 1)].Clear();
+        int usedMask = 0;
         for (int index = 0; index < operations.Length; index++)
-            offsets[BoundarySlot(operations[index].Key, groupDepth) + 1]++;
+        {
+            int slot = BoundarySlot(operations[index].Key, groupDepth);
+            offsets[slot + 1]++;
+            usedMask |= 1 << slot;
+        }
         for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
             offsets[bucket + 1] += offsets[bucket];
+        return new(usedMask, operationsBranchDepth);
     }
 
     private static void BucketizeTiny(Span<PbtWriteOperation> operations, int groupDepth)
@@ -380,7 +418,7 @@ public static class TrieUpdater
         }
     }
 
-    private static void BucketizeLarge(Span<PbtWriteOperation> operations, int groupDepth, Span<int> offsets)
+    private static int BucketizeLarge(Span<PbtWriteOperation> operations, int groupDepth, Span<int> offsets)
     {
         Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
         counts.Clear();
@@ -394,7 +432,7 @@ public static class TrieUpdater
         offsets[0] = 0;
         for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
             offsets[bucket + 1] = offsets[bucket] + counts[bucket];
-        if (BitOperations.IsPow2(usedMask)) return;
+        if (BitOperations.IsPow2(usedMask)) return usedMask;
 
         Span<int> next = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
         offsets[..PbtFourLevelGroupGeometry.BoundarySlots].CopyTo(next);
@@ -418,6 +456,7 @@ public static class TrieUpdater
                 next[destination]++;
             }
         }
+        return usedMask;
     }
 
     private static int BoundarySlot(PbtFullKey key, int groupDepth) => BoundarySlot(key.Bytes, groupDepth);
@@ -609,11 +648,15 @@ public static class TrieUpdater
 
 internal sealed class TrieUpdaterMetrics
 {
+    internal int OperationPrefixComparisons { get; private set; }
+    internal int SynthesizedSingleBuckets { get; private set; }
     internal int PhysicalGroupFetches { get; private set; }
     internal int GroupParses { get; private set; }
     internal int GroupFrameResolutions { get; private set; }
     internal int EmittedNodeWrites { get; private set; }
 
+    internal void IncrementOperationPrefixComparisons() => OperationPrefixComparisons++;
+    internal void IncrementSynthesizedSingleBuckets() => SynthesizedSingleBuckets++;
     internal void IncrementPhysicalGroupFetches() => PhysicalGroupFetches++;
     internal void IncrementGroupParses() => GroupParses++;
     internal void IncrementGroupFrameResolutions() => GroupFrameResolutions++;
