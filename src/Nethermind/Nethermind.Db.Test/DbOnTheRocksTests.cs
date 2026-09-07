@@ -209,16 +209,17 @@ namespace Nethermind.Db.Test
 
         private static void AssertSstReads(DbOnTheRocks db, byte[][] keys, byte[][] values)
         {
+            IReadOnlyKeyValueStore store = db;
             for (int i = 0; i < keys.Length; i++)
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(db.Get(keys[i]), Is.EqualTo(values[i]));
-                    Assert.That(db.KeyExists(keys[i]), Is.True);
+                    Assert.That(store.Get(keys[i]), Is.EqualTo(values[i]));
+                    Assert.That(store.KeyExists(keys[i]), Is.True);
                 }
             }
 
-            Assert.That(db.Get(CreateMissingKey()), Is.Null);
+            Assert.That(store.Get(CreateMissingKey()), Is.Null);
 
             int index = 0;
             byte[] lowerBound = new byte[20];
