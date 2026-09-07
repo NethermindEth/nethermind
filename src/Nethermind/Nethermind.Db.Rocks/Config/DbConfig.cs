@@ -32,6 +32,7 @@ public class DbConfig : IDbConfig
         "max_write_buffer_number=2;" +
         "memtable_whole_key_filtering=true;" +
         "memtable_prefix_bloom_size_ratio=0.02;" +
+        "memtable_batch_lookup_optimization=true;" +
 
         // Rocksdb turned this on by default a few releases ago, but we don't want it yet; the impact on reads is unclear
         // significant or not.

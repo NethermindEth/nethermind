@@ -840,6 +840,24 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void MultiGet_preserves_requested_order_and_reports_hits_and_misses()
+        {
+            _db[[1]] = [11];
+            _db[[3]] = [33];
+            _db.Flush();
+            _db[[5]] = [55];
+
+            byte[][] keys = [[5], [2], [1], [3], [9]];
+            KeyValuePair<byte[], byte[]?>[] results = _db[keys];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Select(static result => result.Key), Is.EqualTo(new byte[][] { [5], [2], [1], [3], [9] }));
+                Assert.That(results.Select(static result => result.Value), Is.EqualTo(new byte[]?[] { [55], null, [11], [33], null }));
+            }
+        }
+
+        [Test]
         public void Smoke_test_value_sizes([Values(1, 1024, 8192)] int valueSize)
         {
             byte[] value = new byte[valueSize];
