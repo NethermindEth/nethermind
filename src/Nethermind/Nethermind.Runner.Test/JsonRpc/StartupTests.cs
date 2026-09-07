@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -195,6 +196,36 @@ public class StartupTests
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
         AssertErrorCodeResponse(response, ErrorCodes.InvalidRequest);
     }
+
+    // The framed 400 renders the exception's Message into the client-visible JSON-RPC error, and this endpoint is
+    // reachable unauthenticated, so the transport-layer message must not survive into the response.
+    [Test]
+    public async Task ProcessJsonRpcRequest_BodyReadThrowsIOException_does_not_echo_the_transport_message()
+    {
+        const string transportDetail = "Reading the request body timed out due to data arriving too slowly. See MinRequestBodyDataRate. /home/build/src/Kestrel";
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
+            new ThrowingReadStream(new IOException(transportDetail)),
+            contentLength: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(response, Does.Not.Contain("MinRequestBodyDataRate"));
+            Assert.That(response, Does.Not.Contain("/home/build"));
+            Assert.That(response, Does.Contain("Invalid request body."));
+        }
+        AssertErrorCodeResponse(response, ErrorCodes.InvalidRequest);
+    }
+
+    // A reset connection is a transport failure, not a malformed request: there is no client left to receive a 400,
+    // and framing it as one would blame the caller for a dropped connection.
+    [Test]
+    public void ProcessJsonRpcRequest_BodyReadThrowsConnectionReset_is_not_reframed_as_a_client_error() =>
+        Assert.That(async () => await ProcessJsonRpcRequestWithStatus(
+                new ThrowingReadStream(new ConnectionResetException("connection reset")),
+                contentLength: null),
+            Throws.InstanceOf<ConnectionResetException>());
 
     [TestCase("80000000", StatusCodes.Status400BadRequest, TestName = "Chunk size int.MaxValue + 1")]
     [TestCase("ffffffff", StatusCodes.Status400BadRequest, TestName = "Chunk size uint.MaxValue")]

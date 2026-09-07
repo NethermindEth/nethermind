@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -527,6 +528,8 @@ public class Startup : IStartup
         }
     }
 
+    private const string MalformedRequestBodyMessage = "Invalid request body.";
+
     private static async ValueTask CollectHttpRequestBodyAsync(
         HttpContext context,
         long? contentLength,
@@ -562,11 +565,20 @@ public class Startup : IStartup
                 {
                     readResult = await bodyReader.ReadAsync(cancellationToken);
                 }
-                catch (IOException e) when (e is not Microsoft.AspNetCore.Http.BadHttpRequestException)
+                catch (IOException e) when (e is not Microsoft.AspNetCore.Http.BadHttpRequestException and not ConnectionResetException)
                 {
                     // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a plain
                     // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
-                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(e.Message, StatusCodes.Status400BadRequest, e);
+                    //
+                    // The message is a constant on purpose. The handler below renders it straight into the
+                    // client-visible JSON-RPC error, and this endpoint is reachable unauthenticated, so an arbitrary
+                    // transport-layer message must not be echoed back. The real one stays on the inner exception,
+                    // which LogBadRequest writes at Debug.
+                    //
+                    // ConnectionResetException is excluded because it is a genuine transport failure, not a malformed
+                    // request: there is no longer a client to send a 400 to, and labelling it "invalid request" would
+                    // blame the caller for a dropped connection.
+                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(MalformedRequestBodyMessage, StatusCodes.Status400BadRequest, e);
                 }
 
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
