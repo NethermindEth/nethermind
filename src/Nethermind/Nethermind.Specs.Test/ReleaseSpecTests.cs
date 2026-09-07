@@ -75,10 +75,15 @@ public class ReleaseSpecTests
         Assert.That(Address.FromNumber((UInt256)uint.MaxValue + 1).CouldBePrecompile(), Is.False);
     }
 
-    /// <summary>Bools on the interface that are not fork flags, so <see cref="EveryForkFlag"/> skips them.</summary>
-    /// <remarks>Excluded by name rather than by matching a naming convention, so a flag arriving under any
-    /// name — <c>IsRip7212Enabled</c>, or whatever the next one is called — is swept unless listed here.</remarks>
-    private static readonly FrozenSet<string> NotForkFlags = new[] { nameof(IReceiptSpec.ValidateReceipts) }.ToFrozenSet();
+    /// <summary>Bools the sweeps cannot pin, so <see cref="EveryForkFlag"/> skips them.</summary>
+    /// <remarks><c>ValidateReceipts</c> is fork-gated (<c>ValidateReceiptsTransition</c>, Byzantium on a geth
+    /// genesis), but it is an <see cref="IReceiptSpec"/> default that <see cref="ReleaseSpecDecorator"/> never
+    /// overrides, so a decorator reports it on whatever it wraps. Since the decorator sweep switches the flag
+    /// under test on, it would pass on that default instead of failing — a green proving nothing, which is the
+    /// failure class these sweeps exist to catch. Excluded by name rather than by matching a naming convention,
+    /// so a flag arriving under any name — <c>IsRip7212Enabled</c>, or whatever the next one is called — is
+    /// swept unless listed here.</remarks>
+    private static readonly FrozenSet<string> UnpinnableFlags = new[] { nameof(IReceiptSpec.ValidateReceipts) }.ToFrozenSet();
 
     /// <summary>Flags the concrete spec derives rather than stores, mapped to the flag that drives them.</summary>
     private static readonly Dictionary<string, string> FlagsDrivenByAnother = new()
@@ -97,7 +102,7 @@ public class ReleaseSpecTests
             foreach (PropertyInfo property in declaringType.GetProperties())
             {
                 if (property.PropertyType == typeof(bool)
-                    && !NotForkFlags.Contains(property.Name)
+                    && !UnpinnableFlags.Contains(property.Name)
                     && seen.Add(property.Name))
                 {
                     yield return new TestCaseData(property).SetArgDisplayNames(property.Name);
@@ -127,7 +132,7 @@ public class ReleaseSpecTests
     public void Minimal_external_decorator_forwards_every_fork_flag(PropertyInfo flag)
     {
         // Only the flag under test is switched on, so a line forwarding a neighbour reports false. Setting
-        // IsEip4844Enabled also switches IsEip1559Enabled on, leaving that one pair indistinguishable.
+        // IsEip4844Enabled switches IsEip1559Enabled on too, so only a 4844 => 1559 mis-wire escapes.
         ReleaseSpec enabled = new();
         PropertyInfo? driver = typeof(ReleaseSpec).GetProperty(FlagsDrivenByAnother.GetValueOrDefault(flag.Name, flag.Name));
 
