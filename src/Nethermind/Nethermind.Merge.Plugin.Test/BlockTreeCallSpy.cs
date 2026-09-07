@@ -11,8 +11,8 @@ using Nethermind.Core.Test.Builders;
 namespace Nethermind.Merge.Plugin.Test;
 
 /// <summary>
-/// Records the parent-header probes made against a real block tree, i.e. the lookups
-/// <see cref="IBlockFinderExtensions.FindParentHeader"/> issues with the parent's height.
+/// Records every height-hinted header lookup made against a real block tree, the shape
+/// <see cref="IBlockFinderExtensions.FindParentHeader"/> issues when it passes the parent's height.
 /// </summary>
 /// <remarks>
 /// The spy decorates the container's singleton block tree, which background components share and probe on
