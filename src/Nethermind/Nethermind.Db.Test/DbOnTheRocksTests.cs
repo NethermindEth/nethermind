@@ -756,15 +756,15 @@ namespace Nethermind.Db.Test
         {
             using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance))
             {
-                db[[10]] = [1];
-                db[[20]] = [2];
-                db[[30]] = [3];
+                db.Set([10], [1]);
+                db.Set([20], [2]);
+                db.Set([30], [3]);
                 db.Flush();
 
                 using (IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot())
                 {
-                    db[[20]] = [9];
-                    db[[40]] = [4];
+                    db.Set([20], [9]);
+                    db.Set([40], [4]);
                     db.Flush();
                     db.Compact();
 
@@ -788,8 +788,8 @@ namespace Nethermind.Db.Test
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(db.Get([20]), Is.EqualTo(new byte[] { 9 }));
-                    Assert.That(db.Get([40]), Is.EqualTo(new byte[] { 4 }));
+                    Assert.That(GetValue(db, [20]), Is.EqualTo(new byte[] { 9 }));
+                    Assert.That(GetValue(db, [40]), Is.EqualTo(new byte[] { 4 }));
                 }
             }
 
@@ -797,8 +797,8 @@ namespace Nethermind.Db.Test
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(reopened.Get([20]), Is.EqualTo(new byte[] { 9 }));
-                    Assert.That(reopened.Get([40]), Is.EqualTo(new byte[] { 4 }));
+                    Assert.That(GetValue(reopened, [20]), Is.EqualTo(new byte[] { 9 }));
+                    Assert.That(GetValue(reopened, [40]), Is.EqualTo(new byte[] { 4 }));
                 }
             }
         }
