@@ -41,14 +41,6 @@ public sealed class BranchData : INodeData
     public ref readonly BranchArray Branches => ref _branches;
     public ref object? this[int index] => ref _branches[index];
 
-    /// <summary>The first child, for walks that advance a reference across all sixteen.</summary>
-    /// <remarks>
-    /// The branch walks are hot on the encode path. Reaching each child through
-    /// <see cref="this[int]"/> costs a bounds check, an index widening and a scaled add per
-    /// iteration; advancing a reference costs one add.
-    /// </remarks>
-    internal ref object? FirstChild => ref _branches[0];
-
     INodeData INodeData.Clone() => new BranchData(in _branches);
 
     [InlineArray(Length)]

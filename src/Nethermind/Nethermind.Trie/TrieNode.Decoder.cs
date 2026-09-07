@@ -453,7 +453,10 @@ namespace Nethermind.Trie
                 ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
                 int cursor = item.SeekChildPosition(nodeRlp, 0);
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!).FirstChild;
+                // A constant index into the inline array is just the first-element reference, so the
+                // walk costs one add per child instead of the indexer's widen-and-scale. The final
+                // iteration advances one slot past the array and is never read, as with a span's end.
+                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!)[0];
                 for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
                     object? data = child;
@@ -573,7 +576,10 @@ namespace Nethermind.Trie
                 int runStart = -1;
                 int runLength = 0;
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!).FirstChild;
+                // A constant index into the inline array is just the first-element reference, so the
+                // walk costs one add per child instead of the indexer's widen-and-scale. The final
+                // iteration advances one slot past the array and is never read, as with a span's end.
+                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!)[0];
                 for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
                     object? data = child;
