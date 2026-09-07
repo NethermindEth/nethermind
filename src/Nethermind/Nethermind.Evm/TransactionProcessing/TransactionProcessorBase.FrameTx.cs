@@ -908,9 +908,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             isStatic: isStatic);
 
         // Selected explicitly: the parameterless ExecuteTransaction overload hard-codes OffFlag.
-        TransactionSubstate substate = tracer.IsTracingInstructions
-            ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
-            : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
+        // DispatchFlags folds the tracing arm out of the zkEVM guest, which compiles no tracing dispatch.
+        TransactionSubstate substate = !DispatchFlags.Tracing(tracer.IsTracingInstructions)
+            ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer)
+            : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
         long stateReservoirSeed = frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit;
         if (substate.IsError || substate.ShouldRevert)

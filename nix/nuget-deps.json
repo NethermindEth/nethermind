@@ -100,6 +100,11 @@
     "hash": "sha256-XSs8mXYHgp+jM8tPvm4lO6U8ynistGzZAHvcY9nuGVU="
   },
   {
+    "pname": "Fody",
+    "version": "6.9.3",
+    "hash": "sha256-JLom3mbO4NCUXDHoU86l720QXlRx52+ROb5wBwcC5nM="
+  },
+  {
     "pname": "Fractions",
     "version": "7.3.0",
     "hash": "sha256-wr4I1mj1qrXjD2Z3dca70OBe14zZNGagDLW9/8xQtCU="
@@ -143,6 +148,11 @@
     "pname": "Humanizer.Core",
     "version": "2.14.1",
     "hash": "sha256-EXvojddPu+9JKgOG9NSQgUTfWq1RpOYw7adxDPKDJ6o="
+  },
+  {
+    "pname": "InlineIL.Fody",
+    "version": "1.10.2",
+    "hash": "sha256-9V03mxEvfv3SaBjifombgZCycRhXZPqcW/gtjXLDzzk="
   },
   {
     "pname": "IPNetwork2",

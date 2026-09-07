@@ -160,7 +160,7 @@ namespace Nethermind.Trie
 
                 static bool UseParallel(bool canBeParallel, TrieNode item)
                 {
-                    if (Environment.ProcessorCount <= 1 || !canBeParallel)
+                    if (RuntimeInformation.IsSingleProcessor || !canBeParallel)
                     {
                         return false;
                     }
