@@ -83,8 +83,22 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     /// resolving the singleton has no side effects. No-op when the flag is off or already started.</summary>
     public void Start()
     {
-        if (!Started || !ReferenceEquals(_loop, Task.CompletedTask)) return;
+        if (!Started)
+        {
+            AbandonLeftoverWalk();
+            return;
+        }
+
+        if (!ReferenceEquals(_loop, Task.CompletedTask)) return;
         _loop = RunAsync();
+    }
+
+    private void AbandonLeftoverWalk()
+    {
+        if (!_metadata.TryGetWalkInProgress(out ulong from, out ulong to)) return;
+
+        _metadata.ClearWalk(HistoryWalkRun.WorkItems);
+        if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint is cleared and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
     }
 
     /// <summary>Whether this instance actually started its background verification - false means

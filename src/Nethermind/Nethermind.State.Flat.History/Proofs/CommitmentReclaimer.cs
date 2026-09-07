@@ -25,7 +25,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     private bool _started;
     private int _disposed;
     private readonly object _wakeLock = new();
-    private bool _deferralLogged;
+    private volatile bool _deferralLogged;
 
     public bool Enabled => settings.RecentEpochs > 0 || settings.FineEpochs > 0;
 

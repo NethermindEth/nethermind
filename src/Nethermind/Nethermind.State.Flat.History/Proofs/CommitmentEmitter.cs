@@ -71,9 +71,9 @@ public sealed class CommitmentEmitter : IDisposable
 
     private static int WalkExactBranchEntries(CommitmentDepthPolicy policy)
     {
-        int deepest = Math.Max(policy.AccountExactDepth, policy.StorageExactDepth);
-        int nodesPerTrie = ((1 << (4 * (deepest + 1))) - 1) / 15;
-        return Math.Max(1 << 10, 4 * nodesPerTrie);
+        int deepest = Math.Min(Math.Max(policy.AccountExactDepth, policy.StorageExactDepth), 6);
+        long nodesPerTrie = ((1L << (4 * (deepest + 1))) - 1) / 15;
+        return (int)Math.Clamp(4 * nodesPerTrie, 1 << 10, TipExactBranchEntries);
     }
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
