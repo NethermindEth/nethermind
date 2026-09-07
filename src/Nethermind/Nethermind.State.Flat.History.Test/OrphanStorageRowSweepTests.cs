@@ -22,6 +22,8 @@ public class OrphanStorageRowSweepTests
     private static readonly Address DestroyedAtBirth = TestItem.AddressB;
     private static readonly Address RevivedEmpty = TestItem.AddressC;
     private static readonly Address LateBloomer = TestItem.AddressD;
+    private static readonly Address NeverAnAccount = TestItem.AddressE;
+    private static readonly Address Flickering = TestItem.AddressF;
 
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _history = null!;
     private SnapshotableMemColumnsDb<FlatDbColumns> _flat = null!;
@@ -49,6 +51,18 @@ public class OrphanStorageRowSweepTests
         HistoryColumnsWriter.RecordAccount(_history, LateBloomer, block: 3, new Account(0, 0));
         HistoryColumnsWriter.RecordAccount(_history, LateBloomer, block: 9, new Account(1, 1, TestItem.KeccakB, Keccak.OfAnEmptyString));
         HistoryColumnsWriter.RecordStorage(_history, LateBloomer, 1, block: 9, [0x0F]);
+
+        HistoryColumnsWriter.RecordStorage(_history, NeverAnAccount, 1, block: 4, [0x10]);
+        HistoryColumnsWriter.RecordStorage(_history, NeverAnAccount, 1, block: 6, []);
+
+        for (ulong block = 10; block <= 14; block++) HistoryColumnsWriter.RecordAccount(_history, Flickering, block, new Account(block, 1, TestItem.KeccakC, Keccak.OfAnEmptyString));
+        HistoryColumnsWriter.RecordAccount(_history, Flickering, block: 15, new Account(15, 1));
+        for (ulong block = 16; block <= 18; block++) HistoryColumnsWriter.RecordAccount(_history, Flickering, block, new Account(block, 1, TestItem.KeccakC, Keccak.OfAnEmptyString));
+        HistoryColumnsWriter.RecordStorage(_history, Flickering, 1, block: 12, [0x11]);
+        HistoryColumnsWriter.RecordStorage(_history, Flickering, 1, block: 15, [0x12]);
+        HistoryColumnsWriter.RecordStorage(_history, Flickering, 1, block: 17, [0x13]);
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
+        new StorageClearStore(_history.GetColumnDb(FlatHistoryColumns.StorageClears)).RecordClear(15, Flickering.ToAccountPath.Bytes, batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
     }
 
     [TearDown]
@@ -69,7 +83,7 @@ public class OrphanStorageRowSweepTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 6, OrphanRows: 3, OrphanAccounts: 2)));
+            Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)));
             Assert.That(announced, Is.EqualTo(report), "whoever derives data from the rows learns that they changed");
             Assert.That(sweep.AlreadyHandled, Is.True);
             Assert.That(Slot(Living, 1, 5), Is.EqualTo(0x0A), "a contract whose account row carries a storage root keeps its rows");
@@ -78,6 +92,11 @@ public class OrphanStorageRowSweepTests
             Assert.That(Slot(RevivedEmpty, 1, 7), Is.Zero, "a row at a block where the account row says empty storage root contradicts that root; this is the same contract revived by a transfer in that block");
             Assert.That(Slot(RevivedEmpty, 2, 7), Is.Zero);
             Assert.That(Slot(LateBloomer, 1, 9), Is.EqualTo(0x0F), "an account that had no storage earlier and gained it later keeps the rows written once it had a storage root");
+            Assert.That(Slot(NeverAnAccount, 1, 4), Is.Zero, "a row with no account row at or below its block at all is orphaned: in a genesis-anchored history every account that exists has a row");
+            Assert.That(RowCount(NeverAnAccount, 1), Is.EqualTo(1), "a deletion row is never touched, whatever account stands over it");
+            Assert.That(Slot(Flickering, 1, 12), Is.EqualTo(0x11), "runs of account rows with the same verdict collapse without moving the boundary: storage held before the empty-root block stays");
+            Assert.That(Slot(Flickering, 1, 15), Is.Zero, "the row at the one block the account had no storage goes, and the clear the destruction recorded keeps the older value from showing through");
+            Assert.That(Slot(Flickering, 1, 17), Is.EqualTo(0x13), "and storage held after it stays");
         }
     }
 
@@ -90,7 +109,7 @@ public class OrphanStorageRowSweepTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 6, OrphanRows: 3, OrphanAccounts: 2)));
+            Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)));
             Assert.That(Slot(DestroyedAtBirth, 1, 7), Is.EqualTo(0x0C));
             Assert.That(sweep.AlreadyHandled, Is.False);
         }
@@ -109,11 +128,45 @@ public class OrphanStorageRowSweepTests
         {
             Assert.That(completed, Is.False);
             Assert.That(handledAfterOnePass, Is.False, "nothing is stamped until every row has been seen");
-            Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 6, OrphanRows: 3, OrphanAccounts: 2)), "the later passes continue from the cursor, so every row is counted exactly once");
+            Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)), "the later passes continue from the cursor, so every row is counted exactly once");
             Assert.That(Slot(DestroyedAtBirth, 1, 7), Is.Zero);
             Assert.That(Slot(RevivedEmpty, 2, 7), Is.Zero);
             Assert.That(sweep.AlreadyHandled, Is.True);
         }
+    }
+
+    [Test]
+    public void A_windowed_history_is_unsupported_and_recorded_as_handled()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> windowed = new();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(windowed, new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 128 });
+        using OrphanStorageRowSweep sweep = new(windowed, _flat, Substitute.For<IPersistenceManager>(), rowFormat, LimboLogs.Instance);
+
+        bool handledBefore = sweep.AlreadyHandled;
+        sweep.MarkFormatUnsupported();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sweep.Supported, Is.False, "windowed rows are pre-values, a different contract from the post-value rows this sweep judges");
+            Assert.That(handledBefore, Is.False);
+            Assert.That(sweep.AlreadyHandled, Is.True, "recorded once so the decision is not re-logged on every start");
+            Assert.That(() => sweep.RunOnePass(repair: true, maxRows: long.MaxValue, TimeSpan.MaxValue, CancellationToken.None), Throws.InvalidOperationException);
+        }
+    }
+
+    private int RowCount(Address address, UInt256 slot)
+    {
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        ReadOnlySpan<byte> flatKey = Nethermind.State.Flat.Persistence.BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[Nethermind.State.Flat.Persistence.BaseFlatPersistence.StorageKeyLength], address.ToAccountPath, slotHash);
+        Span<byte> upper = stackalloc byte[flatKey.Length + 9];
+        flatKey.CopyTo(upper);
+        upper[flatKey.Length..].Fill(0xFF);
+        upper[^1] = 0x00;
+        int count = 0;
+        using ISortedView view = ((ISortedKeyValueStore)_history.GetColumnDb(FlatHistoryColumns.StorageHistory)).GetViewBetween(flatKey, upper);
+        while (view.MoveNext()) count++;
+        return count;
     }
 
     private int Slot(Address address, UInt256 slot, ulong block)
