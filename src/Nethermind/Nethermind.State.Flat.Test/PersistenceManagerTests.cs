@@ -355,12 +355,19 @@ public class PersistenceManagerTests
         StateId tip = CreateStateId(2, 1);
         PersistBase(Block0, parent);
         PersistBase(parent, tip);
+        // Enumerated after the parent (same block, higher root), so it sees the height after the parent invalidated its root.
+        StateId orphan = CreateStateId(1, 2);
+        PersistBase(Block0, orphan);
         _snapshotRepository.SetLastCommittedStateId(tip);
         _finalizedStateProvider.SetFinalizedBlockNumber(2);
         _finalizedStateProvider.SetFinalizedStateRootAt(1, TestItem.KeccakA);
         _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(tip.StateRoot));
         await _persistenceManager.AddToPersistence(tip);
-        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.True, "a locally committed ancestor outranks a lagging canonical root");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.True, "a locally committed ancestor outranks a lagging canonical root");
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(orphan), Is.False, "a sibling at the same height is still pruned");
+        }
 
         StateId next;
         if (reorg)

@@ -37,10 +37,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly PersistedSnapshotBucket _largeCompacted;
     private readonly PersistedSnapshotBucket _compactSized;
     // Finality-pruning caches, valid across passes: finalized roots are immutable per height, and states
-    // reachable from a committed head stay reachable while later heads extend it.
+    // reachable from a committed head stay reachable while later heads extend it. Reachable states form
+    // a single chain, so one root per height suffices and any other root at that height is unreachable.
     private readonly Lock _finalityCacheLock = new();
     private readonly SortedDictionary<ulong, Hash256> _finalizedRoots = [];
-    private readonly HashSet<StateId> _reachableFromHead = [];
+    private readonly SortedDictionary<ulong, ValueHash256> _reachableFromHead = [];
     private StateId? _reachabilityHead;
     private int _disposed;
 
@@ -649,18 +650,19 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     private void PruneFinalityCachesBefore(ulong blockNumber)
     {
-        using ArrayPoolList<ulong> expiredHeights = new(0);
-        foreach (ulong height in _finalizedRoots.Keys)
+        EvictBelow(_finalizedRoots, blockNumber);
+        EvictBelow(_reachableFromHead, blockNumber);
+    }
+
+    private static void EvictBelow<TValue>(SortedDictionary<ulong, TValue> cache, ulong blockNumber)
+    {
+        using ArrayPoolList<ulong> expired = new(0);
+        foreach (ulong height in cache.Keys)
         {
             if (height >= blockNumber) break;
-            expiredHeights.Add(height);
+            expired.Add(height);
         }
-        foreach (ulong height in expiredHeights) _finalizedRoots.Remove(height);
-
-        using ArrayPoolList<StateId> expiredStates = new(0);
-        foreach (StateId state in _reachableFromHead)
-            if (state.BlockNumber < blockNumber) expiredStates.Add(state);
-        foreach (StateId state in expiredStates) _reachableFromHead.Remove(state);
+        foreach (ulong height in expired) cache.Remove(height);
     }
 
     /// <inheritdoc />
@@ -678,7 +680,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         StateId head = committed.Value;
         RebaseReachabilityCache(head);
 
-        HashSet<ulong> queriedHeights = [];
+        HashSet<ulong> unavailableHeights = [];
         bool ancestryVerified = false;
         int totalPruned = 0;
         // Batched like RemoveSiblingAndDescendents: one unbounded range over a long-finality gap would
@@ -731,18 +733,19 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         bool HeadReaches(in StateId target)
         {
-            if (_reachableFromHead.Contains(target)) return true;
+            if (_reachableFromHead.TryGetValue(target.BlockNumber, out ValueHash256 reachableRoot)) return reachableRoot == target.StateRoot;
             if (!CanReachState(head, target)) return false;
-            _reachableFromHead.Add(target);
+            _reachableFromHead[target.BlockNumber] = target.StateRoot;
             return true;
         }
 
         Hash256? GetRoot(ulong height)
         {
             if (_finalizedRoots.TryGetValue(height, out Hash256? root)) return root;
-            if (!queriedHeights.Add(height)) return null;
+            if (unavailableHeights.Contains(height)) return null;
             root = finalizedStateProvider.GetFinalizedStateRootAt(height);
             if (root is not null) _finalizedRoots.Add(height, root);
+            else unavailableHeights.Add(height);
             return root;
         }
     }
