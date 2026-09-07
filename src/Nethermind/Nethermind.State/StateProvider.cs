@@ -561,7 +561,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             if (isTracing) TraceNoChanges();
 
-            codeFlushTask.GetAwaiter().GetResult();
+            AwaitCodeFlush(codeFlushTask);
             return;
         }
 
@@ -590,7 +590,20 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
 
-        codeFlushTask.GetAwaiter().GetResult();
+        AwaitCodeFlush(codeFlushTask);
+
+        // A single processor persists the batch inline, so its task is always the completed one and
+        // there is nothing to await; skipping the awaiter keeps the task machinery out of the guest.
+        static void AwaitCodeFlush(Task codeFlushTask)
+        {
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                Debug.Assert(codeFlushTask.IsCompletedSuccessfully, "A single processor persists the code batch inline.");
+                return;
+            }
+
+            codeFlushTask.GetAwaiter().GetResult();
+        }
 
         Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
         {
@@ -625,12 +638,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
                     _codeBatchAlternate = dict.GetAlternateLookup<ValueHash256>();
             }
-#if ZK_EVM
-            PersistCodeBatch();
-            return Task.CompletedTask;
-#else
+            // A single processor gains nothing from the hop to the pool, and the guest folds it away.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                PersistCodeBatch();
+                return Task.CompletedTask;
+            }
+
             return Task.Run(PersistCodeBatch);
-#endif
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

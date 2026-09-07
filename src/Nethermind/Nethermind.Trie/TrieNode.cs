@@ -1407,10 +1407,7 @@ namespace Nethermind.Trie
                 index = 1;
             }
 
-            for (int i = 0; i < index; i++)
-            {
-                rlpReader.SkipItem();
-            }
+            rlpReader.SkipItems(index);
         }
 
         private TrieNode CreateInlineChild(ReadOnlySpan<byte> fullRlp)
@@ -1598,7 +1595,7 @@ namespace Nethermind.Trie
                         if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
                         {
                             int toSkip = i - _currentStreamIndex.Value;
-                            for (int j = 0; j < toSkip; j++) _rlpReader.SkipItem();
+                            _rlpReader.SkipItems(toSkip);
                             _currentStreamIndex += toSkip;
                         }
                         else
@@ -1613,7 +1610,7 @@ namespace Nethermind.Trie
                             }
                             else
                             {
-                                for (int j = 0; j < i; j++) _rlpReader.SkipItem();
+                                _rlpReader.SkipItems(i);
                             }
 
                             _currentStreamIndex = i;

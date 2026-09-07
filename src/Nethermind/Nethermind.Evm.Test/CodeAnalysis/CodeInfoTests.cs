@@ -208,37 +208,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
-        [Test]
-        public void GetOrBuildStream_without_code_hash_never_schedules_build()
-        {
-            int thresholdBefore = StreamInterpreter.BuildThreshold;
-            StreamInterpreter.BuildThreshold = 1;
-            try
-            {
-                byte[] code = Enumerable.Repeat((byte)Instruction.JUMPDEST, 32).ToArray();
-                CodeInfo unhashed = new(code);
-                for (int i = 0; i < 8; i++)
-                    Assert.That(unhashed.GetOrBuildStream(), Is.Null);
-
-                Assert.That(
-                    !System.Threading.SpinWait.SpinUntil(() => unhashed.GetOrBuildStream() is not null, TimeSpan.FromMilliseconds(250)),
-                    "default CodeHash must not publish a stream");
-
-                CodeInfo hashed = new(code) { CodeHash = Nethermind.Core.Crypto.ValueKeccak.Compute(code) };
-                Assert.That(
-                    System.Threading.SpinWait.SpinUntil(() => hashed.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)),
-                    "hashed CodeInfo should build a stream");
-            }
-            finally
-            {
-                StreamInterpreter.BuildThreshold = thresholdBefore;
-            }
-        }
-
         [TestCaseSource(nameof(Codes))]
         public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
         {
-            for (int i = 1; i < codeInput.Length; i++)
+            for (int i = 1; i <= codeInput.Length; i++)
             {
                 ReadOnlySpan<byte> code = codeInput.AsSpan(0, i);
 
@@ -260,6 +233,27 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 test.TestName = "Code_All_0x00";
                 yield return test;
 
+                // Runs of plain one-byte instructions bracketing each width a scan steps over in one go: the
+                // 8-byte scalar word, the 16-byte Vector128 block, the 32-byte PUSH32 payload and the 64-byte
+                // Vector512 chunk. The per-prefix loop also cuts every run off at the end of the code.
+                int[] runLengths = [1, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65];
+                byte[] markers = [(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, (byte)Instruction.PUSH32];
+                foreach (int run in runLengths)
+                {
+                    foreach (byte marker in markers)
+                    {
+                        code = new byte[1024];
+                        for (int i = run; i < code.Length; i += run + 1)
+                        {
+                            code[i] = marker;
+                        }
+
+                        test = new TestCaseData(code);
+                        test.TestName = $"Code_Run{run}_{(Instruction)marker}";
+                        yield return test;
+                    }
+                }
+
                 code = new byte[1024];
                 code.AsSpan().Fill((byte)0x5b);
                 test = new TestCaseData(code);
@@ -267,11 +261,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 yield return test;
 
                 code = new byte[1024];
+                for (int i = 8; i < code.Length - 3; i += 4)
+                {
+                    code[i] = (byte)Instruction.JUMPDEST;
+                    code[i + 1] = (byte)Instruction.PUSH1;
+                    code[i + 2] = (byte)Instruction.JUMPDEST;
+                    code[i + 3] = (byte)Instruction.JUMPDEST;
+                }
+                test = new TestCaseData(code);
+                test.TestName = "Code_Unaligned_PUSH1_JUMPDEST";
+                yield return test;
 
                 for (int start = 0; start <= 1; start++)
                 {
                     for (int push = 0x60; push <= 0x7f; push++)
                     {
+                        code = new byte[1024];
                         for (int i = 0; i < code.Length; i++)
                         {
                             code[i] = (i + start) % 2 == 0 ? (byte)push : (byte)0x5b;

@@ -1455,7 +1455,7 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         StorageCell cell = new(TestItem.AddressA, 1);
         caches.StorageCache.Set(in cell, null);
         LocalMetrics metrics = new();

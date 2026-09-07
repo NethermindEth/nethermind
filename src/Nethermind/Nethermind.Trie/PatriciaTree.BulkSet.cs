@@ -199,7 +199,7 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
             using ArrayPoolList<(
                 int startIdx,
