@@ -7,10 +7,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RPC;
@@ -60,12 +62,12 @@ public class XdcExtendedEthModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindHeader(TestItem.KeccakA).Returns(header);
 
-        IXdcExtendedEthRpcModule module = new XdcExtendedEthModule(
-            blockFinder,
-            Substitute.For<IReceiptFinder>(),
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IMasternodeVotingContract>(),
-            rewardsStore);
+        IXdcExtendedEthRpcModule module = CreateModule(
+            blockFinder: blockFinder,
+            receiptFinder: Substitute.For<IReceiptFinder>(),
+            specProvider: Substitute.For<ISpecProvider>(),
+            votingContract: Substitute.For<IMasternodeVotingContract>(),
+            rewardsStore: rewardsStore);
 
         ResultWrapper<XdcEpochRewards> result =
             await module.eth_getRewardByHash(TestItem.KeccakA);
@@ -79,12 +81,12 @@ public class XdcExtendedEthModuleTests
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.FindBlockHash(TestItem.KeccakA).Returns((Hash256?)null);
 
-        IXdcExtendedEthRpcModule module = new XdcExtendedEthModule(
-            Substitute.For<IBlockFinder>(),
-            receiptFinder,
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IMasternodeVotingContract>(),
-            Substitute.For<IRewardsStore>());
+        IXdcExtendedEthRpcModule module = CreateModule(
+            blockFinder: Substitute.For<IBlockFinder>(),
+            receiptFinder: receiptFinder,
+            specProvider: Substitute.For<ISpecProvider>(),
+            votingContract: Substitute.For<IMasternodeVotingContract>(),
+            rewardsStore: Substitute.For<IRewardsStore>());
 
         ResultWrapper<XdcTransactionAndReceiptProof?> result = await module.eth_getTransactionAndReceiptProof(TestItem.KeccakA);
         Assert.That(result.Data, Is.Null);
@@ -110,12 +112,12 @@ public class XdcExtendedEthModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(block.Header).Returns(releaseSpec);
 
-        IXdcExtendedEthRpcModule module = new XdcExtendedEthModule(
-            blockFinder,
-            receiptFinder,
-            specProvider,
-            Substitute.For<IMasternodeVotingContract>(),
-            Substitute.For<IRewardsStore>());
+        IXdcExtendedEthRpcModule module = CreateModule(
+            blockFinder: blockFinder,
+            receiptFinder: receiptFinder,
+            specProvider: specProvider,
+            votingContract: Substitute.For<IMasternodeVotingContract>(),
+            rewardsStore: Substitute.For<IRewardsStore>());
 
         ResultWrapper<XdcTransactionAndReceiptProof?> result = await module.eth_getTransactionAndReceiptProof(TestItem.KeccakB);
 
@@ -130,6 +132,158 @@ public class XdcExtendedEthModuleTests
         Assert.That(proof.ReceiptProofValues, Has.Length.EqualTo(proof.ReceiptProofKeys.Length));
     }
 
+    [Test]
+    public async Task eth_getAccountInfo_reports_a_contract_by_code_hash_and_size()
+    {
+        byte[] code = [0x60, 0x60, 0x60, 0x40];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+        ValueHash256 storageRoot = TestItem.KeccakC.ValueHash256;
+        AccountStruct account = new(7UL, 1234, storageRoot, codeHash);
+
+        (IStateReader stateReader, IBlockFinder blockFinder, BlockHeader header) = StateWith(TestItem.AddressA, account);
+        stateReader.GetCode(codeHash).Returns(code);
+
+        ResultWrapper<XdcAccountInfo> result =
+            await CreateModule(blockFinder: blockFinder, stateReader: stateReader)
+                .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
+
+        XdcAccountInfo info = result.Data;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(info.Balance, Is.EqualTo((UInt256)1234));
+            Assert.That(info.Nonce, Is.EqualTo(7UL));
+            Assert.That(info.CodeHash, Is.EqualTo(new Hash256(codeHash)));
+            Assert.That(info.CodeSize, Is.EqualTo(code.Length));
+            Assert.That(info.StorageHash, Is.EqualTo(new Hash256(storageRoot)));
+        }
+    }
+
+    /// <remarks>
+    /// The field names are the reason this endpoint exists, so pin them on the wire rather than on the DTO.
+    /// </remarks>
+    [Test]
+    public async Task eth_getAccountInfo_serializes_the_field_names_the_reference_uses()
+    {
+        AccountStruct account = new(7UL, 1234, TestItem.KeccakC.ValueHash256, ValueKeccak.Compute([0x60]));
+        (IStateReader stateReader, IBlockFinder blockFinder, BlockHeader _) = StateWith(TestItem.AddressA, account);
+        stateReader.GetCode(Arg.Any<ValueHash256>()).Returns([0x60]);
+
+        string json = await RpcTest.TestSerializedRequest<IXdcExtendedEthRpcModule>(
+            CreateModule(blockFinder: blockFinder, stateReader: stateReader),
+            "eth_getAccountInfo", TestItem.AddressA, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string field in new[] { "address", "balance", "nonce", "codeHash", "codeSize", "storageHash" })
+            {
+                Assert.That(json, Does.Contain($"\"{field}\""), field);
+            }
+
+            // The reference reports the code's hash and length in place of the code itself.
+            Assert.That(json, Does.Not.Contain("\"code\":"));
+        }
+    }
+
+    /// <remarks>Every externally owned account takes this path, so it must not touch the code store.</remarks>
+    [Test]
+    public async Task eth_getAccountInfo_does_not_read_code_for_an_account_that_has_none()
+    {
+        AccountStruct account = new(3UL, 99);
+        (IStateReader stateReader, IBlockFinder blockFinder, BlockHeader header) = StateWith(TestItem.AddressA, account);
+
+        ResultWrapper<XdcAccountInfo> result =
+            await CreateModule(blockFinder: blockFinder, stateReader: stateReader)
+                .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.CodeSize, Is.Zero);
+            Assert.That(result.Data.Nonce, Is.EqualTo(3UL));
+        }
+
+        stateReader.DidNotReceive().GetCode(Arg.Any<ValueHash256>());
+    }
+
+    /// <remarks>
+    /// The reference reports an address with no account as all zeros, including zero hashes rather than the
+    /// empty-code and empty-trie hashes, which is what tells a caller the account is absent.
+    /// </remarks>
+    [Test]
+    public async Task eth_getAccountInfo_reports_an_absent_account_with_zero_hashes()
+    {
+        BlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindHeader(BlockParameter.Latest, Arg.Any<bool>()).Returns(header);
+        blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(header).Returns(true);
+        stateReader.TryGetAccount(header, TestItem.AddressD, out Arg.Any<AccountStruct>()).Returns(false);
+
+        ResultWrapper<XdcAccountInfo> result =
+            await CreateModule(blockFinder: blockFinder, stateReader: stateReader)
+                .eth_getAccountInfo(TestItem.AddressD, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Address, Is.EqualTo(TestItem.AddressD));
+            Assert.That(result.Data.Balance, Is.EqualTo(UInt256.Zero));
+            Assert.That(result.Data.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(result.Data.StorageHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(result.Data.CodeSize, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task eth_getAccountInfo_fails_when_the_block_has_no_state()
+    {
+        BlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindHeader(BlockParameter.Latest, Arg.Any<bool>()).Returns(header);
+        blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(header).Returns(false);
+
+        ResultWrapper<XdcAccountInfo> result =
+            await CreateModule(blockFinder: blockFinder, stateReader: stateReader)
+                .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+    }
+
+    private static (IStateReader StateReader, IBlockFinder BlockFinder, BlockHeader Header) StateWith(
+        Address address, AccountStruct account)
+    {
+        BlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindHeader(BlockParameter.Latest, Arg.Any<bool>()).Returns(header);
+        blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(header).Returns(true);
+        stateReader.TryGetAccount(header, address, out Arg.Any<AccountStruct>())
+            .Returns(x => { x[2] = account; return true; });
+
+        return (stateReader, blockFinder, header);
+    }
+
+    /// <summary>Builds the module with substitutes for everything the caller does not pin down.</summary>
+    private static XdcExtendedEthModule CreateModule(
+        IBlockFinder? blockFinder = null,
+        IReceiptFinder? receiptFinder = null,
+        ISpecProvider? specProvider = null,
+        IMasternodeVotingContract? votingContract = null,
+        IRewardsStore? rewardsStore = null,
+        IStateReader? stateReader = null) =>
+        new(blockFinder ?? Substitute.For<IBlockFinder>(),
+            receiptFinder ?? Substitute.For<IReceiptFinder>(),
+            specProvider ?? Substitute.For<ISpecProvider>(),
+            votingContract ?? Substitute.For<IMasternodeVotingContract>(),
+            rewardsStore ?? Substitute.For<IRewardsStore>(),
+            stateReader ?? Substitute.For<IStateReader>());
+
     private static IXdcExtendedEthRpcModule CreateOwnerModule(Address owner)
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -142,11 +296,11 @@ public class XdcExtendedEthModuleTests
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(header, TestItem.AddressA).Returns(owner);
 
-        return new XdcExtendedEthModule(
-            blockFinder,
-            Substitute.For<IReceiptFinder>(),
-            Substitute.For<ISpecProvider>(),
-            votingContract,
-            Substitute.For<IRewardsStore>());
+        return CreateModule(
+            blockFinder: blockFinder,
+            receiptFinder: Substitute.For<IReceiptFinder>(),
+            specProvider: Substitute.For<ISpecProvider>(),
+            votingContract: votingContract,
+            rewardsStore: Substitute.For<IRewardsStore>());
     }
 }

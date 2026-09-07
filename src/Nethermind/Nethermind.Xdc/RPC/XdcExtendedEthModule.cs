@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Xdc.Contracts;
 using Autofac.Features.AttributeFilters;
@@ -23,7 +24,8 @@ internal sealed class XdcExtendedEthModule(
     [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     IMasternodeVotingContract masternodeVotingContract,
-    IRewardsStore rewardsStore) : IXdcExtendedEthRpcModule
+    IRewardsStore rewardsStore,
+    IStateReader stateReader) : IXdcExtendedEthRpcModule
 {
     private static readonly IRlpDecoder<TxReceipt> ReceiptEncoder = Rlp.GetDecoder<TxReceipt>();
 
@@ -112,6 +114,39 @@ internal sealed class XdcExtendedEthModule(
         };
 
         return Task.FromResult(ResultWrapper<XdcTransactionAndReceiptProof?>.Success(proof));
+    }
+
+    public Task<ResultWrapper<XdcAccountInfo>> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter = null)
+    {
+        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(searchResult));
+        }
+
+        BlockHeader header = searchResult.Object!;
+        if (!stateReader.HasStateForBlock(header))
+        {
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
+                $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable));
+        }
+
+        if (!stateReader.TryGetAccount(header, accountAddress, out AccountStruct account))
+        {
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Success(XdcAccountInfo.Absent(accountAddress)));
+        }
+
+        return Task.FromResult(ResultWrapper<XdcAccountInfo>.Success(new XdcAccountInfo
+        {
+            Address = accountAddress,
+            Balance = account.Balance,
+            Nonce = account.Nonce,
+            CodeHash = new Hash256(account.CodeHash),
+            // An account without code needs no lookup, which covers every externally owned account.
+            CodeSize = account.HasCode ? stateReader.GetCode(account.CodeHash)?.Length ?? 0 : 0,
+            StorageHash = new Hash256(account.StorageRoot),
+        }));
     }
 
     private static (string[] Keys, string[] Values) FromProofNodes(byte[][] proofNodes)

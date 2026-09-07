@@ -5,11 +5,13 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -30,6 +32,26 @@ internal class XdcTestBlockchainTests
     [TestCase(typeof(IXdcMasternodeEthRpcModule))]
     public void RpcModulesResolveFromTheContainer(Type moduleType) =>
         Assert.That(_blockchain.Container.Resolve(moduleType), Is.Not.Null);
+
+    /// <remarks>
+    /// A JSON-RPC method name is a single global key and the provider keeps whichever module registered
+    /// last, silently. The XDC override of <c>eth_getAccountInfo</c> only wins because plugins register
+    /// after the core modules, so this fails the moment that ordering changes rather than the node
+    /// quietly serving the core client's account shape on an XDC chain.
+    /// </remarks>
+    [Test]
+    public void XdcOverridesTheCoreAccountInfoEndpoint()
+    {
+        IRpcModuleProvider provider = _blockchain.Container.Resolve<IRpcModuleProvider>();
+
+        ResolvedMethodInfo? resolved = provider.Resolve("eth_getAccountInfo");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.Not.Null);
+            Assert.That(resolved!.MethodInfo.DeclaringType, Is.EqualTo(typeof(IXdcExtendedEthRpcModule)));
+        }
+    }
 
     [TestCase(180)]
     [TestCase(91)]

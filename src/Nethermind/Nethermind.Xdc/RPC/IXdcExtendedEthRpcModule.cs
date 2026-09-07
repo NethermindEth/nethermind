@@ -31,4 +31,18 @@ public interface IXdcExtendedEthRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<XdcTransactionAndReceiptProof?>> eth_getTransactionAndReceiptProof(Hash256 transactionHash);
+
+    /// <summary>Returns balance, nonce, code hash and size, and storage root for an account.</summary>
+    /// <param name="accountAddress">Account to report on.</param>
+    /// <param name="blockParameter">Block to read state at; defaults to the head.</param>
+    /// <remarks>
+    /// Overrides the client's own <c>eth_getAccountInfo</c>, which reports the code itself in place of the
+    /// hash, size and storage root XDC callers expect. Registered after the core module so this definition
+    /// wins; <c>XdcRpcModuleOverrideTests</c> guards that ordering.
+    /// </remarks>
+    [JsonRpcMethod(
+        Description = "Returns balance, nonce, code hash and size, and storage root for an account.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<XdcAccountInfo>> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter = null);
 }
