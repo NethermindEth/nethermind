@@ -120,10 +120,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Warm_up_opcode_handlers_does_not_throw() =>
+    public void Warm_up_opcode_handlers_returns_the_pooled_access_tracker()
+    {
+        object trackingState;
+        using (StackAccessTracker tracker = new())
+            trackingState = ReadWarmedOpcodeField(typeof(StackAccessTracker), "_trackingState", tracker);
+
         Assert.That(
             () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
             Throws.Nothing);
+
+        using StackAccessTracker reused = new();
+        Assert.That(ReadWarmedOpcodeField(typeof(StackAccessTracker), "_trackingState", reused), Is.SameAs(trackingState));
+    }
 
     [Test]
     public void Warm_up_code_preserves_each_opcodes_jump_bitmap([Values(Instruction.JUMP, Instruction.JUMPI)] Instruction instruction)

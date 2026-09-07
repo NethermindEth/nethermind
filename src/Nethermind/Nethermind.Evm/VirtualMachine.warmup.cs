@@ -158,24 +158,26 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         vm._txTracer = txTracer;
         // This drives RunByteCode directly, so it resolves the table itself rather than through a transaction.
         vm.PrepareOpcodes<TTracingInst, TCancelable>();
+        CodeInfo[] codeInfos = new CodeInfo[byte.MaxValue + 1];
+        for (int i = 0; i < codeInfos.Length; i++)
+            codeInfos[i] = CreateWarmUpCodeInfo((Instruction)i);
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {
             for (int i = 0; i <= byte.MaxValue; i++)
             {
-                CodeInfo codeInfo = CreateWarmUpCodeInfo((Instruction)i);
+                CodeInfo codeInfo = codeInfos[i];
                 using ExecutionEnvironment env = ExecutionEnvironment.Rent(
                     codeInfo, address, address, address, 0, 0, default);
+                using StackAccessTracker accessTracker = new();
                 using VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(
-                    TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot());
+                    TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, accessTracker, state.TakeSnapshot());
                 vm.VmState = vmState;
                 vmState.InitializeStacks(txTracer, codeInfo.CodeSpan, out EvmStack stack);
 
                 for (int stackItem = 0; stackItem < 20; stackItem++)
                     stack.PushOne<TTracingInst>();
 
-                vmState.ProgramCounter = 0;
-                vmState.Gas = TGasPolicy.FromULong(ulong.MaxValue);
                 CallResult callResult = vm.RunByteCode<TTracingInst, TCancelable>(ref stack, ref vmState.Gas);
                 callResult.StateToExecute?.Dispose();
 
