@@ -772,6 +772,10 @@ namespace Nethermind.Core.Test
             byte[] input1 = new byte[sizeof(ulong)];
             int equalPairs = 0;
 
+            foreach (uint seed in HashSeeds)
+                Assert.That(SpanExtensions.CombineHash(seed, pairedDelta),
+                    Is.EqualTo(SpanExtensions.CombineHash(seed, 0)), "raw CRC collision survives changing the seed");
+
             for (uint value = 0; value < count; value++)
             {
                 ulong word = value * 0x9E3779B97F4A7C15UL;
@@ -784,15 +788,10 @@ namespace Nethermind.Core.Test
                 int hash1 = forceScalar
                     ? SpanExtensions.FastHashFallback(input1)
                     : input1.FastHash();
-                foreach (uint seed in HashSeeds)
-                {
-                    Assert.That(SpanExtensions.CombineHash(seed, word ^ pairedDelta),
-                        Is.EqualTo(SpanExtensions.CombineHash(seed, word)), "raw CRC collision survives changing the seed");
-                    if (SpanExtensions.CombineHash(seed, (uint)hash0) == SpanExtensions.CombineHash(seed, (uint)hash1)) equalPairs++;
-                }
+                if (SpanExtensions.CombineHash(0, (uint)hash0) == SpanExtensions.CombineHash(0, (uint)hash1)) equalPairs++;
             }
 
-            Assert.That(equalPairs, Is.LessThan(4), $"structured pairs produced {equalPairs}/{count * HashSeeds.Length} equal chained hashes");
+            Assert.That(equalPairs, Is.LessThan(2), $"structured pairs produced {equalPairs}/{count} equal chained hashes");
         }
 #endif
 

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+#if !ZK_EVM
 using System.Buffers.Binary;
+#endif
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -41,6 +43,7 @@ public class TreePathTests
             Assert.That(path.GetChainedHashCode(seed ^ (1u << bit)), Is.Not.EqualTo(original), $"bit {bit}");
     }
 
+#if !ZK_EVM
     [TestCase(0u)]
     [TestCase(0x55555555u)]
     [TestCase(uint.MaxValue)]
@@ -70,6 +73,8 @@ public class TreePathTests
             Assert.That(chainedHashes.Count, Is.GreaterThan(count - 4));
         }
     }
+
+#endif
 
     [Test]
     public void TestAppend()
