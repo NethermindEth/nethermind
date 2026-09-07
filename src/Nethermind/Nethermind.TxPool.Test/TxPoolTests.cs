@@ -3097,7 +3097,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(true, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingVerifyFrame_IsRejected")]
         public void SubmitTx_FrameTransactionBehindAnUnrecognizedPrefix_IsJudgedOnItsTrailingFrame(bool trailingVerify)
         {
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             TxFrame trailing = trailingVerify
@@ -3729,7 +3729,7 @@ namespace Nethermind.TxPool.Test
             // Distinct senders share one opaque-prefix sponsor, so the exposure gate bounds its summed
             // pending cost to its balance, and removing a tx releases the reservation.
             Address sponsor = TestItem.AddressD;
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(sponsor));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(sponsor));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -4050,7 +4050,7 @@ namespace Nethermind.TxPool.Test
         {
             // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap
             // bounds how many of its sponsored transactions may be pending at once.
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -4081,7 +4081,7 @@ namespace Nethermind.TxPool.Test
         {
             // Reading the count and then inserting would let every submission observe the same free slot,
             // leaving the sponsor over its cap for as long as the transactions stay pending.
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
             foreach (PrivateKey sender in senders)
@@ -4303,7 +4303,7 @@ namespace Nethermind.TxPool.Test
         {
             // The cap counts the bump before the pool displaces the incumbent, so the sponsor is briefly at
             // two. Settling at anything but one locks it out the moment the survivor leaves.
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -4335,7 +4335,7 @@ namespace Nethermind.TxPool.Test
         {
             // Drives the pool's own bookkeeping check, which walks both ledgers per head and is compiled
             // into debug builds only; the release-observable half is that a drained pool re-admits.
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -4481,7 +4481,7 @@ namespace Nethermind.TxPool.Test
         {
             // EIP-8250: two nonce-key domains at one nonce do not compete, so both stay pending and both
             // owe the paymaster a slot. Discounting one against the other would double the cap per sender.
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD), KeyedNonceSpecProvider());
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD), KeyedNonceSpecProvider());
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);

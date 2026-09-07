@@ -153,6 +153,8 @@ public class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain("never set a payer"),
+                "rejection is the payer gate at the end of the loop, so the SENDER frame ran and its write was made before the rollback");
             AssertStorage(Observer, 0, UInt256.Zero, "the SENDER frame's write is rolled back with the transaction");
             Assert.That(_stateProvider.GetNonce(Sender), Is.Zero);
             Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore));
@@ -1914,15 +1916,12 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             // Both must actually run the BALANCE: a halted or skipped frame's gas cancels out of the spread.
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-                Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-                Assert.That((long)baselineGas - (long)observerGas,
-                    Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
-                    "the earlier frame warmed its codeless target, so the observer's BALANCE pays the warm "
-                    + "access where the baseline pays the cold one");
-            }
+            Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That((long)baselineGas - (long)observerGas,
+                Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+                "the earlier frame warmed its codeless target, so the observer's BALANCE pays the warm "
+                + "access where the baseline pays the cold one");
         }
     }
 
@@ -1969,14 +1968,11 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             // The precompile account is not alive, so the transfer also pays the NEW_ACCOUNT state cost.
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(tracer.FrameReceipts![1].GasUsed,
-                    Is.EqualTo(18UL + Eip8038Constants.WarmAccess + (ulong)GasCostOf.NewAccountState),
-                    "the frame must be charged for the precompile it ran, plus its entry charge");
-                Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
-                Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
-            }
+            Assert.That(tracer.FrameReceipts![1].GasUsed,
+                Is.EqualTo(18UL + Eip8038Constants.WarmAccess + (ulong)GasCostOf.NewAccountState),
+                "the frame must be charged for the precompile it ran, plus its entry charge");
+            Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
+            Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         }
 
         // The VM builds the log from its own caller/executing account, not the processor's.
