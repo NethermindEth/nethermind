@@ -14,8 +14,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
     private readonly Lock _treeLock = new();
 
-    internal ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
-    internal ConcurrentDictionary<PbtNodePath, byte[]?> Nodes = new();
+    internal readonly ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
+    internal readonly ConcurrentDictionary<PbtNodePath, byte[]?> Nodes = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value)
@@ -65,23 +65,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             }
         }
         return changed;
-    }
-
-    internal void ApplyTreeMutations(
-        IReadOnlyList<PbtLeafMutation> leafMutations,
-        IReadOnlyList<PbtNodeMutation> nodeMutations)
-    {
-        lock (_treeLock)
-        {
-            ConcurrentDictionary<PbtFullKey, ValueHash256?> leaves = new(Leaves);
-            ConcurrentDictionary<PbtNodePath, byte[]?> nodes = new(Nodes);
-            foreach (PbtLeafMutation mutation in leafMutations)
-                leaves[mutation.Key] = mutation.Value is null || mutation.Value.Value == default ? null : mutation.Value;
-            foreach (PbtNodeMutation mutation in nodeMutations)
-                nodes[mutation.Path] = mutation.Encoding is null ? null : (byte[])mutation.Encoding.Clone();
-            Leaves = leaves;
-            Nodes = nodes;
-        }
     }
 
     internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => CodeReferences[codeHash] = referenceCount;

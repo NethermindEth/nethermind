@@ -53,10 +53,7 @@ public sealed class PbtSnapshotBundle(
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBuffer.SetLeaf(key, value);
 
-    internal void ApplyTreeMutations(
-        IReadOnlyList<PbtLeafMutation> leafMutations,
-        IReadOnlyList<PbtNodeMutation> nodeMutations) =>
-        WriteBuffer.ApplyTreeMutations(leafMutations, nodeMutations);
+    internal void SetNode(PbtNodePath path, byte[]? encoding) => WriteBuffer.SetNode(path, encoding);
 
     internal byte[]? GetNode(PbtNodePath path)
     {

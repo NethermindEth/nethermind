@@ -59,9 +59,3 @@ public interface IPbtStore
     /// <summary>Writes or deletes the canonical node at <paramref name="path"/>.</summary>
     void SetNode(PbtNodePath path, byte[]? encoding);
 }
-
-/// <summary>A complete-key leaf replacement; a null value deletes the key.</summary>
-public readonly record struct PbtLeafMutation(PbtFullKey Key, ValueHash256? Value);
-
-/// <summary>A canonical node replacement; a null encoding deletes the path.</summary>
-public readonly record struct PbtNodeMutation(PbtNodePath Path, byte[]? Encoding);

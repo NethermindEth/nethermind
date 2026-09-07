@@ -50,7 +50,7 @@ public class PbtSnapshotBundleTests
             pool,
             PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetLeaf(originalLeafKey, originalLeafValue);
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(originalNodePath, originalNode)]);
+        bundle.SetNode(originalNodePath, originalNode);
 
         PbtFullKey updateKey = new([3]);
         PbtWriteBatch initial = new();
@@ -123,7 +123,7 @@ public class PbtSnapshotBundleTests
             Content((localPath, localOldest)),
             Content((localPath, localNewest)));
         using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(writeBufferPath, writeBuffer)]);
+        bundle.SetNode(writeBufferPath, writeBuffer);
 
         using RefCountingMemory payload = bundle.GetNodeGroup(groupKey)!;
         PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
@@ -155,7 +155,7 @@ public class PbtSnapshotBundleTests
         };
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(deletedPath, null)]);
+        bundle.SetNode(deletedPath, null);
 
         using (RefCountingMemory payload = bundle.GetNodeGroup(groupKey)!)
         {
@@ -167,7 +167,7 @@ public class PbtSnapshotBundleTests
             }
         }
 
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(retainedPath, null)]);
+        bundle.SetNode(retainedPath, null);
         Assert.That(bundle.GetNodeGroup(groupKey), Is.Null);
     }
 
@@ -187,7 +187,7 @@ public class PbtSnapshotBundleTests
         PbtNodePath originalNodePath = new([0], 1);
         byte[] originalNode = BranchEncoding(1);
         bundle.SetLeaf(originalLeafKey, new ValueHash256(Value(2)));
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(originalNodePath, originalNode)]);
+        bundle.SetNode(originalNodePath, originalNode);
 
         Assert.Throws<InvalidDataException>(() => bundle.GetNodeGroup(reader.GroupKey));
         AssertSnapshotUnchanged(bundle, originalLeafKey, originalNodePath, originalNode);
@@ -211,7 +211,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         PbtFullKey originalLeafKey = new([1]);
         bundle.SetLeaf(originalLeafKey, new ValueHash256(Value(2)));
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(originalNodePath, [0x7F])]);
+        bundle.SetNode(originalNodePath, [0x7F]);
 
         Assert.Throws<InvalidDataException>(() => bundle.GetNodeGroup(groupKey));
         AssertSnapshotUnchanged(bundle, originalLeafKey, originalNodePath, [0x7F]);
@@ -229,7 +229,7 @@ public class PbtSnapshotBundleTests
         Reader reader = new(new PbtFullKey([0]), null) { GroupReadException = new InvalidDataException("Configured group read failure.") };
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetLeaf(originalLeafKey, originalLeafValue);
-        bundle.ApplyTreeMutations([], [new PbtNodeMutation(originalNodePath, originalNode)]);
+        bundle.SetNode(originalNodePath, originalNode);
         PbtWriteBatch changes = new();
         changes.Set(new PbtFullKey([3]), new ValueHash256(Value(4)));
 
@@ -346,17 +346,14 @@ public class PbtSnapshotBundleTests
 
     private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore
     {
-        private readonly List<PbtLeafMutation> _leaves = [];
-
         public int ApplyCount { get; private set; }
         public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
-        public void SetLeaf(PbtFullKey key, ValueHash256? value) => _leaves.Add(new(key, value));
+        public void SetLeaf(PbtFullKey key, ValueHash256? value) => bundle.SetLeaf(key, value);
         public void SetNode(PbtNodePath path, byte[]? encoding)
         {
             ApplyCount++;
-            bundle.ApplyTreeMutations(_leaves, [new(path, encoding)]);
-            _leaves.Clear();
+            bundle.SetNode(path, encoding);
         }
     }
 }
