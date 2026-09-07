@@ -252,6 +252,7 @@ public ref struct RlpReader
 
     public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryDecodeValueKeccak(out ValueHash256 keccak)
     {
         Unsafe.SkipInit(out keccak);
