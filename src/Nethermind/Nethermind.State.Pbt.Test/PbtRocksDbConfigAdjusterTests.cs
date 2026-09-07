@@ -6,6 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Db;
@@ -52,6 +54,19 @@ public class PbtRocksDbConfigAdjusterTests
         Assert.That(config.RocksDbOptions, Is.EqualTo($"global=1;shared=1;column={column};"));
     }
 
+    [TestCase(PbtColumns.Accounts, PbtColumns.AccountLeaves)]
+    [TestCase(PbtColumns.Storages, PbtColumns.StorageLeaves)]
+    [TestCase(PbtColumns.Codes, PbtColumns.CodeLeaves)]
+    [TestCase(PbtColumns.NodeGroups, PbtColumns.StorageTrieNodes)]
+    [TestCase(PbtColumns.CodeReferences, PbtColumns.CodeLeaves)]
+    public void TypedColumnsReuseTheirDomainOptions(PbtColumns column, PbtColumns optionsColumn)
+    {
+        IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
+            .GetForDatabase(nameof(DbNames.Pbt), column.ToString());
+
+        Assert.That(config.RocksDbOptions, Is.EqualTo($"global=1;shared=1;column={optionsColumn};"));
+    }
+
     [Test]
     public void PbtDatabaseItselfGetsTheSharedOptionsOnly()
     {
@@ -89,11 +104,19 @@ public class PbtRocksDbConfigAdjusterTests
         PbtNodePath path = new([], 0);
         byte[] encoding = PbtNodeCodec.EncodeLeaf(key, new byte[ValueHash256.MemorySize]);
         StateId state = new(1, new ValueHash256([1]));
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        Account account = new(7, 9, TestItem.KeccakB, TestItem.KeccakC);
+        PbtFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 64);
+        EvmWord slot = EvmWordSlot.FromStripped(TestItem.KeccakD.Bytes);
+        CodeInfo code = new(TestItem.KeccakA.Bytes.ToArray());
 
         using (ColumnsDb<PbtColumns> db = NewDb())
         {
             PbtRocksDbPersistence persistence = new(db, new PbtConfig());
             using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default, WriteFlags.None);
+            batch.SetAccount(addressHash, account);
+            batch.SetSlot(storageKey, slot);
+            batch.SetCode(account.CodeHash.ValueHash256, code);
             BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
             try
             {
@@ -116,6 +139,10 @@ public class PbtRocksDbConfigAdjusterTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(state));
+                Assert.That(reader.GetAccount(addressHash), Is.EqualTo(account));
+                Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
+                Assert.That(reader.GetCode(account.CodeHash.ValueHash256), Is.EqualTo(code));
+                Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
                 Assert.That(new PbtNodeGroupReader(path, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.RootPosition).ToArray(), Is.EqualTo(encoding));
                 Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { path }));
             }

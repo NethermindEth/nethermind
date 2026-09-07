@@ -2,27 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>Captures newly written code so the owning scope can chunk it into the tree at commit time.</summary>
-public sealed class PbtCodeDb(IWorldStateScopeProvider.ICodeDb inner, Dictionary<ValueHash256, byte[]> pendingCode) : IWorldStateScopeProvider.ICodeDb
+/// <summary>Retains whole code in the flat branch while preserving the shared code database contract.</summary>
+public sealed class PbtCodeDb(IWorldStateScopeProvider.ICodeDb inner, PbtSnapshotBundle bundle) : IWorldStateScopeProvider.ICodeDb
 {
-    public byte[]? GetCode(in ValueHash256 codeHash) =>
-        pendingCode.TryGetValue(codeHash, out byte[]? code) ? code : inner.GetCode(codeHash);
+    public byte[]? GetCode(in ValueHash256 codeHash) => bundle.GetCode(codeHash)?.Code.ToArray() ?? inner.GetCode(codeHash);
 
-    public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CapturingCodeSetter(inner.BeginCodeWrite(), pendingCode);
+    public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CapturingCodeSetter(inner.BeginCodeWrite(), bundle);
 
-    public bool ContainsCode(in ValueHash256 codeHash) => inner.ContainsCode(codeHash);
+    public bool ContainsCode(in ValueHash256 codeHash) => bundle.GetCode(codeHash) is not null || inner.ContainsCode(codeHash);
 
     public void MarkCodePersisted(in ValueHash256 codeHash) => inner.MarkCodePersisted(codeHash);
 
-    private sealed class CapturingCodeSetter(IWorldStateScopeProvider.ICodeSetter inner, Dictionary<ValueHash256, byte[]> pendingCode) : IWorldStateScopeProvider.ICodeSetter
+    private sealed class CapturingCodeSetter(IWorldStateScopeProvider.ICodeSetter inner, PbtSnapshotBundle bundle) : IWorldStateScopeProvider.ICodeSetter
     {
         public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
         {
-            pendingCode[codeHash] = code.ToArray();
+            bundle.SetCode(codeHash, new CodeInfo(code.ToArray()) { CodeHash = codeHash });
             inner.Set(codeHash, code);
         }
 

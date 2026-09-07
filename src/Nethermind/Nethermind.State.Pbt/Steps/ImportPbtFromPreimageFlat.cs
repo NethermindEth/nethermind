@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
@@ -11,6 +10,8 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Buffers;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
@@ -26,8 +27,7 @@ namespace Nethermind.State.Pbt.Steps;
 
 /// <summary>Rebuilds PBT state from a preimage-flat database, then exits.</summary>
 /// <remarks>
-/// Raw-address source order differs from hash-derived stem order, so phase one writes
-/// Complete-key leaves are staged before phase two folds their ordered scans.
+/// Logical accounts, storage and whole code are staged before phase two derives and folds tree leaves.
 /// The phases cannot overlap because address partitions scatter across the entire stem space.
 /// </remarks>
 [RunnerStepDependencies(
@@ -47,10 +47,10 @@ public class ImportPbtFromPreimageFlat(
 {
     private const int AddressLength = 20;
 
-    /// <summary>Entries per leaf-channel chunk, amortizing channel write costs.</summary>
+    /// <summary>Entries per channel chunk, amortizing channel write costs.</summary>
     private const int ChunkSize = 2_048;
 
-    /// <summary>Maximum chunks in flight on the leaf channel.</summary>
+    /// <summary>Maximum chunks in flight on the entry channel.</summary>
     private const int EntryChunkCapacity = 64;
 
     /// <summary>Account-key ranges per worker to balance uneven storage sizes.</summary>
@@ -64,15 +64,13 @@ public class ImportPbtFromPreimageFlat(
 
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
 
-    /// <summary>Leaves read per phase-two view to bound how long a RocksDB superversion is pinned.</summary>
-    /// <remarks>One stem can contain up to <see cref="PbtKeyDerivation.StemSubtreeWidth"/> leaves.</remarks>
-    internal int ViewLeafChunk { get; init; } = EntryChunkCapacity * ChunkSize;
+    /// <summary>Logical entries per phase-two channel chunk.</summary>
+    internal int EntryChunkSize { get; init; } = ChunkSize;
 
     /// <summary>Keys deleted per view and write batch when clearing an interrupted import.</summary>
     internal int ClearKeyChunk { get; init; } = 10_000;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
-    private readonly ConcurrentDictionary<ValueHash256, ulong> _codeReferences = new();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -109,7 +107,6 @@ public class ImportPbtFromPreimageFlat(
         try
         {
             ClearInterruptedAttempt();
-            _codeReferences.Clear();
             await CopyFlatColumns(workerCount, cancellationToken);
 
             // State is addressed by the source block header's root; the fold records its tree root beside it.
@@ -126,7 +123,7 @@ public class ImportPbtFromPreimageFlat(
     }
 
     /// <remarks>
-    /// An interrupted import can leave leaf blobs and trie nodes despite a pre-genesis state pointer.
+    /// An interrupted import can leave logical entries and trie nodes despite a pre-genesis state pointer.
     /// <see cref="TrieUpdater"/> reads a stored root group before its supplied root hash, so stale nodes
     /// would produce the wrong root. Each deletion chunk closes its view before committing to avoid
     /// pinning RocksDB versions throughout the sweep.
@@ -173,8 +170,7 @@ public class ImportPbtFromPreimageFlat(
     }
 
     /// <summary>
-    /// Phase one: lays the source's accounts and slots out as leaves-only blobs in the leaf columns,
-    /// keyed by the stem each belongs to.
+    /// Phase one: stages accounts, slots and whole code in their typed flat columns.
     /// </summary>
     /// <remarks>
     /// Workers claim ranges on demand to balance uneven storage. Batches retain a pre-genesis state
@@ -271,12 +267,7 @@ public class ImportPbtFromPreimageFlat(
         if (_logger.IsInfo) _logger.Info($"PBT import copied {accounts:N0} accounts and {slots:N0} slots in {copying.Elapsed:hh\\:mm\\:ss}.");
     }
 
-    /// <summary>
-    /// Writes each account's header stem blob — its <c>BASIC_DATA</c>, <c>CODE_HASH</c>, its first 64
-    /// storage slots and its header code chunks, all of which share that stem — plus the
-    /// content-addressed overflow chunks of any code too long to fit it.
-    /// </summary>
-    /// <remarks>Slots are read first so each header stem is written once, complete.</remarks>
+    /// <summary>Copies whole accounts and their code, with storage in its own column.</summary>
     private void CopyAccounts(
         FlatPersistence.IPersistenceReader reader,
         IPbtPersistence.IWriteBatch batch,
@@ -287,7 +278,6 @@ public class ImportPbtFromPreimageFlat(
         CancellationToken cancellationToken)
     {
         long pendingAccounts = 0;
-        Span<byte> basicData = stackalloc byte[ValueHash256.MemorySize];
         using FlatPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator(start, end);
         while (accountIterator.MoveNext())
         {
@@ -304,21 +294,8 @@ public class ImportPbtFromPreimageFlat(
 
             if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
 
-            PbtKeyDerivation.PackBasicData(basicData, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
-            batch.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicData));
-            batch.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
-
-            if (code is { Length: > 0 })
-            {
-                _codeReferences.AddOrUpdate(account.CodeHash.ValueHash256, 1, static (_, count) => checked(count + 1));
-                byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
-                int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
-                for (int i = 0; i < chunkCount; i++)
-                {
-                    ValueHash256 chunk = new(chunks.AsSpan(i * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
-                    if (chunk != default) batch.SetLeaf(PbtStateKey.Code(address, account.CodeHash.ValueHash256, i), chunk);
-                }
-            }
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
+            if (code is not null) batch.SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
 
             pendingAccounts++;
             if (pendingAccounts >= ProgressPublishInterval)
@@ -349,8 +326,8 @@ public class ImportPbtFromPreimageFlat(
 
             // In preimage mode, the key is the raw 32-byte big-endian slot.
             UInt256 slot = new(slotIterator.CurrentKey.Bytes, isBigEndian: true);
-            ValueHash256 value = SlotLeaf(slotIterator.CurrentValue);
-            if (value != default) batch.SetLeaf(PbtStateKey.Storage(address, slot), value);
+            EvmWord value = EvmWordSlot.FromStripped(slotIterator.CurrentValue);
+            batch.SetSlot(PbtStateKey.Storage(address, slot), value);
 
             if (++pendingSlots >= ProgressPublishInterval)
             {
@@ -391,27 +368,39 @@ public class ImportPbtFromPreimageFlat(
 
         try
         {
-            await rebuilder.Rebuild(entries.Reader, _codeReferences, targetState, cancellationToken);
+            await rebuilder.Rebuild(entries.Reader, targetState, cancellationToken);
         }
         finally
         {
             await cts.CancelAsync();
             try { await producer; }
             catch { /* the failure already surfaced through the consumer above */ }
+            while (entries.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose();
         }
     }
-    /// <summary>Emits every tree leaf, in ascending stem order, by zone: the account headers, then the content-addressed overflow code chunks, then the storage slots.</summary>
-    /// <remarks>Disjoint account, code, and storage subtrees sort in this order, yielding a global ordered stream.</remarks>
+    /// <summary>Streams staged logical entries to the rebuilder without rehashing account keys.</summary>
     private async Task ProduceEntries(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, CancellationToken cancellationToken)
     {
-        using LeafSink sink = new(entries, cancellationToken);
+        using EntrySink sink = new(entries, EntryChunkSize, cancellationToken);
         try
         {
             using IPbtPersistence.IReader reader = pbtPersistence.CreateReader();
-            foreach ((PbtFullKey key, ValueHash256 value) in reader.EnumerateLeaves())
+            HashSet<ValueHash256> emittedCode = [];
+            foreach ((ValueHash256 addressHash, Account account) in reader.EnumerateAccounts())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await sink.Add(new RebuildEntry(key, value));
+                await sink.Add(RebuildEntry.FromAccount(addressHash, account));
+                if (account.HasCode && emittedCode.Add(account.CodeHash.ValueHash256))
+                {
+                    CodeInfo code = reader.GetCode(account.CodeHash.ValueHash256)
+                        ?? throw new InvalidDataException($"Missing staged bytecode for account {addressHash}.");
+                    await sink.Add(RebuildEntry.FromCode(account.CodeHash.ValueHash256, code));
+                }
+            }
+            foreach ((PbtFullKey key, EvmWord value) in reader.EnumerateStorage())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await sink.Add(RebuildEntry.FromSlot(key, value));
             }
 
             await sink.Complete();
@@ -423,24 +412,16 @@ public class ImportPbtFromPreimageFlat(
         }
     }
 
-    private static ValueHash256 SlotLeaf(scoped ReadOnlySpan<byte> stored)
+    /// <summary>Buffers logical entries into pooled chunks and hands each full chunk to the rebuilder.</summary>
+    private sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
     {
-        ValueHash256 leaf = default;
-        stored.CopyTo(leaf.BytesAsSpan[(ValueHash256.MemorySize - stored.Length)..]);
-        return leaf;
-    }
-
-
-    /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
-    private sealed class LeafSink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, CancellationToken cancellationToken) : IDisposable
-    {
-        private ArrayPoolList<RebuildEntry> _chunk = new(ChunkSize);
+        private ArrayPoolList<RebuildEntry> _chunk = new(chunkSize);
         private bool _owned = true;
 
         public async ValueTask Add(RebuildEntry entry)
         {
             _chunk.Add(entry);
-            if (_chunk.Count >= ChunkSize) await Flush();
+            if (_chunk.Count >= chunkSize) await Flush();
         }
 
         public async ValueTask Complete()
@@ -448,12 +429,12 @@ public class ImportPbtFromPreimageFlat(
             if (_chunk.Count > 0) await Flush();
         }
 
-        // Ownership transfers on write; clear first to avoid double disposal if it fails.
+        // A failed channel write leaves ownership with this sink.
         private async ValueTask Flush()
         {
-            _owned = false;
             await entries.WriteAsync(_chunk, cancellationToken);
-            _chunk = new ArrayPoolList<RebuildEntry>(ChunkSize);
+            _owned = false;
+            _chunk = new ArrayPoolList<RebuildEntry>(chunkSize);
             _owned = true;
         }
 
@@ -468,9 +449,6 @@ public class ImportPbtFromPreimageFlat(
         RlpReader reader = new(slimRlp);
         return AccountDecoder.Slim.Decode(ref reader)!;
     }
-
-    private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
-        chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
 
     private static byte[] PastEveryKey()
     {
@@ -487,5 +465,4 @@ public class ImportPbtFromPreimageFlat(
         return next;
     }
 
-    private ISortedKeyValueStore LeafColumn(PbtColumns column) => (ISortedKeyValueStore)pbtDb.GetColumnDb(column);
 }

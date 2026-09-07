@@ -13,6 +13,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -30,7 +33,7 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
 
     [Test]
-    public void Completed_epoch_10_store_reopens_and_serves_canonical_records()
+    public void Completed_epoch_11_store_reopens_and_serves_canonical_records()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
@@ -42,7 +45,7 @@ public class PbtRocksDbPersistenceTests
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, value, WriteFlags.None))
         {
-            batch.SetLeaf(leaf, value);
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(7, 9, TestItem.KeccakC, TestItem.KeccakD));
             WriteGroup(batch, path, node);
             batch.Commit();
         }
@@ -53,9 +56,123 @@ public class PbtRocksDbPersistenceTests
         {
             Assert.That(reader.CurrentState, Is.EqualTo(state));
             Assert.That(reader.CurrentRoot, Is.EqualTo(value));
-            Assert.That(reader.GetLeaf(leaf), Is.EqualTo(value));
+            Assert.That(reader.GetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.EqualTo(new Account(7, 9, TestItem.KeccakC, TestItem.KeccakD)));
             Assert.That(ReadNode(reader, path), Is.EqualTo(node));
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey), Is.EqualTo(new byte[] { 1 }));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Old_epoch_rejection_does_not_mutate_any_column(bool importEnabled)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
+            db.GetColumnDb(column)[new byte[] { 1 }] = [2];
+        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(10);
+        Dictionary<PbtColumns, KeyValuePair<byte[], byte[]>[]> before = [];
+        foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
+            before[column] = db.GetColumnDb(column).GetAll(ordered: true).ToArray();
+
+        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = importEnabled }),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("re-import"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
+            {
+                KeyValuePair<byte[], byte[]>[] after = db.GetColumnDb(column).GetAll(ordered: true).ToArray();
+                Assert.That(after.Select(entry => entry.Key), Is.EqualTo(before[column].Select(entry => entry.Key)), $"{column} keys");
+                Assert.That(after.Select(entry => entry.Value), Is.EqualTo(before[column].Select(entry => entry.Value)), $"{column} values");
+            }
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(63)]
+    [TestCase(64)]
+    [TestCase(256)]
+    public void Clear_storage_respects_staged_order_and_preserves_other_addresses(int slotNumber)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        PbtFullKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)slotNumber);
+        PbtFullKey stagedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)(slotNumber + 1));
+        PbtFullKey otherAddressKey = PbtStateKey.Storage(TestItem.AddressB, (UInt256)(uint)slotNumber);
+        EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
+        EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("0x5678"));
+        StateId first = new(1, TestItem.KeccakA.ValueHash256);
+        StateId second = new(2, TestItem.KeccakB.ValueHash256);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        {
+            batch.SetSlot(persistedKey, original);
+            batch.SetSlot(otherAddressKey, original);
+            batch.Commit();
+        }
+        using IPbtPersistence.IReader olderReader = persistence.CreateReader();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        {
+            batch.SetSlot(stagedKey, original);
+            batch.ClearStorage(addressHash);
+            batch.SetSlot(persistedKey, replacement);
+            batch.ClearStorage(addressHash);
+            batch.SetSlot(persistedKey, replacement);
+            batch.Commit();
+        }
+
+        using IPbtPersistence.IReader reader = new PbtRocksDbPersistence(db, new PbtConfig()).CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetSlot(persistedKey), Is.EqualTo(replacement));
+            Assert.That(reader.GetSlot(stagedKey), Is.EqualTo(default(EvmWord)));
+            Assert.That(reader.GetSlot(otherAddressKey), Is.EqualTo(original));
+            Assert.That(olderReader.GetSlot(persistedKey), Is.EqualTo(original));
+            Assert.That(reader.EnumerateStorage(), Has.Exactly(2).Items);
+            Assert.That(reader.EnumerateStorage(new PbtFullKey(persistedKey.Bytes[..33])).Single().Value, Is.EqualTo(replacement));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Typed_tombstones_and_whole_code_are_published_atomically(bool commit)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        PbtFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
+        CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
+        ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
+        EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("0xabcd"));
+        StateId first = new(1, TestItem.KeccakA.ValueHash256);
+        StateId second = new(2, TestItem.KeccakB.ValueHash256);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        {
+            batch.SetAccount(addressHash, Account.TotallyEmpty);
+            batch.SetSlot(storageKey, slot);
+            batch.SetCode(codeHash, code);
+            batch.Commit();
+        }
+        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, second, default, WriteFlags.None), Throws.InvalidOperationException);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        {
+            batch.SetAccount(addressHash, null);
+            batch.SetSlot(storageKey, default);
+            if (commit) batch.Commit();
+        }
+
+        using IPbtPersistence.IReader reader = new PbtRocksDbPersistence(db, new PbtConfig()).CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(commit ? second : first));
+            Assert.That(reader.GetAccount(addressHash), Is.EqualTo(commit ? null : Account.TotallyEmpty));
+            Assert.That(reader.GetSlot(storageKey), Is.EqualTo(commit ? default : slot));
+            Assert.That(reader.EnumerateAccounts().Count(), Is.EqualTo(commit ? 0 : 1));
+            Assert.That(reader.EnumerateStorage().Count(), Is.EqualTo(commit ? 0 : 1));
+            Assert.That(reader.GetCode(codeHash), Is.EqualTo(code));
+            Assert.That(reader.GetCode(codeHash)!.CodeHash, Is.EqualTo(codeHash));
+            Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256), Is.Null);
+            Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         }
     }
 
@@ -261,7 +378,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(10)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(11)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -274,18 +391,18 @@ public class PbtRocksDbPersistenceTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true });
-        PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateStagingWriteBatch(WriteFlags.None))
         {
-            batch.SetLeaf(leaf, TestItem.KeccakA.ValueHash256);
+            batch.SetAccount(addressHash, Account.TotallyEmpty);
             batch.Commit();
         }
 
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).Get(leaf.Bytes), Is.Not.Null);
+            Assert.That(db.GetColumnDb(PbtColumns.Accounts).Get(addressHash.Bytes), Is.Not.Null);
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -305,7 +422,7 @@ public class PbtRocksDbPersistenceTests
             default,
             WriteFlags.None))
         {
-            batch.SetLeaf(PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey), TestItem.KeccakA.ValueHash256);
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty);
             batch.Commit();
         }
 
@@ -319,10 +436,10 @@ public class PbtRocksDbPersistenceTests
         SnapshotableMemColumnsDb<PbtColumns> inner = new("pbt");
         FailNextCommitColumnsDb db = new(inner);
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true });
-        PbtFullKey stagedLeaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
+        ValueHash256 stagedAddressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch(WriteFlags.None))
         {
-            staging.SetLeaf(stagedLeaf, TestItem.KeccakA.ValueHash256);
+            staging.SetAccount(stagedAddressHash, Account.TotallyEmpty);
             staging.Commit();
         }
 
@@ -340,7 +457,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = inner.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(inner.GetColumnDb(PbtColumns.FullLeaves).Get(stagedLeaf.Bytes), Is.Not.Null);
+            Assert.That(inner.GetColumnDb(PbtColumns.Accounts).Get(stagedAddressHash.Bytes), Is.Not.Null);
             Assert.That(inner.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
@@ -356,11 +473,11 @@ public class PbtRocksDbPersistenceTests
         yield return new TestCaseData(Epoch(8), null, null, false).SetName("Rejects_epoch_8");
         yield return new TestCaseData(Epoch(9), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_9");
         yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(10), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(10), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(10), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(10), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(10), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(11), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(11), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(11), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(11), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(11), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }
@@ -384,6 +501,9 @@ public class PbtRocksDbPersistenceTests
         Assert.That(db.NodeGroupsAccessed, Is.False);
     }
 
+    [TestCase(PbtColumns.Accounts)]
+    [TestCase(PbtColumns.Storages)]
+    [TestCase(PbtColumns.Codes)]
     [TestCase(PbtColumns.FullLeaves)]
     [TestCase(PbtColumns.NodeGroups)]
     [TestCase(PbtColumns.CodeReferences)]

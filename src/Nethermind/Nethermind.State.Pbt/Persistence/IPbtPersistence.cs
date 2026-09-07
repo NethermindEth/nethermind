@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
@@ -24,9 +25,11 @@ public interface IPbtPersistence
         StateId CurrentState { get; }
         ValueHash256 CurrentRoot { get; }
 
-        ValueHash256? GetLeaf(PbtFullKey key);
-        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves();
-        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix);
+        Account? GetAccount(in ValueHash256 addressHash);
+        EvmWord GetSlot(PbtFullKey key);
+        CodeInfo? GetCode(in ValueHash256 codeHash);
+        IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
+        IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null);
 
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
@@ -50,7 +53,10 @@ public interface IPbtPersistence
 
     public interface IWriteBatch : IDisposable
     {
-        void SetLeaf(PbtFullKey key, ValueHash256? value);
+        void SetAccount(in ValueHash256 addressHash, Account? account);
+        void SetSlot(PbtFullKey key, in EvmWord value);
+        void SetCode(in ValueHash256 codeHash, CodeInfo code);
+        void ClearStorage(in ValueHash256 addressHash);
         /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>
         /// <remarks>
         /// The payload is borrowed for this call and its bytes must remain immutable. The caller retains

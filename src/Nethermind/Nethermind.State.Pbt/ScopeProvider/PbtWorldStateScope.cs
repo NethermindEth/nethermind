@@ -58,7 +58,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         _trieWarmer = trieWarmer;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
-        CodeDb = new PbtCodeDb(codeDb, Bundle.PendingCode);
+        Bundle.ReadCode = hash => codeDb.GetCode(hash);
+        CodeDb = new PbtCodeDb(codeDb, Bundle);
         _trieWarmer.OnEnterScope();
     }
 
@@ -82,7 +83,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         return account;
     }
 
-    public void HintGet(Address address, Account? account) => Bundle.PromoteAccount(address, account);
+    public void HintGet(Address address, Account? account) { }
     public void HintWarmAccount(in ValueAddress address) { }
     public void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
@@ -168,7 +169,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
             }
             _currentHeader = _childHeader;
             _childHeader = null;
-            Bundle.PendingCode.Clear();
             lock (_storages) _storages.Clear();
             _rootDirty = false;
         }

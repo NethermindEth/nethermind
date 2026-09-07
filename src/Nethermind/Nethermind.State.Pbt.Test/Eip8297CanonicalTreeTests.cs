@@ -461,7 +461,7 @@ public class Eip8297CanonicalTreeTests
     {
         PbtNodePath maximum = new(new byte[66], 528);
         PbtWriteBatch batch = new();
-        using PbtSnapshotContent content = new();
+        using PbtWriteBatchBuilder builder = new();
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new PbtNodePath(new byte[67], 529));
@@ -471,10 +471,10 @@ public class Eip8297CanonicalTreeTests
             Assert.Throws<ArgumentException>(() => new PbtNodePath([], 8));
             Assert.Throws<ArgumentException>(() => batch.Set(default, default));
             Assert.Throws<ArgumentException>(() => batch.Delete(default));
-            Assert.Throws<ArgumentException>(() => content.SetLeaf(default, default));
+            Assert.Throws<ArgumentException>(() => builder.SetLeaf(default, default));
             Assert.Throws<ArgumentException>(() => PbtNodeCodec.EncodeLeaf(default, new byte[32]));
             Assert.That(batch.Count, Is.Zero);
-            Assert.That(content.Leaves, Is.Empty);
+            Assert.That(builder.Leaves, Is.Empty);
         }
     }
 

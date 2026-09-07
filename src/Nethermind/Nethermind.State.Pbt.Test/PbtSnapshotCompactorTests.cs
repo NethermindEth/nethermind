@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -18,13 +21,13 @@ public class PbtSnapshotCompactorTests
     [TestCase(true)]
     public void Compact_PreservesNewestCanonicalLeafAndGroupAfterSourcesAreDisposed(bool tombstone)
     {
-        PbtFullKey key = new([1]);
+        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtNodePath groupKey = new([], 0);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
-        older.SetLeaf(key, TestItem.KeccakA.ValueHash256);
-        newer.SetLeaf(key, TestItem.KeccakB.ValueHash256);
+        older.Storages[key] = EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes);
+        newer.Storages[key] = EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes);
         byte[] expected;
         using (RefCountingMemory olderPayload = PbtResourcePoolTests.CreateGroup(memoryProvider, TestItem.KeccakA.ValueHash256))
         using (RefCountingMemory newerPayload = PbtResourcePoolTests.CreateGroup(memoryProvider, TestItem.KeccakB.ValueHash256))
@@ -46,12 +49,58 @@ public class PbtSnapshotCompactorTests
             using RefCountingMemory? payloadLease = payload;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(compacted.Content.TryGetLeaf(key, out ValueHash256? leaf) && leaf == TestItem.KeccakB.ValueHash256, Is.True);
+                Assert.That(compacted.Content.Storages.TryGetValue(key, out EvmWord leaf) && leaf.Equals(EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes)), Is.True);
                 Assert.That(found, Is.True);
                 Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : expected));
             }
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+    }
+
+    [TestCase(7u, false)]
+    [TestCase(7u, true)]
+    [TestCase(1000u, false)]
+    [TestCase(1000u, true)]
+    public void Compact_preserves_clear_ordering_and_whole_typed_values(uint slot, bool clearLast)
+    {
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
+        PbtFullKey otherSlot = PbtStateKey.Storage(TestItem.AddressA, slot + 1);
+        PbtFullKey otherAddress = PbtStateKey.Storage(TestItem.AddressB, slot);
+        EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
+        EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
+        CodeInfo code = new(Bytes.FromHexString("6001600055"));
+        Account account = Build.An.Account.WithNonce(7).WithBalance(9).WithStorageRoot(TestItem.KeccakB).WithCode(code.Code.ToArray()).TestObject;
+        PbtSnapshotContent older = new();
+        older.Accounts[addressHash] = Build.An.Account.TestObject;
+        older.Storages[key] = original;
+        older.Storages[otherSlot] = original;
+        older.Storages[otherAddress] = original;
+        PbtSnapshotContent clearing = new();
+        clearing.ClearStorage(addressHash);
+        PbtSnapshotContent writing = new();
+        writing.Storages[key] = replacement;
+        writing.Accounts[addressHash] = account;
+        writing.Codes[account.CodeHash.ValueHash256] = code;
+        PbtSnapshot compacted;
+        using (PbtSnapshotPooledList chain = new(3))
+        {
+            chain.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, older, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            chain.Add(new PbtSnapshot(new StateId(1, default), new StateId(2, default), default, clearLast ? writing : clearing, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            chain.Add(new PbtSnapshot(new StateId(2, default), new StateId(3, default), default, clearLast ? clearing : writing, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            compacted = NewCompactor().Compact(chain);
+        }
+        using (compacted)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.Content.Accounts[addressHash], Is.SameAs(account));
+            Assert.That(compacted.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
+            Assert.That(compacted.Content.SelfDestructedStorageAddresses.ContainsKey(addressHash), Is.True);
+            Assert.That(compacted.Content.Storages.ContainsKey(key), Is.EqualTo(!clearLast));
+            if (!clearLast) Assert.That(compacted.Content.Storages[key], Is.EqualTo(replacement));
+            Assert.That(compacted.Content.Storages.ContainsKey(otherSlot), Is.False);
+            Assert.That(compacted.Content.Storages[otherAddress], Is.EqualTo(original));
+        }
     }
 
     private PbtSnapshotCompactor NewCompactor() => new(_pool, new PbtCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(), Config);

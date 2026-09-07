@@ -48,10 +48,6 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
-    public PbtPendingFlatWrites GetPendingFlatWrites(Usage usage) => _categories[usage].GetPendingFlatWrites();
-
-    public void ReturnPendingFlatWrites(Usage usage, PbtPendingFlatWrites pending) => _categories[usage].ReturnPendingFlatWrites(pending);
-
     public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage) => _categories[usage].GetWriteBatchBuilder();
 
     public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
@@ -134,12 +130,10 @@ public class PbtResourcePool : IPbtResourcePool
         // A scope holds one bundle for each builder, so these pools are equally sized.
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _writeBatchPool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
-        private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
         private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writeBatchBuilderPoolSize);
         private long _lastCachedResourceCapacity = 1024;
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
-        private readonly PooledResourceLabel _pendingLabel = new(usage.ToString(), nameof(PbtPendingFlatWrites));
 
         public PbtSnapshotContent GetSnapshotContent()
         {
@@ -200,26 +194,6 @@ public class PbtResourcePool : IPbtResourcePool
             if (!_cachedResourcePool.Return(resource))
                 Volatile.Write(ref _lastCachedResourceCapacity, resource.Capacity);
             Metrics.PbtCachedPooledResource[_cachedResourceLabel] = _cachedResourcePool.PooledItemCount;
-        }
-
-        public PbtPendingFlatWrites GetPendingFlatWrites()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_pendingLabel, 1);
-            if (_pendingPool.TryGet(out PbtPendingFlatWrites? pending))
-            {
-                Metrics.PbtCachedPooledResource[_pendingLabel] = _pendingPool.PooledItemCount;
-                return pending;
-            }
-
-            Metrics.PbtCreatedPooledResource.AddBy(_pendingLabel, 1);
-            return new PbtPendingFlatWrites();
-        }
-
-        public void ReturnPendingFlatWrites(PbtPendingFlatWrites pending)
-        {
-            Metrics.PbtActivePooledResource.AddBy(_pendingLabel, -1);
-            _pendingPool.Return(pending);
-            Metrics.PbtCachedPooledResource[_pendingLabel] = _pendingPool.PooledItemCount;
         }
 
     }

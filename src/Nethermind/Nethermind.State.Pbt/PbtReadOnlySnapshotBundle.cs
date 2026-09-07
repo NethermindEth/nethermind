@@ -6,6 +6,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -25,17 +26,6 @@ public sealed class PbtReadOnlySnapshotBundle(
             GuardDispose();
             return snapshots.Count > 0 ? snapshots[^1].TreeRoot : reader.CurrentRoot;
         }
-    }
-
-    internal ValueHash256? GetLeaf(PbtFullKey key)
-    {
-        GuardDispose();
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].Content.TryGetLeaf(key, out ValueHash256? value)) return value;
-        }
-
-        return reader.GetLeaf(key);
     }
 
     internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
@@ -60,55 +50,80 @@ public sealed class PbtReadOnlySnapshotBundle(
         return reader.GetCodeReference(codeHash);
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => EnumerateLeavesCore(null);
-
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => EnumerateLeavesCore(prefix);
-
-    private IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeavesCore(PbtFullKey? prefix)
+    internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
     {
         GuardDispose();
-        SortedDictionary<PbtFullKey, ValueHash256?> visible = [];
-        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> persisted = prefix is null
-            ? reader.EnumerateLeaves()
-            : reader.EnumerateLeaves(prefix.Value);
-        foreach ((PbtFullKey key, ValueHash256 value) in persisted) visible[key] = value;
-        for (int i = 0; i < snapshots.Count; i++)
+        Dictionary<ValueHash256, Account?> visible = [];
+        foreach ((ValueHash256 hash, Account account) in reader.EnumerateAccounts()) visible[hash] = account;
+        foreach (PbtSnapshot snapshot in snapshots)
+            foreach ((ValueHash256 hash, Account? account) in snapshot.Content.Accounts) visible[hash] = account;
+        foreach ((ValueHash256 hash, Account? account) in visible)
+            if (account is not null) yield return new(hash, account);
+    }
+
+    internal IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
+    {
+        GuardDispose();
+        SortedDictionary<PbtFullKey, EvmWord> visible = [];
+        if (addressFilter is null)
         {
-            foreach ((PbtFullKey key, ValueHash256? value) in snapshots[i].Content.Leaves)
+            foreach ((PbtFullKey key, EvmWord value) in reader.EnumerateStorage()) visible[key] = value;
+        }
+        else
+        {
+            byte[] prefix = new byte[1 + ValueHash256.MemorySize];
+            addressFilter.Value.Bytes.CopyTo(prefix.AsSpan(1));
+            foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
             {
-                if (prefix is null || prefix.Value.IsPrefixOf(key)) visible[key] = value;
+                prefix[0] = zone;
+                foreach ((PbtFullKey key, EvmWord value) in reader.EnumerateStorage(new PbtFullKey(prefix))) visible[key] = value;
             }
         }
+        foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
+        foreach ((PbtFullKey key, EvmWord value) in visible)
+            if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
+    }
 
-        foreach ((PbtFullKey key, ValueHash256? value) in visible)
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() =>
+        PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
+
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix)
+    {
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> leaf in EnumerateLeaves())
+            if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
+    }
+
+    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
+
+    internal Account? GetAccount(in ValueHash256 addressHash)
+    {
+        GuardDispose();
+        for (int index = snapshots.Count - 1; index >= 0; index--)
+            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out Account? account)) return account;
+        return reader.GetAccount(addressHash);
+    }
+
+    public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(PbtStateKey.Storage(address, slot));
+
+    internal EvmWord GetSlot(PbtFullKey key)
+    {
+        GuardDispose();
+        ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
+        for (int index = snapshots.Count - 1; index >= 0; index--)
         {
-            if (value is not null) yield return new KeyValuePair<PbtFullKey, ValueHash256>(key, value.Value);
+            PbtSnapshotContent content = snapshots[index].Content;
+            if (content.Storages.TryGetValue(key, out EvmWord value)) return value;
+            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         }
+        return reader.GetSlot(key);
     }
 
-    internal bool AnyLeaf(PbtFullKey prefix)
+    internal CodeInfo? GetCode(in ValueHash256 codeHash)
     {
-        foreach (KeyValuePair<PbtFullKey, ValueHash256> _ in EnumerateLeaves(prefix)) return true;
-        return false;
-    }
-
-    public Account? GetAccount(Address address)
-    {
-        ValueHash256? basicData = GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
-        ValueHash256? codeHash = GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey));
-        if (basicData is null && codeHash is null) return null;
-
-        ulong nonce = 0;
-        UInt256 balance = default;
-        if (basicData is not null) PbtKeyDerivation.UnpackBasicData(basicData.Value.Bytes, out nonce, out balance);
-        return new Account(nonce, balance, Keccak.EmptyTreeHash,
-            codeHash is null ? Keccak.OfAnEmptyString : new Hash256(codeHash.Value.Bytes));
-    }
-
-    public EvmWord GetSlot(Address address, in UInt256 slot)
-    {
-        ValueHash256? value = GetLeaf(PbtStateKey.Storage(address, slot));
-        return value is null ? default : EvmWordSlot.FromStripped(value.Value.Bytes);
+        GuardDispose();
+        for (int index = snapshots.Count - 1; index >= 0; index--)
+            if (snapshots[index].Content.Codes.TryGetValue(codeHash, out CodeInfo? code)) return code;
+        return reader.GetCode(codeHash);
     }
 
     public bool TryLease() => TryAcquireLease();

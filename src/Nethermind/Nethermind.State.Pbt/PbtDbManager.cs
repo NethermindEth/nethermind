@@ -5,7 +5,9 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -280,9 +282,11 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public StateId CurrentState => StateId.PreGenesis;
 
         public ValueHash256 CurrentRoot => default;
-        public ValueHash256? GetLeaf(PbtFullKey key) => null;
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => [];
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => [];
+        public Account? GetAccount(in ValueHash256 addressHash) => null;
+        public EvmWord GetSlot(PbtFullKey key) => default;
+        public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
+        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => [];
+        public IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null) => [];
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);

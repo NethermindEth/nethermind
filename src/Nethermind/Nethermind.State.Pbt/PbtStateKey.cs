@@ -13,20 +13,25 @@ internal static class PbtStateKey
     public static PbtFullKey Account(Address address, byte subIndex) =>
         Eip8297KeyDerivation.AccountKey(Address32(address), subIndex);
 
+    public static PbtFullKey Account(in ValueHash256 addressHash, byte subIndex)
+    {
+        Span<byte> key = stackalloc byte[Eip8297KeyDerivation.AccountKeyLength];
+        key[0] = Eip8297KeyDerivation.AccountZone;
+        addressHash.Bytes.CopyTo(key[1..]);
+        key[^1] = subIndex;
+        return new PbtFullKey(key);
+    }
+
+    public static PbtFullKey Code(in ValueHash256 addressHash, in ValueHash256 codeHash, int chunkId) =>
+        chunkId < PbtKeyDerivation.HeaderCodeChunks
+            ? Account(addressHash, checked((byte)(PbtKeyDerivation.CodeOffset + chunkId)))
+            : Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
+
     public static PbtFullKey Storage(Address address, in UInt256 slot) =>
         Eip8297KeyDerivation.StorageKey(Address32(address), slot);
 
     public static PbtFullKey Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.CodeKey(Address32(address), codeHash.Bytes, chunkId);
-
-    public static PbtFullKey AccountPrefix(Address address)
-    {
-        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        Span<byte> prefix = stackalloc byte[33];
-        prefix[0] = Eip8297KeyDerivation.AccountZone;
-        addressHash.Bytes.CopyTo(prefix[1..]);
-        return new PbtFullKey(prefix);
-    }
 
     public static PbtFullKey StoragePrefix(Address address)
     {
@@ -34,18 +39,6 @@ internal static class PbtStateKey
         Span<byte> prefix = stackalloc byte[33];
         prefix[0] = Eip8297KeyDerivation.StorageZone;
         addressHash.Bytes.CopyTo(prefix[1..]);
-        return new PbtFullKey(prefix);
-    }
-
-    public static PbtFullKey OverflowCodePrefix(in ValueHash256 codeHash)
-    {
-        Span<byte> input = stackalloc byte[64];
-        input.Clear();
-        codeHash.Bytes.CopyTo(input);
-        ValueHash256 digest = Blake3Hash.Hash(input);
-        Span<byte> prefix = stackalloc byte[33];
-        prefix[0] = Eip8297KeyDerivation.CodeZone;
-        digest.Bytes.CopyTo(prefix[1..]);
         return new PbtFullKey(prefix);
     }
 

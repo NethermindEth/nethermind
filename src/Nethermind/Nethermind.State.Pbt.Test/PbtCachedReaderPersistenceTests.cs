@@ -217,18 +217,18 @@ public class PbtCachedReaderPersistenceTests
     public async Task SharedReader_ForwardsToTheSnapshotUnderneath()
     {
         Context ctx = new();
-        PbtFullKey key = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        ValueHash256 value = TestItem.KeccakB.ValueHash256;
+        ValueHash256 key = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        Account value = new(7, 9);
         ctx.Reader.CurrentState.Returns(_committedState);
         ctx.Reader.CurrentRoot.Returns(_committedRoot);
-        ctx.Reader.GetLeaf(key).Returns(value);
+        ctx.Reader.GetAccount(key).Returns(value);
 
         await using PbtCachedReaderPersistence persistence = ctx.Build();
         using IPbtPersistence.IReader reader = persistence.CreateReader();
 
         Assert.That(reader.CurrentState, Is.EqualTo(_committedState));
         Assert.That(reader.CurrentRoot, Is.EqualTo(_committedRoot));
-        Assert.That(reader.GetLeaf(key), Is.EqualTo(value));
+        Assert.That(reader.GetAccount(key), Is.EqualTo(value));
     }
 
     [Test]

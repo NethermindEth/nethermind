@@ -5,9 +5,12 @@ using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Pbt;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -20,7 +23,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
-    private const int SchemaEpoch = 10;
+    private const int SchemaEpoch = 11;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
@@ -41,7 +44,7 @@ public class PbtRocksDbPersistence(
         byte[]? storedValidity = metadata.Get(ValidStateKey);
 
         if (storedEpoch is not null && storedEpoch.Length != sizeof(int))
-            throw new InvalidDataException("Malformed PBT schema epoch. Delete the pbt database and rebuild or re-import.");
+            throw new InvalidDataException("Malformed PBT schema epoch. Rebuild or re-import into a new pbt database.");
         ValidateCurrentState(storedCurrentState);
         ValidateValidity(storedValidity);
 
@@ -49,7 +52,7 @@ public class PbtRocksDbPersistence(
         {
             if (storedCurrentState is not null || storedValidity is not null || HasPopulatedDataColumn(db))
             {
-                throw new InvalidDataException($"The populated pbt database has no schema epoch {SchemaEpoch} stamp. Delete the pbt database and rebuild or re-import.");
+                throw new InvalidDataException($"The populated pbt database has no schema epoch {SchemaEpoch} stamp. Rebuild or re-import into a new pbt database.");
             }
 
             Span<byte> value = stackalloc byte[sizeof(int)];
@@ -61,19 +64,19 @@ public class PbtRocksDbPersistence(
         int epoch = BinaryPrimitives.ReadInt32BigEndian(storedEpoch);
         if (epoch != SchemaEpoch)
         {
-            throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Delete the pbt database and re-import.");
+            throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Rebuild or re-import into a new pbt database.");
         }
 
         if ((storedCurrentState is null) != (storedValidity is null))
         {
-            throw new InvalidDataException("The PBT validity marker and current-state metadata are inconsistent. Delete the pbt database and rebuild or re-import.");
+            throw new InvalidDataException("The PBT validity marker and current-state metadata are inconsistent. Rebuild or re-import into a new pbt database.");
         }
 
         if (storedValidity is not null) return;
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
-            throw new InvalidDataException("The epoch-10 PBT database contains an interrupted initialization. Delete the pbt database and rebuild, or enable the preimage-flat import to clear and retry it.");
+            throw new InvalidDataException("The epoch-11 PBT database contains an interrupted initialization. Rebuild into a new pbt database, or enable the preimage-flat import to clear and retry it.");
         }
     }
 
@@ -81,10 +84,12 @@ public class PbtRocksDbPersistence(
     {
         PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.NodeGroups, PbtColumns.CodeReferences,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
-            PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes];
+            PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes,
+            PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes];
         foreach (PbtColumns column in columns)
         {
-            if (db.GetColumnDb(column).GetAll().GetEnumerator().MoveNext()) return true;
+            using IEnumerator<KeyValuePair<byte[], byte[]>> entries = db.GetColumnDb(column).GetAll().GetEnumerator();
+            if (entries.MoveNext()) return true;
         }
         return false;
     }
@@ -115,7 +120,7 @@ public class PbtRocksDbPersistence(
     private static void ValidateCurrentState(byte[]? value)
     {
         if (value is not null && value.Length != CurrentStateLength)
-            throw new InvalidDataException("Malformed PBT current-state metadata. Delete the pbt database and rebuild or re-import.");
+            throw new InvalidDataException("Malformed PBT current-state metadata. Rebuild or re-import into a new pbt database.");
     }
 
     private static void ValidateValidity(byte[]? value)
@@ -123,7 +128,7 @@ public class PbtRocksDbPersistence(
         if (value is not [ValidState])
         {
             if (value is not null)
-                throw new InvalidDataException("Malformed PBT validity metadata. Delete the pbt database and rebuild or re-import.");
+                throw new InvalidDataException("Malformed PBT validity metadata. Rebuild or re-import into a new pbt database.");
         }
     }
 
@@ -134,7 +139,9 @@ public class PbtRocksDbPersistence(
         {
             if (++upper[i] != 0) return upper[..(i + 1)];
         }
-        return new byte[PbtFullKey.MaxLength + 1];
+        byte[] maximum = new byte[PbtFullKey.MaxLength + 1];
+        Array.Fill(maximum, byte.MaxValue);
+        return maximum;
     }
 
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot) : IPbtPersistence.IReader
@@ -144,28 +151,53 @@ public class PbtRocksDbPersistence(
         public StateId CurrentState => _current.State;
         public ValueHash256 CurrentRoot => _current.Root;
 
-        public ValueHash256? GetLeaf(PbtFullKey key)
+        public Account? GetAccount(in ValueHash256 addressHash)
         {
-            byte[]? value = snapshot.GetColumn(PbtColumns.FullLeaves).Get(key.Bytes);
-            if (value is null) return null;
-            if (value.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT leaf value length.");
-            return new ValueHash256(value);
+            byte[]? value = snapshot.GetColumn(PbtColumns.Accounts).Get(addressHash.Bytes);
+            return value is null ? null : DecodeAccount(value);
         }
 
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => EnumerateLeavesCore([], [0xFF, 0xFF]);
-
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) =>
-            EnumerateLeavesCore(prefix.Bytes.ToArray(), PrefixUpperBound(prefix.Bytes));
-
-        private IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeavesCore(byte[] lower, byte[] upper)
+        public EvmWord GetSlot(PbtFullKey key)
         {
-            ISortedKeyValueStore leaves = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.FullLeaves);
-            using ISortedView view = leaves.GetViewBetween(lower, upper);
+            byte[]? value = snapshot.GetColumn(PbtColumns.Storages).Get(key.Bytes);
+            return value is null ? default : DecodeSlot(value);
+        }
+
+        public CodeInfo? GetCode(in ValueHash256 codeHash)
+        {
+            byte[]? value = snapshot.GetColumn(PbtColumns.Codes).Get(codeHash.Bytes);
+            return value is null ? null : new CodeInfo(value) { CodeHash = codeHash };
+        }
+
+        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
+        {
+            ISortedKeyValueStore accounts = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Accounts);
+            byte[] upper = new byte[ValueHash256.MemorySize + 1];
+            Array.Fill(upper, byte.MaxValue);
+            using ISortedView view = accounts.GetViewBetween([], upper);
             while (view.MoveNext())
-            {
-                if (view.CurrentValue.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT leaf value length.");
-                yield return new KeyValuePair<PbtFullKey, ValueHash256>(new PbtFullKey(view.CurrentKey), new ValueHash256(view.CurrentValue));
-            }
+                yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
+        }
+
+        public IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null)
+        {
+            ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Storages);
+            using ISortedView view = storage.GetViewBetween(prefix is null ? [] : prefix.Value.Bytes,
+                PrefixUpperBound(prefix is null ? [] : prefix.Value.Bytes));
+            while (view.MoveNext())
+                yield return new(new PbtFullKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
+        }
+
+        private static Account DecodeAccount(ReadOnlySpan<byte> value)
+        {
+            RlpReader reader = new(value);
+            return AccountDecoder.Instance.Decode(ref reader) ?? throw new InvalidDataException("Invalid persisted PBT account.");
+        }
+
+        private static EvmWord DecodeSlot(ReadOnlySpan<byte> value)
+        {
+            if (value.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT storage value length.");
+            return EvmWordSlot.FromStripped(value);
         }
 
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
@@ -213,13 +245,55 @@ public class PbtRocksDbPersistence(
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        public void SetLeaf(PbtFullKey key, ValueHash256? value)
+        private readonly Dictionary<ValueHash256, HashSet<PbtFullKey>> _stagedStorageKeys = [];
+
+        public void SetAccount(in ValueHash256 addressHash, Account? account)
         {
-            if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
-            IWriteBatch leaves = _batch.GetColumnBatch(PbtColumns.FullLeaves);
-            if (value is null) leaves.Set(key.Bytes, null, flags);
-            else leaves.PutSpan(key.Bytes, value.Value.Bytes, flags);
+            IWriteBatch accounts = _batch.GetColumnBatch(PbtColumns.Accounts);
+            if (account is null) accounts.Set(addressHash.Bytes, null, flags);
+            else
+            {
+                using ArrayPoolSpan<byte> encoded = AccountDecoder.Instance.EncodeToArrayPoolSpan(account);
+                accounts.PutSpan(addressHash.Bytes, encoded, flags);
+            }
         }
+
+        public void SetSlot(PbtFullKey key, in EvmWord value)
+        {
+            if (!IsStorageKey(key.Bytes)) throw new ArgumentException("A complete storage key is required.", nameof(key));
+            IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
+            if (EvmWordSlot.IsZero(value)) storage.Set(key.Bytes, null, flags);
+            else storage.PutSpan(key.Bytes, EvmWordSlot.AsReadOnlySpan(in value), flags);
+            ValueHash256 addressHash = new(key.Bytes.Slice(1, ValueHash256.MemorySize));
+            if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtFullKey>? keys))
+                _stagedStorageKeys[addressHash] = keys = [];
+            keys.Add(key);
+        }
+
+        public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>
+            _batch.GetColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
+
+        public void ClearStorage(in ValueHash256 addressHash)
+        {
+            IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
+            ISortedKeyValueStore persisted = (ISortedKeyValueStore)db.GetColumnDb(PbtColumns.Storages);
+            Span<byte> prefix = stackalloc byte[1 + ValueHash256.MemorySize];
+            addressHash.Bytes.CopyTo(prefix[1..]);
+            ReadOnlySpan<byte> zones = [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone];
+            foreach (byte zone in zones)
+            {
+                prefix[0] = zone;
+                using ISortedView view = persisted.GetViewBetween(prefix, PrefixUpperBound(prefix));
+                while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
+            }
+            // The database view does not include earlier writes in this batch.
+            if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtFullKey>? keys))
+                foreach (PbtFullKey key in keys) storage.Set(key.Bytes, null, flags);
+        }
+
+        private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
+            key.Length == 34 && key[0] == Eip8297KeyDerivation.AccountZone && key[^1] is >= 64 and < 128
+            || key.Length == 66 && key[0] == Eip8297KeyDerivation.StorageZone;
 
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {

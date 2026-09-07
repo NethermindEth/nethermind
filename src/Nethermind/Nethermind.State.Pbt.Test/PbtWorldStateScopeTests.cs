@@ -110,7 +110,7 @@ public class PbtWorldStateScopeTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public async Task PendingCode_IsOwnedByBundle_AndClearedAfterCommit(bool writeAccount)
+    public async Task WholeCode_IsRetainedByBundle_AfterCommit(bool writeAccount)
     {
         byte[] code = Bytes.FromHexString("6001");
         Hash256 codeHash = Keccak.Compute(code);
@@ -120,7 +120,7 @@ public class PbtWorldStateScopeTests
 
         using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
             codeWriter.Set(codeHash.ValueHash256, code);
-        Assert.That(scope.Bundle.PendingCode[codeHash.ValueHash256], Is.EqualTo(code));
+        Assert.That(scope.Bundle.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
 
         if (writeAccount)
         {
@@ -131,7 +131,7 @@ public class PbtWorldStateScopeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.Bundle.PendingCode, Is.Empty);
+            Assert.That(scope.Bundle.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
             Assert.That(scope.CodeDb.GetCode(codeHash.ValueHash256), Is.EqualTo(code));
         }
     }
@@ -165,7 +165,7 @@ public class PbtWorldStateScopeTests
             Assert.That(scope.Bundle.GetCodeReference(longHash.ValueHash256), Is.Zero);
             Assert.That(scope.Bundle.GetCodeReference(shortHash.ValueHash256), Is.EqualTo(1));
             for (int chunkId = 1; chunkId < 4; chunkId++)
-                Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
+                Assert.That(ReadDerivedLeaf(scope.Bundle, PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
         }
 
         void WriteShortCode()
@@ -198,13 +198,14 @@ public class PbtWorldStateScopeTests
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(7), Is.EqualTo(Bytes.FromHexString("ab")));
         scope.UpdateRootHash();
         Assert.That(scope.Bundle.PrepareLeafChanges().Count, Is.Zero);
-        Dictionary<PbtFullKey, ValueHash256?> pending = new(scope.Bundle.PendingLeafMutations());
+        Dictionary<PbtFullKey, ValueHash256> pending = new(scope.Bundle.EnumerateLeaves());
         Hash256 initialRoot = scope.RootHash;
         scope.UpdateRootHash();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.RootHash, Is.EqualTo(initialRoot));
-            Assert.That(scope.Bundle.PendingLeafMutations(), Is.EquivalentTo(pending));
+            Assert.That(scope.Bundle.PendingLeafMutations(), Is.Empty);
+            Assert.That(scope.Bundle.EnumerateLeaves(), Is.EquivalentTo(pending));
             Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
             Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
             Assert.That(pending.ContainsKey(PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.HeaderCodeChunks)), Is.True);
@@ -227,8 +228,8 @@ public class PbtWorldStateScopeTests
             Assert.That(scope.Bundle.PrepareLeafChanges().Count, Is.Zero);
         }
         PbtFullKey updatedKey = PbtStateKey.Storage(TestItem.AddressA, updatedSlot);
-        foreach ((PbtFullKey key, ValueHash256? value) in pending)
-            if (!key.Equals(updatedKey)) Assert.That(scope.Bundle.GetLeaf(key), Is.EqualTo(value), key.Bytes.ToArray().ToHexString());
+        foreach ((PbtFullKey key, ValueHash256 value) in pending)
+            if (!key.Equals(updatedKey)) Assert.That(ReadDerivedLeaf(scope.Bundle, key), Is.EqualTo(value), key.Bytes.ToArray().ToHexString());
 
         EipReferenceTree reference = new();
         Dictionary<PbtFullKey, ValueHash256> expectedLeaves = new(scope.Bundle.EnumerateLeaves());
@@ -295,8 +296,8 @@ public class PbtWorldStateScopeTests
                 Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1001), Is.EqualTo(StorageTree.ZeroBytes));
                 Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(StorageTree.ZeroBytes));
                 Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(2000), Is.EqualTo(Bytes.FromHexString("ef")));
-                Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Storage(TestItem.AddressA, 1001)), Is.Null);
-                Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.Null);
+                Assert.That(ReadDerivedLeaf(scope.Bundle, PbtStateKey.Storage(TestItem.AddressA, 1001)), Is.Null);
+                Assert.That(ReadDerivedLeaf(scope.Bundle, PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.Null);
             }
         }
     }
@@ -431,4 +432,10 @@ public class PbtWorldStateScopeTests
         }
     }
 
+    private static ValueHash256? ReadDerivedLeaf(PbtSnapshotBundle bundle, PbtFullKey key)
+    {
+        foreach ((PbtFullKey leafKey, ValueHash256 value) in bundle.EnumerateLeaves())
+            if (leafKey == key) return value;
+        return null;
+    }
 }

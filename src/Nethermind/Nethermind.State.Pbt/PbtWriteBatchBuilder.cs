@@ -51,19 +51,6 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
         }
     }
 
-    internal void CopyLeavesTo(SortedDictionary<PbtFullKey, ValueHash256?> destination, PbtFullKey? prefix)
-    {
-        foreach (Shard shard in _shards)
-        {
-            lock (shard.Lock)
-            {
-                if (shard.Entries is null) continue;
-                foreach ((PbtFullKey key, ValueHash256? value) in shard.Entries)
-                    if (prefix is null || prefix.Value.IsPrefixOf(key)) destination[key] = value;
-            }
-        }
-    }
-
     internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> Leaves
     {
         get
@@ -76,8 +63,8 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
         }
     }
 
-    /// <summary>Prepares the fold without relinquishing the flat mutations needed for publication.</summary>
-    /// <remarks>After a successful fold, publish <see cref="Leaves"/> and call <see cref="CompleteDrain"/>. The updater mutates its operation array.</remarks>
+    /// <summary>Prepares transient canonical mutations for the next root fold.</summary>
+    /// <remarks>After a successful fold, call <see cref="CompleteDrain"/>. The updater mutates its operation array.</remarks>
     internal PbtWriteBatchSet PrepareDrain()
     {
         Span<int> counts = stackalloc int[3 * 256 * 2];

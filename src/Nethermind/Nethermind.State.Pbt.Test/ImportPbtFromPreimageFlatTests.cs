@@ -90,6 +90,9 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
+        Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
+        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
+        Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
     }
 
@@ -182,7 +185,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_10_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_11_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -222,7 +225,7 @@ public class ImportPbtFromPreimageFlatTests
 
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
         {
-            staging.SetLeaf(PbtStateKey.Account(TestItem.AddressC, PbtKeyDerivation.BasicDataLeafKey), TestItem.KeccakB.ValueHash256);
+            staging.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressC), new Account(1, 2));
             PbtFullKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();
@@ -231,10 +234,9 @@ public class ImportPbtFromPreimageFlatTests
             staging.SetNodeGroup(groupKey, payload);
             staging.Commit();
         }
-        pbtDb.GetColumnDb(PbtColumns.AccountLeaves)[new byte[] { 1 }] = [2];
         byte[] maximumLengthKey = new byte[PbtFullKey.MaxLength];
         maximumLengthKey.AsSpan().Fill(0xFF);
-        pbtDb.GetColumnDb(PbtColumns.FullLeaves)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
+        pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
 
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
@@ -250,8 +252,8 @@ public class ImportPbtFromPreimageFlatTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(metadata.Get("validState"u8), Is.EqualTo(new byte[] { 1 }));
-            Assert.That(pbtDb.GetColumnDb(PbtColumns.AccountLeaves).GetAll(), Is.Empty, "legacy columns must be cleared during retry");
-            Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).Get(maximumLengthKey), Is.Null, "the full keyspace must be cleared during retry");
+            Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty, "import must not populate a split-leaf column");
+            Assert.That(pbtDb.GetColumnDb(PbtColumns.Storages).Get(maximumLengthKey), Is.Null, "the full keyspace must be cleared during retry");
             Assert.That(() => new PbtRocksDbPersistence(pbtDb, new PbtConfig()), Throws.Nothing);
         }
     }
@@ -263,10 +265,10 @@ public class ImportPbtFromPreimageFlatTests
         PbtConfig config = new();
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, config);
-        PbtFullKey key = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        ValueHash256 value = TestItem.KeccakA.ValueHash256;
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        Account account = new(1, 100);
         PbtWriteBatch changes = new();
-        changes.Set(key, value);
+        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, null)) changes.Set(key, value);
         using PbtNodeGroupStore nodeStore = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes);
         ValueHash256 persistedRoot = corruptNode ? root : TestItem.KeccakB.ValueHash256;
@@ -276,7 +278,7 @@ public class ImportPbtFromPreimageFlatTests
             persistedRoot,
             WriteFlags.None))
         {
-            batch.SetLeaf(key, value);
+            batch.SetAccount(addressHash, account);
             foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
             {
                 using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);
@@ -291,8 +293,31 @@ public class ImportPbtFromPreimageFlatTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(report.InvalidNodeCount, Is.EqualTo(corruptNode ? 1 : 0));
+            Assert.That(report.InvalidNodeCount, corruptNode ? Is.GreaterThan(0) : Is.Zero);
             Assert.That(report.RootMatches, Is.EqualTo(corruptNode));
+            Assert.That(report.IsValid, Is.False);
+        }
+    }
+
+    [TestCase(PbtColumns.Accounts)]
+    [TestCase(PbtColumns.Storages)]
+    [TestCase(PbtColumns.Codes)]
+    public async Task Scanner_reports_malformed_typed_entries(PbtColumns column)
+    {
+        PbtConfig config = new();
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, config);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
+            StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), default, WriteFlags.None)) batch.Commit();
+        byte[] key = column == PbtColumns.Storages
+            ? PbtStateKey.Storage(TestItem.AddressA, 63).Bytes.ToArray()
+            : TestItem.KeccakA.Bytes.ToArray();
+        db.GetColumnDb(column)[key] = Bytes.FromHexString("0x01");
+
+        PbtScanReport report = await new PbtScanner(db, config, LimboLogs.Instance).Scan(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.InvalidLeafCount, Is.EqualTo(1));
             Assert.That(report.IsValid, Is.False);
         }
     }
@@ -329,12 +354,12 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     /// <summary>
-    /// Reopening leaf-column views mid-zone must resume without gaps or duplicates across all zones.
+    /// Logical entries spanning channel chunks must produce the same tree across all zones.
     /// </summary>
-    /// <param name="viewLeafChunk">Number of stems read before reopening the view.</param>
+    /// <param name="entryChunkSize">Number of logical entries per channel chunk.</param>
     [TestCase(1)]
     [TestCase(5)]
-    public async Task Reopening_the_leaf_view_mid_zone_folds_to_the_same_root(int viewLeafChunk)
+    public async Task Logical_entry_chunks_fold_to_the_same_root(int entryChunkSize)
     {
         byte[] bigCode = new byte[5000];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
@@ -370,14 +395,14 @@ public class ImportPbtFromPreimageFlatTests
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance)
         {
-            ViewLeafChunk = viewLeafChunk,
+            EntryChunkSize = entryChunkSize,
         };
 
         await step.Execute(CancellationToken.None);
 
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view mid-zone must fold to the same root");
+        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "logical entry chunks must fold to the same root");
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
     }

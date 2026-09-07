@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -58,6 +59,8 @@ public class PbtRebuilderTests
         AddSlot(TestItem.AddressB, 1000, 0x1234);
         AddAccount(TestItem.AddressC, 2, 7, smallCode);             // small contract, no overflow
         AddSlot(TestItem.AddressC, 3, 0x99);
+        AddAccount(TestItem.AddressD, 0, 0, bigCode);
+        AddAccount(TestItem.AddressE, 0, 0, null);
 
         return leaves;
     }
@@ -90,7 +93,6 @@ public class PbtRebuilderTests
     {
         Dictionary<string, byte[]> model = [];
         List<RebuildEntry> leaves = BuildFixture(model);
-        PbtTestLeaves.SortByTreeKey(leaves);
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
@@ -102,14 +104,14 @@ public class PbtRebuilderTests
 
         using PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
-        foreach (RebuildEntry leaf in leaves)
+        using IPbtPersistence.IReader reader = target.CreateReader();
+        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.EnumerateLeaves(reader))
         {
             PbtWriteBatch incrementalChange = new();
-            incrementalChange.Set(leaf.Key, leaf.Leaf);
+            incrementalChange.Set(key, value);
             incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, incrementalChange);
         }
 
-        using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
@@ -157,13 +159,9 @@ public class PbtRebuilderTests
         logManager.GetClassLogger<PbtRebuilder>().Returns(logger);
         logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
-        List<RebuildEntry> leaves =
-        [
-            Entry(0x04, 0x00), // Account: 25% after its 0000 fixed prefix.
-            Entry(0x18, 0x00), // Code: 50% after its 0001 fixed prefix.
-            Entry(0xE0, 0x00), // Storage: 75% after its 1 fixed prefix.
-        ];
-        PbtTestLeaves.SortByTreeKey(leaves);
+        List<RebuildEntry> leaves = [];
+        PbtTestLeaves.AddAccount(leaves, TestItem.AddressA, new Account(1, 100), null);
+        PbtTestLeaves.AddSlot(leaves, TestItem.AddressA, 0, 1);
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
@@ -190,6 +188,58 @@ public class PbtRebuilderTests
         Assert.That(reader.CurrentState, Is.EqualTo(targetState));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Rebuild_uses_final_logical_values_and_code_references(bool deleteAccount)
+    {
+        byte[] originalCode = Bytes.FromHexString("0x60016002");
+        byte[] replacementCode = Bytes.FromHexString("0x6003");
+        Account original = new Account(1, 10).WithChangedCodeHash(Keccak.Compute(originalCode));
+        Account replacement = new Account(0, 0).WithChangedCodeHash(Keccak.Compute(replacementCode));
+        List<RebuildEntry> entries = [];
+        PbtTestLeaves.AddAccount(entries, TestItem.AddressA, original, originalCode);
+        PbtTestLeaves.AddSlot(entries, TestItem.AddressA, 63, 1);
+        PbtTestLeaves.AddSlot(entries, TestItem.AddressA, 1000, 2);
+        PbtTestLeaves.AddAccount(entries, TestItem.AddressA, replacement, replacementCode);
+        PbtTestLeaves.AddSlot(entries, TestItem.AddressA, 63, 0);
+        PbtTestLeaves.AddSlot(entries, TestItem.AddressA, 1000, 0);
+        if (deleteAccount) entries.Add(RebuildEntry.FromAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), null));
+
+        Dictionary<string, byte[]> model = [];
+        if (!deleteAccount) PbtReferenceModel.SetAccount(model, TestItem.AddressA, 0, 0, replacementCode);
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence target = new(db, Config);
+        ValueHash256 root = await Rebuild(entries, 1, new StateId(7, TestItem.KeccakA.ValueHash256), target);
+        using IPbtPersistence.IReader reader = target.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA), Is.EqualTo(deleteAccount ? null : replacement));
+            Assert.That(reader.GetCodeReference(original.CodeHash.ValueHash256), Is.Zero);
+            Assert.That(reader.GetCodeReference(replacement.CodeHash.ValueHash256), Is.EqualTo(deleteAccount ? 0 : 1));
+            Assert.That(reader.EnumerateStorage(), Is.Empty);
+            Assert.That(reader.GetCode(original.CodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(originalCode));
+            Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Missing_code_does_not_publish_partial_rebuild()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence target = new(db, Config);
+        List<RebuildEntry> entries = [RebuildEntry.FromAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA),
+            new Account(1, 2).WithChangedCodeHash(TestItem.KeccakA))];
+        Assert.ThrowsAsync<InvalidDataException>(() => Rebuild(entries, 1, new StateId(7, TestItem.KeccakA.ValueHash256), target));
+        using IPbtPersistence.IReader reader = target.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(reader.EnumerateAccounts(), Is.Empty);
+            Assert.That(reader.EnumerateNodeGroupKeys(), Is.Empty);
+        }
+    }
+
     private static string[] CanonicalGroups(IEnumerable<PbtNodePath> groupKeys, Func<PbtNodePath, RefCountingMemory?> getNodeGroup)
     {
         List<string> result = [];
@@ -202,11 +252,4 @@ public class PbtRebuilderTests
         return [.. result];
     }
 
-    private static RebuildEntry Entry(byte first, byte second)
-    {
-        byte[] key = new byte[Eip8297KeyDerivation.AccountKeyLength];
-        key[0] = first;
-        key[1] = second;
-        return new RebuildEntry(new PbtFullKey(key), TestItem.KeccakA.ValueHash256);
-    }
 }

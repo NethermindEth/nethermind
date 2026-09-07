@@ -18,7 +18,7 @@ public sealed class PbtStorageTree(
 {
     public Hash256 RootHash => Keccak.EmptyTreeHash;
 
-    public bool IsKnownEmpty => !scope.Bundle.AnyLeaf(PbtStateKey.StoragePrefix(address));
+    public bool IsKnownEmpty => !scope.Bundle.HasStorage(address);
 
     public byte[] Get(in UInt256 index)
     {

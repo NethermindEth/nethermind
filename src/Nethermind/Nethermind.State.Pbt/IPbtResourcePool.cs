@@ -22,12 +22,6 @@ public interface IPbtResourcePool
     /// <remarks>Use the original rental usage; the caller must not access the resource after returning it.</remarks>
     void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource resource);
 
-    /// <summary>Rents an empty write-through buffer for a bundle's in-flight block.</summary>
-    PbtPendingFlatWrites GetPendingFlatWrites(PbtResourcePool.Usage usage);
-
-    /// <inheritdoc cref="ReturnSnapshotContent"/>
-    void ReturnPendingFlatWrites(PbtResourcePool.Usage usage, PbtPendingFlatWrites pending);
-
     /// <summary>Rents an empty canonical leaf accumulator for one writable branch.</summary>
     PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage);
 

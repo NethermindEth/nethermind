@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
@@ -10,24 +12,23 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>One immutable-at-seal diff layer of canonical EIP-8297 leaves, compressed nodes, and code references.</summary>
+/// <summary>One immutable-at-seal diff layer of flat values, canonical node groups, and code references.</summary>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
     private readonly Lock _treeLock = new();
 
-    internal readonly ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
+    internal readonly ConcurrentDictionary<ValueHash256, Account?> Accounts = new();
+    internal readonly ConcurrentDictionary<PbtFullKey, EvmWord> Storages = new();
+    internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
+    internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> NodeGroups = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
-    internal void SetLeaf(PbtFullKey key, ValueHash256? value)
+    internal void ClearStorage(in ValueHash256 addressHash)
     {
-        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
-        lock (_treeLock) Leaves[key] = value is null || value.Value == default ? null : value;
-    }
-
-    internal bool TryGetLeaf(PbtFullKey key, out ValueHash256? value)
-    {
-        lock (_treeLock) return Leaves.TryGetValue(key, out value);
+        foreach ((PbtFullKey key, _) in Storages)
+            if (PbtFlatState.StorageAddress(key) == addressHash) Storages.TryRemove(key, out _);
+        SelfDestructedStorageAddresses[addressHash] = true;
     }
 
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
@@ -77,7 +78,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     {
         lock (_treeLock)
         {
-            Leaves.NoLockClear();
+            Accounts.NoLockClear();
+            Storages.NoLockClear();
+            Codes.NoLockClear();
+            SelfDestructedStorageAddresses.NoLockClear();
             foreach ((_, RefCountingMemory? payload) in NodeGroups) ((IDisposable?)payload)?.Dispose();
             NodeGroups.NoLockClear();
         }
@@ -86,12 +90,11 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     internal PbtSnapshotPayloadSize GetPayloadSize()
     {
-        long leafBytes = 0;
+        long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
+            + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
         long nodeBytes = 0;
-        foreach ((PbtFullKey key, ValueHash256? value) in Leaves)
-        {
-            leafBytes += key.Length + (value is null ? 0 : ValueHash256.MemorySize);
-        }
+        foreach ((PbtFullKey key, _) in Storages) leafBytes += key.Length + ValueHash256.MemorySize;
+        foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
         lock (_treeLock)
         {

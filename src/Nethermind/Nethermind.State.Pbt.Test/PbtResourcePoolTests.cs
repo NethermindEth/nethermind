@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -199,8 +201,12 @@ public class PbtResourcePoolTests
     public void ReturnedContent_IsRentedAgainAndReset()
     {
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        PbtFullKey key = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        content.SetLeaf(key, TestItem.KeccakA.ValueHash256);
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        content.Accounts[addressHash] = Build.An.Account.TestObject;
+        content.Storages[PbtStateKey.Storage(TestItem.AddressA, 1)] = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
+        content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
+        content.SelfDestructedStorageAddresses[addressHash] = true;
+        content.SetCodeReference(TestItem.KeccakA.ValueHash256, 1);
         TrackingMemoryProvider memoryProvider = new();
         PbtNodePath groupKey = new([], 0);
         using (RefCountingMemory payload = CreateGroup(memoryProvider, TestItem.KeccakA.ValueHash256))
@@ -210,10 +216,16 @@ public class PbtResourcePoolTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented, Is.SameAs(content));
-            Assert.That(rented.TryGetLeaf(key, out _), Is.False);
+            Assert.That(rented.Accounts, Is.Empty);
+            Assert.That(rented.Storages, Is.Empty);
+            Assert.That(rented.Codes, Is.Empty);
+            Assert.That(rented.SelfDestructedStorageAddresses, Is.Empty);
+            Assert.That(rented.CodeReferences, Is.Empty);
+            Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             Assert.That(rented.TryGetNodeGroup(groupKey, out _), Is.False);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
+        _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
     }
 
     [TestCase(false)]
@@ -275,13 +287,4 @@ public class PbtResourcePoolTests
         }
     }
 
-    [Test]
-    public void ReturnedPendingFlatWrites_AreRentedAgainAndReset()
-    {
-        PbtPendingFlatWrites pending = _pool.GetPendingFlatWrites(PbtResourcePool.Usage.MainBlockProcessing);
-        pending.Accounts[TestItem.AddressA] = Build.An.Account.TestObject;
-        _pool.ReturnPendingFlatWrites(PbtResourcePool.Usage.MainBlockProcessing, pending);
-        Assert.That(_pool.GetPendingFlatWrites(PbtResourcePool.Usage.MainBlockProcessing), Is.SameAs(pending));
-        Assert.That(pending.Accounts, Is.Empty);
-    }
 }

@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Db;
@@ -123,9 +124,11 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     {
         public StateId CurrentState => inner.CurrentState;
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
-        public ValueHash256? GetLeaf(PbtFullKey key) => inner.GetLeaf(key);
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => inner.EnumerateLeaves();
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => inner.EnumerateLeaves(prefix);
+        public Account? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
+        public EvmWord GetSlot(PbtFullKey key) => inner.GetSlot(key);
+        public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
+        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
+        public IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null) => inner.EnumerateStorage(prefix);
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
         public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
         public ulong GetCodeReference(in ValueHash256 codeHash) => inner.GetCodeReference(codeHash);
@@ -139,7 +142,10 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         private bool _commitAttempted;
         private bool _disposed;
 
-        public void SetLeaf(PbtFullKey key, ValueHash256? value) => inner.SetLeaf(key, value);
+        public void SetAccount(in ValueHash256 addressHash, Account? account) => inner.SetAccount(addressHash, account);
+        public void SetSlot(PbtFullKey key, in EvmWord value) => inner.SetSlot(key, value);
+        public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
+        public void ClearStorage(in ValueHash256 addressHash) => inner.ClearStorage(addressHash);
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => inner.SetNodeGroup(groupKey, payload);
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => inner.SetCodeReference(codeHash, referenceCount);
 

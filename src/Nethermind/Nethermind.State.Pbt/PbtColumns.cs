@@ -7,7 +7,7 @@ public enum PbtColumns
 {
     Metadata,
 
-    /// <summary>Current EIP-8297 complete keys mapped directly to 32-byte values.</summary>
+    /// <summary>Legacy EIP-8297 split leaves, retained for schema detection.</summary>
     FullLeaves,
 
     /// <summary>Canonical four-level node groups keyed by their boundary path.</summary>
@@ -33,4 +33,12 @@ public enum PbtColumns
 
     /// <summary>Stem trie nodes of the storage zones (0x8-0xF), keyed by (path bits, depth).</summary>
     StorageTrieNodes,
+    /// <summary>Whole accounts keyed by the PBT address hash.</summary>
+    Accounts,
+
+    /// <summary>Storage words keyed by their complete EIP-8297 storage key.</summary>
+    Storages,
+
+    /// <summary>Whole bytecode keyed by its code hash.</summary>
+    Codes,
 }
