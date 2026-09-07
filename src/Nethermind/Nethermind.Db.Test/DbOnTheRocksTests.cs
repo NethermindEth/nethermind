@@ -82,7 +82,7 @@ namespace Nethermind.Db.Test
 
             using (DbOnTheRocks reopenedEnabled = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance))
             {
-                Assert.That(reopenedEnabled.Get(key), Is.EqualTo(value));
+                Assert.That(GetValue(reopenedEnabled, key), Is.EqualTo(value));
                 reopenedEnabled.Set([10, 11, 12], [13, 14, 15]);
                 reopenedEnabled.Flush();
                 Assert.That(ReadOptionsFile(DbPath), Does.Contain("optimize_manifest_for_recovery=true"));
@@ -92,8 +92,8 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reopened.Get(key), Is.EqualTo(value));
-                Assert.That(reopened.Get([10, 11, 12]), Is.EqualTo([13, 14, 15]));
+                Assert.That(GetValue(reopened, key), Is.EqualTo(value));
+                Assert.That(GetValue(reopened, [10, 11, 12]), Is.EqualTo([13, 14, 15]));
             }
             Assert.That(ReadOptionsFile(DbPath), Does.Contain("optimize_manifest_for_recovery=false"));
         }
