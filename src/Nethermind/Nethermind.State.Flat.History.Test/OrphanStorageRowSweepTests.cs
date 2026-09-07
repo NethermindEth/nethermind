@@ -63,11 +63,14 @@ public class OrphanStorageRowSweepTests
     {
         using OrphanStorageRowSweep sweep = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
 
+        OrphanStorageRowReport? announced = null;
+        sweep.Completed += completed => announced = completed;
         OrphanStorageRowReport report = sweep.RunToCompletion(repair: true, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(report, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 6, OrphanRows: 3, OrphanAccounts: 2)));
+            Assert.That(announced, Is.EqualTo(report), "whoever derives data from the rows learns that they changed");
             Assert.That(sweep.AlreadyHandled, Is.True);
             Assert.That(Slot(Living, 1, 5), Is.EqualTo(0x0A), "a contract whose account row carries a storage root keeps its rows");
             Assert.That(Slot(Living, 1, 8), Is.EqualTo(0x0B));
