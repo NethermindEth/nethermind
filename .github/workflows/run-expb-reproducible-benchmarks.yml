@@ -176,7 +176,7 @@ permissions:
 jobs:
   resolve:
     if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'performance is good' && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.arch == 'arm64' && fromJSON('["self-hosted","reproducible-benchmarks-arm"]') || 'ubuntu-latest' }}
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       mode: ${{ steps.resolve.outputs.mode }}
@@ -1915,7 +1915,7 @@ jobs:
   resolve-images:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.arch == 'arm64' && fromJSON('["self-hosted","reproducible-benchmarks-arm"]') || 'ubuntu-latest' }}
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
       ordered_tags: ${{ steps.resolve.outputs.ordered_tags }}
