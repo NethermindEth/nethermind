@@ -36,6 +36,8 @@ public sealed class ArchiveProofRetrofit(
 
     public void ResweepDemotionFrom(ulong block) => reclaimer.ResweepDemotionFrom(policy.Epoch(block));
 
+    public void ResumeReclaim() => reclaimer.Wake();
+
     public ulong FirstBlockToBuild(ulong headBlock)
     {
         if (settings.RecentEpochs <= 0) return 0;

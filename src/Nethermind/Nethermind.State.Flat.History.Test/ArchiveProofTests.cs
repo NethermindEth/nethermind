@@ -240,6 +240,42 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Groups_of_one_storage_range_replayed_on_borrowed_slots_prove_the_same_as_the_trie()
+    {
+        Address[] siblings = RebuildTheChainWithContractsInTheSameStorageRange(12);
+
+        BuildCommitments(maxRowsPerPartition: 40, minRowsToBorrow: 1);
+
+        foreach (Address sibling in siblings) AssertProofMatchesTheTrie(sibling, Blocks, ContractSlots);
+        AssertProofMatchesTheTrie(Contract, 65, ContractSlots);
+    }
+
+    [Test]
+    public void Groups_of_one_storage_range_replayed_on_borrowed_slots_report_the_same_findings_and_resume_without_losing_or_repeating_them()
+    {
+        RebuildTheChainWithContractsInTheSameStorageRange(12);
+        CorruptEveryStorageRow();
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40).VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected.Count, Is.GreaterThan(12), "precondition: every contract in the range rebuilds to storage roots its account rows do not claim");
+
+        List<HistoryWalkMismatch> parallel = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40).VerifyRangeParallel(0, _chain.Head, workers: 8, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: 1).Mismatches.ToList();
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40);
+        using CancellationTokenSource interrupt = new();
+        int contractItem = ContractStorageItem;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 8, checkpointBlocks: 32, (item, progress) => { if (item == contractItem) interrupt.Cancel(); }, interrupt.Token, checkpointGroups: 3, minRowsToBorrow: 1),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the range is cut at its first group checkpoint while later groups may still be replaying on borrowed slots");
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 8, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EquivalentTo(expected), "groups replayed concurrently find exactly what the sequential replay finds");
+            Assert.That(resumed.Mismatches, Is.EquivalentTo(expected), "the checkpoint carries only the findings of groups below it, so the resume neither loses the rest nor reports them twice");
+        }
+    }
+
+    [Test]
     public void A_build_leaves_no_scratch_series_behind([Values(1L, 40L)] long maxRowsPerPartition)
     {
         BuildCommitments(maxRowsPerPartition);
@@ -1202,12 +1238,14 @@ public class ArchiveProofTests
 
     private CommitmentDepthPolicy _policy = null!;
 
-    private void BuildChain()
+    private void BuildChain(IReadOnlyList<Address>? siblingContracts = null)
     {
+        IReadOnlyList<Address> siblings = siblingContracts ?? [];
         _chain.AddBlock(0, block =>
         {
             for (int i = 0; i < _accounts.Length; i++) block.SetBalance(_accounts[i], (UInt256)(1000 + i));
             foreach (UInt256 slot in ContractSlots) block.SetStorage(Contract, slot, [0x10, (byte)slot.u0]);
+            foreach (Address sibling in siblings) block.SetStorage(sibling, ContractSlots[0], [0x20, sibling.Bytes[^1]]);
         });
 
         for (ulong number = 1; number <= Blocks; number++)
@@ -1221,13 +1259,37 @@ public class ArchiveProofTests
                 }
 
                 block.SetStorage(Contract, ContractSlots[current % (ulong)ContractSlots.Length], [(byte)(current + 1), 0x7F]);
+                for (int i = 0; i < siblings.Count; i++)
+                {
+                    if ((current + (ulong)i) % 3 == 0) block.SetStorage(siblings[i], ContractSlots[(current + (ulong)i) % (ulong)ContractSlots.Length], [(byte)(current + 2), (byte)i]);
+                }
             });
         }
 
         _chain.PublishWatermark();
     }
 
-    private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
+    private Address[] RebuildTheChainWithContractsInTheSameStorageRange(int count)
+    {
+        byte range = Keccak.Compute(Contract.Bytes).Bytes[0];
+        List<Address> siblings = [];
+        for (uint seed = 1; siblings.Count < count; seed++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), 0x2000_0000 + seed);
+            Address candidate = new(bytes);
+            if (Keccak.Compute(candidate.Bytes).Bytes[0] == range) siblings.Add(candidate);
+        }
+
+        _chain.Dispose();
+        _historyColumns.Dispose();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _chain = new ArchiveProofTestChain(_historyColumns);
+        BuildChain(siblings);
+        return [.. siblings];
+    }
+
+    private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
     {
         ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
         retrofit.Prepare();
@@ -1239,7 +1301,7 @@ public class ArchiveProofTests
             _historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance,
             maxRowsPerPartition, retrofit);
 
-        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: minRowsToBorrow);
 
         Assert.That(verdict.Mismatches, Is.Empty, "the walk that emits the commitments is also what proves them against the headers");
         retrofit.PublishCoverage(0, _chain.Head);

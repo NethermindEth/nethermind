@@ -35,7 +35,7 @@ internal sealed class HistoryRowScanner(
         Span<byte> upper = stackalloc byte[AccountRowKeyLength + 1];
         WriteAccountBounds(prefix, lower, upper);
 
-        using ISortedView view = accountHistory.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
+        using ISortedView view = accountHistory.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
         ValueHash256 currentPath = default;
         bool havePath = false;
         bool skipping = false;
@@ -128,7 +128,7 @@ internal sealed class HistoryRowScanner(
 
             try
             {
-                using ISortedView view = storageHistory.GetViewBetween(lower, end, ReadFlags.HintCacheMiss);
+                using ISortedView view = storageHistory.GetViewBetween(lower, end, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
                 while (view.MoveNext())
                 {
                     if ((++scanned & (WalkProgress.RowsPerUpdate - 1)) == 0) token.ThrowIfCancellationRequested();

@@ -71,6 +71,7 @@ public class ForwardCommitmentCaptureTests
     {
         foreach (ForwardCommitmentCapture capture in _captures) capture.Dispose();
         foreach (CommitmentReclaimer reclaimer in _reclaimers) reclaimer.Dispose();
+        _captures.Clear();
         _reclaimers.Clear();
         _tier.Dispose();
         _db.Dispose();
