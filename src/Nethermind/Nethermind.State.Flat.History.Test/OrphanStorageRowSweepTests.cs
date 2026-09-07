@@ -136,6 +136,24 @@ public class OrphanStorageRowSweepTests
     }
 
     [Test]
+    public void A_sweep_finished_by_a_later_instance_announces_the_whole_sweep()
+    {
+        using (OrphanStorageRowSweep first = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance))
+        {
+            first.RunOnePass(repair: true, maxRows: 1, TimeSpan.MaxValue, CancellationToken.None);
+        }
+
+        using OrphanStorageRowSweep resumed = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        OrphanStorageRowReport? announced = null;
+        resumed.Completed += completed => announced = completed;
+
+        resumed.RunToCompletion(repair: true, CancellationToken.None);
+
+        Assert.That(announced, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)),
+            "the tally travels with the cursor, so a consumer deciding on the announced counts sees what the whole sweep did, not what the last process saw");
+    }
+
+    [Test]
     public void A_windowed_history_is_unsupported_and_recorded_as_handled()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> windowed = new();
