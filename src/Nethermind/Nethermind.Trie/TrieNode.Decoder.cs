@@ -214,9 +214,10 @@ namespace Nethermind.Trie
 
                     const int MinChildrenForParallel = 4;
                     int nonNullChildren = 0;
-                    for (int i = 0; i < BranchesCount; i++)
+                    ref object? child = ref Unsafe.As<BranchData>(item._nodeData!)[0];
+                    for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                     {
-                        object? data = item._nodeData![i];
+                        object? data = child;
                         if (data is not null && !ReferenceEquals(data, _nullNode) && ++nonNullChildren >= MinChildrenForParallel)
                         {
                             return true;
@@ -236,10 +237,10 @@ namespace Nethermind.Trie
                 const int MinChildrenForBatchedHashing = 2;
                 int candidates = 0;
                 Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!)[0];
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    if (branchData[i] is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
+                    if (child is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
                     {
                         return true;
                     }
@@ -358,9 +359,10 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 ushort candidateMask = 0;
-                for (int i = 0; i < BranchesCount; i++)
+                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!)[0];
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = item._nodeData![i];
+                    object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         totalLength++;
@@ -528,9 +530,10 @@ namespace Nethermind.Trie
             private static int WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int position = 0;
-                for (int i = 0; i < BranchesCount; i++)
+                ref object? child = ref Unsafe.As<BranchData>(item._nodeData!)[0];
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = item._nodeData![i];
+                    object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         destination[position++] = 128;
