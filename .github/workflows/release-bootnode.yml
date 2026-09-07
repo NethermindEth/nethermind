@@ -56,11 +56,16 @@ jobs:
             exit 1
           fi
 
-          if release=$(gh release view "$release_tag" --json isDraft,targetCommitish 2>/dev/null); then
-            if [[ "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
+          if ! tag_ref=$(git ls-remote --refs origin "refs/tags/$release_tag"); then
+            echo "::error::Could not inspect the Bootnode tag $release_tag."
+            exit 1
+          fi
+
+          if [[ -n "$tag_ref" ]] || release=$(gh release view "$release_tag" --json isDraft,targetCommitish 2>/dev/null); then
+            if [[ -z "$tag_ref" && "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
               release_ref=$(jq -r '.targetCommitish' <<< "$release")
             else
-              release_ref=$release_tag
+              release_ref=refs/tags/$release_tag
             fi
 
             if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$release_ref" --jq .sha); then
@@ -69,7 +74,7 @@ jobs:
             fi
 
             if [[ "$release_target" != "$GITHUB_SHA" ]]; then
-              echo "::error::Bootnode release $release_tag already targets $release_target, not $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale release before re-cutting this version."
+              echo "::error::Bootnode release $release_tag already targets $release_target, not $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale untagged draft before re-cutting this version."
               exit 1
             fi
           fi
@@ -191,10 +196,15 @@ jobs:
             exit 1
           fi
 
-          if [[ "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
+          if ! tag_ref=$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG"); then
+            echo "::error::Could not inspect the Bootnode tag $RELEASE_TAG."
+            exit 1
+          fi
+
+          if [[ -z "$tag_ref" && "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
             commitish=$(jq -r '.targetCommitish' <<< "$release")
           else
-            commitish=$RELEASE_TAG
+            commitish=refs/tags/$RELEASE_TAG
           fi
 
           if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$commitish" --jq .sha); then
@@ -203,7 +213,7 @@ jobs:
           fi
 
           if [[ "$release_target" != "$GITHUB_SHA" ]]; then
-            echo "::error::Bootnode release $RELEASE_TAG resolves to $release_target, but this build targets $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale release before re-cutting it."
+            echo "::error::Bootnode release $RELEASE_TAG resolves to $release_target, but this build targets $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale untagged draft before re-cutting it."
             exit 1
           fi
 
