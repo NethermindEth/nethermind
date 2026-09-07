@@ -48,9 +48,11 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
-    public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage) => _categories[usage].GetWriteBatchBuilder();
+    /// <inheritdoc/>
+    public ShardedWriteBatch GetWriteBatch(Usage usage) => _categories[usage].GetWriteBatch();
 
-    public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
+    /// <inheritdoc/>
+    public void ReturnWriteBatch(Usage usage, ShardedWriteBatch batch) => _categories[usage].ReturnWriteBatch(batch);
 
     /// <inheritdoc/>
     public PbtTransientResource GetCachedResource(Usage usage)
@@ -124,13 +126,13 @@ public class PbtResourcePool : IPbtResourcePool
         }
     }
 
-    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writeBatchBuilderPoolSize)
+    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize)
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        // A scope holds one bundle for each builder, so these pools are equally sized.
-        private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _writeBatchPool = new(writeBatchBuilderPoolSize);
-        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
-        private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writeBatchBuilderPoolSize);
+        // Each writable bundle holds three partition batches and one prewarm resource.
+        private readonly ConcurrentStackPool<ShardedWriteBatch> _writeBatchPool = new(writableBundlePoolSize * 3);
+        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(ShardedWriteBatch));
+        private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
         private long _lastCachedResourceCapacity = 1024;
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
@@ -156,22 +158,22 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
         }
 
-        public PbtWriteBatchBuilder GetWriteBatchBuilder()
+        public ShardedWriteBatch GetWriteBatch()
         {
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
-            if (_writeBatchPool.TryGet(out PbtWriteBatchBuilder? builder))
+            if (_writeBatchPool.TryGet(out ShardedWriteBatch? batch))
             {
                 Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
-                return builder;
+                return batch;
             }
             Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
-            return new PbtWriteBatchBuilder();
+            return new ShardedWriteBatch();
         }
 
-        public void ReturnWriteBatchBuilder(PbtWriteBatchBuilder builder)
+        public void ReturnWriteBatch(ShardedWriteBatch batch)
         {
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
-            _writeBatchPool.Return(builder);
+            _writeBatchPool.Return(batch);
             Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
         }
 

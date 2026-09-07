@@ -45,6 +45,148 @@ public static class TrieUpdater
         return UpdateRoot(store, currentRoot, operations, new(precalculated, 0, 0, false, false), metrics);
     }
 
+    internal static ValueHash256 UpdateRoot(
+        IPbtStore store,
+        in ValueHash256 currentRoot,
+        IReadOnlyDictionary<PbtPartition, PbtPartitionWriteBatch> changes,
+        TrieUpdaterMetrics? metrics = null)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(changes);
+        List<PartitionFold> workers = new(3);
+        using StagingStore sharedStore = new(store);
+        GroupMutationFrame?[] sharedGroups = new GroupMutationFrame[16];
+        Subtree[][] zoneBoundaries = new Subtree[16][];
+        Subtree[] rootBoundaries = new Subtree[16];
+        try
+        {
+            foreach ((PbtPartition partition, PbtPartitionWriteBatch batch) in changes)
+            {
+                byte zone = partition switch
+                {
+                    PbtPartition.Account => Eip8297KeyDerivation.AccountZone,
+                    PbtPartition.Code => Eip8297KeyDerivation.CodeZone,
+                    PbtPartition.Storage => Eip8297KeyDerivation.StorageZone,
+                    _ => throw new ArgumentOutOfRangeException(nameof(changes)),
+                };
+                batch.Consume(out PbtWriteOperation[] operations, out int[] table);
+                if (operations.Length != 0) workers.Add(new(store, zone, operations, table, metrics is not null));
+            }
+            if (workers.Count == 0) return currentRoot;
+
+            using GroupMutationFrame rootGroup = new(sharedStore, RootPath, metrics);
+            Decompose(rootGroup, rootGroup.Take(RootPath, allowAbsent: true), 0, rootBoundaries);
+            foreach (PartitionFold worker in workers)
+            {
+                int slot = worker.Zone >> 4;
+                if (sharedGroups[slot] is not { } sharedGroup)
+                {
+                    sharedGroup = new(sharedStore, new PbtNodePath([(byte)(slot << 4)], 4), metrics);
+                    sharedGroups[slot] = sharedGroup;
+                    zoneBoundaries[slot] = new Subtree[16];
+                    Decompose(sharedGroup, Resolve(rootGroup, rootBoundaries[slot]), 4, zoneBoundaries[slot]);
+                }
+                // Depth-eight roots still belong to the shared depth-four group. Resolve them before dispatch;
+                // those frames retain their immutable leases until every worker and the ancestor merge finish.
+                worker.Current = Resolve(sharedGroup, zoneBoundaries[slot][worker.Zone & 15]);
+            }
+
+            Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
+
+            foreach (PartitionFold worker in workers)
+            {
+                zoneBoundaries[worker.Zone >> 4][worker.Zone & 15] = worker.Result;
+                if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
+            }
+            for (int slot = 0; slot < sharedGroups.Length; slot++)
+            {
+                if (sharedGroups[slot] is not { } sharedGroup) continue;
+                rootBoundaries[slot] = Compose(sharedGroup, zoneBoundaries[slot]);
+                sharedGroup.Flush();
+            }
+            ValueHash256 hash = Place(rootGroup, Compose(rootGroup, rootBoundaries), PbtFourLevelGroupGeometry.RootPosition, 0);
+            rootGroup.Flush();
+
+            // No underlying writes occur until the joined workers and shared compression have all succeeded.
+            foreach (PartitionFold worker in workers) worker.Store.Publish();
+            sharedStore.Publish();
+            return hash;
+        }
+        finally
+        {
+            foreach (PartitionFold worker in workers) worker.Store.Dispose();
+            foreach (GroupMutationFrame? sharedGroup in sharedGroups) sharedGroup?.Dispose();
+        }
+    }
+
+    private sealed class PartitionFold(IPbtStore store, byte zone, PbtWriteOperation[] operations, int[] table, bool collectMetrics)
+    {
+        internal byte Zone { get; } = zone;
+        internal StagingStore Store { get; } = new(store, zone);
+        internal TrieUpdaterMetrics? Metrics { get; } = collectMetrics ? new() : null;
+        internal Subtree Current { get; set; }
+        internal Subtree Result { get; private set; }
+
+        internal void Fold()
+        {
+            using GroupMutationFrame group = new(Store, new PbtNodePath([Zone], 8), Metrics);
+            // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
+            Result = FoldBoundary(Store, Metrics, group, Current, operations, new(table, 8, 8, false, false));
+            group.Flush();
+            Result = Result.PreserveBeyond(group);
+        }
+    }
+
+    private sealed class StagingStore(IPbtStore backingStore, byte? zone = null) : IPbtStore, IDisposable
+    {
+        private readonly Dictionary<PbtNodePath, RefCountingMemory?> _groups = [];
+
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+        {
+            ValidateOwnership(groupKey);
+            if (!_groups.TryGetValue(groupKey, out RefCountingMemory? payload)) return backingStore.GetNodeGroup(groupKey);
+            payload?.AcquireLease();
+            return payload;
+        }
+
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+        {
+            ValidateOwnership(groupKey);
+            _groups.TryGetValue(groupKey, out RefCountingMemory? previous);
+            payload?.AcquireLease();
+            try
+            {
+                _groups[groupKey] = payload;
+            }
+            catch
+            {
+                ((IDisposable?)payload)?.Dispose();
+                throw;
+            }
+            ((IDisposable?)previous)?.Dispose();
+        }
+
+        private void ValidateOwnership(PbtNodePath groupKey)
+        {
+            if (zone is { } workerZone
+                ? groupKey.BitDepth < 8 || groupKey.Path[0] != workerZone
+                : groupKey.BitDepth >= 8)
+                throw new InvalidOperationException("A partition fold accessed a group outside its ownership boundary.");
+        }
+
+        internal void Publish()
+        {
+            foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in _groups)
+                backingStore.SetNodeGroup(groupKey, payload);
+        }
+
+        public void Dispose()
+        {
+            foreach (RefCountingMemory? payload in _groups.Values) ((IDisposable?)payload)?.Dispose();
+            _groups.Clear();
+        }
+    }
+
     private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation> operations, BucketPlan plan, TrieUpdaterMetrics? metrics)
     {
         if (operations.IsEmpty) return currentRoot;
@@ -173,6 +315,11 @@ public static class TrieUpdater
                 store, metrics, group, boundaries[slot], bucket, partition.Plan.ForChild(slot));
         }
 
+        return Compose(group, boundaries);
+    }
+
+    private static Subtree Compose(GroupMutationFrame group, Span<Subtree> boundaries)
+    {
         for (int level = PbtFourLevelGroupGeometry.LevelsPerGroup - 1; level >= 0; level--)
         {
             int width = 1 << (PbtFourLevelGroupGeometry.LevelsPerGroup - level);
@@ -718,6 +865,20 @@ internal sealed class TrieUpdaterMetrics
     internal int GroupParses { get; private set; }
     internal int GroupFrameResolutions { get; private set; }
     internal int EmittedNodeWrites { get; private set; }
+
+    internal void Add(TrieUpdaterMetrics metrics)
+    {
+        PrecalculatedLevels += metrics.PrecalculatedLevels;
+        SortedLevels += metrics.SortedLevels;
+        FullKeySorts += metrics.FullKeySorts;
+        RadixPartitions += metrics.RadixPartitions;
+        OperationPrefixComparisons += metrics.OperationPrefixComparisons;
+        SynthesizedSingleBuckets += metrics.SynthesizedSingleBuckets;
+        PhysicalGroupFetches += metrics.PhysicalGroupFetches;
+        GroupParses += metrics.GroupParses;
+        GroupFrameResolutions += metrics.GroupFrameResolutions;
+        EmittedNodeWrites += metrics.EmittedNodeWrites;
+    }
 
     internal void IncrementPrecalculatedLevels() => PrecalculatedLevels++;
     internal void IncrementSortedLevels() => SortedLevels++;

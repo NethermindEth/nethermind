@@ -130,8 +130,8 @@ public class PbtSnapshotBundleTests
 
         public PbtSnapshotContent GetSnapshotContent(PbtResourcePool.Usage usage) => new();
         public void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content) => content.Dispose();
-        public PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage) => new();
-        public void ReturnWriteBatchBuilder(PbtResourcePool.Usage usage, PbtWriteBatchBuilder builder)
+        public ShardedWriteBatch GetWriteBatch(PbtResourcePool.Usage usage) => new();
+        public void ReturnWriteBatch(PbtResourcePool.Usage usage, ShardedWriteBatch builder)
         {
             builder.Dispose();
             if (ThrowOnBuilderReturn) throw new IOException("Builder return failed");
@@ -475,6 +475,10 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(account));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
+            Dictionary<PbtFullKey, ValueHash256> staged = [];
+            foreach ((PbtFullKey key, ValueHash256? value) in bundle.PendingLeafMutations())
+                if (value is not null) staged[key] = value.Value;
+            Assert.That(staged, Is.EquivalentTo(bundle.EnumerateLeaves()), "setters must translate before root preparation");
         }
         ValueHash256 root = Fold(bundle, default);
         Dictionary<string, byte[]> model = [];
@@ -532,6 +536,123 @@ public class PbtSnapshotBundleTests
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.Zero);
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Pending_code_replacement_and_final_reference_readdition_stage_latest_values(bool resolveAbandonedCode)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] abandonedBytes = Bytes.FromHexString("6001");
+        Account abandoned = Build.An.Account.WithCode(abandonedBytes).TestObject;
+        byte[] bytes = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * 31];
+        bytes.AsSpan().Fill(0x5b);
+        Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
+        bundle.SetAccount(TestItem.AddressA, abandoned);
+        bundle.SetAccount(TestItem.AddressA, account);
+        if (resolveAbandonedCode) bundle.SetCode(abandoned.CodeHash.ValueHash256, new CodeInfo(abandonedBytes));
+        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
+        bundle.SetAccount(TestItem.AddressA, null);
+        bundle.SetAccount(TestItem.AddressB, account);
+        Dictionary<PbtFullKey, ValueHash256> staged = [];
+        foreach ((PbtFullKey key, ValueHash256? value) in bundle.PendingLeafMutations())
+            if (value is not null) staged[key] = value.Value;
+        Assert.That(staged, Is.EquivalentTo(bundle.EnumerateLeaves()));
+        ValueHash256 root = Fold(bundle, default);
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(bundle.GetCodeReference(abandoned.CodeHash.ValueHash256), Is.Zero);
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Late_code_lookup_resolves_pending_mutations_without_reapplying_references(bool failFirstFold)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] bytes = Bytes.FromHexString("6001600055");
+        Account account = Build.An.Account.WithCode(bytes).TestObject;
+        bundle.SetAccount(TestItem.AddressA, account);
+        if (failFirstFold)
+        {
+            Assert.Throws<InvalidDataException>(() => Fold(bundle, default));
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
+        }
+        bundle.ReadCode = hash => hash == account.CodeHash.ValueHash256 ? bytes : null;
+        if (!failFirstFold)
+        {
+            KeyValuePair<PbtFullKey, ValueHash256?>[] pending = [.. bundle.PendingLeafMutations()];
+            Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.Not.Null);
+            Assert.That(bundle.PendingLeafMutations(), Is.EquivalentTo(pending), "a read-through fill must not translate mutations");
+        }
+        ValueHash256 root = Fold(bundle, default);
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
+            Assert.That(bundle.PendingMutationCount, Is.Zero);
+        }
+    }
+
+    [TestCase(0x00)]
+    [TestCase(0x01)]
+    [TestCase(0xFF)]
+    public void Failed_partition_fold_retains_bundle_mutations_for_retry(int failedZone)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] bytes = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * 31];
+        bytes.AsSpan().Fill(0x5b);
+        Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
+        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
+        bundle.SetAccount(TestItem.AddressA, account);
+        bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        ValueHash256 root = Fold(bundle, default);
+        using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
+
+        Account replacement = account.WithChangedBalance(4);
+        bundle.SetAccount(TestItem.AddressA, replacement);
+        bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("02")));
+        KeyValuePair<PbtFullKey, ValueHash256?>[] pending = [.. bundle.PendingLeafMutations()];
+        CountingStore store = new(bundle) { FailedZone = failedZone };
+        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.ApplyCount, Is.Zero);
+            Assert.That(bundle.TreeRoot, Is.EqualTo(root));
+            Assert.That(bundle.PendingLeafMutations(), Is.EquivalentTo(pending));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(replacement));
+            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
+            Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root));
+        }
+        foreach ((PbtNodePath path, RefCountingMemory? payload) in original.Content.NodeGroups)
+        {
+            using RefCountingMemory? actual = bundle.GetNodeGroup(path);
+            Assert.That(actual?.Memory.ToArray(), Is.EqualTo(payload?.Memory.ToArray()));
+        }
+
+        ValueHash256 updatedRoot = Fold(bundle, root);
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, replacement.Nonce, replacement.Balance, bytes);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressA, 1000, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updatedRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(bundle.PendingMutationCount, Is.Zero);
+            Assert.That(original.TreeRoot, Is.EqualTo(root));
+            Assert.That(original.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
         }
     }
 
@@ -640,7 +761,13 @@ public class PbtSnapshotBundleTests
     private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore
     {
         public int ApplyCount { get; private set; }
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
+        public int? FailedZone { get; init; }
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+        {
+            if (groupKey.BitDepth == 8 && groupKey.Path[0] == FailedZone)
+                throw new InvalidDataException("Configured partition read failure.");
+            return bundle.GetNodeGroup(groupKey);
+        }
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             ApplyCount++;

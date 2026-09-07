@@ -197,7 +197,7 @@ public class PbtWorldStateScopeTests
         if (codeAfterAccount) WriteCode();
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(7), Is.EqualTo(Bytes.FromHexString("ab")));
         scope.UpdateRootHash();
-        Assert.That(scope.Bundle.PrepareLeafChanges().Count, Is.Zero);
+        Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
         Dictionary<PbtFullKey, ValueHash256> pending = new(scope.Bundle.EnumerateLeaves());
         Hash256 initialRoot = scope.RootHash;
         scope.UpdateRootHash();
@@ -215,17 +215,17 @@ public class PbtWorldStateScopeTests
         using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             storage.Set(updatedSlot, Bytes.FromHexString("ef"));
         scope.Get(TestItem.AddressB);
-        PbtWriteBatchSet secondFold = scope.Bundle.PrepareLeafChanges();
+        KeyValuePair<PbtFullKey, ValueHash256?>[] secondFold = [.. scope.Bundle.PendingLeafMutations()];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(secondFold.Count, Is.EqualTo(1));
-            Assert.That(secondFold.Entries[0].Key, Is.EqualTo(PbtStateKey.Storage(TestItem.AddressA, updatedSlot)));
+            Assert.That(secondFold.Length, Is.EqualTo(1));
+            Assert.That(secondFold[0].Key, Is.EqualTo(PbtStateKey.Storage(TestItem.AddressA, updatedSlot)));
         }
         scope.UpdateRootHash();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.LastFoldMutationCount, Is.EqualTo(1));
-            Assert.That(scope.Bundle.PrepareLeafChanges().Count, Is.Zero);
+            Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
         }
         PbtFullKey updatedKey = PbtStateKey.Storage(TestItem.AddressA, updatedSlot);
         foreach ((PbtFullKey key, ValueHash256 value) in pending)
@@ -361,7 +361,7 @@ public class PbtWorldStateScopeTests
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
                 storage.Set((UInt256)(uint)(1000 + index), Bytes.FromHexString("ab"));
             });
-            Assert.That(abandoned.Bundle.PrepareLeafChanges().Count, Is.EqualTo(32));
+            Assert.That(abandoned.Bundle.PendingMutationCount, Is.EqualTo(32));
             if (foldBeforeAbandon) abandoned.UpdateRootHash();
             for (uint index = 0; index < 32; index++)
                 Assert.That(abandoned.CreateStorageTree(TestItem.AddressA).Get(1000 + index), Is.EqualTo(Bytes.FromHexString("ab")));
@@ -369,7 +369,7 @@ public class PbtWorldStateScopeTests
         using PbtWorldStateScope reused = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reused.Bundle.PrepareLeafChanges().Count, Is.Zero);
+            Assert.That(reused.Bundle.PendingMutationCount, Is.Zero);
             Assert.That(reused.Bundle.EnumerateLeaves(), Is.Empty);
             Assert.That(reused.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(StorageTree.ZeroBytes));
         }

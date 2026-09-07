@@ -461,7 +461,7 @@ public class Eip8297CanonicalTreeTests
     {
         PbtNodePath maximum = new(new byte[66], 528);
         PbtWriteBatch batch = new();
-        using PbtWriteBatchBuilder builder = new();
+        using ShardedWriteBatch builder = new();
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new PbtNodePath(new byte[67], 529));
@@ -812,23 +812,39 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 initialRoot = persisted ? TrieUpdater.UpdateRoot(preparedStore, default, batch) : default;
         if (persisted) TrieUpdater.UpdateRoot(genericStore, default, batch);
         TrieUpdaterMetrics metrics = new();
-        using PbtWriteBatchBuilder builder = new();
-        foreach (PbtWriteOperation operation in batch.Operations)
+        ValueHash256 preparedRoot;
+        if (accumulated)
         {
-            builder.SetLeaf(operation.Key, null);
-            builder.SetLeaf(operation.Key, operation.Value);
+            Dictionary<PbtPartition, PbtPartitionWriteBatch> prepared = [];
+            foreach (PbtPartition partition in new[] { PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage })
+            {
+                using ShardedWriteBatch builder = new();
+                foreach (PbtWriteOperation operation in batch.Operations)
+                {
+                    if (PbtWriteBatchSet.PartitionOf(operation.Key) != (int)partition) continue;
+                    builder.SetLeaf(operation.Key, null);
+                    builder.SetLeaf(operation.Key, operation.Value);
+                }
+                PbtPartitionWriteBatch partitionBatch = builder.PrepareDrain();
+                AssertPreparedLevel(partitionBatch.Entries, partitionBatch.Precalculated, 8, 8);
+                prepared.Add(partition, partitionBatch);
+            }
+            preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
         }
-        PbtWriteBatchSet prepared = accumulated ? builder.PrepareDrain() : PbtWriteBatchSet.Create(batch);
-        AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
-        ValueHash256 preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
+        else
+        {
+            PbtWriteBatchSet prepared = PbtWriteBatchSet.Create(batch);
+            AssertPreparedLevel(prepared.Entries, prepared.Precalculated, 0);
+            preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
+        }
         ValueHash256 genericRoot = TrieUpdater.UpdateRoot(genericStore, initialRoot, batch);
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(preparedStore.ExportPhysicalPayloads());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(preparedRoot, Is.EqualTo(genericRoot));
             Assert.That(preparedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(12));
-            Assert.That(metrics.FullKeySorts, Is.Zero);
+            Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(accumulated ? 3 : 12));
+            Assert.That(metrics.FullKeySorts, Is.EqualTo(accumulated ? 6 : 0));
             Assert.That(metrics.RadixPartitions, Is.Zero);
             Assert.That(TrieUpdater.UpdateRoot(reopened, preparedRoot, batch), Is.EqualTo(preparedRoot));
         }
@@ -941,7 +957,7 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    private static void AssertPreparedLevel(ReadOnlySpan<PbtWriteOperation> entries, ReadOnlySpan<int> table, int depth)
+    private static void AssertPreparedLevel(ReadOnlySpan<PbtWriteOperation> entries, ReadOnlySpan<int> table, int depth, int lastDepth = 12)
     {
         int[] counts = new int[16];
         foreach (PbtWriteOperation entry in entries) counts[(entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15]++;
@@ -961,10 +977,10 @@ public class Eip8297CanonicalTreeTests
             foreach (PbtWriteOperation entry in bucket)
                 Assert.That((entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15, Is.EqualTo(slot));
             int childOffset = table[17 + slot];
-            if (depth < 12)
+            if (depth < lastDepth)
             {
                 Assert.That(childOffset, Is.InRange(33, table.Length - 33));
-                AssertPreparedLevel(bucket, table[childOffset..], depth + 4);
+                AssertPreparedLevel(bucket, table[childOffset..], depth + 4, lastDepth);
             }
             else Assert.That(childOffset, Is.Zero);
             offset += counts[slot];

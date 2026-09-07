@@ -22,10 +22,11 @@ public interface IPbtResourcePool
     /// <remarks>Use the original rental usage; the caller must not access the resource after returning it.</remarks>
     void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource resource);
 
-    /// <summary>Rents an empty canonical leaf accumulator for one writable branch.</summary>
-    PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage);
+    /// <summary>Rents an empty canonical leaf accumulator for one key-zone partition.</summary>
+    ShardedWriteBatch GetWriteBatch(PbtResourcePool.Usage usage);
 
-    /// <inheritdoc cref="ReturnSnapshotContent"/>
-    void ReturnWriteBatchBuilder(PbtResourcePool.Usage usage, PbtWriteBatchBuilder builder);
+    /// <summary>Returns a partition batch to its original rental usage, discarding pending mutations.</summary>
+    /// <remarks>The caller must not access the batch after returning it.</remarks>
+    void ReturnWriteBatch(PbtResourcePool.Usage usage, ShardedWriteBatch batch);
 
 }

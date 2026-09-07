@@ -21,61 +21,117 @@ public class PbtResourcePoolTests
     private PbtResourcePool _pool = null!;
     [SetUp] public void SetUp() => _pool = new PbtResourcePool(new PbtConfig());
 
-    [TestCase(PbtResourcePool.Usage.MainBlockProcessing, false)]
-    [TestCase(PbtResourcePool.Usage.ReadOnlyProcessingEnv, true)]
-    public void Write_accumulator_drains_and_pool_return_discards_pending_changes(PbtResourcePool.Usage usage, bool parallel)
+    [TestCase(0x00, false, 0xFFFF, 64)]
+    [TestCase(0x01, false, 0xFFFF, 64)]
+    [TestCase(0xFF, false, 0xFFFF, 64)]
+    [TestCase(0x00, true, 0x8005, 64)]
+    [TestCase(0x01, true, 0x8005, 64)]
+    [TestCase(0xFF, true, 0x8005, 64)]
+    [TestCase(0x00, true, 0xFFFF, 600)]
+    public void Write_accumulator_drains_and_pool_return_discards_pending_changes(int zone, bool parallel, int touchedMask, int entriesPerShard)
     {
-        PbtWriteBatchBuilder builder = _pool.GetWriteBatchBuilder(usage);
-        PbtFullKey[] keys = new PbtFullKey[1536];
-        for (int index = 0; index < keys.Length; index++)
+        PbtResourcePool.Usage usage = parallel ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing;
+        ShardedWriteBatch batch = _pool.GetWriteBatch(usage);
+        List<PbtFullKey> keys = [];
+        for (int shard = 15; shard >= 0; shard--)
         {
-            int partition = index / 512;
-            byte[] bytes = new byte[partition == 2 ? 66 : 34];
-            bytes[0] = partition == 2 ? (byte)0xFF : (byte)partition;
-            bytes[1] = (byte)(index / 2);
-            bytes[^1] = (byte)(index % 2);
-            keys[index] = new(bytes);
+            if ((touchedMask & (1 << shard)) == 0) continue;
+            for (int index = entriesPerShard - 1; index >= 0; index--)
+            {
+                byte[] bytes = new byte[zone == 0xFF ? 66 : 34];
+                bytes[0] = (byte)zone;
+                bytes[1] = (byte)((shard << 4) | (index % 16));
+                bytes[^2] = (byte)(index >> 8);
+                bytes[^1] = (byte)index;
+                keys.Add(new(bytes));
+            }
         }
         void Write(int index)
         {
-            builder.SetLeaf(keys[index], TestItem.KeccakA.ValueHash256);
-            builder.SetLeaf(keys[index], null);
+            batch.SetLeaf(keys[index], TestItem.KeccakA.ValueHash256);
+            batch.SetLeaf(keys[index], null);
             ValueHash256 value = index % 2 == 0 ? default : TestItem.KeccakB.ValueHash256;
-            builder.SetLeaf(keys[index], value);
+            batch.SetLeaf(keys[index], value);
         }
-        if (parallel) Parallel.For(0, keys.Length, Write);
-        else for (int index = 0; index < keys.Length; index++) Write(index);
+        if (parallel) Parallel.For(0, keys.Count, Write);
+        else for (int index = 0; index < keys.Count; index++) Write(index);
 
-        Dictionary<PbtFullKey, ValueHash256?> leaves = new(builder.Leaves);
-        PbtWriteBatchSet prepared = builder.PrepareDrain();
-        PbtWriteBatchSet generic = PbtWriteBatchSet.Create(leaves);
+        Dictionary<PbtFullKey, ValueHash256?> leaves = new(batch.Leaves);
+        PbtPartitionWriteBatch prepared = batch.PrepareDrain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(prepared.Count, Is.EqualTo(keys.Length));
-            Assert.That(prepared.Entries.ToArray(), Is.EqualTo(generic.Entries.ToArray()));
-            Assert.That(prepared.Precalculated.ToArray(), Is.EqualTo(generic.Precalculated.ToArray()));
+            Assert.That(batch.Count, Is.EqualTo(keys.Count));
+            Assert.That(prepared.Count, Is.EqualTo(keys.Count));
         }
-        prepared.Consume(out PbtWriteOperation[] operations, out _);
+        prepared.Consume(out PbtWriteOperation[] operations, out int[] table);
+        int[] expectedTable = new int[33];
+        expectedTable[0] = touchedMask;
+        int compactCount = 0;
+        int offset = 0;
+        for (int shard = 0; shard < 16; shard++)
+        {
+            if ((touchedMask & (1 << shard)) == 0) continue;
+            expectedTable[1 + compactCount++] = entriesPerShard;
+            bool sawSet = false;
+            HashSet<PbtFullKey> shardKeys = [];
+            foreach (PbtWriteOperation operation in operations.AsSpan(offset, entriesPerShard))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(operation.Key.Bytes[1] >> 4, Is.EqualTo(shard));
+                    Assert.That(shardKeys.Add(operation.Key), Is.True);
+                    Assert.That(operation.Kind == PbtWriteOperationKind.Delete && sawSet, Is.False, "deletes must precede sets within each shard");
+                    Assert.That(operation.Kind, Is.EqualTo(leaves[operation.Key] is null ? PbtWriteOperationKind.Delete : PbtWriteOperationKind.Set));
+                    Assert.That(operation.Value, Is.EqualTo(leaves[operation.Key] ?? default));
+                }
+                sawSet |= operation.Kind == PbtWriteOperationKind.Set;
+            }
+            offset += entriesPerShard;
+        }
+        Assert.That(table, Is.EqualTo(expectedTable));
+        Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
         Array.Clear(operations);
-        Assert.That(builder.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
-        for (int index = 0; index < keys.Length; index++)
+        Assert.That(batch.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
+        Assert.That(batch.PrepareDrain().Count, Is.EqualTo(keys.Count), "a failed fold can retry");
+        for (int index = 0; index < keys.Count; index++)
         {
-            Assert.That(builder.TryGetLeaf(keys[index], out ValueHash256? value), Is.True);
-            Assert.That(value, Is.EqualTo(index % 2 == 0 ? null : (ValueHash256?)TestItem.KeccakB.ValueHash256));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(batch.TryGetLeaf(keys[index], out ValueHash256? value), Is.True);
+                Assert.That(value, Is.EqualTo(index % 2 == 0 ? null : (ValueHash256?)TestItem.KeccakB.ValueHash256));
+            }
         }
-        builder.CompleteDrain();
-        Assert.That(builder.PrepareDrain().Count, Is.Zero);
-        builder.SetLeaf(keys[0], TestItem.KeccakA.ValueHash256);
-        Assert.That(builder.PrepareDrain().Count, Is.EqualTo(1));
-        _pool.ReturnWriteBatchBuilder(usage, builder);
-        PbtWriteBatchBuilder rented = _pool.GetWriteBatchBuilder(usage);
+        batch.CompleteDrain();
+        Assert.That(batch.PrepareDrain().Count, Is.Zero);
+        batch.SetLeaf(keys[0], TestItem.KeccakA.ValueHash256);
+        Assert.That(batch.PrepareDrain().Count, Is.EqualTo(1));
+        _pool.ReturnWriteBatch(usage, batch);
+        ShardedWriteBatch rented = _pool.GetWriteBatch(usage);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rented, Is.SameAs(builder));
+            Assert.That(rented, Is.SameAs(batch));
+            Assert.That(rented.Count, Is.Zero);
             Assert.That(rented.PrepareDrain().Count, Is.Zero);
             Assert.That(rented.TryGetLeaf(keys[0], out _), Is.False);
         }
-        _pool.ReturnWriteBatchBuilder(usage, rented);
+        _pool.ReturnWriteBatch(usage, rented);
+    }
+
+    [Test]
+    public void Write_batch_pool_retains_three_partitions_per_writable_bundle()
+    {
+        const PbtResourcePool.Usage usage = PbtResourcePool.Usage.MainBlockProcessing;
+        ShardedWriteBatch[] batches = new ShardedWriteBatch[7];
+        for (int index = 0; index < batches.Length; index++) batches[index] = _pool.GetWriteBatch(usage);
+        foreach (ShardedWriteBatch batch in batches) _pool.ReturnWriteBatch(usage, batch);
+        ShardedWriteBatch[] rented = new ShardedWriteBatch[7];
+        for (int index = 0; index < rented.Length; index++) rented[index] = _pool.GetWriteBatch(usage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rented.AsSpan(0, 6).ToArray(), Is.EquivalentTo(batches.AsSpan(0, 6).ToArray()));
+            Assert.That(rented[6], Is.Not.SameAs(batches[6]));
+        }
+        foreach (ShardedWriteBatch batch in rented) _pool.ReturnWriteBatch(usage, batch);
     }
 
     [TestCase(null)]

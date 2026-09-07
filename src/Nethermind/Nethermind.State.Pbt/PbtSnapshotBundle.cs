@@ -18,8 +18,14 @@ public sealed class PbtSnapshotBundle(
     PbtResourcePool.Usage usage) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
-    private PbtWriteBatchBuilder? _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
-    private readonly Dictionary<ValueHash256, Account?> _changedAccounts = [];
+    private readonly Dictionary<PbtPartition, ShardedWriteBatch> _writeBatches = new()
+    {
+        [PbtPartition.Account] = resourcePool.GetWriteBatch(usage),
+        [PbtPartition.Code] = resourcePool.GetWriteBatch(usage),
+        [PbtPartition.Storage] = resourcePool.GetWriteBatch(usage),
+    };
+    private readonly Lock _accountLock = new();
+    private readonly Dictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = [];
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     private bool _isDisposed;
 
@@ -36,58 +42,46 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    private PbtWriteBatchBuilder WriteBatchBuilder
+    internal int PendingMutationCount
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_isDisposed, this);
-            return _writeBatchBuilder!;
+            int count = 0;
+            foreach (ShardedWriteBatch batch in _writeBatches.Values) count += batch.Count;
+            return count;
         }
     }
 
-    internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBatchBuilder.SetLeaf(key, value);
-
-    internal PbtWriteBatchSet PrepareLeafChanges()
+    internal void SetLeaf(PbtFullKey key, ValueHash256? value)
     {
-        Dictionary<ValueHash256, long> referenceChanges = [];
-        foreach ((ValueHash256 addressHash, Account? previous) in _changedAccounts)
-        {
-            Account? account = WriteBuffer.Accounts[addressHash];
-            if (previous?.CodeHash == account?.CodeHash) continue;
-            AddReferenceChange(previous, -1);
-            AddReferenceChange(account, 1);
-        }
-        Dictionary<ValueHash256, ulong> referenceCounts = [];
-        foreach ((ValueHash256 hash, long delta) in referenceChanges)
-        {
-            ulong count = checked((ulong)(checked((long)GetCodeReference(hash)) + delta));
-            referenceCounts[hash] = count;
-        }
-        foreach ((ValueHash256 addressHash, Account? previous) in _changedAccounts)
-        {
-            if (previous is not null)
-            {
-                foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previous.HasCode ? GetCode(previous.CodeHash.ValueHash256) : null))
-                    if (key.Bytes[0] != Eip8297KeyDerivation.CodeZone || (referenceCounts.TryGetValue(previous.CodeHash.ValueHash256, out ulong count) ? count : GetCodeReference(previous.CodeHash.ValueHash256)) == 0) SetLeaf(key, null);
-            }
-            if (WriteBuffer.Accounts[addressHash] is { } account)
-                foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, account.HasCode ? GetCode(account.CodeHash.ValueHash256) : null))
-                    SetLeaf(key, value);
-        }
-        foreach ((ValueHash256 hash, ulong count) in referenceCounts) WriteBuffer.SetCodeReference(hash, count == 0 ? null : count);
-        _changedAccounts.Clear();
-        return WriteBatchBuilder.PrepareDrain();
-
-        void AddReferenceChange(Account? account, long delta)
-        {
-            if (account is not { HasCode: true }) return;
-            ValueHash256 hash = account.CodeHash.ValueHash256;
-            referenceChanges.TryGetValue(hash, out long current);
-            referenceChanges[hash] = current + delta;
-        }
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        int partition = PbtWriteBatchSet.PartitionOf(key);
+        if (partition < 0) throw new ArgumentException("A canonical account, code or storage key is required.", nameof(key));
+        _writeBatches[(PbtPartition)partition].SetLeaf(key, value);
     }
 
-    internal void CompleteLeafChanges() => WriteBatchBuilder.CompleteDrain();
+    internal IReadOnlyDictionary<PbtPartition, PbtPartitionWriteBatch> PrepareLeafChanges()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        lock (_accountLock)
+        {
+            foreach ((ValueHash256 addressHash, ValueHash256 codeHash) in _accountsAwaitingCode)
+            {
+                CodeInfo code = GetCode(codeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {codeHash}.");
+                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
+            }
+            _accountsAwaitingCode.Clear();
+        }
+        Dictionary<PbtPartition, PbtPartitionWriteBatch> changes = [];
+        foreach ((PbtPartition partition, ShardedWriteBatch batch) in _writeBatches)
+            if (batch.Count != 0) changes.Add(partition, batch.PrepareDrain());
+        return changes;
+    }
+
+    internal void CompleteLeafChanges()
+    {
+        foreach (ShardedWriteBatch batch in _writeBatches.Values) batch.CompleteDrain();
+    }
 
     internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
 
@@ -110,7 +104,11 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetCodeReference(codeHash);
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> PendingLeafMutations() => WriteBatchBuilder.Leaves;
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> PendingLeafMutations()
+    {
+        foreach (ShardedWriteBatch batch in _writeBatches.Values)
+            foreach (KeyValuePair<PbtFullKey, ValueHash256?> mutation in batch.Leaves) yield return mutation;
+    }
 
     internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() =>
         PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
@@ -176,10 +174,60 @@ public sealed class PbtSnapshotBundle(
 
     public void SetAccount(Address address, Account? account)
     {
-        ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        _changedAccounts.TryAdd(hash, GetAccount(hash));
-        WriteBuffer.Accounts[hash] = account;
-        if (account is null) SelfDestruct(address);
+        lock (_accountLock)
+        {
+            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
+            Account? previous = GetAccount(addressHash);
+            CodeInfo? previousCode = previous is { HasCode: true } ? GetCode(previous.CodeHash.ValueHash256) : null;
+            if (previous is { HasCode: true } && previousCode is null && !_accountsAwaitingCode.ContainsKey(addressHash))
+                throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
+            CodeInfo? code = account is { HasCode: true } ? GetCode(account.CodeHash.ValueHash256) : null;
+
+            if (previous?.CodeHash != account?.CodeHash)
+            {
+                if (previous is { HasCode: true })
+                {
+                    ValueHash256 previousHash = previous.CodeHash.ValueHash256;
+                    ulong count = checked(GetCodeReference(previousHash) - 1);
+                    WriteBuffer.SetCodeReference(previousHash, count == 0 ? null : count);
+                    if (count == 0 && previousCode is not null)
+                        foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode))
+                            if (key.Bytes[0] == Eip8297KeyDerivation.CodeZone) SetLeaf(key, null);
+                }
+                if (account is { HasCode: true })
+                {
+                    ValueHash256 codeHash = account.CodeHash.ValueHash256;
+                    WriteBuffer.SetCodeReference(codeHash, checked(GetCodeReference(codeHash) + 1));
+                }
+            }
+
+            SetLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), null);
+            SetLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), null);
+            if (previous is not null && (!previous.HasCode || previousCode is not null))
+                foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode, includeOverflowCode: false))
+                    SetLeaf(key, null);
+
+            _accountsAwaitingCode.Remove(addressHash);
+            WriteBuffer.Accounts[addressHash] = account;
+            if (account is null)
+            {
+                SelfDestruct(address);
+            }
+            else if (account.HasCode && code is null)
+            {
+                SetLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
+                _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
+            }
+            else
+            {
+                WriteAccountLeaves(addressHash, account, code);
+            }
+        }
+    }
+
+    private void WriteAccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code)
+    {
+        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code)) SetLeaf(key, value);
     }
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
@@ -196,7 +244,21 @@ public sealed class PbtSnapshotBundle(
         WriteBuffer.ClearStorage(hash);
     }
 
-    internal void SetCode(in ValueHash256 codeHash, CodeInfo code) => WriteBuffer.Codes[codeHash] = code;
+    internal void SetCode(in ValueHash256 codeHash, CodeInfo code)
+    {
+        lock (_accountLock)
+        {
+            WriteBuffer.Codes[codeHash] = code;
+            List<ValueHash256> resolved = [];
+            foreach ((ValueHash256 addressHash, ValueHash256 pendingHash) in _accountsAwaitingCode)
+            {
+                if (pendingHash != codeHash) continue;
+                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
+                resolved.Add(addressHash);
+            }
+            foreach (ValueHash256 addressHash in resolved) _accountsAwaitingCode.Remove(addressHash);
+        }
+    }
 
     internal CodeInfo? GetCode(in ValueHash256 codeHash)
     {
@@ -208,7 +270,7 @@ public sealed class PbtSnapshotBundle(
         if (code is null && ReadCode?.Invoke(codeHash) is { } bytes)
         {
             code = new CodeInfo(bytes) { CodeHash = codeHash };
-            SetCode(codeHash, code);
+            WriteBuffer.Codes[codeHash] = code;
         }
         return code;
     }
@@ -264,8 +326,7 @@ public sealed class PbtSnapshotBundle(
 
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
-        if (_changedAccounts.Count != 0) throw new InvalidOperationException("Pending account changes must be folded before collecting a snapshot.");
-        foreach (KeyValuePair<PbtFullKey, ValueHash256?> _ in WriteBatchBuilder.Leaves)
+        if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
@@ -280,12 +341,10 @@ public sealed class PbtSnapshotBundle(
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
-        _changedAccounts.Clear();
+        _accountsAwaitingCode.Clear();
         ReadCode = null;
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
-        PbtWriteBatchBuilder? builder = _writeBatchBuilder;
-        _writeBatchBuilder = null;
         try
         {
             snapshots.Dispose();
@@ -295,7 +354,21 @@ public sealed class PbtSnapshotBundle(
         {
             try
             {
-                if (builder is not null) resourcePool.ReturnWriteBatchBuilder(usage, builder);
+                try
+                {
+                    resourcePool.ReturnWriteBatch(usage, _writeBatches[PbtPartition.Account]);
+                }
+                finally
+                {
+                    try
+                    {
+                        resourcePool.ReturnWriteBatch(usage, _writeBatches[PbtPartition.Code]);
+                    }
+                    finally
+                    {
+                        resourcePool.ReturnWriteBatch(usage, _writeBatches[PbtPartition.Storage]);
+                    }
+                }
             }
             finally
             {
