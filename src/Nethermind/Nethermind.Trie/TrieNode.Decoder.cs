@@ -230,9 +230,11 @@ namespace Nethermind.Trie
             {
                 const int MinChildrenForBatchedHashing = 2;
                 int candidates = 0;
+                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
+                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (item._nodeData[i] is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
+                    if (branchData[i] is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
                     {
                         return true;
                     }
