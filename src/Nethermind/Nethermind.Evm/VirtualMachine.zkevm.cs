@@ -58,7 +58,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             snapshot: in snapshot,
             newAccountCharged: newAccountCharged);
 
-        CallResult callResult = ExecutePrecompile(child, _isTracingActionsCached, out Exception? failure, out _);
+        CallResult callResult = ExecutePrecompile(child, IsTracingActions, out Exception? failure, out _);
 
         if (failure is not null)
         {

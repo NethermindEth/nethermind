@@ -108,7 +108,6 @@ public static partial class EvmInstructions
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
-                TGasPolicy.ClearExecutionGas(ref gas);
                 goto OutOfGas;
             }
         }

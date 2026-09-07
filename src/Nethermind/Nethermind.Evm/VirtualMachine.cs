@@ -124,8 +124,7 @@ public partial class VirtualMachine<TGasPolicy>(
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both
     // the dispatch table and its matching loop specialization.
-    private bool _isTracingActionsCached;
-    internal bool IsTracingActions => _isTracingActionsCached;
+    internal bool IsTracingActions { get; private set; }
     internal bool IsTracingRefunds { get; private set; }
     private bool _isCancelableCached;
     internal bool IsTracingAccess { get; private set; }
@@ -179,7 +178,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
-        _isTracingActionsCached = txTracer.IsTracingActions;
+        IsTracingActions = txTracer.IsTracingActions;
         IsTracingRefunds = txTracer.IsTracingRefunds;
         _isCancelableCached = txTracer.IsCancelable;
         IsTracingAccess = txTracer.IsTracingAccess;
@@ -218,7 +217,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(_currentState, _isTracingActionsCached, out failure, out substateError);
+                    callResult = ExecutePrecompile(_currentState, IsTracingActions, out failure, out substateError);
                     if (failure is not null)
                     {
                         // Jump to the failure handler if a precompile error occurred.
@@ -230,7 +229,7 @@ public partial class VirtualMachine<TGasPolicy>(
                     if (!_currentState.IsContinuation)
                     {
                         // Report frame start before the EIP-7708 transfer log so it attaches to the frame being entered
-                        if (_isTracingActionsCached) TraceTransactionActionStart(_currentState);
+                        if (IsTracingActions) TraceTransactionActionStart(_currentState);
                         AddTransferLog(_currentState);
                     }
 
@@ -271,7 +270,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
-                    if (_isTracingActionsCached)
+                    if (IsTracingActions)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
@@ -433,7 +432,7 @@ public partial class VirtualMachine<TGasPolicy>(
             }
         }
 
-        if (_isTracingActionsCached)
+        if (IsTracingActions)
         {
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
@@ -523,7 +522,7 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _currentState.Gas = gasAfterCodeDeposit;
                 _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
-                if (_isTracingActionsCached)
+                if (IsTracingActions)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
                 }
@@ -556,12 +555,12 @@ public partial class VirtualMachine<TGasPolicy>(
             _previousCallResult = (null, false);
             previousStateSucceeded = false;
 
-            if (_isTracingActionsCached)
+            if (IsTracingActions)
             {
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
-        else if (!chargedCodeDeposit && _isTracingActionsCached)
+        else if (!chargedCodeDeposit && IsTracingActions)
         {
             _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
         }
@@ -603,7 +602,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
-        if (_isTracingActionsCached)
+        if (IsTracingActions)
         {
             _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
         }
@@ -654,7 +653,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         // If action-level tracing is enabled, report the error associated with the action.
-        if (_isTracingActionsCached)
+        if (IsTracingActions)
         {
             txTracer.ReportActionError(errorType);
         }
@@ -838,7 +837,7 @@ public partial class VirtualMachine<TGasPolicy>(
         ITxTracer txTracer = _txTracer;
 
         // Report the error for action-level tracing if enabled.
-        if (_isTracingActionsCached)
+        if (IsTracingActions)
         {
             txTracer.ReportActionError(callResult.ExceptionType);
         }
