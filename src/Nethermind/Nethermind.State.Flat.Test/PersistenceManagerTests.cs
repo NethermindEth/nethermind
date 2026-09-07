@@ -473,6 +473,56 @@ public class PersistenceManagerTests
         });
     }
 
+    [TestCase(1)]
+    [TestCase(8)]
+    public async Task AddToPersistence_RepeatedForks_ReleasesConvertedCompactedSnapshots(int forkCount)
+    {
+        _tier.Config.CompactionOffset = 0;
+
+        // Keep the conversion threshold reached while each fork stays below a full compaction boundary.
+        for (int i = 0; i < _config.MaxInMemoryBaseSnapshotCount; i++)
+            CreateSnapshot(Block0, CreateStateId(3, (byte)i));
+
+        ISnapshotCompactor compactor = _tier.Resolve<ISnapshotCompactor>();
+        List<Snapshot> convertedCompacts = [];
+        StateId latest = Block0;
+        for (int i = 1; i <= forkCount; i++)
+        {
+            StateId setup = CreateStateId(1, (byte)i);
+            latest = CreateStateId(2, (byte)i);
+            Snapshot setupSnapshot = CreateSnapshot(Block0, setup);
+            Account setupAccount = new(1, (UInt256)i);
+            setupSnapshot.Content.Accounts[TestItem.AddressB] = setupAccount;
+            CreateSnapshot(setup, latest);
+
+            Assert.That(compactor.DoCompactSnapshot(latest), Is.True);
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(latest, SnapshotTier.InMemoryCompacted, out Snapshot? compacted), Is.True);
+            using (compacted)
+            {
+                convertedCompacts.Add(compacted!);
+                await _persistenceManager.AddToPersistence(latest);
+
+                Assert.That(compacted!.TryGetAccount(TestItem.AddressB, out Account? account), Is.True);
+                Assert.That(account, Is.EqualTo(setupAccount), "an active reader must survive conversion");
+            }
+        }
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(latest, Block0, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(_config.MaxInMemoryBaseSnapshotCount));
+            Assert.That(_snapshotRepository.CompactedSnapshotCount, Is.Zero, "converted forks must not retain compacted snapshots");
+            Assert.That(assembled.InMemory.Count, Is.Zero);
+            Assert.That(assembled.Persisted.Count, Is.EqualTo(2), "the persisted bases must still cover the fork");
+            foreach (Snapshot compacted in convertedCompacts)
+            {
+                bool retained = compacted.TryAcquire();
+                if (retained) compacted.Dispose();
+                Assert.That(retained, Is.False, "compacted data must be released after the last reader exits");
+            }
+        }
+    }
+
     [Test]
     public async Task AddToPersistence_InMemoryPersist_PrunesPersistedTier()
     {
