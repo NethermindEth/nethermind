@@ -102,9 +102,8 @@ public class ArrayPoolListRefTests
         Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
     }
 
-    [TestCase(10)]
-    [TestCase(-1)]
-    public void Insert_should_throw(int index)
+    [Test]
+    public void Insert_should_throw([Values(10, -1)] int index)
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -196,9 +195,8 @@ public class ArrayPoolListRefTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Get_should_throw(int item)
+    [Test]
+    public void Get_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -232,9 +230,8 @@ public class ArrayPoolListRefTests
         }
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Set_should_throw(int item)
+    [Test]
+    public void Set_should_throw([Values(8, -1)] int item)
     {
         ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
