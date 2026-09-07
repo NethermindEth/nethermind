@@ -141,7 +141,11 @@ public sealed class OrphanStorageRowSweep(
         if (repair)
         {
             Delete(orphanRows);
-            if (completed) flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+            if (completed)
+            {
+                flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+                Completed?.Invoke(Report);
+            }
             else WriteCursor((uint)nextPrefix);
         }
         else _checkCursor = nextPrefix;
@@ -178,7 +182,6 @@ public sealed class OrphanStorageRowSweep(
             if (repair)
             {
                 if (_logger.IsInfo) _logger.Info($"Flat history orphan storage row sweep done, orphaned rows deleted: {outcome}");
-                Completed?.Invoke(report);
             }
             else if (report.OrphanAccounts > 0)
             {
