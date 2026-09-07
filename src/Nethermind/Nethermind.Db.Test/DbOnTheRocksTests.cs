@@ -82,7 +82,7 @@ namespace Nethermind.Db.Test
 
             config.FlatDbAdditionalRocksDbOptions = "block_based_table_factory.cache_index_and_filter_blocks=false;";
             using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance);
-            Assert.That(reopened.Get(key), Is.EqualTo(value));
+            Assert.That(GetValue(reopened, key), Is.EqualTo(value));
             Assert.That(ReadOptionsFile(DbPath), Does.Contain("cache_index_and_filter_blocks=false"));
         }
 
