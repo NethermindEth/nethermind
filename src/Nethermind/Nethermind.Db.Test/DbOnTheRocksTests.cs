@@ -754,31 +754,52 @@ namespace Nethermind.Db.Test
         [TestCase(ReadFlags.HintCacheMiss)]
         public void GetViewBetween_preserves_bounds_and_snapshot_for_read_flags(ReadFlags flags)
         {
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
-            db[[10]] = [1];
-            db[[20]] = [2];
-            db[[30]] = [3];
-            db.Flush();
-
-            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot();
-            db[[20]] = [9];
-            db[[40]] = [4];
-
-            List<byte> keys = [];
-            List<byte> values = [];
-            using (ISortedView view = ((ISortedKeyValueStore)snapshot).GetViewBetween([10], [30], flags))
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance))
             {
-                while (view.MoveNext())
+                db[[10]] = [1];
+                db[[20]] = [2];
+                db[[30]] = [3];
+                db.Flush();
+
+                using (IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot())
                 {
-                    keys.Add(view.CurrentKey[0]);
-                    values.Add(view.CurrentValue[0]);
+                    db[[20]] = [9];
+                    db[[40]] = [4];
+                    db.Flush();
+                    db.Compact();
+
+                    List<byte> keys = [];
+                    List<byte> values = [];
+                    using (ISortedView view = ((ISortedKeyValueStore)snapshot).GetViewBetween([10], [30], flags))
+                    {
+                        while (view.MoveNext())
+                        {
+                            keys.Add(view.CurrentKey[0]);
+                            values.Add(view.CurrentValue[0]);
+                        }
+                    }
+
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(keys, Is.EqualTo(new byte[] { 10, 20 }));
+                        Assert.That(values, Is.EqualTo(new byte[] { 1, 2 }));
+                    }
+                }
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(db.Get([20]), Is.EqualTo(new byte[] { 9 }));
+                    Assert.That(db.Get([40]), Is.EqualTo(new byte[] { 4 }));
                 }
             }
 
-            using (Assert.EnterMultipleScope())
+            using (DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance))
             {
-                Assert.That(keys, Is.EqualTo(new byte[] { 10, 20 }));
-                Assert.That(values, Is.EqualTo(new byte[] { 1, 2 }));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reopened.Get([20]), Is.EqualTo(new byte[] { 9 }));
+                    Assert.That(reopened.Get([40]), Is.EqualTo(new byte[] { 4 }));
+                }
             }
         }
 
