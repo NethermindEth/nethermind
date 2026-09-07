@@ -22,6 +22,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private static readonly TimeSpan DefaultPollDelay = TimeSpan.FromSeconds(30);
     private const int MismatchesLogged = 8;
 
+    private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryAvailability _availability;
     private readonly IFlatDbConfig _config;
     private readonly Func<long, HistoryWalkVerifier>? _verifierFactory;
@@ -60,6 +61,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         ILogManager logManager,
         TimeSpan? pollDelay)
     {
+        _history = history;
         _availability = availability;
         _config = config;
         _metadata = metadata;
@@ -98,7 +100,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (!_metadata.TryGetWalkInProgress(out ulong from, out ulong to)) return;
 
         _metadata.ClearWalk(HistoryWalkRun.WorkItems);
-        if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint is cleared and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
+        using (SeriesWriter scratch = new(_history))
+        {
+            scratch.DeleteAllScratch();
+        }
+
+        _retrofit?.ResumeReclaim();
+        if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint and scratch series are deleted and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
     }
 
     /// <summary>Whether this instance actually started its background verification - false means

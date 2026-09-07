@@ -17,6 +17,7 @@ public sealed class CommitmentEmitter : IDisposable
     public const int DefaultMaxOpenWindowNodes = 200_000;
     public const int WalkMaxOpenWindowNodes = 50_000;
     private const int TipExactBranchEntries = 1 << 18;
+    private const int WalkExactBranchEntriesCeiling = 1 << 14;
     public const int StorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
@@ -71,9 +72,10 @@ public sealed class CommitmentEmitter : IDisposable
 
     private static int WalkExactBranchEntries(CommitmentDepthPolicy policy)
     {
-        int deepest = Math.Min(Math.Max(policy.AccountExactDepth, policy.StorageExactDepth), 6);
-        long nodesPerTrie = ((1L << (4 * (deepest + 1))) - 1) / 15;
-        return (int)Math.Clamp(4 * nodesPerTrie, 1 << 10, TipExactBranchEntries);
+        int deepest = Math.Max(policy.AccountExactDepth, policy.StorageExactDepth);
+        long nodesPerTrie = 0;
+        for (int depth = 0; depth <= deepest && 4 * nodesPerTrie < WalkExactBranchEntriesCeiling; depth++) nodesPerTrie += 1L << (4 * depth);
+        return (int)Math.Clamp(4 * nodesPerTrie, 1 << 10, WalkExactBranchEntriesCeiling);
     }
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>

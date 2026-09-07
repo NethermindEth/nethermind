@@ -71,7 +71,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         }
     }
 
-    private void Wake()
+    public void Wake()
     {
         lock (_wakeLock)
         {

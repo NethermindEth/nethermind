@@ -10,6 +10,8 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using System.Linq;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -82,6 +84,11 @@ public class HistoryWalkVerificationCoordinatorTests
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.BeginWalk(0, 100, HistoryWalkRun.WorkItems);
+        using (SeriesWriter scratch = new(_historyColumns))
+        {
+            scratch.WriteEmpty(SeriesScope.Accounts.Key(TreePath.FromNibble([0x1, 0x2]), scratch: true), 7);
+        }
+
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, new FakeHeaders(), availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
 
@@ -92,6 +99,7 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a checkpoint nobody will resume must not survive a start with the flag off, or it holds reclaim back across every restart");
             Assert.That(reclaimed, Is.True);
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAll().Any(row => row.Key[0] == SeriesKey.ScratchMarker), Is.False, "the interrupted walk's scratch series are the expensive half of the checkpoint and nothing else ever reclaims them");
         }
     }
 
