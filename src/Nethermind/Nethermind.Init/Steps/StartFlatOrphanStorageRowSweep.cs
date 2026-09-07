@@ -8,7 +8,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 
 namespace Nethermind.Init.Steps;
