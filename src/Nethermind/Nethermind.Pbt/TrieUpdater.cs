@@ -11,6 +11,7 @@ namespace Nethermind.Pbt;
 /// <summary>Atomically applies complete-key mutations to a canonical compressed EIP-8297 tree.</summary>
 public static class TrieUpdater
 {
+    private const int InPlaceSortThreshold = 32;
     private static readonly PbtNodePath RootPath = new([], 0);
 
     /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
@@ -653,24 +654,104 @@ public static class TrieUpdater
         return partition;
     }
 
-    private static void BucketizeByGroupBoundary(Span<PbtWriteOperation> operations, int groupDepth)
+    internal static void BucketizeByGroupBoundary(Span<PbtWriteOperation> operations, int groupDepth)
     {
-        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        for (int index = 0; index < operations.Length; index++)
-            counts[BoundarySlot(operations[index].Key, groupDepth)]++;
+        if (operations.Length < 2) return;
+        if (operations.Length <= 3)
+            BucketizeTiny(operations, groupDepth);
+        else if (operations.Length < InPlaceSortThreshold)
+            BucketizeSmall(operations, groupDepth);
+        else
+            BucketizeLarge(operations, groupDepth);
+    }
 
-        int total = 0;
-        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+    private static void BucketizeTiny(Span<PbtWriteOperation> operations, int groupDepth)
+    {
+        int firstSlot = BoundarySlot(operations[0].Key, groupDepth);
+        int secondSlot = BoundarySlot(operations[1].Key, groupDepth);
+        if (firstSlot > secondSlot)
         {
+            (operations[0], operations[1]) = (operations[1], operations[0]);
+            (firstSlot, secondSlot) = (secondSlot, firstSlot);
+        }
+        if (operations.Length == 2) return;
+
+        int thirdSlot = BoundarySlot(operations[2].Key, groupDepth);
+        if (secondSlot > thirdSlot)
+        {
+            (operations[1], operations[2]) = (operations[2], operations[1]);
+            secondSlot = thirdSlot;
+        }
+        if (firstSlot > secondSlot)
+            (operations[0], operations[1]) = (operations[1], operations[0]);
+    }
+
+    private static void BucketizeSmall(Span<PbtWriteOperation> operations, int groupDepth)
+    {
+        Span<(int Index, int Slot)> sorted = stackalloc (int, int)[operations.Length];
+        for (int index = 0; index < operations.Length; index++)
+            sorted[index] = (index, BoundarySlot(operations[index].Key, groupDepth));
+
+        for (int index = 1; index < sorted.Length; index++)
+        {
+            (int Index, int Slot) entry = sorted[index];
+            int previous = index - 1;
+            while (previous >= 0 && sorted[previous].Slot > entry.Slot)
+            {
+                sorted[previous + 1] = sorted[previous];
+                previous--;
+            }
+            sorted[previous + 1] = entry;
+        }
+
+        for (int index = 0; index < sorted.Length; index++)
+        {
+            if (sorted[index].Index == index) continue;
+
+            PbtWriteOperation operation = operations[index];
+            int destination = index;
+            do
+            {
+                int source = sorted[destination].Index;
+                sorted[destination].Index = destination;
+                if (source == index)
+                {
+                    operations[destination] = operation;
+                    break;
+                }
+                operations[destination] = operations[source];
+                destination = source;
+            } while (true);
+        }
+    }
+
+    private static void BucketizeLarge(Span<PbtWriteOperation> operations, int groupDepth)
+    {
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        counts.Clear();
+        int usedMask = 0;
+        for (int index = 0; index < operations.Length; index++)
+        {
+            int bucket = BoundarySlot(operations[index].Key, groupDepth);
+            counts[bucket]++;
+            usedMask |= 1 << bucket;
+        }
+        if (BitOperations.IsPow2(usedMask)) return;
+
+        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> next = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        int total = 0;
+        for (int mask = usedMask; mask != 0; mask &= mask - 1)
+        {
+            int bucket = BitOperations.TrailingZeroCount(mask);
             starts[bucket] = total;
+            next[bucket] = total;
             total += counts[bucket];
         }
 
-        Span<int> next = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        starts.CopyTo(next);
-        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+        for (int mask = usedMask; mask != 0; mask &= mask - 1)
         {
+            int bucket = BitOperations.TrailingZeroCount(mask);
             int end = starts[bucket] + counts[bucket];
             while (next[bucket] < end)
             {

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -351,6 +352,99 @@ public class Eip8297CanonicalTreeTests
             Assert.That(code.Bytes[0], Is.EqualTo(1));
             Assert.That(code.Bytes[^1], Is.EqualTo(172));
         }
+    }
+
+    private static IEnumerable<TestCaseData> BucketizationCases()
+    {
+        foreach (int count in new[] { 0, 1, 2, 3, 4, 16, 31, 32, 33, 256 })
+        foreach (int groupDepth in new[] { 0, 4, 20 })
+        foreach (int occupiedSlots in new[] { 1, 2, 16 })
+        foreach (int order in new[] { 0, 1, 2 })
+            yield return new TestCaseData(count, groupDepth, occupiedSlots, order);
+    }
+
+    [TestCaseSource(nameof(BucketizationCases))]
+    public void Boundary_bucketization_preserves_operations_and_orders_destinations(int count, int groupDepth, int occupiedSlots, int order)
+    {
+        List<(byte[] Key, byte[]? Value)> changes = BoundaryChanges(count, groupDepth, occupiedSlots, order);
+        PbtWriteOperation[] operations = new PbtWriteOperation[count];
+        for (int index = 0; index < count; index++)
+        {
+            PbtFullKey key = new(changes[index].Key);
+            operations[index] = index % 3 == 0
+                ? PbtWriteOperation.Delete(key)
+                : PbtWriteOperation.Set(key, new ValueHash256(changes[index].Value!));
+        }
+        PbtWriteOperation[] original = (PbtWriteOperation[])operations.Clone();
+
+        TrieUpdater.BucketizeByGroupBoundary(operations, groupDepth);
+
+        int[] destinations = new int[count];
+        for (int index = 0; index < count; index++)
+            destinations[index] = (operations[index].Key.Bytes[groupDepth / 8] >> (4 - groupDepth % 8)) & 15;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(destinations, Is.Ordered);
+            Assert.That(operations, Is.EquivalentTo(original));
+        }
+    }
+
+    [Test]
+    public void Boundary_bucketization_batches_match_oracle_serial_and_reopen(
+        [Values(0, 1, 2, 3, 4, 16, 31, 32, 33, 256)] int count,
+        [Values(0, 4, 20)] int groupDepth)
+    {
+        foreach (int occupiedSlots in new[] { 1, 2, 16 })
+        {
+            using PbtTreeHarness bulk = new();
+            using PbtTreeHarness serial = new();
+            EipReferenceTree oracle = new();
+            List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, groupDepth, occupiedSlots, 0);
+            ApplyAll(bulk, serial, oracle, initial);
+            AssertEquivalentAfterReopen(bulk, serial, oracle, "build boundary batch");
+            ApplyAll(bulk, serial, oracle, [(Bytes.FromHexString("0x555555000002"), Value(0x77))]);
+
+            List<(byte[] Key, byte[]? Value)> changes = BoundaryChanges(count, groupDepth, occupiedSlots, 2);
+            for (int index = 0; index < changes.Count; index++)
+            {
+                byte[] key = changes[index].Key;
+                if (index % 4 >= 2)
+                {
+                    key = (byte[])key.Clone();
+                    key[^1] = 1;
+                }
+                changes[index] = (key, index % 2 == 0 ? null : Value(0xEF));
+            }
+            ApplyAll(bulk, serial, oracle, changes);
+            AssertEquivalentAfterReopen(bulk, serial, oracle, "mixed boundary batch");
+        }
+    }
+
+    private static List<(byte[] Key, byte[]? Value)> BoundaryChanges(int count, int groupDepth, int occupiedSlots, int order)
+    {
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        for (int index = 0; index < count; index++)
+        {
+            byte[] key = Bytes.FromHexString("0xAAAAAA000000");
+            int destination = occupiedSlots == 1 ? 15 : occupiedSlots == 2 ? (index % 2) * 15 : index % 16;
+            int shift = 4 - groupDepth % 8;
+            key[groupDepth / 8] = (byte)((key[groupDepth / 8] & ~(15 << shift)) | (destination << shift));
+            key[3] = (byte)(index >> 8);
+            key[4] = (byte)index;
+            changes.Add((key, Value((byte)(index + 1))));
+        }
+        changes.Sort((left, right) => left.Key.AsSpan().SequenceCompareTo(right.Key));
+        if (order == 1) changes.Reverse();
+        if (order == 2)
+        {
+            Random random = new(8297);
+            for (int index = changes.Count - 1; index > 0; index--)
+            {
+                int destination = random.Next(index + 1);
+                (changes[index], changes[destination]) = (changes[destination], changes[index]);
+            }
+        }
+        return changes;
     }
 
     [Test]
