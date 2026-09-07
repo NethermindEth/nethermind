@@ -515,12 +515,9 @@ namespace Nethermind.Db.Test
         {
             const string dynamicLevelOption = "level_compaction_dynamic_level_bytes";
             const int deletedIndex = 3;
-            DbConfig legacyConfig = new()
-            {
-                AdditionalRocksDbOptions = $"{dynamicLevelOption}=false;disable_auto_compactions=true;"
-            };
+            DbConfig legacyConfig = CreateDynamicLevelConfig(dbName, dynamicLevelOption, legacy: true);
             RocksDbConfigFactory legacyFactory = new(legacyConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            DbConfig candidateConfig = new();
+            DbConfig candidateConfig = CreateDynamicLevelConfig(dbName, dynamicLevelOption, legacy: false);
             RocksDbConfigFactory candidateFactory = new(candidateConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
 
             Assert.That(GetEffectiveOption(legacyFactory.GetForDatabase(dbName, null), dynamicLevelOption), Is.EqualTo("false"));
@@ -530,7 +527,18 @@ namespace Nethermind.Db.Test
             byte[][] expectedValues = new byte[keys.Length][];
             using (DbOnTheRocks legacyDb = new(DbPath, GetRocksDbSettings(DbPath, dbName), legacyConfig, legacyFactory, LimboLogs.Instance))
             {
-                for (int batch = 0; batch < 4; batch++)
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    expectedValues[i] = CreateDynamicLevelValue(i, 0);
+                    legacyDb.PutSpan(keys[i], expectedValues[i], WriteFlags.None);
+                }
+                legacyDb.Flush();
+                legacyDb.Compact();
+
+                Assert.That(int.Parse(legacyDb.GatherProperty("rocksdb.num-files-at-level1")!), Is.GreaterThan(0),
+                    "the legacy static-level database must contain an L1 SST before migration");
+
+                for (int batch = 1; batch < 4; batch++)
                 {
                     for (int i = 0; i < keys.Length; i++)
                     {
@@ -567,6 +575,12 @@ namespace Nethermind.Db.Test
 
                 migratedDb.Flush();
                 migratedDb.Compact();
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snapshot.Get(keys[0]), Is.EqualTo(expectedValues[0]));
+                    Assert.That(snapshot.Get(newKey), Is.Null);
+                }
 
                 expectedValues[0] = replacement;
                 AssertDynamicLevelValues(migratedDb, keys, expectedValues, deletedIndex);
@@ -707,6 +721,25 @@ namespace Nethermind.Db.Test
 
         private static string GetEffectiveOption(IRocksDbConfig config, string optionName) =>
             DbOnTheRocks.ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions)[optionName];
+
+        private static DbConfig CreateDynamicLevelConfig(string dbName, string dynamicLevelOption, bool legacy)
+        {
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = legacy ? $"{dynamicLevelOption}=false;disable_auto_compactions=true;" : null
+            };
+
+            if (dbName == "FlatAccount")
+            {
+                config.FlatAccountDbRocksDbOptions = string.Concat(config.FlatDbRocksDbOptions, config.FlatAccountDbRocksDbOptions);
+            }
+            else if (dbName == "FlatStorage")
+            {
+                config.FlatStorageDbRocksDbOptions = string.Concat(config.FlatDbRocksDbOptions, config.FlatStorageDbRocksDbOptions);
+            }
+
+            return config;
+        }
 
         private static byte[][] CreateDynamicLevelKeys()
         {
