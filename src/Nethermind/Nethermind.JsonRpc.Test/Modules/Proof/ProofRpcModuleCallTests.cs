@@ -269,8 +269,8 @@ public class ProofRpcModuleCallTests
         AccountProofCollector expectedCollector = new(contractAddress, [UInt256.Zero]);
         blockchain.StateReader.RunTreeVisitor(expectedCollector, sourceHeader);
         AccountProof expectedProof = expectedCollector.BuildResult();
-        byte[][] expectedStorageProofNodes = expectedProof.StorageProofs!
-            .SelectMany(sp => sp.Proof!)
+        byte[][] expectedStorageProofNodes = expectedProof.StorageProofs
+            .SelectMany(sp => sp.Proof)
             .ToArray();
         Assert.That(expectedStorageProofNodes, Is.Not.Empty,
             "the contract should have a non-empty storage proof for slot 0 in the parent state");

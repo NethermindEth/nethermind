@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
@@ -26,7 +27,7 @@ internal sealed class EvmObjectPool<T>
         ArgumentOutOfRangeException.ThrowIfNegative(maxShared);
     }
 
-    public bool TryDequeue(out T item) => _items.TryPop(out item);
+    public bool TryDequeue([MaybeNullWhen(false)] out T item) => _items.TryPop(out item);
 
     public void Enqueue(T item) => _items.Push(item);
 
