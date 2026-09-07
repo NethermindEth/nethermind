@@ -18,6 +18,9 @@ public sealed partial class KeccakHash
     private const int STATE_SIZE = 200;
     private const int STATE_LANES = STATE_SIZE / sizeof(ulong);
     private const int HASH_DATA_AREA = 136;
+    // The sponge squeezes once, so the output has to fit the rate: size <= GetRoundSize(size), i.e.
+    // size <= STATE_SIZE / 3. Covers every standard Keccak width; 512 bits is the widest at 64 bytes.
+    private const int MAX_HASH_SIZE = STATE_SIZE / 3;
     private const int ROUNDS = 24;
 
     private static readonly ulong[] RoundConstants =
@@ -59,17 +62,20 @@ public sealed partial class KeccakHash
 
     private KeccakHash(int size)
     {
-        // Verify the size
-        if (size <= 0 || size > STATE_SIZE)
+        if ((uint)(size - 1) >= MAX_HASH_SIZE)
         {
-            throw new ArgumentException($"Invalid Keccak hash size. Must be between 0 and {STATE_SIZE}.");
+            ThrowInvalidHashSize(nameof(size), size);
         }
 
-        _roundSize = STATE_SIZE == size ? HASH_DATA_AREA : checked(STATE_SIZE - (2 * size));
+        _roundSize = GetRoundSize(size);
         _remainderLength = 0;
         HashSize = size;
     }
 
+    /// <summary>Creates an incremental hasher whose digest is <paramref name="size"/> bytes wide.</summary>
+    /// <param name="size">The digest size in bytes, from 1 to 66.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> is outside [1, 66], the widths
+    /// whose digest still fits the sponge's rate.</exception>
     public static KeccakHash Create(int size = HASH_SIZE) => new(size);
 
     /// <summary>
@@ -84,12 +90,14 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
-    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into a sponge that is still all-zero.</summary>
+    /// <summary>Absorbs whole rate blocks of <paramref name="input"/> into a fresh sponge.</summary>
     /// <returns>What is left of <paramref name="input"/>: fewer than <paramref name="roundSize"/> bytes,
     /// already XORed into the state.</returns>
-    /// <remarks>Requires <paramref name="state"/> all-zero and at least <paramref name="roundSize"/> bytes
-    /// of <paramref name="input"/> on entry; the guest arm writes the first block rather than XORing it,
-    /// so a caller that resumes a used sponge would get a wrong digest there and a right one on the host.
+    /// <remarks>Requires at least <paramref name="roundSize"/> bytes of <paramref name="input"/> and the
+    /// capacity lanes of <paramref name="state"/> zero. Its rate lanes must be zero too, except at a
+    /// 136-byte rate, where the guest arm writes the first block rather than XORing it and so may be
+    /// handed them undefined — which is what lets <see cref="InitializeState"/> skip them there, and what
+    /// makes a caller resuming a used sponge get a wrong digest on the guest and a right one on the host.
     /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
     /// more in register pressure than it saves, so the host form is the plain loop. See
     /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
@@ -122,11 +130,26 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Hands back a sponge state whose lanes are zero wherever the first absorb will not write.</summary>
+    /// <param name="state">The state to initialise.</param>
+    /// <param name="inputLength">Length of the message <see cref="ComputeHash"/> is about to absorb.</param>
+    /// <param name="roundSize">The rate in bytes, as returned by <see cref="GetRoundSize"/>.</param>
+    /// <remarks>Split per target. The host zeroes all 200 bytes, which at a constant size is a handful of
+    /// vector stores; the guest has no vectors and a 200-byte <c>= default</c> becomes a
+    /// <c>SpanHelpers.ClearWithoutReferences</c> call, so it zeroes lane by lane and skips the rate block
+    /// when <see cref="AbsorbMessageIntoZeroState"/> is about to write it outright.
+    /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize);
+
+    /// <summary>Computes the Keccak digest of <paramref name="input"/> in one shot.</summary>
+    /// <param name="output">Receives the digest; its length picks the Keccak width and must be from 1 to 66.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="output"/> is empty or wider than 66 bytes,
+    /// the widths whose digest still fits the sponge's rate.</exception>
     [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
-        if ((uint)(output.Length - 1) >= STATE_SIZE)
-            ThrowInvalidOutputSize(output.Length);
+        if ((uint)(output.Length - 1) >= MAX_HASH_SIZE)
+            ThrowInvalidHashSize($"{nameof(output)}.{nameof(output.Length)}", output.Length);
 
         int inputLength = input.Length;
         // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
@@ -142,10 +165,13 @@ public sealed partial class KeccakHash
 
         // A struct local rather than stackalloc: localloc would pin this method at Tier0-FullOpts
         // (no tiering or dynamic PGO) and add GS-cookie and stack-probe overhead per call.
-        KeccakState stateBuffer = default; // the sponge state must start all-zero
+        InitializeState(out KeccakState stateBuffer, inputLength, roundSize);
         Span<ulong> state = stateBuffer;
         Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
+        // The guest's InitializeState leaves the rate lanes undefined for exactly the one branch below
+        // that reaches AbsorbMessageIntoZeroState at a 136-byte rate; adding or reordering a branch here
+        // has to keep that predicate true.
         if (input.Length == Address.Size)
         {
             // Hashing Address, 20 bytes which is uint+Vector128
@@ -309,11 +335,21 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Squeezes the sponge into <paramref name="output"/>, completing the hash.</summary>
+    /// <param name="output">Receives the digest. It may be narrower than <see cref="HashSize"/>, but not wider
+    /// than the sponge's rate, <c>200 - 2 * HashSize</c>.</param>
+    /// <remarks>The sponge squeezes a single block, so the rate rather than <see cref="HashSize"/> bounds the
+    /// output here.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="output"/> is wider than the rate.</exception>
+    /// <exception cref="CryptographicException">The hash is already complete.</exception>
     [SkipLocalsInit]
     public void UpdateFinalTo(Span<byte> output)
     {
         if (_hash is not null)
             ThrowHashingComplete();
+
+        if (output.Length > _roundSize)
+            ThrowOutputWiderThanRate($"{nameof(output)}.{nameof(output.Length)}", output.Length, _roundSize);
 
         ulong[] state = _state;
 
@@ -405,7 +441,9 @@ public sealed partial class KeccakHash
 
     private static partial void KeccakF(Span<ulong> st);
 
-    // Callers bound hashSize to [1, STATE_SIZE], so the arithmetic cannot overflow.
+    // Callers bound hashSize to [1, MAX_HASH_SIZE], so the rate is always at least hashSize bytes, and
+    // never below 68 — which is what lets ComputeHash write its 20- and 32-byte inputs, and their
+    // terminator, without comparing against it.
     private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
 
     private byte[] GenerateHash()
@@ -553,8 +591,12 @@ public sealed partial class KeccakHash
     private static void ThrowHashingComplete() => throw new CryptographicException("Keccak hash is complete.");
 
     [DoesNotReturn]
-    private static void ThrowInvalidOutputSize(int length) => throw new ArgumentOutOfRangeException(
-        nameof(length), length, $"Must be between 1 and {STATE_SIZE}.");
+    private static void ThrowInvalidHashSize(string paramName, int size) => throw new ArgumentOutOfRangeException(
+        paramName, size, $"Keccak hash size must be between 1 and {MAX_HASH_SIZE}.");
+
+    [DoesNotReturn]
+    private static void ThrowOutputWiderThanRate(string paramName, int length, int roundSize) => throw new ArgumentOutOfRangeException(
+        paramName, length, $"A single squeeze cannot serve more than the {roundSize}-byte rate.");
 
     [InlineArray(STATE_LANES)]
     private struct KeccakState

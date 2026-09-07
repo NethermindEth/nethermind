@@ -235,13 +235,6 @@ public static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TEip8037 : struct, IFlag
-        where TEip7708 : struct, IFlag =>
-        InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, DynamicSelfDestructSpec>(ref stack, ref gas, vm);
-
-    [SkipLocalsInit]
     internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TEip8037 : struct, IFlag
@@ -259,7 +252,7 @@ public static partial class EvmInstructions
             goto StaticCallViolation;
 
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
-        if (TSpec.UseShanghaiDDosProtection(spec))
+        if (TSpec.UseShanghaiDDosProtection)
         {
             if (!TGasPolicy.ConsumeSelfDestructGas(ref gas))
                 goto OutOfGas;
@@ -276,7 +269,7 @@ public static partial class EvmInstructions
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
-        bool selfdestructOnlyOnSameTx = TSpec.SelfdestructOnlyOnSameTransaction(spec);
+        bool selfdestructOnlyOnSameTx = TSpec.SelfdestructOnlyOnSameTransaction;
         // Mark the executing account for destruction if allowed.
         if (!selfdestructOnlyOnSameTx || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
@@ -289,16 +282,16 @@ public static partial class EvmInstructions
 
         // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        bool chargesNewAccount = TSpec.ClearEmptyAccountWhenTouched(spec) switch
+        bool chargesNewAccount = TSpec.ClearEmptyAccountWhenTouched switch
         {
             true => !result.IsZero && state.IsDeadAccount(inheritor),
-            false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection(spec),
+            false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection,
         };
 
         // EIP-8038 adds an ACCOUNT_WRITE execution charge on top of the NEW_ACCOUNT state gas;
         // charge execution first so an execution-gas OOG does not spill state gas.
         bool outOfGas = chargesNewAccount &&
-            !((!TSpec.IsEip8038Enabled(spec) || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
+            !((!TSpec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
               && TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
@@ -315,7 +308,7 @@ public static partial class EvmInstructions
 
         // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for the EIP-6780
         // case (not in the destroy list), while EIP-8246 still finalizes but preserves the balance.
-        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn(spec) || (selfdestructOnlyOnSameTx && !createInSameTx)))
+        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
