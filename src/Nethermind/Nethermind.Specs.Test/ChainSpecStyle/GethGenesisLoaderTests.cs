@@ -53,7 +53,12 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [];
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp =
+    [
+        // The frame-transaction devnet's generator already spends the bogotaTime label on EIP-8141, so
+        // inclusion lists are scheduled through the chainspec's eip7805TransitionTimestamp instead.
+        "Bogota",
+    ];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
@@ -304,34 +309,13 @@ public class GethGenesisLoaderTests
         }
     }
 
+    // The frame-transaction devnet's genesis generator emits bogotaTime for the fork carrying EIP-8141.
+    // It must not pull in EIP-7805, whose payload sits on a newer engine_newPayload version than such a
+    // genesis is ever driven with.
     [Test]
     public void Can_load_genesis_with_bogota_time()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 15");
-
-        // bogotaTime carries inclusion lists alone. Frame transactions keep their own transition, so a
-        // genesis scheduling Bogota does not silently pull in the predeploy that shifts the fixtures.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.EqualTo(15));
-            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
-        }
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip7805Enabled, Is.False);
-            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.True);
-            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.False);
-        }
-    }
-
-    // The other half of the split: frame transactions must stay activatable from the format the devnet
-    // genesis files are generated in, without dragging inclusion lists along.
-    [Test]
-    public void Can_load_genesis_with_eip8141_prototype_time()
-    {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 15");
 
         using (Assert.EnterMultipleScope())
         {
@@ -707,10 +691,26 @@ public class GethGenesisLoaderTests
         }
     }
 
+    /// <summary>Returns the fork class <paramref name="prop"/> actually labels, or <c>null</c> for none.</summary>
+    /// <remarks>Read back from the key the property writes, because a property may route to a fork class
+    /// its own name doesn't spell (<c>petersburgBlock</c>, <c>bogotaTime</c>).</remarks>
+    private static string? RoutedForkName(PropertyInfo prop, bool isTime)
+    {
+        if (prop.PropertyType != typeof(ulong?)) return null;
+
+        GethGenesisConfigJson probe = new();
+        prop.SetValue(probe, (ulong?)1);
+        IHasNamedForks named = probe;
+        IReadOnlyDictionary<string, ulong>? written = isTime ? named.NamedForkTimestamps : named.NamedForkBlocks;
+        return written?.Keys.SingleOrDefault();
+    }
+
     /// <summary>
     /// Discovers all forks with matching activation properties on <see cref="GethGenesisConfigJson"/>:
     /// <c>{Name}Time</c> (ulong?) for timestamp forks, <c>{Name}Block</c> (long?) for block forks.
     /// </summary>
+    /// <remarks>A property may route to a fork class its own name doesn't spell, so the fork is read back
+    /// from the key the property writes rather than from its name.</remarks>
     private static List<ForkActivationInfo> DiscoverGethForks()
     {
         static (Type type, NamedReleaseSpec instance) FindFork((Type type, NamedReleaseSpec instance)[] forks, string name) =>
@@ -728,9 +728,9 @@ public class GethGenesisLoaderTests
 
             if (isTime || isBlock)
             {
-                (string suffix, string transitionSuffix) = isTime ? ("Time", "TransitionTimestamp") : ("Block", "Transition");
-                string forkName = prop.Name[..^suffix.Length];
-                (Type type, NamedReleaseSpec instance) match = FindFork(allForks, forkName);
+                string transitionSuffix = isTime ? "TransitionTimestamp" : "Transition";
+                string? forkName = RoutedForkName(prop, isTime);
+                (Type type, NamedReleaseSpec instance) match = forkName is null ? default : FindFork(allForks, forkName);
                 if (match.instance?.Parent is not null)
                 {
                     string gethConfigName = char.ToLowerInvariant(prop.Name[0]) + prop.Name[1..];
@@ -774,17 +774,24 @@ public class GethGenesisLoaderTests
         }
 
         // Every fork class that introduces EIPs must have a *Time or *Block property
+        HashSet<string> labelledForks = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PropertyInfo prop in configType.GetProperties())
+        {
+            bool isTime = prop.Name.EndsWith("Time");
+            if ((isTime || prop.Name.EndsWith("Block")) && RoutedForkName(prop, isTime) is { } routed)
+            {
+                labelledForks.Add(routed);
+            }
+        }
+
         foreach ((Type type, NamedReleaseSpec instance) in allForks)
         {
             if (instance.Parent is not null && !ForkClassesWithoutConfigProp.Contains(type.Name) && GetNewlyEnabledEips(instance, instance.Parent).Any())
             {
                 forkClassesChecked++;
-                bool hasBlockProp = configType.GetProperties().Any(p => p.Name.Equals($"{type.Name}Block", StringComparison.OrdinalIgnoreCase));
-                bool hasTimeProp = configType.GetProperties().Any(p => p.Name.Equals($"{type.Name}Time", StringComparison.OrdinalIgnoreCase));
-
-                if (!hasBlockProp && !hasTimeProp)
+                if (!labelledForks.Contains(type.Name))
                 {
-                    mismatches.Add($"Fork class {type.Name} introduces EIPs but has no {type.Name}Block or {type.Name}Time in GethGenesisConfigJson");
+                    mismatches.Add($"Fork class {type.Name} introduces EIPs but no GethGenesisConfigJson property labels it");
                 }
             }
         }

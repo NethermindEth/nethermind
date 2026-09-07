@@ -3,12 +3,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -66,6 +71,43 @@ public class ExecutionPayloadV4Tests
         Hash256 expected = new(ValueKeccak.Compute(encoded).Bytes);
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(expected));
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(block.BlockAccessList!.WireHash));
+    }
+
+    // The label a genesis carries decides which newPayload version the node accepts: frame transactions
+    // leave it on Amsterdam's V5, while inclusion lists would move it to V6.
+    [Test]
+    public void ValidateForkOnNewPayload_accepts_V5_for_a_bogota_labelled_genesis()
+    {
+        string genesis = """
+            {
+              "config": { "chainId": 1, "homesteadBlock": 0, "amsterdamTime": 15, "bogotaTime": 15 },
+              "difficulty": "0x1",
+              "gasLimit": "0x8000000",
+              "alloc": {}
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(genesis));
+        ChainSpec chainSpec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = [],
+            SlotNumber = 0,
+            BlockNumber = 1,
+            Timestamp = 15,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
+            Assert.That(specProvider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.False);
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V5), Is.True);
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6), Is.False);
+        }
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()
