@@ -27,7 +27,7 @@ namespace Ethereum.Transaction.Test;
 public class FrameTxSignatureTransactionTestTests : TransactionTestBase
 {
     private const string Fork = "Eip8141Prototype";
-    private static readonly Ecdsa s_ecdsa = new();
+    private static readonly Ecdsa _ecdsa = new();
 
     [Test]
     public void ValidFrameSignatureIsAccepted()
@@ -81,7 +81,7 @@ public class FrameTxSignatureTransactionTestTests : TransactionTestBase
         // entry must be installed before hashing.
         TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, signer, default, default);
         tx.FrameSignatures = [entry];
-        Signature signature = s_ecdsa.Sign(TestItem.PrivateKeyB, FrameTxSigHash.ComputeValue(tx));
+        Signature signature = _ecdsa.Sign(TestItem.PrivateKeyB, FrameTxSigHash.ComputeValue(tx));
 
         byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
         raw[0] = signature.RecoveryId; // strict yParity encoding (0/1)

@@ -18,7 +18,7 @@ namespace Ethereum.Test.Base;
 public abstract class TransactionTestBase
 {
     private static readonly TxValidator s_mainnetTxValidator = new(MainnetSpecProvider.Instance.ChainId);
-    private static readonly EthereumEcdsa s_mainnetEcdsa = new(MainnetSpecProvider.Instance.ChainId);
+    private static readonly EthereumEcdsa _mainnetEcdsa = new(MainnetSpecProvider.Instance.ChainId);
 
     protected static Result RunTest(TransactionTest test)
     {
@@ -87,7 +87,7 @@ public abstract class TransactionTestBase
         IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
             ? SecP256r1Precompile.Instance
             : null;
-        return FrameTxSignatureValidator.Validate(tx, s_mainnetEcdsa, p256Precompile, spec, out string? signatureError)
+        return FrameTxSignatureValidator.Validate(tx, _mainnetEcdsa, p256Precompile, spec, out string? signatureError)
             ? null
             : signatureError;
     }
