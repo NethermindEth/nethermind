@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -52,7 +53,9 @@ public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery
         }
         finally
         {
-            _inFlight.TryRemove(codeHash, out _);
+            // Match on the entry, not just the hash: a caller that resumes late would otherwise evict a
+            // newer recovery that other callers are still sharing.
+            _inFlight.TryRemove(new KeyValuePair<ValueHash256, Lazy<Task<byte[]?>>>(codeHash, attempt));
         }
     }
 
