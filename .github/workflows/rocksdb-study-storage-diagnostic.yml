@@ -166,5 +166,9 @@ jobs:
           echo "pid=${containerd_pid:-unavailable}"
           echo "configured_root=${containerd_root:-not present in process arguments}"
           echo "configured_state=${containerd_state:-not present in process arguments}"
-          [[ -n "${containerd_root}" ]] && probe_path "containerd configured root" "${containerd_root}"
-          [[ -n "${containerd_state}" ]] && probe_path "containerd configured state" "${containerd_state}"
+          if [[ -n "${containerd_root}" ]]; then
+            probe_path "containerd configured root" "${containerd_root}"
+          fi
+          if [[ -n "${containerd_state}" ]]; then
+            probe_path "containerd configured state" "${containerd_state}"
+          fi
