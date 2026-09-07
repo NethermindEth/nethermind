@@ -30,8 +30,15 @@ namespace Nethermind.Synchronization.SnapSync
         // This is actually close to 97% effective.
         private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
-        // SnapSyncFeed forces a pivot update once AllowedInvalidResponses + 1 failures arrive in a row with no success in
-        // between, so a streak this long has outlived at least one fresh pivot: the empty responses are not a stale root.
+        // How many consecutive empty storage-range responses for one account are treated as "this account really has
+        // no storage at the pivot" rather than "this peer is behind". The scale is taken from
+        // SnapSyncFeed.AllowedInvalidResponses only to stay in step with the feed's own notion of a failure streak;
+        // do NOT read it as a guarantee that a fresh pivot has been seen by the time it trips. SnapSyncFeed does ask
+        // for a pivot update on a streak (SnapSyncFeed.cs:221 and :242), but that request is advisory: the pivot is
+        // only moved when the head has advanced far enough to make a new target worthwhile, so a streak this long can
+        // complete against an unchanged pivot. That is safe either way - RefreshAccounts answers Expired and
+        // InvalidProof with RetryAccountRefresh, so re-proving against a still-stale root retries rather than
+        // dropping the account - but the threshold is a heuristic about the account, not a proof about the pivot.
         internal const int MaxConsecutiveEmptyStorageResponses = 2 * (SnapSyncFeed.AllowedInvalidResponses + 1);
 
         public bool CanSync() => _progressTracker.CanSync();
