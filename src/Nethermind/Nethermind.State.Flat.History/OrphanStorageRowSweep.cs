@@ -258,6 +258,7 @@ public sealed class OrphanStorageRowSweep(
             foreach (byte[] row in rows) storage.Remove(row);
         }
 
+        history.GetColumnDb(FlatHistoryColumns.StorageHistory).Flush(onlyWal: true);
         rows.Clear();
     }
 
