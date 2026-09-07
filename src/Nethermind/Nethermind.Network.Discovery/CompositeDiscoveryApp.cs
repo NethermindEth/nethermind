@@ -30,7 +30,6 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
     private readonly ILogger _logger;
-    private readonly NetworkListenerState _listenerState;
     private IEventLoopGroup? _eventLoopGroup;
 
     public CompositeDiscoveryApp(
@@ -61,8 +60,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         IChannelFactory? channelFactory = null)
     {
         _networkConfig = networkConfig;
-        _listenerState = listenerState;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, _listenerState);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
         _discoveryApps = discoveryApps;

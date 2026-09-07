@@ -302,9 +302,8 @@ public class NodeRecordProviderTests
             expectUdp6);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task GetCurrentAsync_AdvertisesPortsOnlyForBoundListeners(bool rlpxBound)
+    [Test]
+    public async Task GetCurrentAsync_AdvertisesPortsOnlyForBoundListeners([Values] bool rlpxBound)
     {
         IIPResolver.NethermindIp resolvedIp = new(
             IPAddress.IPv6Any,
@@ -393,9 +392,8 @@ public class NodeRecordProviderTests
         AssertEndpointEntries(current, "192.0.2.1", null, expectTcp: true, expectUdp: false);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task GetCurrentAsync_RetriesAfterInitialRecordFailure(bool queueListenerChange)
+    [Test]
+    public async Task GetCurrentAsync_RetriesAfterInitialRecordFailure([Values] bool queueListenerChange)
     {
         Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();

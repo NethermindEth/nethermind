@@ -65,7 +65,7 @@ public class DiscoveryConnectionsPoolTests
             {
                 await SendAsync(AddressFamily.InterNetworkV6, IPAddress.IPv6Loopback, port);
             }
-            else
+            else if (Socket.OSSupportsIPv6)
             {
                 using Socket ipv6Probe = CreateUdpListenerSocket(IPAddress.IPv6Any, port);
             }
@@ -86,14 +86,15 @@ public class DiscoveryConnectionsPoolTests
     }
 
     [Test]
-    public async Task WidenedBind_FallsBackToIpv4AndReceivesDatagram()
+    public async Task WidenedBind_FallsBackToIpv4AndReceivesDatagram([Values] bool portInUse)
     {
         if (!Socket.OSSupportsIPv6)
         {
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
-        int port = GetAvailableUdpPort();
+        using Socket? ipv6Blocker = portInUse ? CreateUdpListenerSocket(IPAddress.IPv6Any, 0) : null;
+        int port = ipv6Blocker is not null ? ((IPEndPoint)ipv6Blocker.LocalEndPoint!).Port : GetAvailableUdpPort();
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
         DiscoveryConnectionsPool pool = CreatePool(listenerState);
         IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
@@ -103,12 +104,13 @@ public class DiscoveryConnectionsPoolTests
         {
             await pool.BindAsync(
                 () => CreateBootstrap(eventLoopGroup, () => received.TrySetResult()),
-                _ => CreateChannel(IPAddress.Any, createdChannels),
+                address => CreateChannel(portInUse ? address : IPAddress.Any, createdChannels),
                 port);
 
             await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, port);
             await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
+            Assert.That(createdChannels, Has.Count.EqualTo(2));
             Assert.That(createdChannels[0].Open, Is.False);
             Assert.That(createdChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
         }

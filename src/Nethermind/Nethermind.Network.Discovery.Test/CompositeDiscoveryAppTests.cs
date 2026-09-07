@@ -106,10 +106,10 @@ public class CompositeDiscoveryAppTests
             await app.StartAsync();
             await discoveryApp.Received(1).StartAsync();
 
+            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
-                Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
                 Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
                 Assert.That(initializedOnEventLoop, Is.True);
                 discoveryApp.Received(1).InitializeChannel(channelFactory.CreatedChannels[1]);

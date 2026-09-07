@@ -447,9 +447,8 @@ public class DiscoveryMessageSerializerTests
         }
     }
 
-    [TestCase("192.168.1.2")]
-    [TestCase("2001:db8::1")]
-    public void NeighborsMessage_Serializes_Node_Ports_In_Discv4_Order(string host)
+    [Test]
+    public void NeighborsMessage_Serializes_Node_Ports_In_Discv4_Order([Values("192.168.1.2", "2001:db8::1")] string host)
     {
         Node node = new(TestItem.PublicKeyA, host, 30303, 30304);
         NeighborsMsg message =

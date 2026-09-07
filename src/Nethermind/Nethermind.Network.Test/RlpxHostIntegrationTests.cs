@@ -161,16 +161,17 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    public async Task DefaultListener_FallsBackToIpv4WhenWidenedBindFails()
+    public async Task DefaultListener_FallsBackToIpv4WhenWidenedBindFails([Values] bool portInUse)
     {
         if (!Socket.OSSupportsIPv6)
         {
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
-        int port = GetAvailablePort();
+        using Socket? ipv6Blocker = portInUse ? CreateTcpListenerSocket(IPAddress.IPv6Any, 0) : null;
+        int port = ipv6Blocker is not null ? ((IPEndPoint)ipv6Blocker.LocalEndPoint!).Port : GetAvailablePort();
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
-        Ipv4ServerChannelFactory channelFactory = new();
+        Ipv4ServerChannelFactory? channelFactory = portInUse ? null : new();
         (RlpxHost host, _) = CreateListenerHost(null, IPAddress.Any, port, listenerState, channelFactory);
         try
         {
@@ -178,9 +179,12 @@ public class RlpxHostIntegrationTests
 
             Assert.That(listenerState.RlpxAddress, Is.EqualTo(IPAddress.Any));
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
-            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
-            Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
-            Assert.That(channelFactory.CreatedChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
+            if (channelFactory is not null)
+            {
+                Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
+                Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
+                Assert.That(channelFactory.CreatedChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
+            }
         }
         finally
         {
@@ -299,11 +303,8 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public async Task ListenerState_DoesNotClearReplacementWhenPreviousChannelCloses(bool rlpx, bool sameAddress)
+    [Test]
+    public async Task ListenerState_DoesNotClearReplacementWhenPreviousChannelCloses([Values] bool rlpx, [Values] bool sameAddress)
     {
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
         TaskCompletionSource closeCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
