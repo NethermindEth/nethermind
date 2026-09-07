@@ -297,6 +297,39 @@ namespace Nethermind.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+
+        /// <summary>Whether this address could name a precompile at all: sixteen leading zero bytes.</summary>
+        /// <remarks>The membership test every CALL pays. Two loads reject an ordinary contract, against
+        /// hashing and probing twenty bytes, and unlike <see cref="PrecompileIndexOrNegative"/> the answer
+        /// holds for every number a plugin might register at.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool CouldBePrecompile()
+        {
+            ref byte b = ref Unsafe.AsRef(in FirstByte);
+            return (Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) == 0;
+        }
+
+        /// <summary>The precompile number this address names, or negative if it cannot be used as an index.</summary>
+        /// <remarks>A precompile lives at a low address, so its trailing number is the membership key and
+        /// "which one" becomes an index rather than a hash and a probe over twenty bytes. Callers bound the
+        /// index themselves, since a plugin may register far above the low run — Taiko's sit at 0x10001 and
+        /// 0x10002. This answers "which one", never "is it one": a tail that overflows <see cref="int"/>
+        /// also comes back negative, so membership is <see cref="CouldBePrecompile"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int PrecompileIndexOrNegative()
+        {
+            // The shape test is repeated rather than calling CouldBePrecompile so that the base ref is
+            // loaded once: this is the zkVM guest's precompile path, measured to an exact step count.
+            ref byte b = ref Unsafe.AsRef(in FirstByte);
+            if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
+            {
+                return -1;
+            }
+
+            // bytes 16..19, big-endian
+            uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
+            return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
+        }
     }
 
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>

@@ -165,7 +165,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         // Pop destination offset, source offset, and length from the stack. The destination keeps its
         // vector decode here: this handler already saves seven callee-saved registers, and holding the
         // destination in general registers instead costs an eighth and measures slower.
@@ -267,7 +267,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
 
         // Pop the account address from the stack.
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.

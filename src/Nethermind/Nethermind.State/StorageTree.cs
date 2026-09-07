@@ -21,12 +21,12 @@ namespace Nethermind.State
     {
         public static readonly byte[] ZeroBytes = [0];
 
-        public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, ILogManager logManager)
             : this(trieStore, Keccak.EmptyTreeHash, logManager)
         {
         }
 
-        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, Hash256 rootHash, ILogManager logManager)
             : base(trieStore, rootHash, true, logManager) => TrieType = TrieType.Storage;
 
         [SkipLocalsInit]
@@ -79,7 +79,7 @@ namespace Nethermind.State
             return GetWithKeyGenerate(in index, storageRoot);
 
             [SkipLocalsInit]
-            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256? storageRoot)
             {
                 ComputeKey(index, out ValueHash256 key);
                 return GetArray(in key, storageRoot);

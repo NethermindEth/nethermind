@@ -40,5 +40,5 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return true;
     }
 
-    public object ReturnData { get; set; }
+    public object? ReturnData { get; set; }
 }
