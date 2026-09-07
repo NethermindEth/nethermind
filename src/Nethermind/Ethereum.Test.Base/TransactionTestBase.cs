@@ -6,6 +6,9 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 
@@ -14,6 +17,7 @@ namespace Ethereum.Test.Base;
 public abstract class TransactionTestBase
 {
     private static readonly TxValidator s_mainnetTxValidator = new(MainnetSpecProvider.Instance.ChainId);
+    private static readonly EthereumEcdsa s_mainnetEcdsa = new(MainnetSpecProvider.Instance.ChainId);
 
     protected static Result RunTest(TransactionTest test)
     {
@@ -37,7 +41,7 @@ public abstract class TransactionTestBase
         }
 
         bool decoded = TryDecode(test.TxBytes, out Transaction? tx, out string? decodeError);
-        string? observedError = decoded ? s_mainnetTxValidator.IsWellFormed(tx!, spec).Error : decodeError;
+        string? observedError = decoded ? ValidateRawTransaction(tx!, spec) : decodeError;
 
         bool expectFailure = !string.IsNullOrEmpty(test.ExpectedException);
         if (expectFailure)
@@ -57,6 +61,33 @@ public abstract class TransactionTestBase
         }
 
         return Result.Success;
+    }
+
+    /// <summary>Runs the stateless validation a client applies to a raw transaction before pooling it.</summary>
+    /// <remarks>
+    /// <para>
+    /// EIP-8141 §Signature Validation is stateless but does not live in <see cref="TxValidator"/>: a frame
+    /// transaction carries no envelope signature, so the pool runs <c>validate_signature</c> in its own
+    /// incoming filter and the processor repeats it before any frame executes. Both are outside
+    /// <see cref="TxValidator.IsWellFormed"/>, so a harness that stops there accepts every transaction whose
+    /// only defect is a frame signature. Composing the two here mirrors the pool's own admission order.
+    /// </para>
+    /// <para>
+    /// The precompile is resolved exactly as the pool filter resolves it, so a chain reaching P256VERIFY
+    /// through RIP-7212 rather than EIP-7951 is not refused a signature the processor would verify.
+    /// </para>
+    /// </remarks>
+    private static string? ValidateRawTransaction(Transaction tx, IReleaseSpec spec)
+    {
+        string? error = s_mainnetTxValidator.IsWellFormed(tx, spec).Error;
+        if (error is not null || !tx.SupportsFrames) return error;
+
+        IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
+            ? SecP256r1Precompile.Instance
+            : null;
+        return FrameTxSignatureValidator.Validate(tx, s_mainnetEcdsa, p256Precompile, spec, out string? signatureError)
+            ? null
+            : signatureError;
     }
 
     private static bool TryDecode(string txBytesHex, out Transaction? tx, out string? error)
@@ -171,6 +202,7 @@ public abstract class TransactionTestBase
         // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
         // signature failures, which the fixtures file under a separate label.
         ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] = [.. FrameExceptionFragments.Format, .. FrameExceptionFragments.Decode],
+        ["TransactionException.TYPE_6_INVALID_SIGNATURE"] = [.. FrameExceptionFragments.Signature],
         // EIP-7825's per-transaction gas cap under both wordings: a frame transaction reports it
         // against its own budget, every other type against its envelope gas limit.
         ["TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM"] = ["exceeds the transaction gas cap of", "TxGasLimitCapExceeded"],
