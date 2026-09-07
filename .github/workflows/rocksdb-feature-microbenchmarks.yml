@@ -145,8 +145,8 @@ jobs:
               --rocksdb-feature-variant "${variant}" \
               --quick \
               --filter "*RocksDbFeatureBenchmarks.${METHOD}*" \
-              --warmupCount 1 \
-              --iterationCount 3 \
+              --warmupCount 5 \
+              --iterationCount 15 \
               --launchCount 1 \
               --exporters json csv \
               --artifacts "${artifacts}" 2>&1 | tee "${log}"
