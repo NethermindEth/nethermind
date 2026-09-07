@@ -49,7 +49,7 @@ public class OrphanStorageSweepTests
         _db.Dispose();
     }
 
-    private IPersistenceManager ManagerLikeTheReal(Action? beforeTheBatch = null, Action? afterTheBatch = null)
+    private IPersistenceManager ManagerLikeTheReal(Action? beforeTheBatch = null, Action? afterTheBatch = null, Action? betweenTheReadAndTheBatch = null)
     {
         IPersistenceManager manager = Substitute.For<IPersistenceManager>();
         manager.LeaseReader().Returns(_ => _persistence.CreateReader());
@@ -59,6 +59,7 @@ public class OrphanStorageSweepTests
                 beforeTheBatch?.Invoke();
                 StateId current;
                 using (IPersistence.IPersistenceReader reader = _persistence.CreateReader()) current = reader.CurrentState;
+                betweenTheReadAndTheBatch?.Invoke();
                 StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
                 using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(unchanged, unchanged))
                 {
@@ -324,6 +325,35 @@ public class OrphanStorageSweepTests
         {
             Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted from a database another writer is assembling");
             Assert.That(sweep.AlreadyHandled, Is.True, "the clear emptied every data column, so what the sync writes next is written by this version and cannot be orphaned; the resynced database owes no pass");
+        }
+    }
+
+    [Test]
+    public void A_database_cleared_between_the_state_read_and_the_batch_is_treated_as_rebuilt()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        ValueHash256 orphan = PathWithPrefix(0x10000000, tail: 0x01);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
+        }
+
+        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(betweenTheReadAndTheBatch: () =>
+        {
+            _persistence.Clear();
+            using IPersistence.IWriteBatch rebuilding = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            rebuilding.SetStorageRawEncoded(orphan, slot, EncodedValue);
+        }), LimboLogs.Instance);
+
+        Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
+            "a clear landing after the manager read the state makes the batch refuse to apply on top of the wrong state; that refusal is the rebuild, not a failure");
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        SlotValue value = default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True);
+            Assert.That(sweep.AlreadyHandled, Is.True);
         }
     }
 

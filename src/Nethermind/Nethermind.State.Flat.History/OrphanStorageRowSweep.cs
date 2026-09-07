@@ -162,10 +162,11 @@ public sealed class OrphanStorageRowSweep(
                 Delete(orphanRows);
             }
 
-            IDb metadata = flat.GetColumnDb(FlatDbColumns.Metadata);
             if (completed)
             {
                 Announce(Report);
+                using IColumnsWriteBatch<FlatDbColumns> stamp = flat.StartWriteBatch();
+                IWriteBatch metadata = stamp.GetColumnBatch(FlatDbColumns.Metadata);
                 metadata.Remove(ProgressKey);
                 metadata.PutSpan(MarkerKey, [Swept]);
             }

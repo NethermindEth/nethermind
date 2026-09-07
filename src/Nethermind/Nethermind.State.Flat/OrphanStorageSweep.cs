@@ -33,6 +33,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     private readonly CancellationTokenSource _cts = new();
     private Thread? _loop;
     private long _checkCursor;
+    private bool _checkInconclusive;
     private bool _tallyLoaded;
     private long _lastProgressAt;
     private long _slotsScanned;
@@ -87,19 +88,17 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             if (orphans.Count > 0)
             {
                 WriteProgress((uint)startPrefix);
-                db.SyncWal();
                 Delete(db.GetColumnDb(FlatDbColumns.Account), orphans, token);
             }
 
-            IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-            if (completed)
-            {
-                metadata.Remove(ProgressKey);
-                metadata.PutSpan(MarkerKey, [Swept]);
-            }
+            if (completed) StampSwept();
             else WriteProgress((uint)nextPrefix);
         }
-        else _checkCursor = nextPrefix;
+        else
+        {
+            _checkCursor = nextPrefix;
+            if (!Drained(0)) _checkInconclusive = true;
+        }
 
         return completed;
     }
@@ -217,7 +216,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             {
                 if (_logger.IsInfo) _logger.Info($"Flat orphan storage sweep done, orphaned slots deleted: {outcome}");
             }
-            else if (!Drained(0))
+            else if (_checkInconclusive || !Drained(0))
             {
                 if (_logger.IsWarn) _logger.Warn($"Flat orphan storage check inconclusive: the flat database was cleared under it by a state sync, and slots land before their accounts while that sync writes. {outcome}");
             }
@@ -260,20 +259,26 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
                     }
                 }, token);
             }
-            catch (InvalidOperationException) when (!Drained(0))
+            catch (InvalidOperationException) when (!rebuilt && !Drained(0))
             {
                 rebuilt = true;
             }
 
             if (rebuilt)
             {
-                IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-                metadata.Remove(ProgressKey);
-                metadata.PutSpan(MarkerKey, [Swept]);
+                StampSwept();
                 if (_logger.IsWarn) _logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it and a state sync is rebuilding it from scratch. Everything that sync writes is written by this version and cannot be orphaned, so the database is recorded as swept.");
                 throw new OperationCanceledException();
             }
         }
+    }
+
+    private void StampSwept()
+    {
+        using IColumnsWriteBatch<FlatDbColumns> stamp = db.StartWriteBatch();
+        IWriteBatch metadata = stamp.GetColumnBatch(FlatDbColumns.Metadata);
+        metadata.Remove(ProgressKey);
+        metadata.PutSpan(MarkerKey, [Swept]);
     }
 
     private void LogProgress(bool repair, long prefix)
