@@ -26,12 +26,17 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const int BitShiftPerInt64 = 6;
     private const int BytesPerUInt64 = sizeof(ulong);
     private const int ScalarWordThreshold = 64;
-    private const int ZkScalarWordThreshold = 1024;
     private const ulong ByteHighBits = 0x8080808080808080UL;
     private const ulong ByteLowBits = 0x7f7f7f7f7f7f7f7fUL;
     private const ulong JumpDestBytes = 0x5b5b5b5b5b5b5b5bUL;
     private const ulong PackByteHighBits = 0x0002040810204081UL;
 
+#if ZK_EVM
+    // ILC re-materialises a compared-against constant at every use inside a loop, and the preinitialiser
+    // folds `static readonly` scalars straight back into that. An array element is opaque to it, so
+    // reading these once before the scan keeps them in registers.
+    private static readonly int[] _byteScanThresholds = [JUMPDEST, PUSH1];
+#endif
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
@@ -139,21 +144,16 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     [SkipLocalsInit]
     internal static long[] PopulateJumpDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
     {
+#if ZK_EVM
+        // Zisk reaches every byte in four instructions, so the word scanner cannot win: it processes a
+        // word per PUSH rather than skipping one, and all real bytecode is PUSH-dense. The sampling gate
+        // this replaces sent every contract analysed over a mainnet block down the byte path anyway.
+        ProcessJumpDestinationBitmap_Byte(programCounter: 0, bitmap, code);
+#else
         if (code.Length < ScalarWordThreshold)
         {
             ProcessJumpDestinationBitmap_Byte(programCounter: 0, bitmap, code);
         }
-#if ZK_EVM
-        // Zisk's word scanner pays off only on large, PUSH-sparse code. Ignore the common prologue word when sampling.
-        else if (code.Length < ZkScalarWordThreshold || HasPushInScalarSample(code))
-        {
-            ProcessJumpDestinationBitmap_Byte(programCounter: 0, bitmap, code);
-        }
-        else
-        {
-            ProcessJumpDestinationBitmap_Scalar(bitmap, code);
-        }
-#else
         // A PUSH in the first word predicts code where the byte scanner is cheaper on the JIT.
         else if (ContainsPushByte(Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(code))))
         {
@@ -285,22 +285,6 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private static bool ContainsPushByte(ulong opCodes)
         => (~opCodes & (opCodes << 1) & (opCodes << 2) & ByteHighBits) != 0;
 
-#if ZK_EVM
-    private static bool HasPushInScalarSample(ReadOnlySpan<byte> code)
-    {
-        ref byte codeRef = ref MemoryMarshal.GetReference(code);
-        for (nuint offset = BytesPerUInt64; offset < ScalarWordThreshold; offset += BytesPerUInt64)
-        {
-            if (ContainsPushByte(Unsafe.As<byte, ulong>(ref Unsafe.AddByteOffset(ref codeRef, offset))))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-#endif
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FirstSetBit(byte value)
     {
@@ -320,6 +304,58 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         return index + 1 - (value & 1);
     }
 
+#if ZK_EVM
+    /// <remarks>
+    /// Walks a moving reference instead of a base plus an index: ILC recomputes the byte address on
+    /// every step of the indexed form, and the position is only needed at the rare JUMPDEST. The
+    /// indexed form is the faster one on x64, hence the split.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static void ProcessJumpDestinationBitmap_Byte(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
+    {
+        long currentFlags = 0;
+        nuint flagsPosition = 0;
+        ref byte codeRef = ref MemoryMarshal.GetReference(code);
+        ref byte position = ref Unsafe.AddByteOffset(ref codeRef, programCounter);
+        ref byte end = ref Unsafe.AddByteOffset(ref codeRef, (nuint)code.Length);
+        ref int thresholds = ref MemoryMarshal.GetArrayDataReference(_byteScanThresholds);
+        int jumpDest = thresholds;
+        int push1 = Unsafe.Add(ref thresholds, 1);
+        while (Unsafe.IsAddressLessThan(in position, in end))
+        {
+            // Sign extension folds everything above PUSH32 below JUMPDEST, so one signed comparison
+            // covers the whole [JUMPDEST, PUSH32] window that the rebase-and-range-test needed two for.
+            int op = (sbyte)position;
+            if (op >= jumpDest)
+            {
+                if (op >= push1)
+                {
+                    // One byte short: every path joins the single advance below, so nothing branches over it.
+                    position = ref Unsafe.Add(ref position, op - PUSH1 + 1);
+                }
+                else if (op == jumpDest)
+                {
+                    nuint jumpDestination = (nuint)Unsafe.ByteOffset(ref codeRef, ref position);
+                    if ((jumpDestination ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
+                    {
+                        MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
+                        currentFlags = 0;
+                    }
+
+                    currentFlags |= 1L << (int)jumpDestination;
+                    flagsPosition = jumpDestination;
+                }
+            }
+
+            position = ref Unsafe.Add(ref position, 1);
+        }
+
+        if (currentFlags != 0)
+        {
+            MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
+        }
+    }
+#else
     [SkipLocalsInit]
     private static void ProcessJumpDestinationBitmap_Byte(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
     {
@@ -363,6 +399,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
             MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
         }
     }
+#endif
 
     [SkipLocalsInit]
     internal static long[] PopulateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
