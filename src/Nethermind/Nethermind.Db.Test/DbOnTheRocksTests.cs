@@ -86,7 +86,7 @@ namespace Nethermind.Db.Test
 
             config.FlatDbAdditionalRocksDbOptions = "read_triggered_compaction_threshold=0;";
             using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Flat"), config, configFactory, LimboLogs.Instance);
-            Assert.That(reopened.Get(key), Is.EqualTo(value));
+            Assert.That(GetValue(reopened, key), Is.EqualTo(value));
             Assert.That(ReadOptionsFile(DbPath), Does.Contain("read_triggered_compaction_threshold=0"));
         }
 
