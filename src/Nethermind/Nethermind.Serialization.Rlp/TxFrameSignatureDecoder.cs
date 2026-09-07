@@ -16,7 +16,12 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
     public static readonly TxFrameSignatureDecoder Instance = new();
 
     private static readonly RlpLimit _msgRlpLimit = RlpLimit.For<TxFrameSignature>(32, nameof(TxFrameSignature.Msg));
-    private static readonly RlpLimit _signatureRlpLimit = RlpLimit.For<TxFrameSignature>((int)64.KiB, nameof(TxFrameSignature.Signature));
+
+    // The spec bounds the signature bytes only through gas: they are charged as calldata, so no block can pay
+    // for a longer one than this.
+    private static RlpLimit SignatureRlpLimit => RlpLimit.For<TxFrameSignature>(
+        (int)Math.Min(RlpLimit.MaxBlockGas / GasCostOf.TxDataZero + 1, int.MaxValue),
+        nameof(TxFrameSignature.Signature));
 
     protected override TxFrameSignature DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -26,7 +31,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         byte scheme = decoderContext.DecodeByte();
         Address? signer = decoderContext.DecodeAddressOrNull();
         ReadOnlyMemory<byte> msg = decoderContext.DecodeByteArrayMemory(_msgRlpLimit);
-        ReadOnlyMemory<byte> signature = decoderContext.DecodeByteArrayMemory(_signatureRlpLimit);
+        ReadOnlyMemory<byte> signature = decoderContext.DecodeByteArrayMemory(SignatureRlpLimit);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
