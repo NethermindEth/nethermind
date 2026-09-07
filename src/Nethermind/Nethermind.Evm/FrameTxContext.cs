@@ -143,7 +143,7 @@ public sealed class FrameTxContext(
     /// a charge that cannot be met must not leave a half-applied approval behind.</remarks>
     /// <param name="plan">The effects an admitted approval will apply; meaningless unless the outcome is
     /// <see cref="FrameApprovalOutcome.Approved"/>.</param>
-    public FrameApprovalOutcome PlanApproval(byte scope, Address resolvedTarget, IWorldState worldState, out FrameApprovalPlan plan)
+    internal FrameApprovalOutcome PlanApproval(byte scope, Address resolvedTarget, IWorldState worldState, out FrameApprovalPlan plan)
     {
         plan = default;
         if (scope == 0 || (scope & ~CurrentFrame.AllowedApproveScope) != 0) return FrameApprovalOutcome.Rejected;
@@ -177,7 +177,7 @@ public sealed class FrameTxContext(
     /// world state on a nested revert or halt restores the approval context with it.
     /// </summary>
     /// <remarks>The sender's account creation, when the plan calls for one, must already have been charged.</remarks>
-    public void ApplyApproval(in FrameApprovalPlan plan, Address resolvedTarget, IWorldState worldState, IReleaseSpec spec, in StackAccessTracker accessTracker)
+    internal void ApplyApproval(in FrameApprovalPlan plan, Address resolvedTarget, IWorldState worldState, IReleaseSpec spec, in StackAccessTracker accessTracker)
     {
         _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.ApprovalAdvanced, default, ApprovalStage, 0));
 
@@ -308,7 +308,7 @@ public sealed class FrameTxContext(
 }
 
 /// <summary>Outcome of evaluating an EIP-8141 <c>APPROVE</c> against a transaction's approval context.</summary>
-public enum FrameApprovalOutcome : byte
+internal enum FrameApprovalOutcome : byte
 {
     /// <summary>The approval is admissible.</summary>
     Approved,
@@ -321,4 +321,4 @@ public enum FrameApprovalOutcome : byte
 }
 
 /// <summary>The effects an admitted <c>APPROVE</c> will apply, so its caller can charge for them beforehand.</summary>
-public readonly record struct FrameApprovalPlan(bool ApprovesExecution, bool ApprovesPayment, bool CreatesSender);
+internal readonly record struct FrameApprovalPlan(bool ApprovesExecution, bool ApprovesPayment, bool CreatesSender);

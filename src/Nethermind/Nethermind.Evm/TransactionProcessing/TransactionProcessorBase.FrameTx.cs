@@ -414,7 +414,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     totalFrameStateGasUsed = batchStartStateGas;
                     frameContext.RestoreFrameJournal(batchStartJournal);
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
-                    // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
 
                     if (prefixEndIndex >= batchStartIndex)
