@@ -525,7 +525,7 @@ public class JsonRpcServiceTests
             ? TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """["0x1b4",""]""")
             : TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", ""));
 
-        ethRpcModule.Received().eth_getBlockByNumber(Arg.Any<BlockParameter>(), false);
+        ethRpcModule.Received().eth_getBlockByNumber(new BlockParameter(0x1b4), false);
     }
 
     [Test]

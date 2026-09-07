@@ -464,9 +464,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         int missingRequiredParameterIndex,
         ref int missingParamsCount)
     {
-        // The JSON element deserializer walks every provided element against expectedParameters, so an
-        // over-long request has to be rejected here rather than indexing past the end.
-        if (providedParametersLength > expectedParameters.Length || missingParamsCount < 0)
+        // Both paths funnel over-length here: the JSON element deserializer would otherwise index past
+        // expectedParameters, and the utf8 one signals the same shape by reporting a length of
+        // expectedParameters.Length + 1 rather than the true element count.
+        if (providedParametersLength > expectedParameters.Length)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in requestId);
         }
