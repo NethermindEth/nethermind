@@ -14,7 +14,6 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -706,7 +705,7 @@ public partial class EngineModuleTests
     private static async Task<Witness> ProduceWitnessedBlock(MergeTestBlockchain chain, params Transaction[] txs)
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
         Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
             "the built payload must contain exactly the submitted transactions");
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
@@ -722,15 +721,12 @@ public partial class EngineModuleTests
     private static async Task ProduceCanonicalBlock(MergeTestBlockchain chain, params Transaction[] txs)
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
         Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
             "the built payload must contain exactly the submitted transactions");
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
-            h => chain.TxPool.TxPoolHeadChanged += h,
-            h => chain.TxPool.TxPoolHeadChanged -= h,
-            b => b.Hash == payload.BlockHash);
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.BlockHash!);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
         Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
@@ -765,8 +761,16 @@ public partial class EngineModuleTests
                     $"witness State must contain the storage-proof node for {account}");
     }
 
+    /// <summary>
+    /// Builds one Amsterdam payload on the current head and returns it once it carries at least
+    /// <paramref name="expectedTxCount"/> transactions.
+    /// </summary>
+    /// <remarks>
+    /// Callers must pass what they submitted: the first improvement can complete before the tx pool has made
+    /// those transactions selectable, and a parent-only wait would then hand back the empty payload.
+    /// </remarks>
     private static async Task<(ExecutionPayloadV4 Payload, byte[][]? ExecutionRequests)>
-        BuildAmsterdamPayload(MergeTestBlockchain chain)
+        BuildAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount = 0)
     {
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block head = chain.BlockTree.Head!;
@@ -785,7 +789,7 @@ public partial class EngineModuleTests
         Hash256 headHash = head.Hash!;
         ForkchoiceStateV1 fcu = new(headHash, headHash, headHash);
 
-        Task improvementWait = chain.WaitForImprovedBlock(headHash);
+        Task improvementWait = chain.WaitForImprovedBlock(headHash, expectedTxCount);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult =
             await rpc.engine_forkchoiceUpdatedV4(fcu, attributes);
         Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success));
@@ -795,6 +799,8 @@ public partial class EngineModuleTests
         byte[] payloadIdBytes = Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
         ResultWrapper<GetPayloadV6Result?> getPayload = await rpc.engine_getPayloadV6(payloadIdBytes);
         Assert.That(getPayload.Data, Is.Not.Null);
+        Assert.That(getPayload.Data!.ExecutionPayload.Transactions, Has.Length.AtLeast(expectedTxCount),
+            "payload must carry the submitted transactions");
 
         return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
     }

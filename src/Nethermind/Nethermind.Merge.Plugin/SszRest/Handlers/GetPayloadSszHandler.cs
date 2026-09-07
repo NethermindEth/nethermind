@@ -51,7 +51,7 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
         // stackalloc so a malformed hex never allocates; on success we materialize
         // one byte[8] for the IEngineRpcModule call (JSON-RPC binds byte[]).
         Span<byte> stack = stackalloc byte[PayloadIdByteLength];
-        if (Convert.FromHexString(hex, stack, out _, out _) != OperationStatus.Done)
+        if (!TryDecodeHexPathExtra(extra, stack))
             return Out([], $"Invalid payload ID: '{extra}'", out id, out err);
 
         return Out(stack.ToArray(), error: null, out id, out err);

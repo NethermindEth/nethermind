@@ -1,22 +1,32 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Test.Tracing;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Evm.Test;
 
@@ -48,11 +58,227 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
+    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
+    {
+        public int PollCount { get; private set; }
+
+        public override bool IsTracingInstructions => false;
+
+        bool ITxTracer.IsCancelable => true;
+
+        bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
+    }
+
     [Test]
     public void Stop()
     {
         TestAllTracerWithOutput receipt = Execute((byte)Instruction.STOP);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
+    }
+
+    [Test]
+    public void Opcode_refresh_recaptures_frame_handlers()
+    {
+        Type tableType = (typeof(VirtualMachine<>).GetNestedType("OpcodeTable", BindingFlags.NonPublic)
+            ?? throw new AssertionException("OpcodeTable was renamed or removed."))
+            .MakeGenericType(typeof(EthereumGasPolicy));
+        object table = Activator.CreateInstance(tableType, nonPublic: true)!;
+        MethodInfo getHandlers = tableType.GetMethod("GetExecutionHandlers")
+            ?? throw new AssertionException("GetExecutionHandlers was renamed or removed.");
+        MethodInfo refresh = tableType.GetMethod("RefreshNonTraced")
+            ?? throw new AssertionException("RefreshNonTraced was renamed or removed.");
+        object[] arguments = [SpecProvider.GenesisSpec];
+        object before = getHandlers.Invoke(table, arguments)!;
+
+        refresh.Invoke(table, arguments);
+        object after = getHandlers.Invoke(table, arguments)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after, Is.Not.SameAs(before), "refresh must recapture the frame function pointers");
+            Assert.That(getHandlers.Invoke(table, arguments), Is.SameAs(after), "subsequent transactions reuse the refreshed handlers");
+        }
+    }
+
+    [Test]
+    public void Frame_handlers_are_reused_across_blocks_and_reselected_across_forks()
+    {
+        Execute((0UL, 0UL), (byte)Instruction.STOP);
+        Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
+        object frontier = ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine);
+        Execute((1UL, 0UL), (byte)Instruction.STOP);
+        Assert.That(ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine), Is.SameAs(frontier));
+
+        Execute((MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL), (byte)Instruction.STOP);
+        object spuriousDragon = ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine);
+        Assert.That(spuriousDragon, Is.Not.SameAs(frontier));
+
+        Execute((0UL, 0UL), (byte)Instruction.STOP);
+        Assert.That(ReadWarmedOpcodeField(vmType, "_executionHandlers", Machine), Is.SameAs(frontier));
+    }
+
+    [Test]
+    public void Warm_up_opcode_handlers_does_not_throw() =>
+        Assert.That(
+            () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
+            Throws.Nothing);
+
+    [TestCase(0UL, 0UL)]
+    [TestCase(MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase(20_000_000UL, MainnetSpecProvider.ShanghaiBlockTimestamp - 1)]
+    [TestCase(20_000_000UL, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+    [TestCase(23_000_000UL, MainnetSpecProvider.PragueBlockTimestamp)]
+    [TestCase(25_000_000UL, MainnetSpecProvider.OsakaBlockTimestamp)]
+    [TestCase(25_000_000UL, MainnetSpecProvider.BPO2BlockTimestamp)]
+    [TestCase(20_000_000UL, 99UL, true)]
+    [TestCase(20_000_000UL, 100UL, true)]
+    public unsafe void Warm_up_populates_the_processing_specs_opcode_tables(ulong number, ulong timestamp, bool customSchedule = false)
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        if (customSchedule)
+        {
+            chainSpec.ChainId = 12345;
+            chainSpec.Parameters.Eip3855TransitionTimestamp = 100;
+        }
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(), chainSpec, useTestSpecProvider: false))
+            .Build();
+        ISpecProvider provider = container.Resolve<ISpecProvider>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithTimestamp(timestamp).WithGasLimit(30_000_000).TestObject;
+        IReleaseSpec spec = provider.GetSpec(header);
+        EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository, provider, (number, timestamp));
+
+        object cache = ReadWarmedOpcodeField(typeof(VirtualMachine<EthereumGasPolicy>), "_opcodeTablesBySpec");
+        object[] arguments = [spec, null!];
+        Assert.That(cache.GetType().GetMethod(nameof(ConditionalWeakTable<object, object>.TryGetValue))!.Invoke(cache, arguments), Is.True,
+            "warmup must populate the entry keyed by the chain provider's spec instance");
+        object table = arguments[1];
+        object warmedExecutionHandlers = ReadWarmedOpcodeField(table.GetType(), "_executionHandlers", table);
+        string[] tableNames = ["NoTrace", "NoTraceCancelable", "Traced", "TracedCancelable"];
+        object[] warmedTables = new object[tableNames.Length];
+        for (int i = 0; i < tableNames.Length; i++)
+        {
+            warmedTables[i] = ReadWarmedOpcodeField(table.GetType(), tableNames[i], table);
+        }
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(header, provider.GetSpec(header)));
+        object[] processingTables =
+        [
+            Machine.GetOpcodeHandlers<OffFlag, OffFlag>(),
+            Machine.GetOpcodeHandlers<OffFlag, OnFlag>(),
+            Machine.GetOpcodeHandlers<OnFlag, OffFlag>(),
+            Machine.GetOpcodeHandlers<OnFlag, OnFlag>()
+        ];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < tableNames.Length; i++)
+                Assert.That(processingTables[i], Is.SameAs(warmedTables[i]), tableNames[i]);
+        }
+
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = new()
+        {
+            IsServiceTransaction = true,
+            GasLimit = 30_000_000,
+            SenderAddress = Address.SystemUser,
+            To = Address.FromNumber(0x10000)
+        };
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+        _processor.CallAndRestore(tx, tracer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadWarmedOpcodeField(typeof(VirtualMachine<EthereumGasPolicy>), "_executionHandlers", Machine), Is.SameAs(warmedExecutionHandlers));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "the warmup contract must be valid for the selected fork");
+            Assert.That(tracer.ReportedActionErrors, Is.Empty, "the selected fork's precompile gas cost must be covered");
+            if (spec.IsEip196Enabled)
+                Assert.That(tracer.Actions, Has.Some.Matches<TestAllTracerWithOutput.ActionTrace>(action =>
+                    action.IsPrecompileCall && action.To == BN254AddPrecompile.Address));
+        }
+    }
+
+    private static object ReadWarmedOpcodeField(Type type, string name, object? instance = null)
+    {
+        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
+            | (instance is null ? BindingFlags.Static : BindingFlags.Instance);
+        FieldInfo field = type.GetField(name, flags)
+            ?? throw new AssertionException($"Opcode cache field {type.Name}.{name} was renamed or removed.");
+        return field.GetValue(instance)
+            ?? throw new AssertionException($"Opcode cache field {type.Name}.{name} was not populated by warmup.");
+    }
+
+    [Test]
+    public void Tail_call_opcode_table_dispatch_executes_maximum_length_code_without_growing_the_managed_stack()
+    {
+        byte[] code = new byte[CodeSizeConstants.MaxCodeSizeEip170];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[^1] = (byte)Instruction.STOP;
+
+        TestAllTracerWithOutput receipt = ExecuteUntraced(100_000UL, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + (ulong)code.Length - 1), "gas");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(code.Length), "opcode count");
+        }
+    }
+
+    [Test]
+    public void Tail_call_jumpi_dispatch_executes_a_deep_counted_loop_without_growing_the_managed_stack()
+    {
+        const int loopIterations = 2_000_000;
+        byte[] code = Prepare.EvmCode
+            .PushData(loopIterations)
+            .Op(Instruction.JUMPDEST)
+            .PushData(1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .PushData(4)
+            .Op(Instruction.JUMPI)
+            .Op(Instruction.STOP)
+            .Done;
+
+        const ulong gasLimit = 200_000_000UL;
+        TestAllTracerWithOutput receipt = ExecuteUntraced(gasLimit, code, blockGasLimit: gasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(7 * loopIterations + 2), "opcode count");
+        }
+    }
+
+    [TestCase(1023, true, 1)]
+    [TestCase(1024, false, 1)]
+    [TestCase(1024, true, 2)]
+    [TestCase(2048, true, 3)]
+    public void Cancellation_is_polled_before_the_first_opcode_and_each_complete_1024_opcode_batch(
+        int continuingOpcodeCount,
+        bool appendStop,
+        int expectedPollCount)
+    {
+        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        if (appendStop)
+            code[^1] = (byte)Instruction.STOP;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+    }
+
+    [Test]
+    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode()
+    {
+        byte[] code = new byte[1025];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[^1] = (byte)Instruction.STOP;
+        CountingCancellationTracer tracer = new(cancelAtPoll: 2);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
+        Assert.That(tracer.PollCount, Is.EqualTo(2));
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]
@@ -95,9 +321,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code)
+    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code, blockGasLimit: blockGasLimit);
         NoInstructionTracer tracer = new();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
