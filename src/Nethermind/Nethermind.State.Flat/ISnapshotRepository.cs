@@ -78,7 +78,7 @@ public interface ISnapshotRepository
     void MarkPersistedTierForShutdown();
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
-    /// <remarks>Also evicts cached finalized roots below that height.</remarks>
+    /// <remarks>Also evicts cached finalized roots and verified ancestry below that height.</remarks>
     void RemovePersistedStatesUntil(ulong blockNumber);
 
     /// <summary>Remove persisted snapshots at or below finality whose state root differs from the

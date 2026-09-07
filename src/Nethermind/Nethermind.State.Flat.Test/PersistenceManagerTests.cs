@@ -347,16 +347,15 @@ public class PersistenceManagerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task AddToPersistence_ReusesVerifiedAncestryUntilReorg(bool reorg)
+    [Test]
+    public async Task AddToPersistence_ReusesVerifiedAncestryUntilReorg([Values] bool reorg, [Values] bool orphanRootAboveParent)
     {
-        StateId parent = CreateStateId(1, 1);
+        // Same-height states enumerate by root, so one variant evaluates the orphan after the parent invalidated the height's root.
+        StateId parent = CreateStateId(1, orphanRootAboveParent ? (byte)1 : (byte)3);
+        StateId orphan = CreateStateId(1, orphanRootAboveParent ? (byte)3 : (byte)1);
         StateId tip = CreateStateId(2, 1);
         PersistBase(Block0, parent);
         PersistBase(parent, tip);
-        // Enumerated after the parent (same block, higher root), so it sees the height after the parent invalidated its root.
-        StateId orphan = CreateStateId(1, 2);
         PersistBase(Block0, orphan);
         _snapshotRepository.SetLastCommittedStateId(tip);
         _finalizedStateProvider.SetFinalizedBlockNumber(2);
