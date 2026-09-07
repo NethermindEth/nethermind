@@ -1,0 +1,149 @@
+# Guest cost for every pinned stateless block, compared against master.
+#
+# Unlike the wall-clock benchmarks in run-expb-reproducible-benchmarks.yml this needs no dedicated
+# runner, no warm-up and no repetition: ziskemu is deterministic, so one run per block *is* the
+# measurement and a delta of a few hundred steps is signal rather than noise. Blocks come from the
+# same pinned, checksummed set the correctness tests use.
+name: Stateless benchmarks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
+  # Bumping this invalidates every stored baseline, which is what you want if the parsed shape changes.
+  CACHE_VERSION: v1
+
+jobs:
+  measure:
+    name: Measure guest cost
+    runs-on: ubuntu-latest
+    outputs:
+      report: ${{ steps.report.outputs.report }}
+      regressed: ${{ steps.report.outputs.regressed }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Build guest
+        working-directory: ${{ env.GUEST_DIR }}
+        run: make build
+
+      - name: Download inputs
+        working-directory: ${{ env.GUEST_DIR }}
+        run: |
+          set -euo pipefail
+          jq -r '.[] | "\(.input) \(.hash)"' inputs.json | while read -r input hash; do
+            curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${input}" -o "bin/${input}"
+            echo "${hash}  bin/${input}" | sha256sum --status -c - \
+              || { echo "::error::Checksum failed for ${input}"; exit 1; }
+          done
+
+      # One ziskemu run per block yields the output hash, the step count and the cost model, so
+      # correctness and cost come from the same execution and cannot describe different builds.
+      - name: Measure
+        id: measure
+        working-directory: ${{ env.GUEST_DIR }}
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          echo '[]' > "$RUNNER_TEMP/current.json"
+          jq -r '.[] | "\(.input) \(.output)"' inputs.json | while read -r input output; do
+            echo "::group::${input}"
+            make stats INPUT="${input}" 2>&1 | tee "$RUNNER_TEMP/stats.log"
+            echo "::endgroup::"
+
+            grep -q "^${output}0101000000000000000100" "$RUNNER_TEMP/stats.log" \
+              || { echo "::error::${input}: output mismatch — cost figures would describe a broken run"; exit 1; }
+
+            python3 "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
+              --input "${input}" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
+          done
+
+      - name: Restore master baseline
+        id: baseline
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/zisk-bench-baseline
+          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            zisk-bench-${{ env.CACHE_VERSION }}-
+
+      - name: Compare and report
+        id: report
+        run: |
+          set -euo pipefail
+          baseline=/tmp/zisk-bench-baseline/baseline.json
+          [[ -f "$baseline" ]] || baseline=""
+          python3 scripts/zisk-bench/report.py \
+            --current "$RUNNER_TEMP/current.json" \
+            ${baseline:+--baseline "$baseline"} \
+            --commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Stage baseline
+        if: github.event_name == 'push' && github.ref_name == 'master'
+        run: |
+          mkdir -p /tmp/zisk-bench-baseline
+          cp "$RUNNER_TEMP/current.json" /tmp/zisk-bench-baseline/baseline.json
+
+      - name: Save master baseline
+        if: github.event_name == 'push' && github.ref_name == 'master'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/zisk-bench-baseline
+          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ github.sha }}
+
+  # Separated so the measuring job keeps `contents: read` and never holds write scope while it runs
+  # a downloaded binary. Skipped for forks, whose tokens cannot comment anyway.
+  comment:
+    name: Publish comparison
+    needs: measure
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Publish PR comparison comment
+        uses: actions/github-script@v8
+        env:
+          COMMENT_BODY: ${{ needs.measure.outputs.report }}
+        with:
+          script: |
+            const marker = '<!-- zisk-guest-benchmark-report -->';
+            const body = process.env.COMMENT_BODY;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.body && comment.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

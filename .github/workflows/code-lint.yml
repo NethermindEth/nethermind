@@ -85,6 +85,21 @@ jobs:
       - name: Run script test suites
         run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
 
+  zisk-bench-scripts:
+    name: Test zkVM benchmark scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/zisk-bench -p 'test*.py' -v
+
   sync-scripts:
     name: Test sync workflow scripts
     runs-on: ubuntu-latest
