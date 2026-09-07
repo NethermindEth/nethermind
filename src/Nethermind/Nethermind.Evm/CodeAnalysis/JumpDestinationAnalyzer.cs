@@ -38,6 +38,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
         _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();

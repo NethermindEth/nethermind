@@ -374,6 +374,7 @@ public static partial class EvmInstructions
     }
 
     /// <inheritdoc cref="JumpDestination(ref byte, ExecutionEnvironment)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ExecutionEnvironment env) =>
         env.CodeInfo.ValidateJump(jumpDestination) ? jumpDestination : -1;
 
