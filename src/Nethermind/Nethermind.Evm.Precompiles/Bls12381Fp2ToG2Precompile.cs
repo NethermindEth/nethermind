@@ -18,7 +18,7 @@ public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Prec
 
     public static Address Address { get; } = Address.FromNumber(0x11);
 
-    public static string Name => "BLS12_MAP_FP2_TO_G2";
+    public string Name => "BLS12_MAP_FP2_TO_G2";
 
     public ulong BaseGasCost(IReleaseSpec _) => 23800UL;
 

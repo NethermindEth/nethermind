@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -15,7 +14,7 @@ namespace Nethermind.Evm.Precompiles;
 ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
 /// </summary>
 [Obsolete("Pre-eip2565 implementation")]
-public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
+public partial class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
 {
     public static ModExpPrecompilePreEip2565 Instance { get; } = new();
     private static readonly UInt256 Eight = 8;
@@ -26,7 +25,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public static Address Address { get; } = Address.FromNumber(5);
 
-    public static string Name => "MODEXP";
+    public string Name => "MODEXP";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
@@ -97,31 +96,12 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         return gas > ulong.MaxValue ? ulong.MaxValue : (ulong)gas;
     }
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        Metrics.ModExpPrecompile++;
-
-        ReadOnlySpan<byte> span = inputData.Span;
-        int baseLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger());
-        int expLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger());
-        int modulusLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger());
-
-        BigInteger modulusInt = SafeSlice(span, 96L + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
-
-        if (modulusInt.IsZero)
-        {
-            return new byte[modulusLength];
-        }
-
-        BigInteger baseInt = span.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-        BigInteger expInt = SafeSlice(span, 96L + baseLength, expLength).ToUnsignedBigInteger();
-        return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
-    }
-
-    private static int SafeCast(BigInteger value) => value > int.MaxValue ? int.MaxValue : (int)value;
-
-    private static ReadOnlySpan<byte> SafeSlice(ReadOnlySpan<byte> bytes, long startIndex, int length) =>
-        startIndex > int.MaxValue ? default : bytes.SliceWithZeroPaddingEmptyOnError((int)startIndex, length);
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Split by build: the body is the only BigInteger user in the EVM, and EIP-2565 has been active
+    /// since Berlin, so a guest built for later forks can never reach it.
+    /// </remarks>
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
     private static UInt256 MultComplexity(in UInt256 adjustedExponentLength)
     {
