@@ -119,13 +119,13 @@ namespace Nethermind.Benchmark.Runner
 
         private static TEnum? GetOptionalEnum<TEnum>(string[] args, string name) where TEnum : struct, Enum
         {
-            string? value = GetOptionalArgument(args, name);
+            string value = GetOptionalArgument(args, name);
             if (value is null) return null;
             if (Enum.TryParse(value, ignoreCase: true, out TEnum result)) return result;
             throw new ArgumentException($"Unknown {name} value '{value}'.", name);
         }
 
-        private static string? GetOptionalArgument(string[] args, string name)
+        private static string GetOptionalArgument(string[] args, string name)
         {
             for (int i = 0; i < args.Length - 1; i++)
             {
