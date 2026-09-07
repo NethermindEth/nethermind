@@ -207,12 +207,34 @@ internal sealed class HistoryWalkRun
 
     private void RunParallel(List<Action> items, int workers)
     {
-        ParallelOptions options = new() { MaxDegreeOfParallelism = Math.Max(1, workers), CancellationToken = _token };
+        ConcurrentQueue<Action> queue = new(items);
+        bool failed = false;
+        Task[] runners = new Task[Math.Max(1, workers)];
+        for (int i = 0; i < runners.Length; i++)
+        {
+            runners[i] = Task.Factory.StartNew(() =>
+            {
+                while (!Volatile.Read(ref failed) && queue.TryDequeue(out Action? item))
+                {
+                    _token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        item();
+                    }
+                    catch
+                    {
+                        Volatile.Write(ref failed, true);
+                        throw;
+                    }
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+
         try
         {
-            Parallel.ForEach(Partitioner.Create(items, EnumerablePartitionerOptions.NoBuffering), options, static item => item());
+            Task.WaitAll(runners);
         }
-        catch (AggregateException e) when (e.InnerExceptions.Count == 1)
+        catch (AggregateException e)
         {
             ExceptionDispatchInfo.Capture(e.InnerExceptions[0]).Throw();
         }
@@ -289,6 +311,7 @@ internal sealed class HistoryWalkRun
         }
 
         StorageGroupFrontier frontier = new(found, _checkpointGroups, prefix => Checkpoint(item, prefix, found, pending: null));
+        MismatchBudget budget = new(Math.Max(0, MismatchSink.MaxRecordedPerItem - found.Count));
         BorrowedWork borrowed = new(_slots);
         Exception? failure = null;
         try
@@ -300,7 +323,7 @@ internal sealed class HistoryWalkRun
                 {
                     _token.ThrowIfCancellationRequested();
                     borrowed.ThrowIfFailed();
-                    MismatchSink groupFound = new(MismatchSink.MaxRecordedPerItem);
+                    MismatchSink groupFound = new(MismatchSink.MaxRecordedPerItem, budget);
                     long sequence = frontier.Issue(BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), groupFound);
                     Action replay = () =>
                     {
@@ -377,8 +400,10 @@ internal sealed class HistoryWalkRun
         {
             for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
             {
+                _token.ThrowIfCancellationRequested();
+                borrowed.ThrowIfFailed();
                 HashSet<ValueHash256> seen = seenPerChild[nibble] = [];
-                MismatchSink childFound = foundPerChild[nibble] = new MismatchSink(MismatchSink.MaxRecordedPerItem);
+                MismatchSink childFound = foundPerChild[nibble] = new MismatchSink(MismatchSink.MaxRecordedPerItem, found.Budget);
                 TreePath child = slotPrefix.Append(nibble);
                 Action replay = () => ProcessStoragePartition(storagePrefix, child, clears, seen, item, childFound);
                 if (!borrowed.TryStart(replay)) replay();
