@@ -1124,7 +1124,9 @@ public class Eip8297CanonicalTreeTests
         changes.Set(replacement, new ValueHash256(Value(2)));
         if (conflict)
         {
-            Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, PbtWriteBatchSet.Create(changes.Build())));
+            TrackingMemoryProvider memoryProvider = new();
+            Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, PbtWriteBatchSet.Create(changes.Build()), memoryProvider: memoryProvider));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
             return;
         }
 
@@ -1698,13 +1700,15 @@ public class Eip8297CanonicalTreeTests
             };
         }
 
-        Action update = () => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(2))));
+        TrackingMemoryProvider memoryProvider = new();
+        Action update = () => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(2))), null, memoryProvider);
         if (applyFailure) Assert.Throws<InvalidOperationException>(update);
         else Assert.Throws<InvalidDataException>(update);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure + (applyFailure ? 1 : 0)));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
 
         AssertAllMemoryReleased(store);
@@ -1718,11 +1722,13 @@ public class Eip8297CanonicalTreeTests
         int appliesBeforeFailure = store.Applies;
         store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
 
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(3)))));
+        TrackingMemoryProvider memoryProvider = new();
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(3))), null, memoryProvider));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
 
         AssertAllMemoryReleased(store);
@@ -1773,6 +1779,157 @@ public class Eip8297CanonicalTreeTests
         }
 
         AssertAllMemoryReleased(store);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Owned_node_encodings_are_released_after_mutations_and_partition_folds(bool parallel)
+    {
+        TrackingMemoryProvider memoryProvider = new() { FillByte = 0xFF };
+        using PbtNodeGroupStore store = new();
+        using PbtNodeGroupStore expectedStore = new();
+        EipReferenceTree oracle = new();
+        ValueHash256 root = default;
+        ValueHash256 expectedRoot = default;
+        byte[][] keys = [Bytes.FromHexString("00123450"), Bytes.FromHexString("00123458"), Bytes.FromHexString("00123800"), Bytes.FromHexString("01123450"), Bytes.FromHexString("ff123450")];
+        (byte[] Key, byte[]? Value)[][] batches =
+        [
+            [(keys[0], Value(1)), (keys[1], Value(2)), (keys[2], Value(3)), (keys[3], Value(4)), (keys[4], Value(5))],
+            [],
+            [(keys[0], Value(1))],
+            [(keys[1], Value(6)), (keys[2], null)],
+            [(keys[0], null)],
+            [(keys[1], null), (keys[3], null), (keys[4], null)],
+        ];
+        foreach ((byte[] Key, byte[]? Value)[] changes in batches)
+        {
+            root = ApplyTracked(store, root, changes, parallel, memoryProvider);
+            expectedRoot = TrieUpdater.UpdateRoot(expectedStore, expectedRoot, Batch(changes));
+            foreach ((byte[] key, byte[]? value) in changes)
+            {
+                if (value is null) oracle.Delete(key);
+                else oracle.Insert(key, value);
+            }
+            using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root, Is.EqualTo(expectedRoot));
+                Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+                Assert.That(PhysicalRecords(reopened.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(expectedStore.ExportPhysicalPayloads())));
+                Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+            }
+        }
+        Assert.That(memoryProvider.RentCount, Is.GreaterThan(0));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Owned_node_encodings_are_released_at_every_rent_failure(bool parallel)
+    {
+        (byte[] Key, byte[]? Value)[] changes =
+        [
+            (Bytes.FromHexString("00123450"), Value(1)), (Bytes.FromHexString("00123458"), Value(2)),
+            (Bytes.FromHexString("01123450"), Value(3)), (Bytes.FromHexString("01123458"), Value(4)),
+            (Bytes.FromHexString("ff123450"), Value(5)), (Bytes.FromHexString("ff123458"), Value(6)),
+        ];
+        TrackingMemoryProvider successfulProvider = new();
+        using (PbtNodeGroupStore store = new()) ApplyTracked(store, default, changes, parallel, successfulProvider);
+        Assert.That(TrackingMemoryProvider.CountUnreleased(successfulProvider.Rented), Is.Zero);
+        for (int rent = 1; rent <= successfulProvider.RentCount; rent++)
+        {
+            TrackingMemoryProvider memoryProvider = new() { ThrowOnRent = rent };
+            using PbtNodeGroupStore store = new();
+            Exception? exception = Assert.Catch(() => ApplyTracked(store, default, changes, parallel, memoryProvider));
+            if (exception is AggregateException aggregateException)
+                Assert.That(aggregateException.Flatten().InnerExceptions, Has.All.TypeOf<InvalidOperationException>());
+            else
+                Assert.That(exception, Is.TypeOf<InvalidOperationException>());
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero, $"failed rental {rent}");
+        }
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(false, 8)]
+    [TestCase(true, 0)]
+    [TestCase(true, 8)]
+    public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails(bool parallel, int failedDepth)
+    {
+        TrackingMemoryProvider memoryProvider = new();
+        TrackingMemoryProvider storeProvider = new();
+        using PbtNodeGroupStore innerStore = new(storeProvider);
+        FailingPublishStore store = new(innerStore, failedDepth);
+        (byte[] Key, byte[]? Value)[] changes =
+        [
+            (Bytes.FromHexString("00000000"), Value(1)), (Bytes.FromHexString("00800000"), Value(2)),
+            (Bytes.FromHexString("01000000"), Value(3)), (Bytes.FromHexString("01800000"), Value(4)),
+            (Bytes.FromHexString("ff000000"), Value(5)), (Bytes.FromHexString("ff800000"), Value(6)),
+        ];
+        Assert.Catch(() => ApplyTracked(store, default, changes, parallel, memoryProvider));
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        innerStore.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(storeProvider.Rented), Is.Zero);
+    }
+
+    private sealed class FailingPublishStore(IPbtStore store, int failedDepth) : IPbtStore
+    {
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => store.GetNodeGroup(groupKey);
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+        {
+            if (groupKey.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
+            store.SetNodeGroup(groupKey, payload);
+        }
+    }
+
+    [Test]
+    public void Promoted_subtree_retains_read_lease_after_its_frame_is_disposed()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(
+            (Bytes.FromHexString("123450"), Value(1)), (Bytes.FromHexString("123458"), Value(2)), (Bytes.FromHexString("80"), Value(3))));
+        TrackingMemoryProvider readProvider = new();
+        TrackingMemoryProvider nodeProvider = new() { FillByte = 0xFF };
+        RefCountingMemory? promotedPayload = null;
+        bool checkedPromotion = false;
+        store.OverrideGroup = groupKey =>
+        {
+            using RefCountingMemory? stored = store.Inner.GetNodeGroup(groupKey);
+            if (stored is null) return null;
+            RefCountingMemory read = readProvider.Rent(stored.Memory.Length);
+            stored.GetSpan().CopyTo(read.GetSpan());
+            if (groupKey.BitDepth == 20) promotedPayload = read;
+            return read;
+        };
+        store.OnApply = groupKey =>
+        {
+            if (groupKey.BitDepth != 0) return;
+            Assert.That(promotedPayload, Is.Not.Null);
+            promotedPayload!.AcquireLease();
+            ((IDisposable)promotedPayload).Dispose();
+            checkedPromotion = true;
+        };
+        TrieUpdater.UpdateRoot(store, root, Batch((Bytes.FromHexString("123458"), null)), null, nodeProvider);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkedPromotion, Is.True);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(readProvider.Rented), Is.Zero);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(nodeProvider.Rented), Is.Zero);
+        }
+        AssertAllMemoryReleased(store);
+    }
+
+    private static ValueHash256 ApplyTracked(IPbtStore store, ValueHash256 root, (byte[] Key, byte[]? Value)[] changes, bool parallel, TrackingMemoryProvider memoryProvider)
+    {
+        if (!parallel) return TrieUpdater.UpdateRoot(store, root, Batch(changes), null, memoryProvider);
+        Dictionary<PbtPartition, PbtWriteBatch> partitions = [];
+        foreach (PbtPartition partition in new[] { PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage })
+        {
+            byte zone = partition == PbtPartition.Storage ? (byte)0xFF : (byte)partition;
+            using PbtWriteBatchBuilder builder = new(2);
+            foreach ((byte[] key, byte[]? value) in changes)
+                if (key[0] == zone) builder.SetLeaf(new PbtFullKey(key), value is null ? null : new ValueHash256(value));
+            partitions.Add(partition, builder.Build());
+        }
+        return TrieUpdater.UpdateRoot(store, root, partitions, null, memoryProvider);
     }
 
     private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch
@@ -1893,6 +2050,7 @@ public class Eip8297CanonicalTreeTests
         internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
         internal Func<PbtNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
         internal bool ThrowOnApply { get; set; }
+        internal Action<PbtNodePath>? OnApply { get; set; }
 
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
@@ -1935,6 +2093,7 @@ public class Eip8297CanonicalTreeTests
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             Applies++;
+            OnApply?.Invoke(groupKey);
             LastNodeWrites += Inner.CountNodeChanges(groupKey, payload);
             if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
             Inner.SetNodeGroup(groupKey, payload);

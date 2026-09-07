@@ -18,6 +18,7 @@ public sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
     public IReadOnlyList<RefCountingMemory> Rented => _rented;
     public int RentCount => Volatile.Read(ref _rentCount);
     public int? ThrowOnRent { get; set; }
+    public byte? FillByte { get; set; }
 
     /// <remarks>Locked: a parallel fold rents from every one of its worker threads.</remarks>
     public RefCountingMemory Rent(int length)
@@ -25,6 +26,7 @@ public sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
         int rentNumber = Interlocked.Increment(ref _rentCount);
         if (rentNumber == ThrowOnRent) throw new InvalidOperationException("Configured memory-rent failure.");
         RefCountingMemory memory = PooledRefCountingMemoryProvider.Instance.Rent(length);
+        if (FillByte is { } fillByte) memory.GetSpan().Fill(fillByte);
         lock (_lock) _rented.Add(memory);
         return memory;
     }

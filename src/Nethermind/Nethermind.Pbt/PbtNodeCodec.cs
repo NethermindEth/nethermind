@@ -63,11 +63,18 @@ internal static class PbtNodeCodec
         if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
         byte[] encoding = GC.AllocateUninitializedArray<byte>(3 + key.Length + 32);
-        encoding[0] = LeafTag;
-        BinaryPrimitives.WriteUInt16BigEndian(encoding.AsSpan(1), (ushort)key.Length);
-        key.Bytes.CopyTo(encoding.AsSpan(3));
-        value.CopyTo(encoding.AsSpan(3 + key.Length));
+        EncodeLeaf(encoding, key, value);
         return encoding;
+    }
+
+    internal static void EncodeLeaf(Span<byte> encoding, PbtFullKey key, ReadOnlySpan<byte> value)
+    {
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
+        if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
+        encoding[0] = LeafTag;
+        BinaryPrimitives.WriteUInt16BigEndian(encoding[1..], (ushort)key.Length);
+        key.Bytes.CopyTo(encoding[3..]);
+        value.CopyTo(encoding[(3 + key.Length)..]);
     }
 
     internal static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right)
@@ -87,10 +94,19 @@ internal static class PbtNodeCodec
         if (left == default || right == default) throw new InvalidDataException("A PBT branch must have two non-empty children.");
         int prefixLength = PbtBitPrefix.ByteCount(bitCount);
         byte[] encoding = new byte[3 + prefixLength + 64];
-        encoding[0] = BranchTag;
-        BinaryPrimitives.WriteUInt16BigEndian(encoding.AsSpan(1), (ushort)bitCount);
-        left.Bytes.CopyTo(encoding.AsSpan(3 + prefixLength));
-        right.Bytes.CopyTo(encoding.AsSpan(3 + prefixLength + 32));
+        CreateBranchEncoding(encoding, bitCount, left, right);
         return encoding;
+    }
+
+    internal static void CreateBranchEncoding(Span<byte> encoding, int bitCount, in ValueHash256 left, in ValueHash256 right)
+    {
+        if ((uint)bitCount > PbtBitPrefix.MaxBitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
+        if (left == default || right == default) throw new InvalidDataException("A PBT branch must have two non-empty children.");
+        int prefixLength = PbtBitPrefix.ByteCount(bitCount);
+        encoding[0] = BranchTag;
+        BinaryPrimitives.WriteUInt16BigEndian(encoding[1..], (ushort)bitCount);
+        encoding.Slice(3, prefixLength).Clear();
+        left.Bytes.CopyTo(encoding[(3 + prefixLength)..]);
+        right.Bytes.CopyTo(encoding[(3 + prefixLength + 32)..]);
     }
 }

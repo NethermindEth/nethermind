@@ -368,7 +368,7 @@ public class PbtNodeGroupTests
     }
 
     [TestCase("0000,0800", "0800", false, new[] { 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_group_root_handoff")]
-    [TestCase("0000,0080,0800", "0080,0800", false, new[] { 8, 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_nested_groups")]
+    [TestCase("0000,0080,0800", "0080,0800", false, new[] { 4, 8, 0 }, TestName = "Escaping_subtree_survives_poisoned_nested_groups")]
     [TestCase("0000,0080,0800", "0080,0800", true, new[] { 8, 4, 0 }, TestName = "Owned_subtree_survives_poisoned_nested_groups")]
     [TestCase("0000,0008", "0080", false, new[] { 0 }, TestName = "Ancestor_borrowed_subtree_survives_child_frame_return")]
     public void Returned_subtrees_survive_group_lease_release(string initialKeys, string deletedKeys, bool replaceSurvivor, int[] releasedDepths)
@@ -404,7 +404,7 @@ public class PbtNodeGroupTests
 
         ValueHash256 actualRoot = TrieUpdater.UpdateRoot(store, root, batch.Build());
 
-        Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "leases are poisoned synchronously as frames exit, before parent placement");
+        Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "payloads are poisoned when their last owning frame or subtree releases them");
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.Inner.ExportPhysicalPayloads());
         IReadOnlyList<PbtNodeRecord> actualRecords = reopened.EnumerateRecords();
         IReadOnlyList<PbtNodeRecord> expectedRecords = expected.Nodes;
