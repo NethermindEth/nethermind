@@ -121,7 +121,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int frameEnd = ctx.ReadSequenceLength() + ctx.Position;
                 byte status = ctx.DecodeByte();
-                if (status > TxFrameReceipt.StatusSkipped)
+                if (status is not (TxFrameReceipt.StatusFailure or TxFrameReceipt.StatusSuccess or TxFrameReceipt.StatusSkipped))
                 {
                     // AggregateStatus folds anything but success to failure while RPC surfaces the raw byte,
                     // so an out-of-range status would read differently at the two ends of the same receipt.
