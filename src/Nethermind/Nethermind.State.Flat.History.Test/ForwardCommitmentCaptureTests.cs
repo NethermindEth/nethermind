@@ -46,11 +46,18 @@ public class ForwardCommitmentCaptureTests
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         _metadata = new CommitmentMetadata(_historyColumns, Policy);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        ForwardCommitmentCapture capture = new(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance);
+        ForwardCommitmentCapture capture = Track(new ForwardCommitmentCapture(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance));
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
     }
 
     private readonly List<CommitmentReclaimer> _reclaimers = [];
+    private readonly List<ForwardCommitmentCapture> _captures = [];
+
+    private ForwardCommitmentCapture Track(ForwardCommitmentCapture capture)
+    {
+        _captures.Add(capture);
+        return capture;
+    }
 
     private CommitmentReclaimer CreateReclaimer(ArchiveProofSettings settings)
     {
@@ -62,6 +69,7 @@ public class ForwardCommitmentCaptureTests
     [TearDown]
     public void TearDown()
     {
+        foreach (ForwardCommitmentCapture capture in _captures) capture.Dispose();
         foreach (CommitmentReclaimer reclaimer in _reclaimers) reclaimer.Dispose();
         _reclaimers.Clear();
         _tier.Dispose();
@@ -219,8 +227,8 @@ public class ForwardCommitmentCaptureTests
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        ForwardCommitmentCapture bounded = new(
-            _historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes);
+        ForwardCommitmentCapture bounded = Track(new ForwardCommitmentCapture(
+            _historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes));
         return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
     }
 
