@@ -77,6 +77,24 @@ namespace Nethermind.TxPool
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
+
+        /// <summary>
+        /// Drops <paramref name="tx"/> as unbuildable, so later blocks stop re-burning its validation prefix.
+        /// </summary>
+        /// <remarks>
+        /// Everything <see cref="RemoveTransaction"/> does, plus: <see cref="EvictedPending"/> is raised after
+        /// <see cref="RemovedPending"/>, and the hash leaves the long-term known-hash cache so the same
+        /// transaction may be resubmitted. That last part is what makes this a drop rather than a verdict —
+        /// the reasons block production evicts for turn on head state and can reverse — so callers must not
+        /// use it to blacklist a transaction.
+        /// Removal is atomic and the rest of the work follows it, so repeated calls are idempotent: only the
+        /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
+        /// eviction, and a call for a transaction the pool does not hold changes nothing.
+        /// Runs without the pool's head lock, so it may land at any point of a concurrent head update.
+        /// </remarks>
+        /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
+        /// pooled one rather than a re-decoded copy sharing its hash.</param>
+        /// <returns><see langword="true"/> if this call removed the transaction from the pool.</returns>
         bool EvictTransaction(Transaction tx);
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();

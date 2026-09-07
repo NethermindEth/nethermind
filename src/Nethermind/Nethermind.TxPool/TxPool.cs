@@ -457,7 +457,9 @@ namespace Nethermind.TxPool
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
         /// </remarks>
         /// <param name="resolvedPayer">A payer the sweep resolved but did not record, so it is still tracked.</param>
-        private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null)
+        /// <param name="onlyIfTracked">Set by revalidation, which re-indexes a transaction the pool already holds
+        /// rather than admitting one, so an eviction that landed meanwhile is not undone.</param>
+        private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false)
         {
             // Under persistent blob storage the pool holds a frameless light record. There is no prefix left
             // to re-resolve, so indexing it would only queue a revalidation that must reject it.
@@ -474,7 +476,8 @@ namespace Nethermind.TxPool
             if (hasDistinctPayer) accounts[next++] = payer!;
             if (delegated is not null) accounts[next] = delegated;
 
-            _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
+            if (onlyIfTracked) _frameDependencies.Update(tx.Hash!.ValueHash256, accounts);
+            else _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
@@ -1115,12 +1118,14 @@ namespace Nethermind.TxPool
         /// <em>Which</em> of that payer's transactions survive follows index iteration order, not the spec's
         /// nearest-expiry-then-lowest-fee order.
         /// A transaction that stays pending is re-indexed for the sender's delegation target, a head-state
-        /// snapshot that can move while the payer does not, since a payer that moves evicts instead.
+        /// snapshot that can move while the payer does not, since a payer that moves evicts instead. The
+        /// re-index is update-only: block production evicts without the head lock, so it can drop the
+        /// transaction while the prefix simulates, and recreating the entry here would leak it.
         /// </remarks>
         private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
         {
             bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
-            if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer);
+            if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer, onlyIfTracked: true);
             return stillValid;
         }
 
@@ -2289,7 +2294,7 @@ namespace Nethermind.TxPool
             return true;
         }
 
-        /// <summary>Removes a frame transaction that block production dropped because its frames did not approve payment.</summary>
+        /// <inheritdoc/>
         /// <remarks>The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure turns on chain state that can change.</remarks>
         public bool EvictTransaction(Transaction tx)
         {

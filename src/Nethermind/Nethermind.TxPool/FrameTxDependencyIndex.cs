@@ -28,21 +28,23 @@ internal sealed class FrameTxDependencyIndex
     /// <summary>Indexes <paramref name="hash"/> under each of <paramref name="accounts"/>, replacing any earlier entry.</summary>
     public void Set(ValueHash256 hash, AddressAsKey[] accounts)
     {
+        lock (_lock) SetLocked(hash, accounts);
+    }
+
+    /// <summary>Re-indexes <paramref name="hash"/> under <paramref name="accounts"/>, doing nothing if it is no longer tracked.</summary>
+    /// <remarks>The membership test and the write share this index's lock, so a removal racing a caller that read
+    /// the transaction earlier — block production evicting while its prefix re-simulates — either lands first and
+    /// leaves nothing to re-index, or lands after and clears what was written. A recreated entry would leak: later
+    /// heads skip the absent transaction without cleaning up after it, and no removal is left to run.
+    /// Membership stands in for entry identity because admission takes the pool's head read lock and revalidation
+    /// its write lock, so the same hash cannot be re-admitted between a caller's read and its update.</remarks>
+    public void Update(ValueHash256 hash, AddressAsKey[] accounts)
+    {
         lock (_lock)
         {
-            RemoveLocked(hash);
-            if (accounts.Length == 0) return;
+            if (!_byTx.ContainsKey(hash)) return;
 
-            _byTx[hash] = accounts;
-            foreach (AddressAsKey account in accounts)
-            {
-                if (!_byAccount.TryGetValue(account, out HashSet<ValueHash256>? hashes))
-                {
-                    _byAccount[account] = hashes = [];
-                }
-
-                hashes.Add(hash);
-            }
+            SetLocked(hash, accounts);
         }
     }
 
@@ -67,6 +69,23 @@ internal sealed class FrameTxDependencyIndex
     public void CollectAll(HashSet<ValueHash256> into)
     {
         lock (_lock) into.UnionWith(_byTx.Keys);
+    }
+
+    private void SetLocked(ValueHash256 hash, AddressAsKey[] accounts)
+    {
+        RemoveLocked(hash);
+        if (accounts.Length == 0) return;
+
+        _byTx[hash] = accounts;
+        foreach (AddressAsKey account in accounts)
+        {
+            if (!_byAccount.TryGetValue(account, out HashSet<ValueHash256>? hashes))
+            {
+                _byAccount[account] = hashes = [];
+            }
+
+            hashes.Add(hash);
+        }
     }
 
     private void RemoveLocked(ValueHash256 hash)
