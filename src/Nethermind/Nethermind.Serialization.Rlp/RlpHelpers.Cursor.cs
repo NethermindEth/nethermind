@@ -577,9 +577,14 @@ internal static partial class RlpHelpers
         return position + Hash256.Size;
     }
 
+    // Both address decoders are force-inlined: splitting the old allowNull flag into two methods
+    // otherwise leaves ILC calling them out of line from the reader wrappers, which measures as
+    // +17k ziskemu steps on the guest.
+
     /// <summary>Decodes a 20-byte address.</summary>
     /// <returns>The position past the item.</returns>
     /// <exception cref="RlpException">The item is an RLP null or is not an address.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int DecodeAddress(ReadOnlySpan<byte> data, int position, out Address address)
     {
         position = ReadAddressPrefix(data, position, allowNull: false, out _);
@@ -589,6 +594,7 @@ internal static partial class RlpHelpers
 
     /// <summary>Decodes a 20-byte address, or an RLP null.</summary>
     /// <returns>The position past the item.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int DecodeAddressOrNull(ReadOnlySpan<byte> data, int position, out Address? address)
     {
         position = ReadAddressPrefix(data, position, allowNull: true, out bool hasValue);
