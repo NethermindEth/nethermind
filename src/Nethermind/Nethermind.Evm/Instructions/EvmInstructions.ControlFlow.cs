@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -100,6 +101,7 @@ public static partial class EvmInstructions
         if (destination < 0) goto InvalidJumpDestination;
         if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
             return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        PrefetchCodeAtDestination(ref stack, programCounter);
 
         return new OpcodeResult(programCounter, EvmExceptionType.None);
         // Jump forward to be unpredicted by the branch predictor.
@@ -158,6 +160,7 @@ public static partial class EvmInstructions
             if (destination < 0) goto InvalidJumpDestination;
             if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
                 return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+            PrefetchCodeAtDestination(ref stack, programCounter);
         }
 
         return new OpcodeResult(programCounter, EvmExceptionType.None);
@@ -373,4 +376,25 @@ public static partial class EvmInstructions
     /// <inheritdoc cref="JumpDestination(ref byte, ExecutionEnvironment)"/>
     private static nint JumpDestination(int jumpDestination, ExecutionEnvironment env) =>
         env.CodeInfo.ValidateJump(jumpDestination) ? jumpDestination : -1;
+
+    /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PrefetchCodeAtDestination(ref EvmStack stack, nint programCounter)
+    {
+        if (Sse.IsSupported)
+        {
+            ref byte code = ref stack.Code;
+            nuint dest = (nuint)programCounter;
+            nuint codeLength = (nuint)stack.CodeLength;
+
+            if (dest < codeLength)
+            {
+                unsafe
+                {
+                    // PREFETCHT0 is a non-faulting hint; a GC relocation only makes the hint ineffective.
+                    Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, dest)));
+                }
+            }
+        }
+    }
 }
