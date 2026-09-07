@@ -147,6 +147,7 @@ public sealed class OrphanStorageRowSweep(
                 if (orphanRows.Count >= RowsPerBatch)
                 {
                     WriteProgress((uint)startPrefix);
+                    flat.SyncWal();
                     Delete(orphanRows);
                 }
             }
@@ -157,6 +158,7 @@ public sealed class OrphanStorageRowSweep(
             if (orphanRows.Count > 0)
             {
                 WriteProgress((uint)startPrefix);
+                flat.SyncWal();
                 Delete(orphanRows);
             }
 
