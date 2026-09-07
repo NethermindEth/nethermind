@@ -556,9 +556,8 @@ public class HistoryPrunerTests
             LimboLogs.Instance);
     }
 
-    [TestCase(5u)]
-    [TestCase(0u)]
-    public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler(uint pruningTimeoutSeconds)
+    [Test]
+    public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler([Values(5u, 0u)] uint pruningTimeoutSeconds)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {

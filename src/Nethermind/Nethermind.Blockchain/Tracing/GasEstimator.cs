@@ -101,7 +101,9 @@ public class GasEstimator(
 
     /// <summary>The gas an EIP-8141 frame transaction reserves, or a failure when that budget is unestimable.</summary>
     /// <remarks>There is nothing to binary-search: the budget is fixed by the signed per-frame limits. The
-    /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.</remarks>
+    /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.
+    /// The reported budget is the combined reservation, but admission bounds the execution and state
+    /// dimensions separately, so the combined figure is not what either limit is tested against.</remarks>
     private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
     {
         // The budget below is computable from an empty or oversized frame list, so a count no valid
@@ -109,10 +111,12 @@ public class GasEstimator(
         if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
             return EstimationResult.Failure(FrameTxValidation.MissingFrames);
 
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas)
+            || !FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation))
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
-        return maxGas > Math.Min(header.GasLimit, spec.GetTxGasLimitCap())
+        // EIP-8037: each dimension gets its own block budget, and only execution carries the per-tx cap.
+        return executionReservation > Math.Min(header.GasLimit, spec.GetTxGasLimitCap()) || stateReservation > header.GasLimit
             ? EstimationResult.Failure(CannotEstimateGasExceeded)
             : EstimationResult.Success(maxGas);
     }
