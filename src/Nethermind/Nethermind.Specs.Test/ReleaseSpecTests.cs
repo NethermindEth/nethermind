@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -73,6 +74,66 @@ public class ReleaseSpecTests
         Assert.That(Address.FromNumber(uint.MaxValue).CouldBePrecompile(), Is.True);
         Assert.That(Address.FromNumber((UInt256)uint.MaxValue + 1).CouldBePrecompile(), Is.False);
     }
+
+    /// <summary>Every fork flag on the interface, including the ones its base interfaces contribute.</summary>
+    private static IEnumerable<TestCaseData> EveryForkFlag()
+    {
+        Type[] declaringTypes = [typeof(IReleaseSpec), .. typeof(IReleaseSpec).GetInterfaces()];
+        HashSet<string> seen = [];
+
+        foreach (Type declaringType in declaringTypes)
+        {
+            foreach (PropertyInfo property in declaringType.GetProperties())
+            {
+                if (property.PropertyType == typeof(bool)
+                    && property.Name.StartsWith("IsEip", StringComparison.Ordinal)
+                    && property.Name.EndsWith("Enabled", StringComparison.Ordinal)
+                    && seen.Add(property.Name))
+                {
+                    yield return new TestCaseData(property).SetArgDisplayNames(property.Name);
+                }
+            }
+        }
+    }
+
+    /// <summary>An external spec that implements nothing beyond <see cref="ReleaseSpec"/> still compiles,
+    /// and reports every fork flag off.</summary>
+    /// <remarks>This is half of what the interface's remark promises implementors, and it is why adding a
+    /// fork flag does not break a downstream spec built this way. It sweeps every flag rather than the
+    /// newest ones so a flag added later cannot quietly arrive switched on.</remarks>
+    [TestCaseSource(nameof(EveryForkFlag))]
+    public void Minimal_external_spec_reports_every_fork_flag_off(PropertyInfo flag)
+    {
+        IReleaseSpec spec = new MinimalExternalSpec();
+
+        Assert.That(flag.GetValue(spec), Is.False, $"{flag.Name} is on for a spec that never set it");
+    }
+
+    /// <summary>An external spec that decorates another still compiles, and reports what it wraps.</summary>
+    /// <remarks>The other half, and the reason the flags carry no <c>=&gt; false</c> defaults: a forwarding
+    /// implementor that inherited one would report an enabled EIP as disabled. A flag that stops being
+    /// forwarded fails here instead of diverging on chain.</remarks>
+    [TestCaseSource(nameof(EveryForkFlag))]
+    public void Minimal_external_decorator_forwards_every_fork_flag(PropertyInfo flag)
+    {
+        ReleaseSpec enabled = new();
+        foreach (PropertyInfo property in typeof(ReleaseSpec).GetProperties())
+        {
+            if (property.PropertyType == typeof(bool) && property.CanWrite
+                && property.Name.StartsWith("IsEip", StringComparison.Ordinal)
+                && property.Name.EndsWith("Enabled", StringComparison.Ordinal))
+            {
+                property.SetValue(enabled, true);
+            }
+        }
+
+        Assert.That(flag.GetValue(enabled), Is.True, $"{flag.Name} could not be switched on, so the sweep proves nothing");
+        Assert.That(flag.GetValue(new MinimalExternalDecorator(enabled)), Is.True, $"{flag.Name} is not forwarded");
+    }
+
+    private sealed class MinimalExternalSpec : ReleaseSpec;
+
+    private sealed class MinimalExternalDecorator(IReleaseSpec spec) : ReleaseSpecDecorator(spec);
 
     private sealed class SpecWithPrecompileAt(Address address) : ReleaseSpec
     {
