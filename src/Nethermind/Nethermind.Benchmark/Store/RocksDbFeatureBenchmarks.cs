@@ -89,6 +89,7 @@ public static class RocksDbFeatureDatasetFactory
     private const int MissingKeyCount = 1_024;
     private const int MemtableKeyCount = 2_048;
     private const int StorageSlotsPerAddress = 64;
+    private const int MissingKeyIndexStart = 3 * EntryCount;
 
     public static RocksDbFeatureDataset Create(RocksDbFeatureDatasetKind kind)
     {
@@ -118,16 +119,29 @@ public static class RocksDbFeatureDatasetFactory
             values[i] = entries[i].Value;
         }
 
-        byte[][] missingKeys = new byte[MissingKeyCount][];
-        for (int i = 0; i < missingKeys.Length; i++)
-        {
-            missingKeys[i] = CreateMissingKey(keyLength, i);
-        }
-
         byte[][] memtableKeys = new byte[MemtableKeyCount][];
         for (int i = 0; i < memtableKeys.Length; i++)
         {
             memtableKeys[i] = CreateKey(kind, EntryCount + MissingKeyCount + i, keyLength);
+        }
+
+        // Use a separate digest domain so misses land throughout the key space and
+        // reach the table filters instead of being rejected by an SST range check.
+        byte[][] missingKeys = new byte[MissingKeyCount][];
+        for (int i = 0; i < missingKeys.Length; i++)
+        {
+            missingKeys[i] = CreateKey(kind, MissingKeyIndexStart + i, keyLength);
+        }
+
+        HashSet<byte[]> occupiedKeys = new(ByteArrayComparer.Instance);
+        for (int i = 0; i < keys.Length; i++) occupiedKeys.Add(keys[i]);
+        for (int i = 0; i < memtableKeys.Length; i++) occupiedKeys.Add(memtableKeys[i]);
+        for (int i = 0; i < missingKeys.Length; i++)
+        {
+            if (!occupiedKeys.Add(missingKeys[i]))
+            {
+                throw new InvalidOperationException("Generated a duplicate RocksDB feature benchmark key.");
+            }
         }
 
         return new RocksDbFeatureDataset
@@ -202,20 +216,27 @@ public static class RocksDbFeatureDatasetFactory
         return value;
     }
 
-    private static byte[] CreateMissingKey(int length, int index)
-    {
-        byte[] missingKey = new byte[length];
-        missingKey.AsSpan().Fill(0xFF);
-        BinaryPrimitives.WriteInt32BigEndian(missingKey.AsSpan(length - sizeof(int)), index);
-        return missingKey;
-    }
-
     private static byte[] Digest(RocksDbFeatureDatasetKind kind, int index)
     {
         Span<byte> input = stackalloc byte[8];
         BinaryPrimitives.WriteInt32LittleEndian(input, (int)kind);
         BinaryPrimitives.WriteInt32LittleEndian(input[4..], index);
         return SHA256.HashData(input);
+    }
+
+    private sealed class ByteArrayComparer : IEqualityComparer<byte[]>
+    {
+        public static ByteArrayComparer Instance { get; } = new();
+
+        public bool Equals(byte[]? left, byte[]? right) =>
+            ReferenceEquals(left, right) || left is not null && right is not null && left.AsSpan().SequenceEqual(right);
+
+        public int GetHashCode(byte[] value)
+        {
+            HashCode hash = new();
+            hash.AddBytes(value);
+            return hash.ToHashCode();
+        }
     }
 }
 

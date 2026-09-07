@@ -64,16 +64,6 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v6
 
-      - name: Free unused runner disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          android: false
-          dotnet: false
-          haskell: false
-          large-packages: false
-          docker-images: false
-
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
@@ -136,7 +126,7 @@ jobs:
               --rocksdb-feature-standalone \
               --rocksdb-feature-dataset "${DATASET}" \
               --rocksdb-feature-variant "${variant}" \
-              --rocksdb-feature-operations 20 2>&1 | tee "${log}"
+              --rocksdb-feature-operations 4096 2>&1 | tee "${log}"
             grep -Fq "dataset=${DATASET} variant=${variant}" "${log}"
             grep -Fq "total_cpu_ms=" "${log}"
             grep -Fq "private_bytes_phase_max=" "${log}"
@@ -158,7 +148,7 @@ jobs:
               --warmupCount 1 \
               --iterationCount 3 \
               --launchCount 1 \
-              --exporters json,csv \
+              --exporters json csv \
               --artifacts "${artifacts}" 2>&1 | tee "${log}"
             grep -Fq "Summary" "${log}"
             if grep -Eiq "no benchmarks|there are no benchmarks" "${log}"; then
@@ -167,11 +157,45 @@ jobs:
             fi
             grep -Fq "${METHOD}" "${log}"
             find "${artifacts}" -type f \( -name '*.json' -o -name '*.csv' \) -print -quit | grep -q .
+            python3 - "${artifacts}" "${METHOD}" <<'PY'
+          import glob
+          import json
+          import math
+          import os
+          import sys
+
+          artifacts_root, method = sys.argv[1:]
+          measurements = 0
+          for path in glob.glob(os.path.join(artifacts_root, "**", "*.json"), recursive=True):
+              try:
+                  with open(path, encoding="utf-8") as stream:
+                      report = json.load(stream)
+              except (OSError, ValueError):
+                  continue
+              for benchmark in report.get("Benchmarks", []):
+                  if benchmark.get("Method") != method:
+                      continue
+                  mean = benchmark.get("Statistics", {}).get("Mean")
+                  if isinstance(mean, (int, float)) and math.isfinite(mean) and mean > 0:
+                      measurements += 1
+
+          if measurements == 0:
+              raise SystemExit(f"No nonempty {method} measurements found in {artifacts_root}.")
+          print(f"Validated {measurements} nonempty {method} measurement(s) in {artifacts_root}.")
+          PY
           }
 
           # Keep baseline immediately beside its option variant on the same hosted VM.
           run_standalone baseline Baseline
           run_standalone variant "${VARIANT}"
+
+          baseline_checksum=$(sed -n 's/.*checksum=\([^ ]*\).*/\1/p' "${RESULTS_ROOT}/standalone/baseline.log" | tail -n 1)
+          variant_checksum=$(sed -n 's/.*checksum=\([^ ]*\).*/\1/p' "${RESULTS_ROOT}/standalone/variant.log" | tail -n 1)
+          if [[ -z "${baseline_checksum}" || "${baseline_checksum}" != "${variant_checksum}" ]]; then
+            echo "Standalone baseline/variant checksums differ or were not reported." >&2
+            exit 1
+          fi
+
           run_bdn baseline Baseline
           run_bdn variant "${VARIANT}"
 
