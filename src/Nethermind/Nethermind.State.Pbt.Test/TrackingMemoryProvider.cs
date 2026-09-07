@@ -12,10 +12,12 @@ namespace Nethermind.State.Pbt.Test;
 public sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
 {
     private readonly List<RefCountingMemory> _rented = [];
+    private readonly List<int> _requestedLengths = [];
     private readonly Lock _lock = new();
     private int _rentCount;
 
     public IReadOnlyList<RefCountingMemory> Rented => _rented;
+    public IReadOnlyList<int> RequestedLengths => _requestedLengths;
     public int RentCount => Volatile.Read(ref _rentCount);
     public int? ThrowOnRent { get; set; }
     public byte? FillByte { get; set; }
@@ -27,13 +29,17 @@ public sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
         if (rentNumber == ThrowOnRent) throw new InvalidOperationException("Configured memory-rent failure.");
         RefCountingMemory memory = PooledRefCountingMemoryProvider.Instance.Rent(length);
         if (FillByte is { } fillByte) memory.GetSpan().Fill(fillByte);
-        lock (_lock) _rented.Add(memory);
+        lock (_lock)
+        {
+            _rented.Add(memory);
+            _requestedLengths.Add(length);
+        }
         return memory;
     }
 
     /// <summary>
-    /// How many of <paramref name="memories"/> still hold a lease — none should, once the updater has
-    /// returned. A fully released buffer refuses a fresh lease, an outstanding one takes it.
+    /// How many of <paramref name="memories"/> still hold a lease, including store-owned outputs.
+    /// A fully released buffer refuses a fresh lease, an outstanding one takes it.
     /// </summary>
     public static int CountUnreleased(IEnumerable<RefCountingMemory> memories)
     {

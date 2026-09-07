@@ -548,6 +548,125 @@ public class PbtNodeGroupTests
             }
         }
     }
+    [TestCase(0, 1)]
+    [TestCase(0, 31)]
+    [TestCase(4, 30)]
+    [TestCase(4, 3)]
+    public void Streaming_writer_preserves_canonical_bytes_and_transfers_backing_memory(int groupDepth, int count)
+    {
+        PbtNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
+        TrackingMemoryProvider provider = new() { FillByte = 0xFF };
+        List<PbtNodeRecord> records = [];
+        using PbtNodeGroupWriter writer = new(groupKey, provider);
+        for (int index = 0; index < count; index++)
+        {
+            int position = count == 1 ? 30 : count == 3 ? index * 10 : index;
+            byte[] encoding = PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 4,
+                new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+            records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding));
+            if (index % 2 == 0)
+            {
+                Span<byte> destination = writer.GetSpan(position, encoding.Length);
+                PbtNodeCodec.CreateBranchEncoding(destination, 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+                destination[3] = 0xA0;
+                writer.Commit();
+            }
+            else writer.Write(position, encoding);
+        }
+
+        using (RefCountingMemory payload = writer.Detach()!)
+        {
+            writer.Dispose();
+            PbtNodeGroupReader reader = new(groupKey, payload.GetSpan());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(groupKey, records)));
+                Assert.That(reader.Count, Is.EqualTo(count));
+                Assert.That(payload, Is.SameAs(provider.Rented[^1]));
+                Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1));
+                Assert.That(provider.RentCount, count == 1 ? Is.EqualTo(1) : Is.GreaterThan(1));
+            }
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+        Assert.Throws<ObjectDisposedException>(() => writer.Detach());
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(5)]
+    public void Streaming_writer_rejects_invalid_appends_without_leaking(int scenario)
+    {
+        TrackingMemoryProvider provider = new() { FillByte = 0xFF };
+        using (PbtNodeGroupWriter writer = new(new([], 0), provider))
+        {
+            byte[] branch = PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+            writer.Write(2, branch);
+            switch (scenario)
+            {
+                case 0: Assert.Throws<InvalidDataException>(() => writer.Write(2, branch)); break;
+                case 1: Assert.Throws<InvalidDataException>(() => writer.Write(1, branch)); break;
+                case 2: Assert.Throws<InvalidDataException>(() => writer.GetSpan(3, ushort.MaxValue)); break;
+                case 3: Assert.Throws<ArgumentOutOfRangeException>(() => writer.GetSpan(31, branch.Length)); break;
+                case 4:
+                    writer.GetSpan(3, 1)[0] = 0xFF;
+                    Assert.Throws<InvalidDataException>(() => writer.Commit());
+                    Assert.Throws<InvalidOperationException>(() => writer.Detach());
+                    break;
+                case 5: Assert.Throws<InvalidDataException>(() => writer.Write(3, LeafEncoding(0xFF, 1))); break;
+            }
+            Assert.That(writer.WrittenCount, Is.EqualTo(branch.Length));
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+        using PbtNodeGroupWriter nonRoot = new(new(Bytes.FromHexString("A0"), 4), provider);
+        Assert.Throws<ArgumentOutOfRangeException>(() => nonRoot.GetSpan(30, 67));
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Streaming_writer_releases_memory_after_rent_failure(int failedRent)
+    {
+        TrackingMemoryProvider provider = new() { ThrowOnRent = failedRent };
+        using (PbtNodeGroupWriter writer = new(new([], 0), provider))
+        {
+            byte[] branch = PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+            if (failedRent == 2) writer.Write(0, branch);
+            Assert.Throws<InvalidOperationException>(() => writer.Write(failedRent, branch));
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Streaming_writer_accepts_exact_uint16_entries_limit()
+    {
+        TrackingMemoryProvider provider = new();
+        using PbtNodeGroupWriter writer = new(new([], 0), provider);
+        for (int position = 0; position < 8; position++)
+        {
+            int length = position == 7 ? 8191 : 8192;
+            Span<byte> encoding = writer.GetSpan(position, length);
+            PbtNodeCodec.CreateBranchEncoding(encoding, (length - 67) * 8,
+                new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+            writer.Commit();
+        }
+        Assert.That(writer.WrittenCount, Is.EqualTo(ushort.MaxValue));
+        Assert.Throws<InvalidDataException>(() => writer.GetSpan(8, 1));
+        using RefCountingMemory payload = writer.Detach()!;
+        PbtNodeGroupReader reader = new(new([], 0), payload.GetSpan());
+        Assert.That(reader.Count, Is.EqualTo(8));
+    }
+
+    [Test]
+    public void Empty_streaming_writer_detaches_without_renting()
+    {
+        TrackingMemoryProvider provider = new();
+        using PbtNodeGroupWriter writer = new(new([], 0), provider);
+        Assert.That(writer.Detach(), Is.Null);
+        Assert.That(provider.RentCount, Is.Zero);
+    }
+
     private static byte[] EncodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)
     {
         int capacity = PbtNodeGroupCodec.TrailerLength;

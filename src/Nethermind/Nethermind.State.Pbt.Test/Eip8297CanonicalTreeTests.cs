@@ -1783,7 +1783,7 @@ public class Eip8297CanonicalTreeTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Owned_node_encodings_are_released_after_mutations_and_partition_folds(bool parallel)
+    public void Group_outputs_retain_only_store_leases_after_mutations_and_partition_folds(bool parallel)
     {
         TrackingMemoryProvider memoryProvider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();
@@ -1816,9 +1816,11 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(root, Is.EqualTo(expectedRoot));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(reopened.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(expectedStore.ExportPhysicalPayloads())));
-                Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+                AssertOnlyPublishedRentalsRemain(store, memoryProvider);
             }
         }
+        store.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         Assert.That(memoryProvider.RentCount, Is.GreaterThan(0));
     }
 
@@ -1844,6 +1846,8 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(aggregateException.Flatten().InnerExceptions, Has.All.TypeOf<InvalidOperationException>());
             else
                 Assert.That(exception, Is.TypeOf<InvalidOperationException>());
+            AssertOnlyPublishedRentalsRemain(store, memoryProvider);
+            store.Dispose();
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero, $"failed rental {rent}");
         }
     }
@@ -1865,8 +1869,9 @@ public class Eip8297CanonicalTreeTests
             (Bytes.FromHexString("ff000000"), Value(5)), (Bytes.FromHexString("ff800000"), Value(6)),
         ];
         Assert.Catch(() => ApplyTracked(store, default, changes, parallel, memoryProvider));
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        AssertOnlyPublishedRentalsRemain(innerStore, memoryProvider);
         innerStore.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         Assert.That(TrackingMemoryProvider.CountUnreleased(storeProvider.Rented), Is.Zero);
     }
 
@@ -1903,18 +1908,111 @@ public class Eip8297CanonicalTreeTests
         {
             if (groupKey.BitDepth != 0) return;
             Assert.That(promotedPayload, Is.Not.Null);
-            promotedPayload!.AcquireLease();
-            ((IDisposable)promotedPayload).Dispose();
+            Assert.That(TrackingMemoryProvider.CountUnreleased([promotedPayload!]), Is.Zero);
             checkedPromotion = true;
         };
-        TrieUpdater.UpdateRoot(store, root, Batch((Bytes.FromHexString("123458"), null)), null, nodeProvider);
+        root = TrieUpdater.UpdateRoot(store, root, Batch((Bytes.FromHexString("123458"), null)), null, nodeProvider);
+        EipReferenceTree oracle = new();
+        oracle.Insert(Bytes.FromHexString("123450"), Value(1));
+        oracle.Insert(Bytes.FromHexString("80"), Value(3));
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(checkedPromotion, Is.True);
             Assert.That(TrackingMemoryProvider.CountUnreleased(readProvider.Rented), Is.Zero);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(nodeProvider.Rented), Is.Zero);
+            AssertOnlyPublishedRentalsRemain(store.Inner, nodeProvider, false);
         }
         AssertAllMemoryReleased(store);
+        Assert.That(TrackingMemoryProvider.CountUnreleased(nodeProvider.Rented), Is.Zero);
+    }
+
+    [TestCase(2, 3)]
+    [TestCase(16, 6)]
+    public void Ordered_group_emission_rents_geometrically_instead_of_per_node(int leafCount, int expectedRentCount)
+    {
+        TrackingMemoryProvider provider = new() { FillByte = 0xFF };
+        using PbtNodeGroupStore store = new();
+        EipReferenceTree oracle = new();
+        (byte[] Key, byte[]? Value)[] changes = new (byte[], byte[]?)[leafCount];
+        for (int index = 0; index < leafCount; index++)
+        {
+            byte[] key = Bytes.FromHexString((index * 256 / leafCount).ToString("X2"));
+            changes[index] = (key, Value((byte)(index + 1)));
+            oracle.Insert(key, changes[index].Value!);
+        }
+        ValueHash256 root = ApplyTracked(store, default, changes, false, provider);
+        IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
+        Assert.That(payloads, Has.Count.EqualTo(1));
+        PbtNodePath groupKey = new([], 0);
+        PbtNodeGroupReader reader = new(groupKey, payloads[0].Payload.Span);
+        List<PbtNodeRecord> records = [];
+        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
+        while (nodes.MoveNext())
+            records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
+        byte[] expectedPayload = new byte[payloads[0].Payload.Length];
+        BufferWriter writer = new(expectedPayload);
+        PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(reader.Count, Is.EqualTo(2 * leafCount - 1));
+            Assert.That(payloads[0].Payload.ToArray(), Is.EqualTo(expectedPayload));
+            Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
+            for (int rental = 0; rental < provider.RequestedLengths.Count; rental++)
+                Assert.That(provider.RequestedLengths[rental], Is.EqualTo(102 << rental));
+            AssertOnlyPublishedRentalsRemain(store, provider);
+        }
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);
+        Assert.That(PhysicalRecords(reopened.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(payloads)));
+        store.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+    }
+
+    [TestCase("AA00", "AA80", "B000", "AA", 8)]
+    [TestCase("AAC0", "AAE0", "B000", "AAC0", 10)]
+    public void Ordered_emission_removes_old_branch_position_when_hoisting_to_root(
+        string leftHex, string rightHex, string siblingHex, string prefixHex, int prefixBits)
+    {
+        using PbtNodeGroupStore store = new();
+        byte[] left = Bytes.FromHexString(leftHex), right = Bytes.FromHexString(rightHex), sibling = Bytes.FromHexString(siblingHex);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch((left, Value(1)), (right, Value(2)), (sibling, Value(3))));
+        PbtNodePath groupKey = new([], 0);
+        using (RefCountingMemory? original = store.GetNodeGroup(groupKey))
+        {
+            PbtNodeGroupReader reader = new(groupKey, original!.GetSpan());
+            PbtNodeReader branch = new(reader[18]);
+            Assert.That(branch.PrefixBitCount, Is.EqualTo(prefixBits - 4));
+        }
+        root = TrieUpdater.UpdateRoot(store, root, Batch((sibling, null)));
+        EipReferenceTree oracle = new();
+        oracle.Insert(left, Value(1));
+        oracle.Insert(right, Value(2));
+        using RefCountingMemory? updated = store.GetNodeGroup(groupKey);
+        PbtNodeGroupReader updatedReader = new(groupKey, updated!.GetSpan());
+        PbtNodeReader promoted = new(updatedReader[30]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(updatedReader.Availability, Is.EqualTo(1u << 30));
+            Assert.That(promoted.PrefixBitCount, Is.EqualTo(prefixBits));
+            Assert.That(promoted.Prefix.ToArray(), Is.EqualTo(Bytes.FromHexString(prefixHex)));
+        }
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
+        Assert.That(TrieUpdater.UpdateRoot(reopened, root, Batch((left, Value(1)))), Is.EqualTo(root));
+    }
+
+    private static void AssertOnlyPublishedRentalsRemain(PbtNodeGroupStore store, TrackingMemoryProvider provider, bool allPublishedAreTracked = true)
+    {
+        HashSet<RefCountingMemory> published = [];
+        foreach (PbtNodePath groupKey in store.EnumerateNodeGroupKeys())
+        {
+            using RefCountingMemory? payload = store.GetNodeGroup(groupKey);
+            published.Add(payload!);
+        }
+        foreach (RefCountingMemory rental in provider.Rented)
+            Assert.That(TrackingMemoryProvider.CountUnreleased([rental]), Is.EqualTo(published.Contains(rental) ? 1 : 0));
+        if (allPublishedAreTracked)
+            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(published.Count));
     }
 
     private static ValueHash256 ApplyTracked(IPbtStore store, ValueHash256 root, (byte[] Key, byte[]? Value)[] changes, bool parallel, TrackingMemoryProvider memoryProvider)
