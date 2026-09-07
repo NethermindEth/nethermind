@@ -15,7 +15,7 @@ namespace Nethermind.Evm;
 /// Each exceptional-halts outside a frame transaction, where <see cref="FrameTxContext"/> is absent.</summary>
 public static unsafe partial class EvmInstructions
 {
-    /// <summary>APPROVE (0xaa): terminate the frame successfully and record the approval scope for the outer loop.</summary>
+    /// <summary>APPROVE (0xaa): apply the approval scope to the transaction context and exit the call frame successfully.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionApprove<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -39,32 +39,20 @@ public static unsafe partial class EvmInstructions
         if (!vm.VmState.Env.ExecutingAccount.Equals(resolvedTarget))
             goto Reject;
 
-        byte scopeByte = (byte)scope.u0;
-        byte allowed = frame.AllowedApproveScope;
-        if (scope > TxFrame.ApproveScopeMask || scopeByte == 0 || (scopeByte & ~allowed) != 0)
-            goto Reject;
+        if (scope > TxFrame.ApproveScopeMask) goto Reject;
 
-        bool approvesExecution = (scopeByte & TxFrame.ApproveExecution) != 0;
-        bool approvesPayment = (scopeByte & TxFrame.ApprovePayment) != 0;
-
-        if (approvesExecution)
+        FrameApprovalOutcome outcome = ctx.PlanApproval((byte)scope.u0, resolvedTarget, vm.WorldState, out FrameApprovalPlan plan);
+        if (outcome != FrameApprovalOutcome.Approved)
         {
-            if (ctx.SenderApproved || resolvedTarget != ctx.Sender) goto Reject;
+            if (outcome == FrameApprovalOutcome.Rejected) goto Reject;
+            return EvmExceptionType.OutOfGas;
         }
 
-        if (approvesPayment)
+        // Consumption happens at payment approval, so first use is charged against this frame's gas.
+        if (plan.ApprovesPayment && ctx.NonceKeys is { } nonceKeys
+            && !TGasPolicy.TryConsume(ref gas, KeyedNonceManager.FirstUseSurcharge(vm.WorldState, ctx.Sender, nonceKeys)))
         {
-            if (ctx.Payer is not null) goto Reject;
-            // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
-            if (!approvesExecution && !ctx.SenderApproved) goto Reject;
-            if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) goto Reject;
-
-            // Consumption happens at payment approval, so first use is charged against this frame's gas.
-            if (ctx.NonceKeys is { } nonceKeys
-                && !TGasPolicy.TryConsume(ref gas, KeyedNonceManager.FirstUseSurcharge(vm.WorldState, ctx.Sender, nonceKeys)))
-            {
-                return EvmExceptionType.OutOfGas;
-            }
+            return EvmExceptionType.OutOfGas;
         }
 
         // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
@@ -74,8 +62,17 @@ public static unsafe partial class EvmInstructions
             return EvmExceptionType.OutOfGas;
         }
 
+        // Charged immediately before the nonce increment that would create the sender.
+        if (plan.CreatesSender && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetNewAccountStateCost()))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+
+        // EIP-8141: the approval takes effect here, journaled with the world-state writes it makes, so a
+        // nested revert between this and the end of the frame discards both together.
+        ctx.ApplyApproval(in plan, resolvedTarget, vm.WorldState, vm.Spec, in vm.VmState.AccessTracker);
+
         vm.ReturnData = returnData.ToArray();
-        ctx.ApprovalScopeSignal = scopeByte;
         // Stop (not None): APPROVE exits the current call frame successfully, and dispatch requires
         // a non-None status from any handler that stages ReturnData.
         return EvmExceptionType.Stop;

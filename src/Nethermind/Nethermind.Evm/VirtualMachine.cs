@@ -556,7 +556,7 @@ public partial class VirtualMachine<TGasPolicy>(
             }
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
-            _txExecutionContext.FrameTxContext?.RestoreStateGasJournal(previousState.StateGasJournalCheckpoint);
+            _txExecutionContext.FrameTxContext?.RestoreFrameJournal(previousState.FrameJournalCheckpoint);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
                 _worldState.DeleteAccount(callCodeOwner);
@@ -597,7 +597,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
-        _txExecutionContext.FrameTxContext?.RestoreStateGasJournal(previousState.StateGasJournalCheckpoint);
+        _txExecutionContext.FrameTxContext?.RestoreFrameJournal(previousState.FrameJournalCheckpoint);
         RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
 
         // Cache the output bytes from the call result to avoid multiple property accesses.
@@ -719,7 +719,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private void PopAndRestoreParentState()
     {
         VmState<TGasPolicy> childState = _currentState;
-        _txExecutionContext.FrameTxContext?.RestoreStateGasJournal(childState.StateGasJournalCheckpoint);
+        _txExecutionContext.FrameTxContext?.RestoreFrameJournal(childState.FrameJournalCheckpoint);
         _currentState = _stateStack.Pop();
         RemoveAdvancedStateGasRefund(childState, ref childState.Gas);
         TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas);

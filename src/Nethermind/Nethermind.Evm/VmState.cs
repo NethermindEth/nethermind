@@ -30,10 +30,10 @@ public class VmState<TGasPolicy> : IDisposable
     // still has to reach the ancestor frame that originally paid the state gas.
     public long StateGasRefundAdvanced;
     /// <summary>
-    /// EIP-8141 outstanding-charge/receipt journal position at this call frame's entry; the same
-    /// boundary that restores world state on revert/halt restores the journal to here.
+    /// EIP-8141 approval/outstanding-charge/receipt journal position at this call frame's entry; the
+    /// same boundary that restores world state on revert/halt restores the journal to here.
     /// </summary>
-    public int StateGasJournalCheckpoint;
+    public int FrameJournalCheckpoint;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -106,7 +106,7 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel = false,
         bool newAccountCharged = false,
         bool isCreateStateGasCharged = false,
-        int stateGasJournalCheckpoint = 0)
+        int frameJournalCheckpoint = 0)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -122,7 +122,7 @@ public class VmState<TGasPolicy> : IDisposable
             env: env,
             stateForAccessLists: stateForAccessLists,
             snapshot: snapshot,
-            stateGasJournalCheckpoint: stateGasJournalCheckpoint);
+            frameJournalCheckpoint: frameJournalCheckpoint);
         return state;
     }
 
@@ -146,7 +146,7 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        int stateGasJournalCheckpoint = 0)
+        int frameJournalCheckpoint = 0)
     {
         _env = env;
         _snapshot = snapshot;
@@ -166,7 +166,7 @@ public class VmState<TGasPolicy> : IDisposable
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
         StateGasRefundAdvanced = 0;
-        StateGasJournalCheckpoint = stateGasJournalCheckpoint;
+        FrameJournalCheckpoint = frameJournalCheckpoint;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;

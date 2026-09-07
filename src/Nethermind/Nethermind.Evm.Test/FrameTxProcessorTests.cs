@@ -1248,6 +1248,130 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>
+    /// EIP-8141 <c>APPROVE</c> updates the approval context during execution, so an approval made inside a
+    /// nested call is discarded with that call's state changes when it reverts.
+    /// </summary>
+    /// <remarks>
+    /// The sender calls a helper, the helper calls back into the sender to approve and then reverts, and
+    /// the sender swallows the failure and returns. Staging the approval for the end of the frame let it
+    /// outlive the reverted call and authorize the transaction.
+    /// </remarks>
+    [Test]
+    public void Execute_ApprovalInsideARevertedNestedCall_IsDiscarded()
+    {
+        DeploySmartSender(ApproveWhenReentered(Observer));
+        DeployContract(Observer, ApprovesThroughSenderThenReverts());
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient, value: 5));
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("SENDER frame before execution approval"));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    /// <summary>
+    /// A payment approval discarded with a reverted nested call leaves no payer behind, so a later
+    /// approval still collects <c>max_cost</c> from the sender.
+    /// </summary>
+    /// <remarks>
+    /// The world state restored on the nested revert takes the collection and the nonce with it, so a
+    /// payer that outlived the revert would name an account nothing had been taken from.
+    /// </remarks>
+    [Test]
+    public void Execute_PaymentApprovalInsideARevertedNestedCall_IsRetriedAndCollectsMaxCost()
+    {
+        DeploySmartSender(RetriesPaymentApprovalAfterDiscard(Observer));
+        DeployContract(Observer, ApprovesPaymentThroughSenderThenReverts());
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL), "the retried approval collected the payment");
+        }
+    }
+
+    /// <summary>
+    /// <c>APPROVE</c>'s payment effects are visible to its caller as soon as the approving call returns,
+    /// not only once the frame ends.
+    /// </summary>
+    /// <remarks>The sender approves in a nested call and then fails its frame unless its own balance
+    /// already shows the collected <c>max_cost</c>.</remarks>
+    [Test]
+    public void Execute_ApprovalInsideANestedCall_CollectsTheMaxCostBeforeItReturns()
+    {
+        DeploySmartSender(ApproveInNestedCallThenRequireCharged());
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+    }
+
+    /// <summary>
+    /// The default code approves payment through the same balance guard as the <c>APPROVE</c> opcode, so a
+    /// target that cannot cover <c>max_cost</c> reverts the <c>VERIFY</c> frame rather than approving.
+    /// </summary>
+    /// <remarks>Reporting success after the signature checks alone approved execution and left payment to a
+    /// later frame, admitting a transaction with no account able to cover it.</remarks>
+    [Test]
+    public void Execute_DefaultCodeVerify_WithTargetBelowMaxCost_InvalidatesTheTransaction()
+    {
+        _stateProvider.CreateAccount(Sender, 1000);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
+    }
+
+    /// <summary>
+    /// The default code approves through the same guards as the <c>APPROVE</c> opcode, so a second
+    /// self-targeted <c>VERIFY</c> frame is refused instead of approving execution twice.
+    /// </summary>
+    /// <remarks>
+    /// Reporting success after the signature checks alone let the second frame re-approve execution and
+    /// silently skip payment because a payer already existed, admitting a transaction the opcode rejects.
+    /// </remarks>
+    [Test]
+    public void Execute_SecondSelfTargetedDefaultCodeVerify_InvalidatesTheTransaction()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
+    }
+
     [Test]
     public void Execute_CodelessEoaSponsor_ReadsPaymentSignatureAtIndexOne()
     {
@@ -2820,6 +2944,65 @@ public class FrameTxProcessorTests
     private static byte[] ApproveCode(byte scope) =>
         // APPROVE stack order (top to bottom): offset, length, scope.
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    /// <summary>Runs <paramref name="whenTrue"/> if the stack top is non-zero, otherwise <paramref name="whenFalse"/>,
+    /// which must terminate rather than fall through.</summary>
+    private static byte[] BranchOnStackTop(byte[] condition, byte[] whenTrue, byte[] whenFalse)
+    {
+        byte destination = checked((byte)(condition.Length + 3 + whenFalse.Length));
+        return
+        [
+            .. condition, (byte)Instruction.PUSH1, destination, (byte)Instruction.JUMPI,
+            .. whenFalse, (byte)Instruction.JUMPDEST, .. whenTrue,
+        ];
+    }
+
+    /// <summary>Approves when called with data, and otherwise calls <paramref name="helper"/> and ignores its outcome.</summary>
+    private static byte[] ApproveWhenReentered(Address helper) =>
+        BranchOnStackTop(
+            Prepare.EvmCode.Op(Instruction.CALLDATASIZE).Done,
+            ApproveCode(TxFrame.ApproveExecutionAndPayment),
+            Prepare.EvmCode.Call(helper, 100_000).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+    private static byte[] ApprovesThroughSenderThenReverts() =>
+        Prepare.EvmCode.CallWithInput(Sender, 60_000, [1]).Op(Instruction.POP).Revert(0, 0).Done;
+
+    /// <summary>Approves the scope named by the calldata length when re-entered, and otherwise approves
+    /// execution, has <paramref name="helper"/> discard a payment approval, then approves payment again.</summary>
+    private static byte[] RetriesPaymentApprovalAfterDiscard(Address helper) =>
+        BranchOnStackTop(
+            Prepare.EvmCode.Op(Instruction.CALLDATASIZE).Done,
+            // APPROVE stack order (top to bottom): offset, length, scope; the scope is the calldata length.
+            [(byte)Instruction.CALLDATASIZE, (byte)Instruction.PUSH1, 0, (byte)Instruction.PUSH1, 0, (byte)Instruction.APPROVE],
+            Prepare.EvmCode
+                .CallWithInput(Sender, 40_000, [1, 1]).Op(Instruction.POP)
+                .Call(helper, 60_000).Op(Instruction.POP)
+                .CallWithInput(Sender, 40_000, [1]).Op(Instruction.POP)
+                .Op(Instruction.STOP).Done);
+
+    private static byte[] ApprovesPaymentThroughSenderThenReverts() =>
+        Prepare.EvmCode.CallWithInput(Sender, 30_000, [1]).Op(Instruction.POP).Revert(0, 0).Done;
+
+    /// <summary>Approves in a nested self-call, then fails unless that call already collected <c>max_cost</c>.</summary>
+    /// <remarks>The nested call returns nothing, so copying one byte of its return data halts the frame
+    /// exceptionally; copying none of it continues.</remarks>
+    private static byte[] ApproveInNestedCallThenRequireCharged() =>
+        BranchOnStackTop(
+            Prepare.EvmCode.Op(Instruction.CALLDATASIZE).Done,
+            ApproveCode(TxFrame.ApproveExecutionAndPayment),
+            Prepare.EvmCode
+                .CallWithInput(Sender, 100_000, [1]).Op(Instruction.POP)
+                // balance + max_cost matches the funded balance only once APPROVE has collected it.
+                .PushData(0x06).Op(Instruction.TXPARAM)
+                .Op(Instruction.ADDRESS).Op(Instruction.BALANCE)
+                .Op(Instruction.ADD)
+                .PushData(1.Ether)
+                .Op(Instruction.EQ)
+                .Op(Instruction.ISZERO)
+                .PushData(0).PushData(0)
+                .Op(Instruction.RETURNDATACOPY)
+                .Op(Instruction.STOP)
+                .Done);
 
     // EIP-8272: only the commitment the predeploy holds satisfies a reference. The committed case also
     // proves the intrinsic gas is charged, the transaction paying more than one declaring nothing.

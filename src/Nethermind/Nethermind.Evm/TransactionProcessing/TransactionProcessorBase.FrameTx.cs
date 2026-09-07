@@ -258,7 +258,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartIndex = i;
                 batchStartRefund = refundCounter;
                 batchStartStateGas = totalFrameStateGasUsed;
-                batchStartJournal = frameContext.StateGasJournalCheckpoint;
+                batchStartJournal = frameContext.FrameJournalCheckpoint;
                 batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
             }
 
@@ -282,23 +282,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
             int frameLogStart = accessTracker.Logs.Count;
-            int frameStartJournal = frameContext.StateGasJournalCheckpoint;
+            int frameStartJournal = frameContext.FrameJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
             shouldRestoreRipemdTouch |= substate.ShouldRestoreRipemdTouch;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
-            if (frameSucceeded && frameContext.ApprovalScopeSignal != 0)
-            {
-                if (!TryApplyPostFrameApproval(frameContext, frame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref frameGasUsed, ref frameStateGas))
-                {
-                    frameSucceeded = false;
-                }
-            }
-            else if (!frameSucceeded)
-            {
-                frameContext.ApprovalScopeSignal = 0;
-            }
 
             totalFrameGasUsed += frameGasUsed;
             if (frameSucceeded)
@@ -368,7 +357,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - prefixEndStateGas);
                 totalFrameStateGasUsed = prefixEndStateGas;
-                frameContext.RestoreStateGasJournal(prefixEndJournal);
+                frameContext.RestoreFrameJournal(prefixEndJournal);
 
                 for (int s = i + 1; s < frames.Length; s++)
                 {
@@ -389,13 +378,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     prefixEndIndex = i;
                     prefixEndRefund = refundCounter;
                     prefixEndStateGas = totalFrameStateGasUsed;
-                    prefixEndJournal = frameContext.StateGasJournalCheckpoint;
+                    prefixEndJournal = frameContext.FrameJournalCheckpoint;
                     prefixEndDestroys = accessTracker.DestroyList.TakeSnapshot();
                 }
             }
             else if (!inBatch)
             {
-                frameContext.RestoreStateGasJournal(frameStartJournal);
+                frameContext.RestoreFrameJournal(frameStartJournal);
             }
 
             if (inBatch)
@@ -423,9 +412,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // are not owed either; the counter only grows, so the batch-start value undoes them.
                     totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - batchStartStateGas);
                     totalFrameStateGasUsed = batchStartStateGas;
-                    frameContext.RestoreStateGasJournal(batchStartJournal);
+                    frameContext.RestoreFrameJournal(batchStartJournal);
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
-                    // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
 
                     if (prefixEndIndex >= batchStartIndex)
@@ -634,11 +622,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
                 TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
 
-                if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
-                {
-                    TryApplyPostFrameApproval(frameContext, boundedFrame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref frameGasUsed, ref frameStateGas);
-                }
-
                 verifyGasUsed += frameGasUsed - (ulong)frameStateGas;
 
                 if (substate.ShouldRevert || substate.IsError)
@@ -765,28 +748,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == TxFrame.ModeVerify;
 
-    /// <summary>Applies a succeeded frame's pending approval scope, charging its state gas or, on failure,
-    /// replacing the substate with an out-of-gas halt.</summary>
-    private bool TryApplyPostFrameApproval(FrameTxContext frameContext, TxFrame frame, Address resolvedTarget, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ref TransactionSubstate substate, ref ulong frameGasUsed, ref long frameStateGas)
-    {
-        long stateLimit = frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit;
-        long remainingStateGas = stateLimit - frameStateGas;
-        if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
-        {
-            substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
-            {
-                ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
-            };
-            frameGasUsed = frame.ExecutionGasLimit;
-            frameStateGas = 0;
-            return false;
-        }
-
-        frameGasUsed += (ulong)approvalStateGas;
-        frameStateGas += approvalStateGas;
-        return true;
-    }
-
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
         stateGasUsed = 0;
@@ -827,7 +788,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
             && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, entryExecution, out gasUsed);
+            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, spec, in accessTracker, tracer, entryExecution, out gasUsed, out stateGasUsed);
             // The entry charge warms the target on this path too; a failing default-code frame is a failing
             // VERIFY frame, which invalidates the transaction, so there is nothing to unwind.
             if (spec.UseHotAndColdStorage && !defaultCode.IsError && !defaultCode.ShouldRevert)
@@ -928,11 +889,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             : TGasPolicy.GetPreRefundGas(in state.Gas, combinedLimit);
         stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
 
-        if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
-        {
-            TryApplyPostFrameApproval(frameContext, frame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref gasUsed, ref stateGasUsed);
-        }
-
         if (substate.ShouldRevert || substate.IsError)
         {
             WorldState.Restore(snapshot);
@@ -952,13 +908,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// </summary>
+    /// <remarks>The approval runs the same guards and effects as the <c>APPROVE</c> opcode, so a default-code
+    /// frame the approval context refuses fails exactly as an opcode approval would.</remarks>
     /// <param name="entryExecution">
     /// Execution gas the frame already owes for its target's access, charged before dispatch and known to
     /// fit within <see cref="TxFrame.ExecutionGasLimit"/>.
     /// </param>
-    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, ulong entryExecution, out ulong gasUsed)
+    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ulong entryExecution, out ulong gasUsed, out long stateGasUsed)
     {
         gasUsed = entryExecution;
+        stateGasUsed = 0;
 
         byte allowedScope = frame.AllowedApproveScope;
         if (allowedScope == 0)
@@ -976,13 +935,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // Owes APPROVE's surcharge, but only past the guards ApplyApproval discards on — charging ahead
-        // of them would bill a consumption that never happens.
-        if ((allowedScope & TxFrame.ApprovePayment) != 0
-            && frameContext.Payer is null
-            && ((allowedScope & TxFrame.ApproveExecution) != 0 || frameContext.SenderApproved)
-            && WorldState.GetBalance(resolvedTarget) >= frameContext.MaxCost
-            && frameContext.NonceKeys is { } nonceKeys)
+        FrameApprovalOutcome outcome = frameContext.PlanApproval(allowedScope, resolvedTarget, WorldState, out FrameApprovalPlan plan);
+        if (outcome != FrameApprovalOutcome.Approved)
+        {
+            if (outcome == FrameApprovalOutcome.Rejected)
+            {
+                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            }
+
+            gasUsed = frame.ExecutionGasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+        }
+
+        // Owes APPROVE's charges out of the frame's declared limits, which the default code never draws on otherwise.
+        if (plan.ApprovesPayment && frameContext.NonceKeys is { } nonceKeys)
         {
             ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
             if (surcharge > frame.ExecutionGasLimit - entryExecution)
@@ -994,76 +960,23 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             gasUsed = entryExecution + surcharge;
         }
 
-        frameContext.ApprovalScopeSignal = allowedScope;
+        if (plan.CreatesSender)
+        {
+            long newAccountCost = TGasPolicy.GetNewAccountStateCost();
+            if ((ulong)newAccountCost > frame.StateGasLimit)
+            {
+                gasUsed = frame.ExecutionGasLimit;
+                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            }
+
+            stateGasUsed = newAccountCost;
+            gasUsed += (ulong)newAccountCost;
+        }
+
+        frameContext.ApplyApproval(in plan, resolvedTarget, WorldState, spec, in accessTracker);
         return DefaultCodeSuccess();
     }
 
     private static TransactionSubstate DefaultCodeSuccess() =>
         new(ReadOnlyMemory<byte>.Empty, refund: 0, destroyList: null, logs: null, shouldRevert: false);
-
-    private bool TryApplyApproval(FrameTxContext frameContext, Address resolvedTarget, IReleaseSpec spec, in StackAccessTracker accessTracker, long availableStateGas, out long stateGasCharged)
-    {
-        stateGasCharged = 0;
-        byte scope = frameContext.ApprovalScopeSignal;
-        if (scope == 0) return true;
-        frameContext.ApprovalScopeSignal = 0;
-
-        bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
-        bool approvesPayment = (scope & TxFrame.ApprovePayment) != 0;
-        bool applyPayment = false;
-        bool usesAccountNonce = false;
-        long newAccountCost = 0;
-
-        if (approvesPayment)
-        {
-            UInt256[]? keys = frameContext.NonceKeys;
-            usesAccountNonce = keys is null || !KeyedNonceManager.UsesKeyedDomain(keys);
-            if (usesAccountNonce && WorldState.GetNonce(frameContext.Sender) >= Eip8250Constants.MaxNonceSeq)
-            {
-                return false;
-            }
-
-            bool executionApproved = frameContext.SenderApproved || approvesExecution;
-            if (frameContext.Payer is null
-                && executionApproved
-                && WorldState.GetBalance(resolvedTarget) >= frameContext.MaxCost)
-            {
-                applyPayment = true;
-                if (usesAccountNonce && !WorldState.AccountExists(frameContext.Sender))
-                {
-                    newAccountCost = TGasPolicy.GetNewAccountStateCost();
-                    if (availableStateGas < newAccountCost) return false;
-                }
-            }
-        }
-
-        if (approvesExecution)
-        {
-            frameContext.SenderApproved = true;
-        }
-
-        if (applyPayment)
-        {
-            if (newAccountCost > 0)
-            {
-                stateGasCharged = newAccountCost;
-                WorldState.CreateAccountIfNotExists(frameContext.Sender, UInt256.Zero);
-            }
-
-            WorldState.SubtractFromBalance(resolvedTarget, frameContext.MaxCost, spec);
-            if (frameContext.NonceKeys is { } nonceKeys)
-            {
-                KeyedNonceManager.ConsumeNonceSet(WorldState, frameContext.Sender, nonceKeys, frameContext.Nonce);
-            }
-            else
-            {
-                WorldState.IncrementNonce(frameContext.Sender);
-            }
-
-            frameContext.Payer = resolvedTarget;
-            if (spec.UseHotAndColdStorage) accessTracker.WarmUp(resolvedTarget);
-        }
-
-        return true;
-    }
 }
