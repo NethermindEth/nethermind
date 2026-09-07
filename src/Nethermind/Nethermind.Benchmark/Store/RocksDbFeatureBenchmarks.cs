@@ -40,6 +40,8 @@ public enum RocksDbFeatureVariant
 
 public static class RocksDbFeatureBenchmarkSelection
 {
+    private const string DatasetVariable = "NETHERMIND_ROCKSDB_FEATURE_DATASET";
+    private const string VariantVariable = "NETHERMIND_ROCKSDB_FEATURE_VARIANT";
     private static RocksDbFeatureDatasetKind? _dataset;
     private static RocksDbFeatureVariant? _variant;
 
@@ -47,13 +49,27 @@ public static class RocksDbFeatureBenchmarkSelection
     {
         _dataset = dataset;
         _variant = variant;
+        Environment.SetEnvironmentVariable(DatasetVariable, dataset?.ToString());
+        Environment.SetEnvironmentVariable(VariantVariable, variant?.ToString());
     }
 
     public static IEnumerable<RocksDbFeatureDatasetKind> GetDatasetValues() =>
-        _dataset.HasValue ? [_dataset.Value] : Enum.GetValues<RocksDbFeatureDatasetKind>();
+        GetSelectedDataset() is { } dataset ? [dataset] : Enum.GetValues<RocksDbFeatureDatasetKind>();
 
     public static IEnumerable<RocksDbFeatureVariant> GetVariantValues() =>
-        _variant.HasValue ? [_variant.Value] : Enum.GetValues<RocksDbFeatureVariant>();
+        GetSelectedVariant() is { } variant ? [variant] : Enum.GetValues<RocksDbFeatureVariant>();
+
+    private static RocksDbFeatureDatasetKind? GetSelectedDataset() =>
+        _dataset ?? ParseEnvironmentValue<RocksDbFeatureDatasetKind>(DatasetVariable);
+
+    private static RocksDbFeatureVariant? GetSelectedVariant() =>
+        _variant ?? ParseEnvironmentValue<RocksDbFeatureVariant>(VariantVariable);
+
+    private static TEnum? ParseEnvironmentValue<TEnum>(string variable) where TEnum : struct, Enum
+    {
+        string? value = Environment.GetEnvironmentVariable(variable);
+        return Enum.TryParse(value, ignoreCase: true, out TEnum result) ? result : null;
+    }
 }
 
 public sealed class RocksDbFeatureDataset
