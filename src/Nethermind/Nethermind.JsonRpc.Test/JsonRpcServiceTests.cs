@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -646,6 +647,36 @@ public class JsonRpcServiceTests
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         AssertJsonRpcError(response, ErrorCodes.InternalError);
+    }
+
+    [Test]
+    public void OutOfMemory_during_invocation_logs_without_request_parameters()
+    {
+        const string marker = "0x00000000000000000000000000000000deadbeef";
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>()).Throws(new OutOfMemoryException());
+        TestErrorLogManager logManager = new();
+        _logManager = logManager;
+
+        AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
+
+        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException);
+        Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
+    }
+
+    [Test]
+    public void OutOfMemory_before_invocation_logs_without_request_parameters()
+    {
+        const string marker = "0x00000000000000000000000000000000deadbeef";
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
+        TestErrorLogManager logManager = new();
+        _logManager = logManager;
+
+        AssertJsonRpcError(TestRequestWithPool(pool, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
+
+        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException);
+        Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
     }
 
     [Test]
