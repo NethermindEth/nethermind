@@ -28,8 +28,6 @@ public sealed class OrphanStorageRowSweep(
     private const int BlockBytes = sizeof(ulong);
     private const int StorageRowKeyLength = BaseFlatPersistence.StorageKeyLength + BlockBytes;
     private const int AccountRowKeyLength = Hash256.Size + BlockBytes;
-    private const int SlotOffset = BasePersistence.StoragePrefixPortion;
-    private const int SuffixOffset = SlotOffset + Hash256.Size;
     private static readonly TimeSpan PassBudget = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan DrainPoll = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(60);
@@ -61,7 +59,7 @@ public sealed class OrphanStorageRowSweep(
         _loop.Start();
     }
 
-    public OrphanStorageRowReport RunToCompletion(bool repair, CancellationToken token)
+    internal OrphanStorageRowReport RunToCompletion(bool repair, CancellationToken token)
     {
         while (!RunOnePass(repair, long.MaxValue, TimeSpan.MaxValue, token))
         {
@@ -122,11 +120,11 @@ public sealed class OrphanStorageRowSweep(
                 ValueHash256 identity = IdentityOf(key);
                 if (!timelines.TryGetValue(identity, out AccountTimeline? timeline))
                 {
-                    timeline = AccountTimeline.Load(accountRows, identity);
+                    timeline = AccountTimeline.Load(accountRows, rowFormat, identity, token);
                     timelines[identity] = timeline;
                 }
 
-                ulong block = ~BinaryPrimitives.ReadUInt64BigEndian(key[BaseFlatPersistence.StorageKeyLength..]);
+                ulong block = rowFormat.DecodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..]);
                 if (timeline.HasStorageAt(block)) continue;
 
                 _orphanRows++;
@@ -143,8 +141,9 @@ public sealed class OrphanStorageRowSweep(
             Delete(orphanRows);
             if (completed)
             {
+                Announce(Report);
+                flat.GetColumnDb(FlatDbColumns.Metadata).Remove(CursorKey);
                 flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
-                Completed?.Invoke(Report);
             }
             else WriteCursor((uint)nextPrefix);
         }
@@ -153,14 +152,51 @@ public sealed class OrphanStorageRowSweep(
         return completed;
     }
 
+    internal bool TryStampFresh()
+    {
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        if (persisted != StateId.PreGenesis && persisted != StateId.Sync) return false;
+
+        flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(MarkerKey, [Swept]);
+        return true;
+    }
+
+    private bool Drained(ulong drainedAtBlock)
+    {
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        return persisted != StateId.PreGenesis && persisted != StateId.Sync && persisted.BlockNumber >= drainedAtBlock;
+    }
+
+    private void Announce(OrphanStorageRowReport report)
+    {
+        try
+        {
+            Completed?.Invoke(report);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("A consumer of the flat history orphan storage row sweep failed while handling its completion; the sweep itself is complete.", e);
+        }
+    }
+
     private void RunLoop(bool repair, ulong drainedAtBlock)
     {
         CancellationToken token = _cts.Token;
         try
         {
-            while (persistenceManager.GetCurrentPersistedStateId().BlockNumber < drainedAtBlock)
+            if (repair && TryStampFresh())
             {
-                if (token.WaitHandle.WaitOne(DrainPoll)) return;
+                if (_logger.IsInfo) _logger.Info("Flat history orphan storage row sweep skipped: this database has no persisted state yet, so every row it will hold is written by a version that never leaves orphans; recorded as swept.");
+                return;
+            }
+
+            if (!Drained(drainedAtBlock))
+            {
+                if (_logger.IsInfo) _logger.Info($"Flat history orphan storage row {(repair ? "sweep" : "check")} waits for the persisted flat state to reach block {drainedAtBlock}, so that everything the previous binary left queued has landed first.");
+                while (!Drained(drainedAtBlock))
+                {
+                    if (token.WaitHandle.WaitOne(DrainPoll)) return;
+                }
             }
 
             if (_logger.IsInfo) _logger.Info(repair
@@ -178,7 +214,7 @@ public sealed class OrphanStorageRowSweep(
             if (token.IsCancellationRequested) return;
 
             OrphanStorageRowReport report = Report;
-            string outcome = $"{report.RowsScanned:N0} rows scanned, {report.OrphanRows:N0} orphaned rows under {report.OrphanAccounts:N0} accounts in {Stopwatch.GetElapsedTime(startedAt)}.";
+            string outcome = $"{report.RowsScanned:N0} rows scanned, {report.OrphanRows:N0} orphaned rows under {report.OrphanAccounts:N0} accounts in {Stopwatch.GetElapsedTime(startedAt)} since this start.";
             if (repair)
             {
                 if (_logger.IsInfo) _logger.Info($"Flat history orphan storage row sweep done, orphaned rows deleted: {outcome}");
@@ -236,8 +272,7 @@ public sealed class OrphanStorageRowSweep(
     private static ValueHash256 IdentityOf(ReadOnlySpan<byte> storageRowKey)
     {
         Span<byte> identity = stackalloc byte[Hash256.Size];
-        storageRowKey[..SlotOffset].CopyTo(identity);
-        storageRowKey[SuffixOffset..BaseFlatPersistence.StorageKeyLength].CopyTo(identity[SlotOffset..]);
+        HistoryKeyLayout.Storage.ExtractAddressKey(storageRowKey[..BaseFlatPersistence.StorageKeyLength], identity[..IdentityLength]);
         return new ValueHash256(identity);
     }
 
@@ -252,7 +287,7 @@ public sealed class OrphanStorageRowSweep(
     {
         private readonly List<(ulong Block, bool HasStorage)> _rows = [];
 
-        public static AccountTimeline Load(ISortedKeyValueStore accountRows, in ValueHash256 identity)
+        public static AccountTimeline Load(ISortedKeyValueStore accountRows, HistoryRowFormat rowFormat, in ValueHash256 identity, CancellationToken token)
         {
             AccountTimeline timeline = new();
             Span<byte> lower = stackalloc byte[AccountRowKeyLength];
@@ -262,13 +297,14 @@ public sealed class OrphanStorageRowSweep(
             identity.Bytes[..IdentityLength].CopyTo(lower);
             identity.Bytes[..IdentityLength].CopyTo(upper);
             upper[^1] = 0x00;
-            using ISortedView view = accountRows.GetViewBetween(lower, upper);
+            using ISortedView view = accountRows.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
             while (view.MoveNext())
             {
+                token.ThrowIfCancellationRequested();
                 ReadOnlySpan<byte> key = view.CurrentKey;
                 if (key.Length != AccountRowKeyLength) continue;
 
-                ulong block = ~BinaryPrimitives.ReadUInt64BigEndian(key[Hash256.Size..]);
+                ulong block = rowFormat.DecodeSuffixBlock(key[Hash256.Size..]);
                 ReadOnlySpan<byte> value = view.CurrentValue;
                 bool hasStorage = false;
                 if (!value.IsEmpty)
@@ -277,7 +313,8 @@ public sealed class OrphanStorageRowSweep(
                     hasStorage = AccountDecoder.Slim.DecodeStorageRootOnly(ref reader) != Keccak.EmptyTreeHash;
                 }
 
-                timeline._rows.Add((block, hasStorage));
+                if (timeline._rows.Count > 0 && timeline._rows[^1].HasStorage == hasStorage) timeline._rows[^1] = (block, hasStorage);
+                else timeline._rows.Add((block, hasStorage));
             }
 
             return timeline;
