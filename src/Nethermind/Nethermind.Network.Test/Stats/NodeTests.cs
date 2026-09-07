@@ -46,9 +46,8 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.Equals(1), Is.False);
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_keeps_tcp_and_discovery_ports(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_keeps_tcp_and_discovery_ports([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
 
@@ -112,9 +111,8 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: false);
 
@@ -131,9 +129,8 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_accepts_dual_stack_endpoint_entries(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_accepts_dual_stack_endpoint_entries([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: true);
 
@@ -150,9 +147,8 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_selects_requested_address_family(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_selects_requested_address_family([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: true);
 
@@ -429,9 +425,8 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void MergeEnrState_preserves_unverified_candidate_only_without_verified_record(bool existingRecordIsVerified)
+        [Test]
+        public void MergeEnrState_preserves_unverified_candidate_only_without_verified_record([Values] bool existingRecordIsVerified)
         {
             NodeRecord existingRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304, enrSequence: 1);
             NodeRecord candidateRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30304, enrSequence: 2);

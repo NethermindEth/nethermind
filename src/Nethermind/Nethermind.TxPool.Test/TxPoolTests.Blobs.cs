@@ -824,9 +824,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted(bool changeTimestamp)
+        [Test]
+        public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted([Values] bool changeTimestamp)
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
             UInt256 originalTimestamp = transaction.Timestamp;
@@ -998,9 +997,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void should_avoid_repeated_full_sidecar_reads_when_getting_blob_tx_without_blobs(bool legacyRecord)
+        [Test]
+        public void should_avoid_repeated_full_sidecar_reads_when_getting_blob_tx_without_blobs([Values] bool legacyRecord)
         {
             (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
                 CreatePersistentBlobPoolWithEvictedCacheEntry();
@@ -3838,9 +3836,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task should_not_return_or_restore_sidecar_free_record_after_concurrent_removal(bool legacyRecord)
+        [Test]
+        public async Task should_not_return_or_restore_sidecar_free_record_after_concurrent_removal([Values] bool legacyRecord)
         {
             (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
                 CreatePersistentBlobPoolWithBlockingReadStorage();
