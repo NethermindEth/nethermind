@@ -5,6 +5,7 @@ using System.Buffers.Text;
 using System.Net;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -75,11 +76,8 @@ public class DiscoveredNodeStoreTests
         store.AddOrUpdate(node, "discv4", isActive: true);
 
         NodeDto[] activeNodes = store.GetActiveNodes();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(activeNodes, Has.Length.EqualTo(1));
-            Assert.That(activeNodes[0].Host, Is.EqualTo(node.Host));
-        }
+        Assert.That(activeNodes, Has.Length.EqualTo(1));
+        Assert.That(activeNodes[0].Host, Is.EqualTo(node.Host));
     }
 
     [TestCase(false)]
@@ -214,9 +212,9 @@ public class DiscoveredNodeStoreTests
 
         NodeDto[] retainedNodes = store.GetAllNodes();
         NodeRecord expected = shouldReplace ? candidate.Enr! : original.Enr!;
+        Assert.That(retainedNodes, Has.Length.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retainedNodes, Has.Length.EqualTo(1));
             Assert.That(candidate.Enr!.ToString(), Is.Not.EqualTo(original.Enr!.ToString()));
             Assert.That(retainedNodes[0].Enr, Is.EqualTo(expected.ToString()));
         }
@@ -236,11 +234,8 @@ public class DiscoveredNodeStoreTests
         store.AddOrUpdate(node, "discv5", isActive: true);
 
         NodeDto[] retainedNodes = store.GetAllNodes();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(retainedNodes, Has.Length.EqualTo(1));
-            Assert.That(retainedNodes[0].Enr, Is.Null);
-        }
+        Assert.That(retainedNodes, Has.Length.EqualTo(1));
+        Assert.That(retainedNodes[0].Enr, Is.Null);
     }
 
     [Test]
@@ -314,13 +309,53 @@ public class DiscoveredNodeStoreTests
         ];
         Array.Sort(expectedOrder, StringComparer.Ordinal);
 
+        Assert.That(secondNode, Has.Length.EqualTo(1));
+        Assert.That(secondActiveNode, Has.Length.EqualTo(1));
+        Assert.That(allNodes, Has.Length.EqualTo(3));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Array.ConvertAll(allNodes, static node => node.IdHash), Is.EqualTo(expectedOrder));
-            Assert.That(secondNode, Has.Length.EqualTo(1));
             Assert.That(secondNode[0].IdHash, Is.EqualTo(allNodes[1].IdHash));
-            Assert.That(secondActiveNode, Has.Length.EqualTo(1));
             Assert.That(secondActiveNode[0].Active, Is.True);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Node_queries_match_global_order_across_bucket_boundaries(bool activeOnly)
+    {
+        DiscoveredNodeStore store = new();
+        Random random = new(42);
+        List<string> expectedHashes = [];
+        byte[] publicKeyBytes = new byte[PublicKey.LengthInBytes];
+        for (int i = 0; i < 8192; i++)
+        {
+            random.NextBytes(publicKeyBytes);
+            Node node = new(new PublicKey(publicKeyBytes), "127.0.0.1", 30303);
+            bool active = i % 3 != 0;
+            store.AddOrUpdate(node, "discv4", isActive: true);
+            if (!active) store.Remove(node, "discv4");
+            if (!activeOnly || active) expectedHashes.Add(node.IdHash.ToString());
+        }
+
+        expectedHashes.Sort(StringComparer.Ordinal);
+        string[] expected = expectedHashes.ToArray();
+        int boundary = expected.Length / 2;
+        while (boundary < expected.Length && expected[boundary][..5] == expected[boundary - 1][..5]) boundary++;
+        Assert.That(boundary, Is.LessThan(expected.Length));
+        int insideBucket = boundary;
+        while (insideBucket < expected.Length && expected[insideBucket][..5] != expected[insideBucket - 1][..5]) insideBucket++;
+        Assert.That(insideBucket, Is.LessThan(expected.Length));
+
+        foreach (int offset in new[] { 0, boundary - 1, boundary, insideBucket, expected.Length - 3, expected.Length, expected.Length + 1 })
+        {
+            foreach (int limit in new[] { 1, 37, 1000 })
+            {
+                NodeDto[] page = activeOnly ? store.GetActiveNodes(offset, limit) : store.GetAllNodes(offset, limit);
+                int start = Math.Min(offset, expected.Length);
+                Assert.That(Array.ConvertAll(page, static node => node.IdHash),
+                    Is.EqualTo(expected.AsSpan(start, Math.Min(limit, expected.Length - start)).ToArray()), $"offset={offset}, limit={limit}");
+            }
         }
     }
 
