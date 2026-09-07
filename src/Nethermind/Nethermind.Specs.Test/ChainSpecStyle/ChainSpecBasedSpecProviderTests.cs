@@ -723,12 +723,8 @@ public class ChainSpecBasedSpecProviderTests
     // GetFinalSpec skips everything above SpecProviderExtensions.LastScheduledForkTimestamp so undated forks
     // stay out of it. Widening that band must not swallow a fork a chain has actually scheduled — it would
     // do so silently, by landing the probe in an earlier bucket.
-    [TestCase("foundation")]
-    [TestCase("sepolia")]
-    [TestCase("hoodi")]
-    [TestCase("gnosis")]
-    [TestCase("chiado")]
-    public void Final_spec_skips_only_the_unscheduled_fork_band(string chain)
+    [Test]
+    public void Final_spec_skips_only_the_unscheduled_fork_band([Values("foundation", "sepolia", "hoodi", "gnosis", "chiado")] string chain)
     {
         ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
 
@@ -1131,9 +1127,8 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
-    [TestCase(1ul)]
-    [TestCase(3151908ul)]
-    public void Geth_genesis_defaults_deposit_contract_address_when_prague_is_active(ulong chainId)
+    [Test]
+    public void Geth_genesis_defaults_deposit_contract_address_when_prague_is_active([Values(1ul, 3151908ul)] ulong chainId)
     {
         string genesisJson = $$"""
         {

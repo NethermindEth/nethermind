@@ -181,9 +181,8 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
 
-    [TestCase(4UL)]
-    [TestCase(6UL)]
-    public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly(ulong round)
+    [Test]
+    public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly([Values(4UL, 6UL)] ulong round)
     {
         XdcConsensusContext ctx = new() { CurrentRound = 5 };
         TimeoutCertificateManager tcManager = BuildTimeoutCertificateManager(ctx);

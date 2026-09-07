@@ -11,10 +11,8 @@ namespace Nethermind.Evm.Test;
 [TestFixture(typeof(EthereumGasPolicy))]
 public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    [TestCase(0UL)]
-    [TestCase(1UL)]
-    [TestCase(1_000_000UL)]
-    public void FromULong_round_trips_remaining_gas(ulong value)
+    [Test]
+    public void FromULong_round_trips_remaining_gas([Values(0UL, 1UL, 1_000_000UL)] ulong value)
     {
         TGasPolicy gas = TGasPolicy.FromULong(value);
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(value));
@@ -33,6 +31,21 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
         {
             Assert.That(success, Is.EqualTo(expectedSuccess));
             Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(expectedRemaining));
+        }
+    }
+
+    [Test]
+    public void ClearExecutionGas_zeros_remaining_and_preserves_state_gas([Values(0UL, 1000UL)] ulong available)
+    {
+        TGasPolicy gas = TGasPolicy.FromULong(available);
+        long reservoir = TGasPolicy.GetStateReservoir(in gas);
+        long stateUsed = TGasPolicy.GetStateGasUsed(in gas);
+        TGasPolicy.ClearExecutionGas(ref gas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.Zero);
+            Assert.That(TGasPolicy.GetStateReservoir(in gas), Is.EqualTo(reservoir));
+            Assert.That(TGasPolicy.GetStateGasUsed(in gas), Is.EqualTo(stateUsed));
         }
     }
 

@@ -11,7 +11,7 @@ namespace Nethermind.State
     /// EIP-1153 provides a transient store for contracts that doesn't persist
     /// storage across calls. Reverts will rollback any transient state changes.
     /// </summary>
-    internal sealed class TransientStorageProvider(ILogManager? logManager) : PartialStorageProviderBase(logManager)
+    internal sealed class TransientStorageProvider(ILogManager logManager) : PartialStorageProviderBase(logManager)
     {
 
         /// <summary>
@@ -20,6 +20,6 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
         protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : StorageTree.ZeroBytes;
+            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes : StorageTree.ZeroBytes;
     }
 }

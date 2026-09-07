@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -549,7 +550,7 @@ public static partial class EvmInstructions
         // Deduct gas cost for balance operation as per specification.
         if (!TGasPolicy.UpdateGas<BalanceGasCost>(ref gas, spec)) return EvmExceptionType.OutOfGas;
 
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
@@ -620,7 +621,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         if (!TGasPolicy.UpdateGas<ExtCodeHashGasCost>(ref gas, spec)) return EvmExceptionType.OutOfGas;
 
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
@@ -713,13 +714,17 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         // Retrieve the array of versioned blob hashes from the execution context.
-        byte[][] versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
+        byte[]?[]? versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
 
         // If versioned hashes are available and the index is within range, push the corresponding blob hash.
-        // Otherwise, push zero.
-        return versionedHashes is not null && result < versionedHashes.Length
-            ? stack.PushBytes<TTracingInst>(versionedHashes[result.u0])
-            : stack.PushZero<TTracingInst, OnFlag>();
+        if (versionedHashes is not null && result < versionedHashes.Length)
+        {
+            byte[] versionedHash = versionedHashes[result.u0]
+                ?? throw new InvalidOperationException("Blob versioned hashes must not contain null elements.");
+            return stack.PushBytes<TTracingInst>(versionedHash);
+        }
+
+        return stack.PushZero<TTracingInst, OnFlag>();
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -760,8 +765,7 @@ public static partial class EvmInstructions
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
-        // If block hash tracing is enabled and a valid block hash was obtained, report it.
-        if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash && blockHash is not null)
         {
             vm.TxTracer.ReportBlockHash(blockHash);
         }
