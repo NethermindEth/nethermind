@@ -75,7 +75,8 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.partition_filters=true;" +
         "block_based_table_factory.metadata_block_size=4096;" +
 
-        "block_based_table_factory.filter_policy=bloomfilter:10;" +
+        // Use Bloom-compatible filters for flush-created files; level 1 keeps the more expensive Ribbon builder for lower levels.
+        "block_based_table_factory.filter_policy=ribbonfilter:10:1;" +
         "";
     public string? AdditionalRocksDbOptions { get; set; }
 
