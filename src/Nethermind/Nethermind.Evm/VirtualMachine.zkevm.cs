@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -12,20 +13,16 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] _opcodeMethods;
-
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[]? _opcodesNoTrace;
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[]? _opcodesTraced;
+    private static readonly OpcodeTable _opcodeTable = new();
 
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        _opcodeMethods = !TTracingInst.IsActive
-            ? _opcodesNoTrace ??= GenerateOpCodes<TTracingInst>(spec)
-            : _opcodesTraced ??= GenerateOpCodes<TTracingInst>(spec);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
 
-    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
+    /// <inheritdoc/>
+    /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
+    private partial bool ShouldRefreshOpcodes() => false;
 
     public object ReturnData;
 
@@ -83,6 +80,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             IncorporateChildStateGasRefunds(child);
             TGasPolicy.Refund(ref parent.Gas, in child.Gas);
+            TGasPolicy.RepayStateGasSpill(ref parent.Gas);
         }
         else
         {

@@ -454,6 +454,19 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
+    public void RunMaintenance(Action<IPersistence> work, CancellationToken cancellationToken)
+    {
+        _persistenceLock.Wait(cancellationToken);
+        try
+        {
+            work(persistence);
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();

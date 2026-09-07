@@ -292,7 +292,6 @@ public class TrieReassemblerTests
             IDb db = _columnsDb.GetColumnDb(col);
             foreach (KeyValuePair<byte[], byte[]> kvp in db.GetAll())
             {
-                if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
                 node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
                 if (node.NodeType != NodeType.Leaf)
@@ -406,7 +405,6 @@ public class TrieReassemblerTests
             List<byte[]> toDelete = [];
             foreach (KeyValuePair<byte[], byte[]> kvp in columnDb.GetAll())
             {
-                if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
                 node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
                 if (node.NodeType != NodeType.Leaf && filter(node))
@@ -421,7 +419,6 @@ public class TrieReassemblerTests
             List<byte[]> toDelete = [];
             foreach (KeyValuePair<byte[], byte[]> kvp in fallbackDb.GetAll())
             {
-                if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
                 node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
@@ -443,7 +440,6 @@ public class TrieReassemblerTests
             List<byte[]> toDelete = [];
             foreach (KeyValuePair<byte[], byte[]> kvp in columnDb.GetAll())
             {
-                if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
                 node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
                 if (filter(node))
@@ -458,7 +454,6 @@ public class TrieReassemblerTests
             List<byte[]> toDelete = [];
             foreach (KeyValuePair<byte[], byte[]> kvp in fallbackDb.GetAll())
             {
-                if (kvp.Value is null) continue;
                 TrieNode node = new(NodeType.Unknown, kvp.Value);
                 node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 

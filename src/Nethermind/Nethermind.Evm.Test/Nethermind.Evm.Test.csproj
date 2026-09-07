@@ -30,4 +30,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <!-- SpecFlagsTests compares this against the fork graph; embedding it keeps the check working
+         under deterministic builds, where the compiler rewrites source paths. -->
+    <EmbeddedResource Include="../Nethermind.Evm/SpecFlags.zkevm.cs" LogicalName="SpecFlags.zkevm.cs" />
+  </ItemGroup>
 </Project>

@@ -36,6 +36,25 @@ public class MerkleTests
     [Test]
     public void Zero_hashes_0_is_correct() => Assert.That(Merkle.ZeroHashes[0], Is.EqualTo(UInt256.Zero));
 
+    /// <remarks>
+    /// The table is baked-in constant data, and the zero-subtree tests below cannot check it:
+    /// <see cref="Merkle.HashConcatenation"/> short-circuits an all-zero pair straight back to the
+    /// table, so they never run SHA-256 and compare it against itself. Rebuild the chain here.
+    /// </remarks>
+    [Test]
+    public void Zero_hashes_match_an_independently_computed_chain()
+    {
+        byte[] expected = new byte[32];
+        Span<byte> actual = stackalloc byte[32];
+
+        for (int level = 0; level < 64; level++)
+        {
+            Merkle.ZeroHashes[level].ToLittleEndian(actual);
+            Assert.That(actual.ToArray(), Is.EqualTo(expected), $"ZeroHashes[{level}]");
+            expected = HashUtility.Hash(expected, expected);
+        }
+    }
+
     [Test]
     public void Can_merkleize_bool()
     {

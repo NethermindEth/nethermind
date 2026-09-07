@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
@@ -552,6 +553,54 @@ public partial class EngineModuleTests
             Assert.That(inclusionList.Count, Is.EqualTo(2));
             Assert.That(inclusionListBytes, Does.Contain(tx1Bytes));
             Assert.That(inclusionListBytes, Does.Contain(tx2Bytes));
+        }
+    }
+
+    // The consensus layer names the block the list is requested for, so the parameter has to reach the
+    // handler: dispatched as a no-argument method the call answers -32602 and no list is ever built.
+    [TestCase(false, TestName = "GetInclusionListV1_without_a_parent_block_hash_builds_on_the_head")]
+    [TestCase(true, TestName = "GetInclusionListV1_accepts_the_parent_block_hash")]
+    public async Task GetInclusionListV1_serves_both_request_shapes(bool withParentBlockHash)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+        object?[] parameters = withParentBlockHash ? [chain.BlockTree.HeadHash] : [];
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_getInclusionListV1), parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Does.Contain("\"result\""));
+            Assert.That(response, Does.Not.Contain("\"error\""));
+        }
+    }
+
+    // The zero hash names no block, so it must fall back to the head rather than being looked up.
+    [Test]
+    public async Task GetInclusionListV1_treats_the_zero_parent_block_hash_as_unspecified()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+
+        ResultWrapper<InclusionListBytes> result =
+            await chain.EngineRpcModule.engine_getInclusionListV1(Hash256.Zero);
+        result.Data?.Dispose();
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+    }
+
+    // A list built on a block this node does not have could not be appended to it.
+    [Test]
+    public async Task GetInclusionListV1_rejects_an_unknown_parent_block_hash()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+
+        ResultWrapper<InclusionListBytes> result =
+            await chain.EngineRpcModule.engine_getInclusionListV1(TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
         }
     }
 

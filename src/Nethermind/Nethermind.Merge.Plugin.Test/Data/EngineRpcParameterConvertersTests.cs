@@ -72,6 +72,28 @@ public class EngineRpcParameterConvertersTests
         Assert.That(mask, Has.Length.EqualTo(BlobCellMask.CellCount));
     }
 
+    // Pins the wire bit convention shared by every packing site: bit i is bit i % 8 of byte i / 8.
+    [Test]
+    public void Blob_cell_mask_converter_round_trips_the_wire_bit_order()
+    {
+        JsonSerializerOptions options = CreateOptions(new BlobCellBitArrayConverter());
+        int[] indices = [0, 60, 62, 100, 114, BlobCellMask.CellCount - 1];
+        BitArray bits = new(BlobCellMask.CellCount);
+        foreach (int index in indices)
+        {
+            bits.Set(index, true);
+        }
+
+        string json = JsonSerializer.Serialize(bits, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo("\"0x01000000000000500000000010000480\""));
+            Assert.That(BlobCellBits.ToMask(bits), Is.EqualTo(BlobCellMask.FromIndices(indices)));
+            Assert.That(JsonSerializer.Deserialize<BitArray>(json, options), Is.EqualTo(bits));
+        }
+    }
+
     private static JsonSerializerOptions CreateOptions(System.Text.Json.Serialization.JsonConverter converter)
     {
         JsonSerializerOptions options = new();

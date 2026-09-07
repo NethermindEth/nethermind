@@ -167,7 +167,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         Account? account = _snapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
 
-        HintGet(address, account, promote: !isInCurrentSnapshot);
+        // Promotion only: a read rewrites nothing at commit, so its trie path needs no warming.
+        if (!isInCurrentSnapshot) _snapshotBundle.PromoteAccount(address, account);
 
         // A trie-less (history-backed) scope has no trie to verify against — the reader throws on trie-node access,
         // and a historical value verified against the current trie would be wrong anyway.
@@ -183,14 +184,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account) => HintGet(address, account, promote: true);
-
-    private void HintGet(Address address, Account? account, bool promote)
-    {
-        if (promote) _snapshotBundle.PromoteAccount(address, account);
-        if (_snapshotBundle.ShouldQueuePrewarm(address))
-            QueueStateTrieWarmup(address, _hintSequenceId);
-    }
+    public void HintGet(Address address, Account? account) => _snapshotBundle.PromoteAccount(address, account);
 
     // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)

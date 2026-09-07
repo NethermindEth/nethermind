@@ -10,10 +10,14 @@ public class FlatDbConfig : IFlatDbConfig
     public bool Enabled { get; set; } = false;
     public bool EnablePreimageRecording { get; set; } = false;
     public bool HistoryEnabled { get; set; } = false;
+    public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
+    public ulong HistoryRetentionSinceBlock { get; set; } = 0;
     public ulong HistoryPruneIntervalBlocks { get; set; } = 1024;
     public int HistoryPrunePassBudgetSeconds { get; set; } = 5;
     public string? HistorySliceAddresses { get; set; }
+    public bool SweepOrphanStorage { get; set; } = false;
+    public bool VerifyOrphanStorage { get; set; } = false;
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
     public long HistoryVerifyMaxRows { get; set; } = 0;

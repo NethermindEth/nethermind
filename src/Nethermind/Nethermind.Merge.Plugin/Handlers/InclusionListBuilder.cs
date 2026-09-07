@@ -19,16 +19,19 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     // Senders drawn per list. The byte cap, not this, decides how many of them reach the wire.
     private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
 
-    public InclusionListBytes GetInclusionList()
+    /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
+    /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
+    /// <returns>The encoded transactions; the caller owns and disposes them.</returns>
+    public InclusionListBytes GetInclusionList(BlockHeader? parent = null)
     {
-        using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs();
+        using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs(parent);
         return EncodeTransactionsUpToLimit(in sample);
     }
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's gapless run from its next nonce, since nothing else could be
     /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
-    private ArrayPoolListRef<Transaction> SampleAppendableTxs()
+    private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
         Random rnd = Random.Shared;
@@ -36,7 +39,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         using ArrayPoolListRef<Transaction[]> senders = new(capacity);
         int seen = 0;
         // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
+        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee(parent)).Values)
         {
             if (senders.Count < capacity)
             {
@@ -82,10 +85,10 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// <summary>The base fee the next block will charge.</summary>
     /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's
     /// stands in and pre-fork EIP-1559 parameters are resolved for a post-fork block.</remarks>
-    private UInt256 NextBlockBaseFee()
+    private UInt256 NextBlockBaseFee(BlockHeader? parent)
     {
-        BlockHeader? head = blockTree.Head?.Header;
-        return head is null ? UInt256.Zero : BaseFeeCalculator.Calculate(head, specProvider.GetSpec(head.Number + 1, head.Timestamp));
+        parent ??= blockTree.Head?.Header;
+        return parent is null ? UInt256.Zero : BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent.Number + 1, parent.Timestamp));
     }
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
