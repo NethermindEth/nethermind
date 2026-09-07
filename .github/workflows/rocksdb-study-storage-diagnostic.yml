@@ -3,6 +3,11 @@ name: RocksDB Study Storage Diagnostic
 # Manual read-only inspection of the benchmark runners. This intentionally does not prepare an
 # image, prune Docker state, remove files, change mounts, or inspect benchmark corpus contents.
 on:
+  push:
+    branches:
+      - test/rpc-harness-diagnostic
+    paths:
+      - .github/workflows/rocksdb-study-storage-diagnostic.yml
   workflow_dispatch:
     inputs:
       arch:
@@ -21,13 +26,13 @@ permissions:
 
 jobs:
   inspect-storage:
-    name: Inspect ${{ inputs.arch }} runner storage
+    name: Inspect ${{ inputs.arch || 'arm64' }} runner storage
     runs-on:
       - self-hosted
-      - ${{ inputs.arch == 'arm64' && 'reproducible-benchmarks-arm' || 'reproducible-benchmarks' }}
+      - ${{ (inputs.arch || 'arm64') == 'arm64' && 'reproducible-benchmarks-arm' || 'reproducible-benchmarks' }}
     timeout-minutes: 5
     env:
-      DIAGNOSTIC_ARCH: ${{ inputs.arch }}
+      DIAGNOSTIC_ARCH: ${{ inputs.arch || 'arm64' }}
     steps:
       - name: Read filesystem and container storage state
         shell: bash
