@@ -740,6 +740,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         ReadOptions readOptions = new();
         readOptions.SetVerifyChecksums(VerifyChecksum);
+        readOptions.SetBackgroundPurgeOnIteratorCleanup(true);
         return readOptions;
     }
 

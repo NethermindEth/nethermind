@@ -749,6 +749,39 @@ namespace Nethermind.Db.Test
                 "the bounds share their capped:8 prefix, so this range keeps the prefix index and must still yield every key in it");
         }
 
+        [TestCase(ReadFlags.None)]
+        [TestCase(ReadFlags.HintReadAhead)]
+        [TestCase(ReadFlags.HintCacheMiss)]
+        public void GetViewBetween_preserves_bounds_and_snapshot_for_read_flags(ReadFlags flags)
+        {
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db[[10]] = [1];
+            db[[20]] = [2];
+            db[[30]] = [3];
+            db.Flush();
+
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot();
+            db[[20]] = [9];
+            db[[40]] = [4];
+
+            List<byte> keys = [];
+            List<byte> values = [];
+            using (ISortedView view = ((ISortedKeyValueStore)snapshot).GetViewBetween([10], [30], flags))
+            {
+                while (view.MoveNext())
+                {
+                    keys.Add(view.CurrentKey[0]);
+                    values.Add(view.CurrentValue[0]);
+                }
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keys, Is.EqualTo(new byte[] { 10, 20 }));
+                Assert.That(values, Is.EqualTo(new byte[] { 1, 2 }));
+            }
+        }
+
         [TestCase(0, 0, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnADatabaseWithoutAnExtractor_IsFalse")]
         [TestCase(8, 3, ExpectedResult = true, TestName = "CrossesPrefixBucket_OnBoundsShorterThanThePrefix_IsTrue")]
         [TestCase(8, 8, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnBoundsSharingThePrefix_IsFalse")]
