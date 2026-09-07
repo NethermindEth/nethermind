@@ -84,6 +84,31 @@ public class PayloadPreparationServiceTests
         }
     }
 
+    [Test]
+    public void ImproveBlock_leaves_the_context_of_a_later_round_alone_when_its_own_round_was_cancelled()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+
+        // A later round owns the storage entry, with a cancellation source of its own.
+        SharedCancellationTokenSource laterRound = new(new CancellationTokenSource());
+        MockBlockImprovementContext laterContext = new(Build.A.Block.TestObject, DateTimeOffset.UtcNow, laterRound);
+        service.Store(payloadId, laterContext);
+
+        // A stale improvement from an earlier round, whose source has already been cancelled.
+        SharedCancellationTokenSource earlierRound = new(new CancellationTokenSource());
+        earlierRound.CancelAndDispose();
+        service.Improve(payloadId, earlierRound);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.Stored(payloadId), Is.SameAs(laterContext));
+            Assert.That(laterContext.Disposed, Is.False);
+            Assert.That(laterRound.IsCancellationRequested, Is.False);
+        }
+    }
+
     private static void Retrieve(PayloadPreparationService service, string payloadId) =>
         service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
 
@@ -125,6 +150,11 @@ public class PayloadPreparationServiceTests
 
         public IBlockImprovementContext? Stored(string payloadId) =>
             _payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? context) ? context : null;
+
+        public void Store(string payloadId, IBlockImprovementContext context) => _payloadStorage[payloadId] = context;
+
+        public void Improve(string payloadId, SharedCancellationTokenSource cts) =>
+            ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, DateTimeOffset.UtcNow, UInt256.Zero, cts);
 
         protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {

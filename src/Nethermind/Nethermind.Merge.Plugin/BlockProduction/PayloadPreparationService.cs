@@ -137,8 +137,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
+        IBlockImprovementContext? publishedContext = null;
         IBlockImprovementContext storedContext = _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
+            id => publishedContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
             {
                 if (cts.IsCancellationRequested)
@@ -158,7 +159,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 if (!cts.IsCancellationRequested)
                 {
                     currentContext.Dispose();
-                    return newContext;
+                    return publishedContext = newContext;
                 }
                 else
                 {
@@ -167,7 +168,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
             });
 
-        if (cts.IsCancellationRequested)
+        // Only a context published by this call may be cancelled here: the branches that keep
+        // `currentContext` can hand back one belonging to a later round, whose `cts` is still live.
+        if (cts.IsCancellationRequested && ReferenceEquals(storedContext, publishedContext))
         {
             storedContext.DisposeAndCancelOngoingImprovements();
         }
