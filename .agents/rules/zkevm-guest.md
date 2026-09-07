@@ -130,10 +130,34 @@ dotnet run -c release --project Nethermind.Benchmark.Runner -- --quick --filter 
 
 `*EvmStackBenchmarks*` is not a gate — most of its cases measure below a nanosecond.
 
+Two things about reading the output, both of which have produced a confidently wrong answer here:
+
+- **Pass `--inProcess`.** With this many worktrees checked out, BenchmarkDotNet's generated project cannot
+  resolve a unique `Nethermind.Benchmark`, and every row silently reports `NA` rather than failing.
+  In-process timings are not comparable with out-of-process ones, so keep a whole comparison in one mode.
+- **Only compare figures from the same run.** The machine drifts between sessions by more than the effect
+  being measured: one unchanged benchmark read 25.5 ns and 34.1 ns hours apart. Put the baseline and the
+  candidate in the same run — as separate `[Benchmark]` methods if they are separate implementations —
+  rather than quoting a number from earlier, and interleave base/branch/base when comparing two builds.
+
 If the guest form regresses the host, split it: `X.std.cs` keeps what the host had, `X.zkevm.cs` gets
 the guest form. Keep the signature identical across the pair and swap only the body — every existing
 split does, and a public member whose *type* differed per flavour would be the first place the two
 builds' API surfaces diverge.
+
+## Check master before optimising the guest
+
+Most of this file's cost model is guest-specific, but the code it applies to is shared, and the EVM is
+under active optimisation by people not thinking about the guest at all. One PR — #13128, replacing the
+interpreter loop with tail-call dispatch — independently landed five things that were open as guest PRs at
+the time: the word-at-a-time jumpdest scan, `nint` for `EvmStack.Head` and `CodeLength`, `nint` for the
+stack offsets, a non-SIMD `IsSlotZero` and ISZERO path, the lane-wise `Bswap64` fallback, the
+`ReadBeWord` routing for slot conversions, and a limb-wise `CompareScalar` for the comparisons. Three
+guest PRs were closed as superseded.
+
+So: grep master for the thing before building it, and after any large EVM change lands, re-baseline before
+trusting a number measured against an older base. A step count from last week describes a program that no
+longer exists.
 
 ## Measuring the guest
 
@@ -183,8 +207,8 @@ the emulator it runs against.
 | idea | result |
 |---|---|
 | `Accelerators.Keccak256` (the zkVM's whole-message keccak) instead of the managed sponge over `KeccakF` | **+12.05%** — it is a software sponge; the permutation syscall plus our own absorb wins |
-| SWAR word-skip in the jumpdest scan | +2.22% — only 1.39M of 2.098M visited bytes are outside `[JUMPDEST, PUSH32]` and they come in runs of ~2, and `TrailingZeroCount` is a software fallback (no Zbb) |
-| jumpdest scan's moving reference as *shared* code | host +40…55% on PUSH-heavy shapes; ships as a split |
+| bulk-*skipping* plain bytes in the jumpdest scan, a word at a time | +1.45…2.59% — only 1.39M of 2.098M visited bytes are outside `[JUMPDEST, PUSH32]` and they come in runs of ~2, so a clean word is rare, and locating the first interesting byte needs `TrailingZeroCount`, a software fallback without Zbb. **Not a verdict on SWAR**: the scan master runs today *is* word-at-a-time SWAR — it processes each word rather than skipping over it, finds PUSH opcodes with `~w & (w<<1) & (w<<2) & 0x8080…` and JUMPDESTs with `(x-ones) & ~x & highbits`, and re-aligns its loads to the containing word after a PUSH |
+| jumpdest scan's moving reference as *shared* code | host +40…55% on PUSH-heavy shapes. It shipped as a split and was then superseded outright by master's SWAR scan, so the split is gone; the host figure is the part worth keeping — a pointer walk that suits the guest can be badly wrong for x64 |
 | `RlpReader.Position` as `nint` | see above — host +18% |
 | carrying branch-RLP child lengths between the two passes | +0.40% / +0.45% |
 | hand-scalarised `Vector256` AND/OR/XOR/NOT | +0.31% — ILC's own expansion is tighter |
@@ -192,7 +216,7 @@ the emulator it runs against.
 | `OpcodeResult` struct-returning dispatch | +1.3% |
 | per-node child offset cache in `TrieNode.SeekChildNotNull` | +3.6% — nodes are sought about once |
 | a "hash-and-forget" trie over the witness blobs, skipping `TrieNode` | not built: `DecodeRlp` already runs exactly once per node, from one call site, so there is no redundant object work to remove |
-| a little-endian guest stack, to drop the byte swaps from arithmetic | not built: the byte order is not confined to a conversion — `Push2Bytes`…`Push32Bytes`, `PushAddress`, `PopAddress`, `PeekWord256` each encode it. Ordering the words in place for LT/GT/SLT/SGT took the same prize without a second representation |
+| a little-endian guest stack, to drop the byte swaps from arithmetic | not built: the byte order is not confined to a conversion — `Push2Bytes`…`Push32Bytes`, `PushAddress`, `PopAddress`, `PeekWord256` each encode it. `Math2ParamCore`'s `CompareScalar` takes the same prize for the comparisons without a second representation, by testing limbs for equality where they lie and swapping only the pair that differs |
 | lazy jumpdest scanning, extending the bitmap only as far as each jump needs | +0.11% — jump targets reach nearly the end of real bytecode, so there is no unscanned tail to save |
 | eliminating array bounds checks for their length reads | not worth a campaign: length reads are 18% of four-byte reads, ~0.4% of total cost, and most sit in corelib |
 | a custom open-addressed map/set keyed on the existing 64-bit `IHash64bit` hash | +0.05…0.09% across three targets — these collections are small, so probe chains are short, and `Dictionary`'s `int[]` buckets index with a shift where a wide entry needs a multiply |
