@@ -57,6 +57,9 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
         }
 
+        // The item count only requires each log to start before the declared end, so without this the last
+        // one may overrun it: an under-declared header consumes the same bytes and the receipt checkpoint holds.
+        ctx.Check(lastCheck);
         txReceipt.Logs = entries;
 
         // Handle any remaining extra bytes
