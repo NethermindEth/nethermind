@@ -508,6 +508,76 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [TestCase("Blocks")]
+        [TestCase("FlatAccount")]
+        [TestCase("FlatStorage")]
+        public void DynamicLevelSizing_MigratesExistingSstData(string dbName)
+        {
+            const string dynamicLevelOption = "level_compaction_dynamic_level_bytes";
+            const int deletedIndex = 3;
+            DbConfig legacyConfig = new()
+            {
+                AdditionalRocksDbOptions = $"{dynamicLevelOption}=false;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory legacyFactory = new(legacyConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            DbConfig candidateConfig = new();
+            RocksDbConfigFactory candidateFactory = new(candidateConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            Assert.That(GetEffectiveOption(legacyFactory.GetForDatabase(dbName, null), dynamicLevelOption), Is.EqualTo("false"));
+            Assert.That(GetEffectiveOption(candidateFactory.GetForDatabase(dbName, null), dynamicLevelOption), Is.EqualTo("true"));
+
+            byte[][] keys = CreateDynamicLevelKeys();
+            byte[][] expectedValues = new byte[keys.Length][];
+            using (DbOnTheRocks legacyDb = new(DbPath, GetRocksDbSettings(DbPath, dbName), legacyConfig, legacyFactory, LimboLogs.Instance))
+            {
+                for (int batch = 0; batch < 4; batch++)
+                {
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        expectedValues[i] = CreateDynamicLevelValue(i, batch);
+                        legacyDb.PutSpan(keys[i], expectedValues[i], WriteFlags.None);
+                    }
+
+                    legacyDb.Flush();
+                }
+
+                legacyDb.Remove(keys[deletedIndex]);
+                legacyDb.Flush();
+            }
+
+            Assert.That(SstCount(DbPath), Is.GreaterThan(1), "the legacy database must contain overlapping flushed SSTs before migration");
+
+            byte[] newKey = 999.ToBigEndianByteArray();
+            byte[] replacement = CreateDynamicLevelValue(0, 4);
+            using (DbOnTheRocks migratedDb = new(DbPath, GetRocksDbSettings(DbPath, dbName), candidateConfig, candidateFactory, LimboLogs.Instance))
+            {
+                AssertDynamicLevelValues(migratedDb, keys, expectedValues, deletedIndex);
+
+                using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)migratedDb).CreateSnapshot();
+                migratedDb.PutSpan(keys[0], replacement, WriteFlags.None);
+                migratedDb.PutSpan(newKey, [9, 9, 9], WriteFlags.None);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snapshot.Get(keys[0]), Is.EqualTo(expectedValues[0]));
+                    Assert.That(snapshot.Get(newKey), Is.Null);
+                    Assert.That(((IReadOnlyKeyValueStore)migratedDb).Get(keys[0]), Is.EqualTo(replacement));
+                    Assert.That(((IReadOnlyKeyValueStore)migratedDb).Get(newKey), Is.EqualTo(new byte[] { 9, 9, 9 }));
+                }
+
+                migratedDb.Flush();
+                migratedDb.Compact();
+
+                expectedValues[0] = replacement;
+                AssertDynamicLevelValues(migratedDb, keys, expectedValues, deletedIndex);
+                Assert.That(((IReadOnlyKeyValueStore)migratedDb).Get(newKey), Is.EqualTo(new byte[] { 9, 9, 9 }));
+            }
+
+            using DbOnTheRocks reopenedDb = new(DbPath, GetRocksDbSettings(DbPath, dbName), candidateConfig, candidateFactory, LimboLogs.Instance);
+            AssertDynamicLevelValues(reopenedDb, keys, expectedValues, deletedIndex);
+            Assert.That(((IReadOnlyKeyValueStore)reopenedDb).Get(newKey), Is.EqualTo(new byte[] { 9, 9, 9 }));
+        }
+
         [Test]
         public void RemoveRange_OnBlockNumberPrefixedKeys_TakesEveryHashAtEveryHeightInRange()
         {
@@ -630,6 +700,54 @@ namespace Nethermind.Db.Test
         private static long SstBytes(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
+
+        private static int SstCount(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Count();
+
+        private static string GetEffectiveOption(IRocksDbConfig config, string optionName) =>
+            DbOnTheRocks.ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions)[optionName];
+
+        private static byte[][] CreateDynamicLevelKeys()
+        {
+            byte[][] keys = new byte[64][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                keys[i] = i.ToBigEndianByteArray();
+            }
+
+            return keys;
+        }
+
+        private static byte[] CreateDynamicLevelValue(int keyIndex, int batch)
+        {
+            byte[] value = new byte[128];
+            value.AsSpan().Fill((byte)(batch + 1));
+            value[0] = (byte)keyIndex;
+            value[1] = (byte)batch;
+            return value;
+        }
+
+        private static void AssertDynamicLevelValues(DbOnTheRocks db, byte[][] keys, byte[][] expectedValues, int deletedIndex)
+        {
+            IReadOnlyKeyValueStore store = db;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    if (i == deletedIndex)
+                    {
+                        Assert.That(store.Get(keys[i]), Is.Null);
+                        Assert.That(store.KeyExists(keys[i]), Is.False);
+                    }
+                    else
+                    {
+                        Assert.That(store.Get(keys[i]), Is.EqualTo(expectedValues[i]));
+                        Assert.That(store.KeyExists(keys[i]), Is.True);
+                    }
+                }
+            }
+        }
 
         private static byte[] BlockKey(ulong blockNumber, byte hashTag)
         {

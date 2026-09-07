@@ -33,9 +33,7 @@ public class DbConfig : IDbConfig
         "memtable_whole_key_filtering=true;" +
         "memtable_prefix_bloom_size_ratio=0.02;" +
 
-        // Rocksdb turned this on by default a few releases ago, but we don't want it yet; the impact on reads is unclear
-        // significant or not.
-        "level_compaction_dynamic_level_bytes=false;" +
+        "level_compaction_dynamic_level_bytes=true;" +
 
         // Default is 1.6GB.
         // Increase it to reduce stalls under heavy compaction.
@@ -304,7 +302,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
-        "level_compaction_dynamic_level_bytes=false;" +
+        "level_compaction_dynamic_level_bytes=true;" +
 
         // We bsearch instead of partitioned tree. This take up memory for improved latency.
         "block_based_table_factory.partition_filters=false;" +
