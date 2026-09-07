@@ -859,6 +859,45 @@ public class JsonRpcProcessorTests
         Assert.That(dispatched, Is.EqualTo(validItemIndex < 0 ? 0 : 1));
     }
 
+    private static IEnumerable<TestCaseData> ServerSideDecodeLookalikeExceptionCases()
+    {
+        (string name, Func<Exception> factory)[] cases =
+        [
+            ("InvalidOperationException", static () => new InvalidOperationException("module went away")),
+            ("ObjectDisposedException", static () => new ObjectDisposedException("RentedModule")),
+        ];
+
+        foreach ((string name, Func<Exception> factory) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(factory, transport).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// A server-side <see cref="InvalidOperationException"/> or <see cref="ObjectDisposedException"/> raised *after* a
+    /// well-formed request has decoded must never be reported to the caller as -32700 parse error: that hides a real
+    /// server fault behind a message blaming the client. Only the decode steps may treat those types as caller input
+    /// errors, which is why the guards sit inside the decode helpers rather than around request execution.
+    /// </remarks>
+    [TestCaseSource(nameof(ServerSideDecodeLookalikeExceptionCases))]
+    public void Server_side_exception_after_a_request_decodes_is_not_reported_as_a_parse_error(Func<Exception> factory, RequestTransport transport)
+    {
+        Exception expected = factory();
+        IJsonRpcService service = CreateService(_ => throw expected);
+        JsonRpcProcessor processor = CreateProcessor(service);
+        byte[] request = """{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray();
+
+        Exception? thrown = Assert.CatchAsync(async () =>
+        {
+            using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, request, transport);
+        });
+
+        Assert.That(thrown, Is.SameAs(expected), "the server fault must surface, not be reframed as a client parse error");
+    }
+
     private static async ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, byte[] request, RequestTransport transport)
     {
         if (transport == RequestTransport.HttpMemory)

@@ -232,7 +232,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             isCompleted &&
                             buffer.IsSingleSegment)
                         {
-                            if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest))
+                            if (!TryDecodeSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest, out Exception? decodeException)
+                                && decodeException is not null)
+                            {
+                                result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", decodeException);
+                                processingState.ShouldExit = true;
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                                await WriteSingleEntryAsync(result.Value, sink, cancellationToken);
+                                return;
+                            }
+
+                            if (directRequest is not null)
                             {
                                 processingState.ShouldExit = true;
 
@@ -257,8 +268,28 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             }
                         }
 
-                        processingState.FreshState = TryParseJson(ref buffer, isCompleted, ref processingState.ReaderState, out JsonDocument? jsonDocument, options);
-                        if (processingState.FreshState)
+                        // Only the decode is guarded here. The outer catch below wraps request execution too, so
+                        // widening that one would report a module-side InvalidOperationException or
+                        // ObjectDisposedException to the caller as -32700 parse error.
+                        JsonDocument? jsonDocument = null;
+                        bool undecodable = false;
+                        try
+                        {
+                            processingState.FreshState = TryParseJson(ref buffer, isCompleted, ref processingState.ReaderState, out jsonDocument, options);
+                        }
+                        catch (Exception ex) when (IsRequestDecodingException(ex))
+                        {
+                            result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
+                            processingState.ShouldExit = true;
+                            undecodable = true;
+                            if (!advanced)
+                            {
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                            }
+                        }
+
+                        if (!undecodable && processingState.FreshState)
                         {
                             if (options.InputMode == JsonRpcInputMode.SingleDocument)
                             {
@@ -281,7 +312,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                                 await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, cancellationToken);
                             }
                         }
-                        else if (isCompleted && !buffer.IsEmpty)
+                        else if (!undecodable && isCompleted && !buffer.IsEmpty)
                         {
                             result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
                             processingState.ShouldExit = true;
@@ -303,8 +334,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         Handle(e);
                         processingState.ShouldExit = true;
                     }
-                    catch (Exception ex) when (IsRequestDecodingException(ex))
+                    catch (JsonException ex)
                     {
+                        // Deliberately NOT IsRequestDecodingException: this catch wraps request *execution* as well
+                        // as decoding, so widening it to InvalidOperationException swallows a module-side
+                        // InvalidOperationException or ObjectDisposedException and reports it to the caller as
+                        // -32700 parse error. The decode steps guard themselves instead.
                         result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
                         processingState.ShouldExit = true;
                     }
@@ -401,25 +436,77 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         CancellationToken cancellationToken)
     {
         long startTime = Stopwatch.GetTimestamp();
+        JsonRpcRequest? directRequest;
         try
         {
-            if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest))
+            // Only the decode is guarded. The rest of this method runs the request, and a module-side
+            // InvalidOperationException or ObjectDisposedException must not be reported as a parse error.
+            if (!TryReadSingleObjectRequest(requestBody, out directRequest))
             {
-                await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
-                return;
+                directRequest = null;
             }
-
-            if (await TryProcessBatchRequestDirectly(requestBody, context, sink, cancellationToken))
-            {
-                return;
-            }
-
-            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
-            await ProcessCoreAsync(reader, context, sink, options, timeoutSource: null, timeoutToken: CancellationToken.None, cancellationToken, recordRequest: false);
         }
         catch (Exception ex) when (IsRequestDecodingException(ex))
         {
             await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+            return;
+        }
+
+        if (directRequest is not null)
+        {
+            await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            if (await TryProcessBatchRequestDirectly(requestBody, context, sink, cancellationToken))
+            {
+                return;
+            }
+        }
+        catch (JsonException ex)
+        {
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+            return;
+        }
+
+        try
+        {
+            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
+            await ProcessCoreAsync(reader, context, sink, options, timeoutSource: null, timeoutToken: CancellationToken.None, cancellationToken, recordRequest: false);
+        }
+        catch (JsonException ex)
+        {
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+        }
+    }
+
+    /// <summary>
+    /// Decode-only wrapper around <see cref="TryReadSingleObjectRequest"/>: a decoding failure is reported through
+    /// <paramref name="decodeException"/> instead of being thrown.
+    /// </summary>
+    /// <remarks>
+    /// The guard has to sit here, around the decode alone. Wrapping the caller's whole block instead would also cover
+    /// request <em>execution</em>, and a module-side <see cref="InvalidOperationException"/> or
+    /// <see cref="ObjectDisposedException"/> would then be reported to the caller as -32700 parse error and swallowed.
+    /// This mirrors <see cref="TryDeserializeBatchItem"/> and <see cref="TryCreateBatchItemRequest"/>.
+    /// </remarks>
+    private static bool TryDecodeSingleObjectRequest(
+        ReadOnlyMemory<byte> memory,
+        out JsonRpcRequest? request,
+        out Exception? decodeException)
+    {
+        decodeException = null;
+        try
+        {
+            return TryReadSingleObjectRequest(memory, out request);
+        }
+        catch (Exception ex) when (IsRequestDecodingException(ex))
+        {
+            request = null;
+            decodeException = ex;
+            return false;
         }
     }
 
@@ -594,7 +681,23 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             switch (rootElement.ValueKind)
             {
                 case JsonValueKind.Object:
-                    JsonRpcRequest request = CreateRequest(rootElement);
+                    JsonRpcRequest request;
+                    try
+                    {
+                        // Invalid UTF-8 bytes and lone UTF-16 surrogate escapes inside a string value surface here as
+                        // a bare InvalidOperationException rather than a JsonException. Guard the decode, not the
+                        // execution that follows it.
+                        request = CreateRequest(rootElement);
+                    }
+                    catch (Exception ex) when (IsRequestDecodingException(ex))
+                    {
+                        // -32700, not -32600: the bytes never decoded into a request, so there is nothing to
+                        // call invalid. The raw buffer is not available here (the document is already parsed),
+                        // and GetParsingError only uses it to enrich the debug log.
+                        await WriteParsingErrorAsync(default, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+                        break;
+                    }
+
                     if (_logger.IsDebug) DebugRequest(request);
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
