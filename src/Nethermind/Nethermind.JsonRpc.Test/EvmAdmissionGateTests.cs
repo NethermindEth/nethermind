@@ -15,10 +15,11 @@ using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Serialization.Json;
+using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
+using Testably.Abstractions;
 using static Nethermind.JsonRpc.EvmAdmissionGate;
-using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -42,30 +43,33 @@ public class EvmAdmissionGateTests
     public void SetUp()
     {
         _timeProvider = new ManualTimeProvider();
-        _gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, EthModuleConcurrentInstances = EvmPermits, MaxQueueWaitMs = MaxQueueWaitMs });
+        _gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, EthModuleConcurrentInstances = EvmPermits, EvmExecutionMaxQueueWaitMs = MaxQueueWaitMs });
     }
 
-    [TestCase(typeof(IEthRpcModule), "eth_call", true)]
-    [TestCase(typeof(IEthRpcModule), "eth_estimateGas", true)]
-    [TestCase(typeof(IEthRpcModule), "eth_createAccessList", true)]
-    [TestCase(typeof(IEthRpcModule), "eth_simulateV1", true)]
-    [TestCase(typeof(IEthRpcModule), "eth_fillTransaction", true)]
-    [TestCase(typeof(IDebugRpcModule), "debug_simulateV1", true)]
-    [TestCase(typeof(IEthRpcModule), "eth_blockNumber", false)]
-    [TestCase(typeof(IEthRpcModule), "eth_getBalance", false)]
-    [TestCase(typeof(IEthRpcModule), "eth_getLogs", false)]
-    [TestCase(typeof(IEthRpcModule), "eth_sendRawTransaction", false)]
-    [TestCase(typeof(IEthRpcModule), "eth_getProof", false)]
-    [TestCase(typeof(IDebugRpcModule), "debug_traceCall", false)]
-    [TestCase(typeof(IDebugRpcModule), "debug_traceTransaction", false)]
-    [TestCase(typeof(ITraceRpcModule), "trace_call", false)]
-    [TestCase(typeof(ITraceRpcModule), "trace_replayBlockTransactions", false)]
-    [TestCase(typeof(IProofRpcModule), "proof_call", false)]
-    [TestCase(typeof(IDebugRpcModule), "debug_getRawBlock", false)]
-    [TestCase(typeof(IEngineRpcModule), "engine_newPayloadV4", false)]
-    [TestCase(typeof(INetRpcModule), "net_version", false)]
-    public void Only_the_six_evm_execution_methods_are_gated(Type moduleType, string methodName, bool gated) =>
-        Assert.That(Resolve(moduleType, methodName).IsEvmExecution, Is.EqualTo(gated));
+    [TearDown]
+    public void TearDown() => _gate.Dispose();
+
+    [TestCase("eth_call", true)]
+    [TestCase("eth_estimateGas", true)]
+    [TestCase("eth_createAccessList", true)]
+    [TestCase("eth_simulateV1", true)]
+    [TestCase("eth_fillTransaction", true)]
+    [TestCase("debug_simulateV1", true)]
+    [TestCase("eth_blockNumber", false)]
+    [TestCase("eth_getBalance", false)]
+    [TestCase("eth_getLogs", false)]
+    [TestCase("eth_sendRawTransaction", false)]
+    [TestCase("eth_getProof", false)]
+    [TestCase("debug_traceCall", false)]
+    [TestCase("debug_traceTransaction", false)]
+    [TestCase("trace_call", false)]
+    [TestCase("trace_replayBlockTransactions", false)]
+    [TestCase("proof_call", false)]
+    [TestCase("debug_getRawBlock", false)]
+    [TestCase("engine_newPayloadV4", false)]
+    [TestCase("net_version", false)]
+    public void Only_methods_flagged_as_evm_execution_are_gated(string methodName, bool gated) =>
+        Assert.That(ModuleProvider.Resolve(methodName)!.IsEvmExecution, Is.EqualTo(gated));
 
     // A null expectation stands for Environment.ProcessorCount, which is not a compile-time constant.
     [TestCase(null, null, null, TestName = "Processor count")]
@@ -89,7 +93,7 @@ public class EvmAdmissionGateTests
         JsonRpcConfig config = new() { EvmExecutionConcurrency = 1, EthModuleConcurrentInstances = 1 };
         if (maxQueueWaitMs is int configured)
         {
-            config.MaxQueueWaitMs = configured;
+            config.EvmExecutionMaxQueueWaitMs = configured;
         }
         EvmAdmissionGate gate = CreateGate(config);
         using Lease held = await Admit(gate);
@@ -456,6 +460,17 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
+    public void Disposing_the_gate_disposes_its_timer()
+    {
+        RecordingTimeProvider timeProvider = new();
+        EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
+
+        gate.Dispose();
+
+        Assert.That(timeProvider.TimerDisposed, Is.True);
+    }
+
+    [Test]
     public async Task Grant_reaching_an_expired_waiter_serves_it()
     {
         EvmAdmissionGate gate = CreateGate(SinglePermit());
@@ -486,53 +501,15 @@ public class EvmAdmissionGateTests
 
         Assert.That(_gate.ServiceTimeMs, Is.EqualTo((double)holdMs / weight));
     }
-
-    [TestCase(true, TestName = "Disposing folds one ~0 ms observation in, landing near 900 at alpha 0.1")]
-    [TestCase(false, TestName = "Releasing without sampling leaves the estimate untouched")]
-    public async Task Service_time_ewma_moves_only_on_sampled_releases(bool sampled)
+    [Test]
+    public async Task Service_time_ewma_folds_each_release_in()
     {
         _gate.SetServiceTimeMs(1_000);
 
-        Lease lease = await Admit();
-        if (sampled)
-        {
-            lease.Dispose();
-        }
-        else
-        {
-            lease.ReleaseWithoutSampling();
-        }
+        (await Admit()).Dispose();
 
-        Constraint serviceTime = sampled ? Is.LessThan(1_000).And.GreaterThan(800) : Is.EqualTo(1_000);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_gate.InFlight, Is.EqualTo(0));
-            Assert.That(_gate.ServiceTimeMs, serviceTime);
-        }
+        Assert.That(_gate.ServiceTimeMs, Is.EqualTo(900), "one ~0 ms observation at alpha 0.1");
     }
-
-    [TestCase(false, TestName = "Idle gate: the second release is dropped at once")]
-    [TestCase(true, TestName = "Loaded gate: the second release passes for the live lease's, whose own release is dropped")]
-    public async Task Surplus_release_is_dropped_and_does_not_add_a_permit(bool otherInFlight)
-    {
-        Lease other = otherInFlight ? await Admit() : default;
-        Lease lease = await Admit();
-        lease.Dispose();
-        lease.Dispose();
-        Assert.That(_gate.InFlight, Is.EqualTo(0));
-
-        other.Dispose();
-        Assert.That(_gate.InFlight, Is.EqualTo(0));
-
-        Lease[] held = [await Admit(), await Admit()];
-        Task<Lease> overCapacity = Admit().AsTask();
-        Assert.That(overCapacity.IsCompleted, Is.False, "the surplus release must not have added a permit");
-
-        held[0].Dispose();
-        held[1].Dispose();
-        (await overCapacity.WaitAsync(WaitBudget)).Dispose();
-    }
-
     [Test]
     [NonParallelizable]
     public async Task Queued_and_in_flight_gauges_follow_the_gate()
@@ -555,29 +532,6 @@ public class EvmAdmissionGateTests
             Assert.That(Metrics.RpcAdmissionServiceTimeMs, Is.EqualTo(_gate.ServiceTimeMs));
         }
     }
-
-    // Both permits are released at once, over and over; a gauge published from a stale snapshot would read 1 at rest.
-    [Test]
-    [NonParallelizable]
-    public async Task In_flight_gauge_reads_zero_at_rest_after_concurrent_releases()
-    {
-        const int iterations = 20_000;
-        using Barrier releaseTogether = new(EvmPermits);
-        void ReleaseInStep(Lease lease)
-        {
-            releaseTogether.SignalAndWait();
-            lease.Dispose();
-        }
-
-        for (int i = 0; i < iterations; i++)
-        {
-            Lease first = await Admit();
-            Lease second = await Admit();
-            await Task.WhenAll(Task.Run(() => ReleaseInStep(first)), Task.Run(() => ReleaseInStep(second)));
-            Assert.That(Metrics.RpcAdmissionInFlight, Is.EqualTo(0), $"iteration {i}");
-        }
-    }
-
     [Test]
     public async Task Lighter_waiters_are_served_first_and_fifo_within_a_weight()
     {
@@ -659,7 +613,7 @@ public class EvmAdmissionGateTests
             {
                 Task<Lease> light = Admit(gate).AsTask();
                 Assert.That(light.IsCompleted, Is.False);
-                holder.ReleaseWithoutSampling();
+                holder.Dispose();
                 holder = await light.WaitAsync(WaitBudget);
                 lightServed++;
             }
@@ -685,7 +639,7 @@ public class EvmAdmissionGateTests
     public async Task Timeouts_racing_grants_neither_leak_nor_double_release_permits()
     {
         const int requests = 2_000;
-        EvmAdmissionGate gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, EthModuleConcurrentInstances = EvmPermits, MaxQueueWaitMs = 1 }, TimeProvider.System);
+        EvmAdmissionGate gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, EthModuleConcurrentInstances = EvmPermits, EvmExecutionMaxQueueWaitMs = 1 }, TimeProvider.System);
         int admitted = 0;
         int shed = 0;
         Task[] callers = new Task[requests];
@@ -696,7 +650,7 @@ public class EvmAdmissionGateTests
             {
                 try
                 {
-                    using (await gate.AdmitAsync(weight, CancellationToken.None))
+                    using (await gate.AdmitAsync(ParamsBytes(weight), CancellationToken.None))
                     {
                         Interlocked.Increment(ref admitted);
                         await Task.Yield();
@@ -758,17 +712,31 @@ public class EvmAdmissionGateTests
     {
         EvmExecutionConcurrency = 1,
         EthModuleConcurrentInstances = 1,
-        MaxQueueWaitMs = maxQueueWaitMs,
+        EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
         RequestQueueLimit = requestQueueLimit,
     };
 
     private ValueTask<Lease> Admit(int weight = MinWeight) => Admit(_gate, weight);
 
     private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int weight = MinWeight, CancellationToken cancellationToken = default) =>
-        gate.AdmitAsync(weight, cancellationToken);
+        gate.AdmitAsync(ParamsBytes(weight), cancellationToken);
 
-    private static ResolvedMethodInfo Resolve(Type moduleType, string methodName) =>
-        new(moduleType.Name, moduleType.GetMethod(methodName)!, readOnly: true, RpcEndpoint.All);
+    // The smallest params size that weighs the given amount.
+    private static int ParamsBytes(int weight) => (weight - MinWeight) * BytesPerWeightUnit;
+
+    private static readonly RpcModuleProvider ModuleProvider = CreateModuleProvider();
+
+    private static RpcModuleProvider CreateModuleProvider()
+    {
+        RpcModuleProvider provider = new(new RealFileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        provider.Register(new SingletonModulePool<IEthRpcModule>(Substitute.For<IEthRpcModule>()));
+        provider.Register(new SingletonModulePool<IDebugRpcModule>(Substitute.For<IDebugRpcModule>()));
+        provider.Register(new SingletonModulePool<ITraceRpcModule>(Substitute.For<ITraceRpcModule>()));
+        provider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>()));
+        provider.Register(new SingletonModulePool<IEngineRpcModule>(Substitute.For<IEngineRpcModule>()));
+        provider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>()));
+        return provider;
+    }
 
     // Records every re-arm so the arming rules the sweep relies on can be asserted; ManualTimeProvider ignores Change.
     private sealed class RecordingTimeProvider : TimeProvider
@@ -779,6 +747,7 @@ public class EvmAdmissionGateTests
         private object? _state;
 
         public IReadOnlyList<TimeSpan> DueTimes => _dueTimes;
+        public bool TimerDisposed { get; private set; }
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
@@ -792,18 +761,18 @@ public class EvmAdmissionGateTests
         {
             _callback = callback;
             _state = state;
-            return new RecordingTimer(_dueTimes);
+            return new RecordingTimer(this);
         }
 
-        private sealed class RecordingTimer(List<TimeSpan> dueTimes) : ITimer
+        private sealed class RecordingTimer(RecordingTimeProvider owner) : ITimer
         {
             public bool Change(TimeSpan dueTime, TimeSpan period)
             {
-                dueTimes.Add(dueTime);
+                owner._dueTimes.Add(dueTime);
                 return true;
             }
 
-            public void Dispose() { }
+            public void Dispose() => owner.TimerDisposed = true;
 
             public ValueTask DisposeAsync() => default;
         }

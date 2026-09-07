@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
@@ -11,7 +12,7 @@ using Nethermind.Logging;
 namespace Nethermind.JsonRpc;
 
 /// <summary>
-/// Admits EVM-executing JSON-RPC requests (see <see cref="Modules.RpcModuleProvider.ResolvedMethodInfo.IsEvmExecution"/>):
+/// Admits EVM-executing JSON-RPC requests (those flagged <see cref="Modules.JsonRpcMethodAttribute.IsEvmExecution"/>):
 /// a fixed number of permits, a bounded shortest-job-first wait for the rest, and immediate load shedding once the
 /// predicted wait exceeds the budget.
 /// </summary>
@@ -21,16 +22,20 @@ namespace Nethermind.JsonRpc;
 /// past saturation, into work wasted on requests that are rejected anyway. The gate keeps concurrency at the plateau
 /// (<see cref="IJsonRpcConfig.EvmExecutionConcurrency"/>) and turns the excess into fast "Too many requests" answers: a
 /// request is rejected up front when <c>queued weight no heavier than it x EWMA(service time per unit) / permits</c>
-/// exceeds <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at most that
-/// long. A zero budget disables queueing: a request that finds no free permit is rejected on the calling thread without
-/// allocating a waiter. Independently of the budget, at most <see cref="IJsonRpcConfig.RequestQueueLimit"/> requests wait
-/// at once: the prediction is zero until the first request has been served, so without that backstop a saturated gate
-/// would queue every arrival.
+/// exceeds <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at
+/// most that long. A zero budget disables queueing: a request that finds no free permit is rejected on the calling thread
+/// without allocating a waiter. Independently of the budget, at most <see cref="IJsonRpcConfig.RequestQueueLimit"/>
+/// requests wait at once: the prediction is zero until the first request has been served, so without that backstop a
+/// saturated gate would queue every arrival.
 /// <para>
 /// Waiters are served lightest first, FIFO within a weight: a freed permit goes to the request expected to finish soonest,
 /// which maximises the requests served per second of execution time and keeps a sub-millisecond <c>eth_call</c> from
 /// waiting behind a batch of heavy simulations. The flip side is deliberate: under sustained overload heavy requests are
-/// the ones overtaken until their budget runs out, so the gate sheds heavy work first.
+/// the ones overtaken until their budget runs out, so the gate sheds heavy work first. "Heavy" means large, not expensive:
+/// the weight is the <c>params</c> size (see <see cref="Weigh"/>), so a large but cheap request, say many storage overrides
+/// ahead of a trivial call, is overtaken at every release and, for as long as the overload lasts, shed at its budget even
+/// though it would have finished quickly. The gate bounds every caller's wait; it does not promise that a large request is
+/// eventually served while the node stays overloaded.
 /// </para>
 /// <para>
 /// One lock guards the permit count, the queues and the EWMA; it is held for a few instructions per admission and nothing
@@ -38,10 +43,10 @@ namespace Nethermind.JsonRpc;
 /// constant budget, deadlines are monotonic within a bucket, so expired waiters are always bucket heads. Cancellation is
 /// lazy: a waiter whose caller has gone is skipped when a grant reaches it or dropped by the next expiry sweep, at most one
 /// budget later; until then it occupies one queue slot and inflates the predicted wait of equal-or-heavier arrivals, but it
-/// never receives a permit. The timer is never disposed; the gate lives as long as its <see cref="JsonRpcService"/>.
+/// never receives a permit. The timer is disposed with the gate, which <see cref="JsonRpcService"/> owns for its lifetime.
 /// </para>
 /// </remarks>
-internal sealed class EvmAdmissionGate
+internal sealed class EvmAdmissionGate : IDisposable
 {
     internal const int MinWeight = 1;
     internal const int MaxWeight = 8;
@@ -66,7 +71,6 @@ internal sealed class EvmAdmissionGate
     private int _queued;
     private int _inFlight;
     private double _serviceTimeMs;
-    private int _surplusReleaseLogged;
 
     /// <summary>Creates a gate sized from <paramref name="config"/>; see <see cref="IJsonRpcConfig.EvmExecutionConcurrency"/> for the permit count rules.</summary>
     internal EvmAdmissionGate(IJsonRpcConfig config, ILogManager logManager, TimeProvider? timeProvider = null)
@@ -78,10 +82,10 @@ internal sealed class EvmAdmissionGate
         Permits = config.EvmExecutionConcurrency is int configured ? Math.Clamp(configured, 1, envCap) : envCap;
         if (config.EvmExecutionConcurrency is int outOfRange && outOfRange != Permits && _logger.IsWarn)
         {
-            _logger.Warn($"JsonRpc.EvmExecutionConcurrency={outOfRange} is outside [1, {envCap}]; using {Permits}. Set JsonRpc.MaxQueueWaitMs=0 to disable queueing instead.");
+            _logger.Warn($"JsonRpc.EvmExecutionConcurrency={outOfRange} is outside [1, {envCap}]; using {Permits}. Set JsonRpc.EvmExecutionMaxQueueWaitMs=0 to disable queueing instead.");
         }
 
-        _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.MaxQueueWaitMs));
+        _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
         _maxQueued = Math.Max(0, config.RequestQueueLimit);
         for (int w = MinWeight; w <= MaxWeight; w++)
         {
@@ -98,6 +102,8 @@ internal sealed class EvmAdmissionGate
     internal int InFlight => Volatile.Read(ref _inFlight);
     internal double ServiceTimeMs => Volatile.Read(ref _serviceTimeMs);
 
+    public void Dispose() => _sweepTimer.Dispose();
+
     /// <summary>
     /// Converts the byte length of a request's raw <c>params</c> into its admission weight: one unit per
     /// <see cref="BytesPerWeightUnit"/>, clamped to <see cref="MaxWeight"/>.
@@ -106,7 +112,9 @@ internal sealed class EvmAdmissionGate
     /// Payload size is the best pre-execution proxy for how much work a simulation will do: state overrides (injected code
     /// plus storage slots) dominate heavy simulations and large calldata counts as well, and the size is known before
     /// anything is deserialized, so a request can be weighed, and shed, without paying for parameter binding. The clamp keeps
-    /// a single pathological request from starving everybody else.
+    /// a single pathological request from starving everybody else. The proxy is wrong in both directions, tiny calldata can
+    /// drive an expensive contract and many overrides can precede a trivial call, but only the second error compounds: with
+    /// shortest-job-first an overweighted request is overtaken at every release (see the class remarks).
     /// </remarks>
     internal static int Weigh(int paramsUtf8Length)
     {
@@ -114,17 +122,21 @@ internal sealed class EvmAdmissionGate
         return weight > MaxWeight ? MaxWeight : weight;
     }
 
-    /// <summary>Acquires a permit for a request of the given weight, waiting at most <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>.</summary>
-    /// <param name="weight">The request weight from <see cref="Weigh"/>; heavier requests wait behind lighter ones.</param>
+    /// <summary>
+    /// Acquires a permit for a request whose raw <c>params</c> span <paramref name="paramsUtf8Length"/> bytes, waiting at
+    /// most <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>.
+    /// </summary>
+    /// <param name="paramsUtf8Length">Byte length of the raw <c>params</c>, weighed with <see cref="Weigh"/>; heavier requests wait behind lighter ones.</param>
     /// <param name="cancellationToken">The request's token; a waiter whose token is cancelled never receives a permit.</param>
-    /// <returns>A lease that must be released exactly once, after the invocation, including any task it returned, has completed.</returns>
+    /// <returns>A lease that must be disposed exactly once, after the invocation, including any task it returned, has completed.</returns>
     /// <exception cref="LimitExceededException">
     /// The predicted wait exceeds the budget, queueing is disabled or the queue is full, or no permit was granted within the budget.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a permit was granted.</exception>
-    internal ValueTask<Lease> AdmitAsync(int weight, CancellationToken cancellationToken)
+    internal ValueTask<Lease> AdmitAsync(int paramsUtf8Length, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        int weight = Weigh(paramsUtf8Length);
         bool queueFull;
         lock (_lock)
         {
@@ -163,6 +175,7 @@ internal sealed class EvmAdmissionGate
             : _budget <= TimeSpan.Zero ? QueueingDisabledMessage : PredictedWaitMessage);
     }
 
+    // Test seam: production only updates the EWMA from a released lease.
     internal void SetServiceTimeMs(double serviceTimeMs)
     {
         lock (_lock)
@@ -172,69 +185,48 @@ internal sealed class EvmAdmissionGate
         }
     }
 
-    private void Release(int weight, long startTimestamp) =>
-        Release(sampled: true, _timeProvider.GetElapsedTime(startTimestamp).TotalMilliseconds / weight);
-
-    private void Release() => Release(sampled: false, 0);
-
-    private void Release(bool sampled, double observedMsPerUnit)
+    private void Release(int weight, long startTimestamp)
     {
+        double observedMsPerUnit = _timeProvider.GetElapsedTime(startTimestamp).TotalMilliseconds / weight;
         Waiter? grantee = null;
         Waiter? cancelled = null;
-        bool surplus = false;
         long grantTimestamp = 0;
         lock (_lock)
         {
-            // A release with nothing in flight is a lease released twice; letting it through would raise the permit count
-            // for the rest of the process.
-            if (_inFlight == 0)
+            Debug.Assert(_inFlight > 0, "a lease was released twice");
+            double updated = _serviceTimeMs == 0 ? observedMsPerUnit : _serviceTimeMs + EwmaAlpha * (observedMsPerUnit - _serviceTimeMs);
+            Volatile.Write(ref _serviceTimeMs, updated);
+            Metrics.RpcAdmissionServiceTimeMs = updated;
+
+            for (int w = MinWeight; w <= MaxWeight && grantee is null; w++)
             {
-                surplus = true;
+                while (_queues[w].TryDequeue(out Waiter? head))
+                {
+                    Metrics.RpcAdmissionQueued = --_queued;
+                    if (!head.CancellationToken.IsCancellationRequested)
+                    {
+                        grantee = head;
+                        break;
+                    }
+
+                    // A caller that has gone never takes the permit.
+                    Metrics.RpcAdmissionCancellations++;
+                    head.NextSettled = cancelled;
+                    cancelled = head;
+                }
+            }
+
+            if (grantee is null)
+            {
+                Metrics.RpcAdmissionInFlight = --_inFlight;
             }
             else
             {
-                if (sampled)
-                {
-                    double updated = _serviceTimeMs == 0 ? observedMsPerUnit : _serviceTimeMs + EwmaAlpha * (observedMsPerUnit - _serviceTimeMs);
-                    Volatile.Write(ref _serviceTimeMs, updated);
-                    Metrics.RpcAdmissionServiceTimeMs = updated;
-                }
-
-                for (int w = MinWeight; w <= MaxWeight && grantee is null; w++)
-                {
-                    while (_queues[w].TryDequeue(out Waiter? head))
-                    {
-                        Metrics.RpcAdmissionQueued = --_queued;
-                        if (!head.CancellationToken.IsCancellationRequested)
-                        {
-                            grantee = head;
-                            break;
-                        }
-
-                        // A caller that has gone never takes the permit.
-                        Metrics.RpcAdmissionCancellations++;
-                        head.NextSettled = cancelled;
-                        cancelled = head;
-                    }
-                }
-
-                if (grantee is null)
-                {
-                    Metrics.RpcAdmissionInFlight = --_inFlight;
-                }
-                else
-                {
-                    // The permit passes straight on, so in-flight is unchanged. Stamped at grant rather than when the grantee resumes:
-                    // the wait for a pool thread is latency the caller pays, so including it makes the gate shed sooner when the pool
-                    // itself is the bottleneck.
-                    grantTimestamp = _timeProvider.GetTimestamp();
-                }
+                // The permit passes straight on, so in-flight is unchanged. Stamped at grant rather than when the grantee resumes:
+                // the wait for a pool thread is latency the caller pays, so including it makes the gate shed sooner when the pool
+                // itself is the bottleneck.
+                grantTimestamp = _timeProvider.GetTimestamp();
             }
-        }
-
-        if (surplus)
-        {
-            LogSurplusRelease();
         }
 
         for (Waiter? waiter = cancelled; waiter is not null; waiter = waiter.NextSettled)
@@ -243,19 +235,6 @@ internal sealed class EvmAdmissionGate
         }
 
         grantee?.TrySetResult(new Lease(this, grantee.Weight, grantTimestamp));
-    }
-
-    // Outside the gate lock: a log sink may block.
-    private void LogSurplusRelease()
-    {
-        if (Interlocked.Exchange(ref _surplusReleaseLogged, 1) == 0)
-        {
-            if (_logger.IsError) _logger.Error("An EVM admission permit was released with none in flight; the surplus release was ignored. Further occurrences are logged at debug level.");
-        }
-        else if (_logger.IsDebug)
-        {
-            _logger.Debug("An EVM admission permit was released with none in flight; the surplus release was ignored.");
-        }
     }
 
     // Timer callback: every step is under the lock and idempotent, so an overlapping fire is harmless, and nothing here throws.
@@ -330,9 +309,9 @@ internal sealed class EvmAdmissionGate
         }
 
         // Change truncates to whole milliseconds: a fractional remainder would fire early, find the head unexpired and
-        // re-fire at once until the clock passes the deadline, so it is rounded up (a waiter is shed at most a millisecond
-        // late). A negative due time throws inside the timer callback, and between -2 ms and -1 ms it truncates to
-        // Infinite and silently disarms.
+        // re-fire at once until the clock passes the deadline, so the due time is rounded up. The ceiling is what rules the
+        // re-fire loop out; how late a waiter is then shed is bounded by the timer's own granularity. A negative due time
+        // throws inside the timer callback, and between -2 ms and -1 ms it truncates to Infinite and silently disarms.
         TimeSpan due = _budget - _timeProvider.GetElapsedTime(earliest, now);
         due = due <= TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromMilliseconds(Math.Ceiling(due.TotalMilliseconds));
 
@@ -353,17 +332,13 @@ internal sealed class EvmAdmissionGate
     /// <summary>Holds one admission permit; disposing releases it and folds the observed service time into the EWMA.</summary>
     /// <remarks>
     /// A permit that is never released cannot be recovered: once the in-flight count sticks at the permit count with nothing
-    /// queued, the gate sheds every request until restart, so <see cref="JsonRpcService"/> settles every lease exactly once
-    /// in a <c>finally</c>. A surplus release cannot be told from a live lease's while other requests are in flight, so it
-    /// raises the effective permit count by one until the gate next drains; the release that then finds nothing in flight is
-    /// dropped and logged, which resynchronises the count. The default lease holds no permit and releasing it is a no-op.
+    /// queued, the gate sheds every request until restart. A permit released twice raises the effective permit count for
+    /// the rest of the process. <see cref="JsonRpcService"/> therefore holds every lease in a <c>using</c>. The default
+    /// lease holds no permit and disposing it is a no-op.
     /// </remarks>
     internal readonly struct Lease(EvmAdmissionGate? gate, int weight, long startTimestamp) : IDisposable
     {
         public void Dispose() => gate?.Release(weight, startTimestamp);
-
-        /// <summary>Releases the permit without a service-time observation, for a request that was admitted but never invoked.</summary>
-        public void ReleaseWithoutSampling() => gate?.Release();
     }
 
     /// <summary>

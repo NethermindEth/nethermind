@@ -164,7 +164,7 @@ public interface IJsonRpcConfig : IConfig
             concurrency cap on the override-path env pool used by sharable `eth_call` /
             `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
             overrides: EVM-executing calls queue for a slot at the JSON-RPC admission gate
-            (`EvmExecutionConcurrency`, `MaxQueueWaitMs`) before they can reach this cap. Defaults
+            (`EvmExecutionConcurrency`, `EvmExecutionMaxQueueWaitMs`) before they can reach this cap. Defaults
             to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
@@ -173,10 +173,11 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             The number of EVM-executing JSON-RPC requests (`eth_call`, `eth_estimateGas`, `eth_createAccessList`,
             `eth_simulateV1`, `eth_fillTransaction`, `debug_simulateV1`) allowed to execute at once; further requests wait up to
-            `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded` (HTTP 503) beyond that. Defaults to
+            `EvmExecutionMaxQueueWaitMs` for a slot and are answered with `LimitExceeded` (HTTP 503) beyond that. Defaults to
             `EthModuleConcurrentInstances` (itself the number of logical processors by default), which also sizes the
-            override-environment pool these requests execute in: values above it are lowered to it and values below `1` are
-            raised to `1`, both with a warning at startup. Throughput plateaus at roughly one execution per logical processor,
+            override-environment pool the `eth_` methods execute in: values above it are lowered to it and values below `1` are
+            raised to `1`, both with a warning at startup. One bound covers all six methods, `debug_simulateV1` included, even
+            though only the `eth_` ones run in that pool. Throughput plateaus at roughly one execution per logical processor,
             so lower values trade RPC throughput for block-processing headroom and higher values only add queueing delay.
             """)]
     int? EvmExecutionConcurrency { get; set; }
@@ -193,7 +194,7 @@ public interface IJsonRpcConfig : IConfig
             requests wait at once.
             """,
         DefaultValue = "500")]
-    int MaxQueueWaitMs { get; set; }
+    int EvmExecutionMaxQueueWaitMs { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }

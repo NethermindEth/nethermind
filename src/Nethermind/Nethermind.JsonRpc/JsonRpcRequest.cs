@@ -47,6 +47,8 @@ namespace Nethermind.JsonRpc
         /// <remarks>
         /// Known without materializing the parameters on either input path: the body slice when the request was read
         /// straight from the body, the document's backing buffer when it was parsed into a <see cref="JsonDocument"/>.
+        /// Read it before the parameters are bound and disposed: once the backing document is gone the parsed path throws
+        /// <see cref="ObjectDisposedException"/> and the raw path reads zero.
         /// </remarks>
         internal int ParamsUtf8Length => !ParamsUtf8.IsEmpty
             ? ParamsUtf8.Length

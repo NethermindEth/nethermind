@@ -573,8 +573,6 @@ public class JsonRpcProcessorTests
     private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory, JsonRpcErrorResponse? errorResponse = null)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
-            .Returns(callInfo => responseFactory(callInfo.Arg<JsonRpcRequest>()));
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => responseFactory(callInfo.Arg<JsonRpcRequest>()));
         if (errorResponse is not null)

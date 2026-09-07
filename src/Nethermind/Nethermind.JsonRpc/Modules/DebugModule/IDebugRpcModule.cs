@@ -120,7 +120,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",
-        IsSharable = true)]
+        IsSharable = true, IsEvmExecution = true)]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 

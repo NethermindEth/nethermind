@@ -23,13 +23,13 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcInvalidRequests { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (the EVM-execution admission gate — see the RpcAdmission* metrics, JsonRpc.EvmExecutionConcurrency and JsonRpc.MaxQueueWaitMs — a module pool, or the override-environment limit). A nonzero rate means callers receive 'Too many requests'.")]
+        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (the EVM-execution admission gate — see the RpcAdmission* metrics, JsonRpc.EvmExecutionConcurrency and JsonRpc.EvmExecutionMaxQueueWaitMs — a module pool, or the override-environment limit). A nonzero rate means callers receive 'Too many requests'.")]
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
 
         [GaugeMetric]
-        [Description("Number of EVM-executing JSON RPC requests waiting for an execution slot. A request whose caller has disconnected stays counted until the next grant or expiry sweep removes it, at most JsonRpc.MaxQueueWaitMs.")]
+        [Description("Number of EVM-executing JSON RPC requests waiting for an execution slot. A request whose caller has disconnected stays counted until the next grant or expiry sweep removes it, at most JsonRpc.EvmExecutionMaxQueueWaitMs.")]
         public static long RpcAdmissionQueued { get; set; }
 
         [GaugeMetric]
@@ -37,15 +37,15 @@ namespace Nethermind.JsonRpc
         public static long RpcAdmissionInFlight { get; set; }
 
         [CounterMetric]
-        [Description("Number of EVM-executing JSON RPC requests shed up front: predicted queue wait above JsonRpc.MaxQueueWaitMs, queueing disabled, or JsonRpc.RequestQueueLimit requests already waiting. Spikes on short bursts suggest a longer MaxQueueWaitMs.")]
+        [Description("Number of EVM-executing JSON RPC requests shed up front: predicted queue wait above JsonRpc.EvmExecutionMaxQueueWaitMs, queueing disabled, or JsonRpc.RequestQueueLimit requests already waiting. Spikes on short bursts suggest a longer EvmExecutionMaxQueueWaitMs.")]
         public static long RpcAdmissionPredictedWaitRejections { get; set; }
 
         [CounterMetric]
-        [Description("Number of EVM-executing JSON RPC requests shed after waiting JsonRpc.MaxQueueWaitMs without being granted a slot (lighter requests are served first). A sustained rate means the node is saturated rather than bursty.")]
+        [Description("Number of EVM-executing JSON RPC requests shed after waiting JsonRpc.EvmExecutionMaxQueueWaitMs without being granted a slot (lighter requests are served first). A sustained rate means the node is saturated rather than bursty.")]
         public static long RpcAdmissionWaitTimeoutRejections { get; set; }
 
         [CounterMetric]
-        [Description("Number of EVM-executing JSON RPC requests dropped from the queue because the caller disconnected before a slot was granted. A rate close to the served rate means clients give up faster than the node serves them; consider a lower JsonRpc.MaxQueueWaitMs.")]
+        [Description("Number of EVM-executing JSON RPC requests dropped from the queue because the caller disconnected before a slot was granted. A rate close to the served rate means clients give up faster than the node serves them; consider a lower JsonRpc.EvmExecutionMaxQueueWaitMs.")]
         public static long RpcAdmissionCancellations { get; set; }
 
         [GaugeMetric]
