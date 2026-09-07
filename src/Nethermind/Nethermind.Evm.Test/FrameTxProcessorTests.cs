@@ -150,6 +150,30 @@ public class FrameTxProcessorTests
         Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
     }
 
+    // A pre-warm worker runs on its own thread against parent state, so its gas is speculative; block
+    // validation sums tx.BlockGasUsed into the block's execution-gas dimension, so only the main thread writes it.
+    [TestCase(true, TestName = "Warmup_LeavesBlockGasUsedAlone")]
+    [TestCase(false, TestName = "Execute_PublishesBlockGasUsed")]
+    public void FrameTxBlockGasUsedIsWrittenByTheExecutingPathOnly(bool warmup)
+    {
+        const ulong sentinel = 123_456_789;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlockGasUsed = sentinel;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        BlockExecutionContext context = new(block.Header, Spec);
+        TransactionResult result = warmup
+            ? _transactionProcessor.Warmup(tx, context, NullTxTracer.Instance)
+            : _transactionProcessor.Execute(tx, context, NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True, "must reach settlement, else this pins nothing");
+        Assert.That(tx.BlockGasUsed, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
+    }
+
     [Test]
     public void Execute_FrameCreatesAndSelfDestructsContractInSameTx_DeletesTheCreatedAccount()
     {

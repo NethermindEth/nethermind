@@ -491,7 +491,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong spentGas = payerRegularGas + blockStateGas;
         // Set explicitly like the regular path: the BlockGasUsed getter otherwise falls back to tx.GasLimit,
         // which for a frame tx is the frame-gas sum rather than the gas spent that block validation sums.
-        tx.BlockGasUsed = blockRegularGas;
+        if (!opts.HasFlag(ExecutionOptions.Warmup)) // only the main thread updates the transaction
+        {
+            tx.BlockGasUsed = blockRegularGas;
+        }
         Address payer = frameContext.Payer;
 
         // The payer was charged max_cost at approval; refund the remainder, keeping the burned base-fee
