@@ -53,25 +53,17 @@ public sealed class PbtSnapshotBundle(
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBuffer.SetLeaf(key, value);
 
-    internal void SetNode(PbtNodePath path, byte[]? encoding) => WriteBuffer.SetNode(path, encoding);
-
-    internal byte[]? GetNode(PbtNodePath path)
-    {
-        if (WriteBuffer.TryGetNode(path, out byte[]? encoding)) return encoding;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].Content.TryGetNode(path, out encoding)) return encoding;
-        }
-
-        return readOnlyBundle.GetNode(path);
-    }
+    internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
 
     internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
     {
-        List<PbtSnapshotContent> layers = new(snapshots.Count + 1);
-        for (int index = 0; index < snapshots.Count; index++) layers.Add(snapshots[index].Content);
-        layers.Add(WriteBuffer);
-        return readOnlyBundle.GetNodeGroup(groupKey, layers);
+        ArgumentNullException.ThrowIfNull(groupKey);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
+        for (int index = snapshots.Count - 1; index >= 0; index--)
+            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
+        return readOnlyBundle.GetNodeGroup(groupKey);
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)
@@ -114,21 +106,6 @@ public sealed class PbtSnapshotBundle(
         foreach ((PbtFullKey key, ValueHash256? value) in content.Leaves)
         {
             if (prefix is null || prefix.IsPrefixOf(key)) visible[key] = value;
-        }
-    }
-
-    internal IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
-    {
-        SortedDictionary<PbtNodePath, byte[]?> visible = [];
-        foreach ((PbtNodePath path, byte[] encoding) in readOnlyBundle.EnumerateNodes()) visible[path] = encoding;
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            foreach ((PbtNodePath path, byte[]? encoding) in snapshots[i].Content.Nodes) visible[path] = encoding;
-        }
-        foreach ((PbtNodePath path, byte[]? encoding) in WriteBuffer.Nodes) visible[path] = encoding;
-        foreach ((PbtNodePath path, byte[]? encoding) in visible)
-        {
-            if (encoding is not null) yield return new KeyValuePair<PbtNodePath, byte[]>(path, encoding);
         }
     }
 

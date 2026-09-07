@@ -148,16 +148,14 @@ public class ParallelUpdateRootTests
 
         internal int Writes { get; private set; }
 
-        public byte[]? GetNode(PbtNodePath path) => throw new AssertionException("TrieUpdater must use grouped reads.");
-
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => _inner.SetLeaf(key, value);
 
-        public void SetNode(PbtNodePath path, byte[]? encoding)
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
-            Writes++;
-            _inner.SetNode(path, encoding);
+            Writes += _inner.CountNodeChanges(groupKey, payload);
+            _inner.SetNodeGroup(groupKey, payload);
         }
 
         public void Dispose() => _inner.Dispose();

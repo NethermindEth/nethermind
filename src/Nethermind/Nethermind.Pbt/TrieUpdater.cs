@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-/// <summary>Atomically applies complete-key mutations to a canonical compressed EIP-8297 tree.</summary>
+/// <summary>Applies complete-key mutations to a canonical compressed EIP-8297 tree.</summary>
 public static class TrieUpdater
 {
     private const int InPlaceSortThreshold = 32;
@@ -19,8 +19,7 @@ public static class TrieUpdater
     /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
     /// <remarks>
     /// Effective mutations are folded through the tree as traversal-local partitioned ranges, so mutations
-    /// sharing a path share one traversal. All leaf and node writes are staged and handed to
-    /// <see cref="IPbtStore.Apply"/> only after the complete mutation succeeds.
+    /// sharing a path share one traversal. Each completed frame publishes its complete node group.
     /// </remarks>
     public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes) =>
         UpdateRoot(store, currentRoot, changes, null);
@@ -515,17 +514,48 @@ public static class TrieUpdater
 
         internal void Flush()
         {
-            for (uint changed = _changed; changed != 0; changed &= changed - 1)
+            if (_changed == 0) return;
+            ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
+            bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
+            int changedNodes = 0;
+            bool anyPresent = false;
+            for (int position = 0; position < encodings.Length; position++)
             {
-                int position = BitOperations.TrailingZeroCount(changed);
-                PbtNode? node = _nodes[position];
-                byte[]? encoding = node is null ? null : PbtNodeCodec.Encode(node);
-                if (encoding is null && _lengths[position] == 0) continue;
-                if (encoding is not null && _lengths[position] != 0
-                    && _lease!.GetSpan().Slice(_offsets[position], _lengths[position]).SequenceEqual(encoding)) continue;
-                _store.SetNode(PbtFourLevelGroupGeometry.PathOf(GroupKey, position), encoding);
-                _metrics?.AddEmittedNodeWrites(1);
+                ReadOnlyMemory<byte> previous = _lengths[position] == 0
+                    ? default
+                    : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+                ReadOnlyMemory<byte> encoding = previous;
+                if ((_changed & (1U << position)) != 0)
+                {
+                    PbtNode? node = _nodes[position];
+                    encoding = node is null ? default : PbtNodeCodec.Encode(node);
+                    if (!previous.Span.SequenceEqual(encoding.Span)) changedNodes++;
+                }
+                encodings[position] = encoding;
+                present[position] = !encoding.IsEmpty;
+                anyPresent |= present[position];
             }
+            if (changedNodes == 0) return;
+
+            if (!anyPresent)
+            {
+                _store.SetNodeGroup(GroupKey, null);
+            }
+            else
+            {
+                BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
+                try
+                {
+                    PbtNodeGroupCodec.Encode(ref writer, GroupKey, encodings, present);
+                    using RefCountingMemory payload = writer.Detach()!;
+                    _store.SetNodeGroup(GroupKey, payload);
+                }
+                finally
+                {
+                    writer.Dispose();
+                }
+            }
+            _metrics?.AddEmittedNodeWrites(changedNodes);
         }
 
         private int Position(PbtNodePath path)

@@ -283,7 +283,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public ValueHash256? GetLeaf(PbtFullKey key) => null;
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => [];
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => [];
-        public byte[]? GetNode(PbtNodePath path) => null;
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
@@ -291,7 +290,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
             return null;
         }
-        public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes() => [];
+        public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys() => [];
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
 
         public void Dispose()

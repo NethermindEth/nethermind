@@ -3,6 +3,7 @@
 
 using System.Threading.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -49,7 +50,11 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
 
         using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
         foreach ((PbtFullKey key, ValueHash256 value) in leaves) batch.SetLeaf(key, value);
-        foreach (PbtNodeRecord node in nodeStore.EnumerateRecords()) batch.SetNode(node.Path, node.Encoding.Span);
+        foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
+        {
+            using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);
+            batch.SetNodeGroup(groupKey, payload);
+        }
         foreach ((ValueHash256 codeHash, ulong count) in codeReferences) batch.SetCodeReference(codeHash, count);
         batch.Commit();
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {leaves.Count} leaves, tree root {root}");

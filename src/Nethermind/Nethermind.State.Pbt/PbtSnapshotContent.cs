@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
@@ -15,7 +16,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     private readonly Lock _treeLock = new();
 
     internal readonly ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
-    internal readonly ConcurrentDictionary<PbtNodePath, byte[]?> Nodes = new();
+    internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> NodeGroups = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value)
@@ -29,42 +30,42 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         lock (_treeLock) return Leaves.TryGetValue(key, out value);
     }
 
-    internal void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding)
+    /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
+    internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
     {
-        byte[]? ownedEncoding = encoding.IsEmpty ? null : encoding.ToArray();
-        lock (_treeLock) Nodes[path] = ownedEncoding;
-    }
-
-    internal bool TryGetNode(PbtNodePath path, out byte[]? encoding)
-    {
-        lock (_treeLock) return Nodes.TryGetValue(path, out encoding);
-    }
-
-    internal bool ApplyNodeGroupDeltas(PbtNodePath groupKey, ReadOnlyMemory<byte>[] encodings, bool[] present)
-    {
-        bool changed = false;
+        ArgumentNullException.ThrowIfNull(groupKey);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
         lock (_treeLock)
         {
-            for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+            NodeGroups.TryGetValue(groupKey, out RefCountingMemory? previous);
+            payload?.AcquireLease();
+            try
             {
-                if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
-                if (!Nodes.TryGetValue(path, out byte[]? encoding)) continue;
-
-                changed = true;
-                if (encoding is null)
-                {
-                    present[position] = false;
-                    encodings[position] = default;
-                    continue;
-                }
-
-                PbtNodeGroupCodec.ValidateNodeEncoding(path, encoding);
-                encodings[position] = encoding;
-                present[position] = true;
+                NodeGroups[groupKey] = payload;
             }
+            catch
+            {
+                ((IDisposable?)payload)?.Dispose();
+                throw;
+            }
+            ((IDisposable?)previous)?.Dispose();
         }
-        return changed;
+    }
+
+    /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
+    internal bool TryGetNodeGroup(PbtNodePath groupKey, out RefCountingMemory? payload)
+    {
+        ArgumentNullException.ThrowIfNull(groupKey);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        lock (_treeLock)
+        {
+            bool found = NodeGroups.TryGetValue(groupKey, out payload);
+            payload?.AcquireLease();
+            return found;
+        }
     }
 
     internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => CodeReferences[codeHash] = referenceCount;
@@ -77,7 +78,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         lock (_treeLock)
         {
             Leaves.NoLockClear();
-            Nodes.NoLockClear();
+            foreach ((_, RefCountingMemory? payload) in NodeGroups) ((IDisposable?)payload)?.Dispose();
+            NodeGroups.NoLockClear();
         }
         CodeReferences.NoLockClear();
     }
@@ -91,9 +93,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             leafBytes += key.Length + (value is null ? 0 : ValueHash256.MemorySize);
         }
 
-        foreach ((PbtNodePath path, byte[]? node) in Nodes)
+        lock (_treeLock)
         {
-            nodeBytes += path.Encode().Length + (node?.Length ?? 0);
+            foreach ((PbtNodePath path, RefCountingMemory? payload) in NodeGroups)
+                nodeBytes += path.Encode().Length + (payload?.Memory.Length ?? 0);
         }
 
         long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));

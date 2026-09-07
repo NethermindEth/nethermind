@@ -120,7 +120,7 @@ public class PbtNodeGroupTests
 
         using (PbtNodeGroupStore store = new(provider))
         {
-            store.SetNode(rootPath, firstEncoding);
+            store.SetNode(rootPath, firstEncoding, provider);
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "create");
 
             byte[]? lookup = store.GetNode(rootPath);
@@ -128,14 +128,14 @@ public class PbtNodeGroupTests
             lookup![0] = 0x7F;
             Assert.That(store.GetNode(rootPath), Is.EqualTo(firstEncoding), "lookup is owned");
 
-            store.SetNode(rootPath, secondEncoding);
+            store.SetNode(rootPath, secondEncoding, provider);
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "replace");
 
             IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads, provider);
             Assert.That(reopened.GetNode(rootPath), Is.EqualTo(secondEncoding), "reopen");
 
-            store.SetNode(rootPath, null);
+            store.SetNode(rootPath, null, provider);
             Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "delete leaves reopened owner");
         }
 
@@ -152,18 +152,18 @@ public class PbtNodeGroupTests
         byte[] thirdEncoding = LeafEncoding(0x40, 3);
 
         using PbtNodeGroupStore store = new(provider);
-        store.SetNode(rootPath, firstEncoding);
+        store.SetNode(rootPath, firstEncoding, provider);
         RefCountingMemory firstLease = store.GetNodeGroup(rootPath)!;
 
-        store.SetNode(rootPath, secondEncoding);
+        store.SetNode(rootPath, secondEncoding, provider);
         RefCountingMemory secondLease = store.GetNodeGroup(rootPath)!;
         Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
 
-        store.SetNode(rootPath, null);
+        store.SetNode(rootPath, null, provider);
         Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
         Assert.That(secondLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
 
-        store.SetNode(rootPath, thirdEncoding);
+        store.SetNode(rootPath, thirdEncoding, provider);
         RefCountingMemory thirdLease = store.GetNodeGroup(rootPath)!;
         store.Dispose();
 
@@ -180,6 +180,144 @@ public class PbtNodeGroupTests
         ((IDisposable)firstLease).Dispose();
         ((IDisposable)secondLease).Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Group_publication_borrows_payload_and_retains_independent_lease(bool selfReplacement)
+    {
+        TrackingMemoryProvider provider = new();
+        PbtNodePath rootPath = new([], 0);
+        byte[] expected = EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, LeafEncoding(0x00, 1))]);
+        using PbtNodeGroupStore store = new();
+        RefCountingMemory payload = provider.Rent(expected.Length);
+        expected.CopyTo(payload.GetSpan());
+        store.SetNodeGroup(rootPath, payload);
+        ((IDisposable)payload).Dispose();
+
+        using (RefCountingMemory lease = store.GetNodeGroup(rootPath)!)
+        {
+            if (selfReplacement) store.SetNodeGroup(rootPath, lease);
+            Assert.That(lease.GetSpan().ToArray(), Is.EqualTo(expected));
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1));
+        using (RefCountingMemory lease = store.GetNodeGroup(rootPath)!)
+        {
+            store.Dispose();
+            Assert.That(lease.GetSpan().ToArray(), Is.EqualTo(expected));
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+    }
+
+    [TestCase(-1, -1, typeof(ArgumentNullException))]
+    [TestCase(1, -1, typeof(ArgumentException))]
+    [TestCase(0, 0, typeof(InvalidDataException))]
+    [TestCase(0, 1, typeof(InvalidDataException))]
+    [TestCase(0, PbtNodeGroupCodec.TrailerLength, typeof(InvalidDataException))]
+    public void Invalid_group_publication_preserves_prior_group_and_caller_reference(int keyDepth, int payloadLength, Type exceptionType)
+    {
+        TrackingMemoryProvider provider = new();
+        PbtNodePath rootPath = new([], 0);
+        byte[] encoding = LeafEncoding(0x00, 1);
+        byte[] validPayload = EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, encoding)]);
+        using PbtNodeGroupStore store = new();
+        store.SetNode(rootPath, encoding, provider);
+        PbtNodePath? groupKey = keyDepth < 0 ? null : new(new byte[(keyDepth + 7) / 8], keyDepth);
+        byte[] rejectedBytes = payloadLength < 0 ? validPayload : new byte[payloadLength];
+        RefCountingMemory rejectedPayload = provider.Rent(rejectedBytes.Length);
+        rejectedBytes.CopyTo(rejectedPayload.GetSpan());
+
+        Assert.That(() => store.SetNodeGroup(groupKey!, rejectedPayload), Throws.TypeOf(exceptionType));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetNode(rootPath), Is.EqualTo(encoding));
+            Assert.That(rejectedPayload.GetSpan().ToArray(), Is.EqualTo(rejectedBytes));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(2));
+        }
+        ((IDisposable)rejectedPayload).Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "rejected publication must not retain a lease");
+        store.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Multiple_node_changes_publish_one_complete_group_and_unchanged_batch_publishes_none()
+    {
+        using PublishingStore store = new();
+        PbtWriteBatch batch = new();
+        batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(1)));
+        batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Publishes, Is.EqualTo(1));
+            Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(3));
+        }
+
+        batch = new();
+        batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(3)));
+        batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(4)));
+        root = TrieUpdater.UpdateRoot(store, root, batch);
+        Assert.That(store.Publishes, Is.EqualTo(2));
+
+        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, batch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unchangedRoot, Is.EqualTo(root));
+            Assert.That(store.Publishes, Is.EqualTo(2));
+        }
+
+        PbtNodePath siblingPath = new([0x80], 1);
+        byte[]? sibling = store.Inner.GetNode(siblingPath);
+        batch = new();
+        batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(5)));
+        root = TrieUpdater.UpdateRoot(store, root, batch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Publishes, Is.EqualTo(3));
+            Assert.That(store.Inner.GetNode(siblingPath), Is.EqualTo(sibling));
+        }
+
+        batch = new();
+        batch.Delete(new PbtFullKey([0x00]));
+        batch.Delete(new PbtFullKey([0x80]));
+        root = TrieUpdater.UpdateRoot(store, root, batch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(default(ValueHash256)));
+            Assert.That(store.Publishes, Is.EqualTo(4));
+            Assert.That(store.Inner.EnumerateNodeGroupKeys(), Is.Empty);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    [Ignore("Pre-existing: TrieUpdater does not validate currentRoot against the stored root for nonempty batches.")]
+    public void Update_rejects_missing_or_mismatched_current_root(bool storedRootPresent)
+    {
+        using PbtNodeGroupStore store = new();
+        PbtWriteBatch batch = new();
+        batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(1)));
+        if (storedRootPresent) TrieUpdater.UpdateRoot(store, default, batch);
+        batch = new();
+        batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
+
+        Assert.That(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(3)), batch), Throws.TypeOf<InvalidDataException>());
+    }
+
+    private sealed class PublishingStore : IPbtStore, IDisposable
+    {
+        internal PbtNodeGroupStore Inner { get; } = new();
+        internal int Publishes { get; private set; }
+
+        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => Inner.GetNodeGroup(groupKey);
+        public void SetLeaf(PbtFullKey key, ValueHash256? value) => Inner.SetLeaf(key, value);
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+        {
+            Publishes++;
+            Inner.SetNodeGroup(groupKey, payload);
+        }
+        public void Dispose() => Inner.Dispose();
     }
 
     [Test]

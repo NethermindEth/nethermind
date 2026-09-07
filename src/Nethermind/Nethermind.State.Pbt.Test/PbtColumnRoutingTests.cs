@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -23,18 +24,23 @@ public class PbtColumnRoutingTests
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
         byte[] nodeEncoding = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value));
 
+        using PbtNodeGroupStore store = new();
+        store.SetNode(node, nodeEncoding);
+        using RefCountingMemory? group = store.GetNodeGroup(node);
+
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
         {
             batch.SetLeaf(leaf, value);
-            batch.SetNode(node, nodeEncoding);
+            batch.SetNodeGroup(node, group);
             batch.Commit();
         }
 
         using IPbtPersistence.IReader reader = persistence.CreateReader();
+        using RefCountingMemory? persistedGroup = reader.GetNodeGroup(node);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.GetLeaf(leaf), Is.EqualTo(value));
-            Assert.That(reader.GetNode(node), Is.EqualTo(nodeEncoding));
+            Assert.That(persistedGroup!.GetSpan().ToArray(), Is.EqualTo(group!.GetSpan().ToArray()));
             Assert.That(db.GetColumnDb(PbtColumns.AccountLeaves).GetAll(), Is.Empty);
             Assert.That(db.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Not.Empty);
         }

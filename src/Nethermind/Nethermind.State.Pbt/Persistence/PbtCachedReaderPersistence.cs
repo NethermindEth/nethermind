@@ -126,9 +126,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public ValueHash256? GetLeaf(PbtFullKey key) => inner.GetLeaf(key);
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => inner.EnumerateLeaves();
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => inner.EnumerateLeaves(prefix);
-        public byte[]? GetNode(PbtNodePath path) => inner.GetNode(path);
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
-        public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes() => inner.EnumerateNodes();
+        public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
         public ulong GetCodeReference(in ValueHash256 codeHash) => inner.GetCodeReference(codeHash);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
@@ -141,7 +140,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         private bool _disposed;
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => inner.SetLeaf(key, value);
-        public void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding) => inner.SetNode(path, encoding);
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => inner.SetNodeGroup(groupKey, payload);
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => inner.SetCodeReference(codeHash, referenceCount);
 
         public void Commit()

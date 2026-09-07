@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
@@ -34,52 +35,6 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.GetLeaf(key), Is.EqualTo(local));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void SnapshotStore_updater_failure_leaves_leaf_and_node_deltas_unchanged(bool hashMismatch)
-    {
-        PbtResourcePool pool = new(new PbtConfig());
-        PbtFullKey originalLeafKey = new([1]);
-        ValueHash256 originalLeafValue = new(Value(2));
-        PbtNodePath originalNodePath = new([0x80], 1);
-        byte[] originalNode = [0x7F];
-        Reader reader = new(new PbtFullKey([0]), null);
-        using PbtSnapshotBundle bundle = new(
-            new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader),
-            pool,
-            PbtResourcePool.Usage.MainBlockProcessing);
-        bundle.SetLeaf(originalLeafKey, originalLeafValue);
-        bundle.SetNode(originalNodePath, originalNode);
-
-        PbtFullKey updateKey = new([3]);
-        PbtWriteBatch initial = new();
-        initial.Set(updateKey, new ValueHash256(Value(4)));
-        using PbtNodeGroupStore validStore = new();
-        ValueHash256 validRoot = TrieUpdater.UpdateRoot(validStore, default, initial);
-        PbtWriteBatch wrongNodeBatch = new();
-        wrongNodeBatch.Set(new PbtFullKey([7]), new ValueHash256(Value(8)));
-        using PbtNodeGroupStore wrongNodeStore = new();
-        TrieUpdater.UpdateRoot(wrongNodeStore, default, wrongNodeBatch);
-        reader.Node = hashMismatch ? wrongNodeStore.GetNode(new PbtNodePath([], 0)) : null;
-        PbtWriteBatch changes = new();
-        changes.Set(new PbtFullKey([5]), new ValueHash256(Value(6)));
-
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), validRoot, changes));
-        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
-
-        bool foundNode = snapshot.Content.TryGetNode(originalNodePath, out byte[]? node);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(snapshot.Content.Leaves, Has.Count.EqualTo(1));
-            Assert.That(snapshot.Content.TryGetLeaf(originalLeafKey, out ValueHash256? leaf) && leaf == originalLeafValue, Is.True);
-            Assert.That(snapshot.Content.Nodes, Has.Count.EqualTo(1));
-            Assert.That(foundNode, Is.True);
-            Assert.That(node, Is.EqualTo(originalNode));
-            Assert.That(snapshot.Content.TryGetLeaf(updateKey, out _), Is.False);
-        }
-    }
-
     [Test]
     public void Node_group_read_rejects_non_boundary_key_before_empty_persistence_lookup()
     {
@@ -90,132 +45,90 @@ public class PbtSnapshotBundleTests
         Assert.That(reader.GroupReadCount, Is.Zero);
     }
 
-    [Test]
-    public void Node_group_composition_reads_persistence_once_and_applies_layers_oldest_to_newest()
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(2, false)]
+    [TestCase(3, false)]
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    [TestCase(3, true)]
+    public void Node_group_newest_full_replacement_or_tombstone_stops_fallback(int newestTier, bool tombstone)
     {
         PbtNodePath groupKey = new([], 0);
-        PbtNodePath persistedPath = PbtFourLevelGroupGeometry.PathOf(groupKey, 14);
-        PbtNodePath sharedPath = PbtFourLevelGroupGeometry.PathOf(groupKey, 29);
-        PbtNodePath localPath = PbtFourLevelGroupGeometry.PathOf(groupKey, 13);
-        PbtNodePath writeBufferPath = PbtFourLevelGroupGeometry.PathOf(groupKey, 12);
-        byte[] persisted = BranchEncoding(1);
-        byte[] sharedOldest = BranchEncoding(2);
-        byte[] sharedNewest = BranchEncoding(3);
-        byte[] localOldest = BranchEncoding(4);
-        byte[] localNewest = BranchEncoding(5);
-        byte[] writeBuffer = BranchEncoding(6);
-        Reader reader = new(new PbtFullKey([0]), null)
-        {
-            GroupKey = groupKey,
-            GroupPayload = EncodeGroup(groupKey,
-            [
-                new PbtNodeRecord(persistedPath, persisted),
-                new PbtNodeRecord(sharedPath, BranchEncoding(7)),
-                new PbtNodeRecord(localPath, BranchEncoding(8)),
-                new PbtNodeRecord(writeBufferPath, BranchEncoding(9)),
-            ]),
-        };
+        byte[] persisted = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, BranchEncoding(1)),
+            new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupKey, 14), BranchEncoding(2))]);
+        byte[] shared = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, BranchEncoding(3))]);
+        byte[] local = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, BranchEncoding(4))]);
+        byte[] write = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, BranchEncoding(5))]);
+        Reader reader = new(new PbtFullKey([0]), null) { GroupPayload = persisted };
         PbtResourcePool pool = new(new PbtConfig());
-        PbtSnapshotPooledList sharedSnapshots = Snapshots(pool,
-            Content((sharedPath, sharedOldest), (localPath, sharedOldest)),
-            Content((sharedPath, sharedNewest), (localPath, sharedNewest)));
-        PbtSnapshotPooledList localSnapshots = Snapshots(pool,
-            Content((localPath, localOldest)),
-            Content((localPath, localNewest)));
+        PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
+            ? Snapshots(pool, Content(groupKey, persisted), Content(groupKey, newestTier == 1 && tombstone ? null : shared))
+            : new(0);
+        PbtSnapshotPooledList localSnapshots = newestTier >= 2
+            ? Snapshots(pool, Content(groupKey, shared), Content(groupKey, newestTier == 2 && tombstone ? null : local))
+            : new(0);
         using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        bundle.SetNode(writeBufferPath, writeBuffer);
+        if (newestTier == 3)
+        {
+            using RefCountingMemory? payload = tombstone ? null : Memory(write);
+            bundle.SetNodeGroup(groupKey, payload);
+        }
 
-        using RefCountingMemory payload = bundle.GetNodeGroup(groupKey)!;
-        PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
-
+        using RefCountingMemory? actual = bundle.GetNodeGroup(groupKey);
+        byte[]? expected = tombstone ? null : newestTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.GroupReadCount, Is.EqualTo(1));
-            Assert.That(group.GetNode(14).ToArray(), Is.EqualTo(persisted));
-            Assert.That(group.GetNode(29).ToArray(), Is.EqualTo(sharedNewest));
-            Assert.That(group.GetNode(13).ToArray(), Is.EqualTo(localNewest));
-            Assert.That(group.GetNode(12).ToArray(), Is.EqualTo(writeBuffer));
+            Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
+            Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
         }
     }
 
-    [Test]
-    public void Node_group_tombstones_remove_positions_and_deleting_final_position_returns_null()
-    {
-        PbtNodePath groupKey = new([], 0);
-        PbtNodePath retainedPath = PbtFourLevelGroupGeometry.PathOf(groupKey, 14);
-        PbtNodePath deletedPath = PbtFourLevelGroupGeometry.PathOf(groupKey, 29);
-        Reader reader = new(new PbtFullKey([0]), null)
-        {
-            GroupKey = groupKey,
-            GroupPayload = EncodeGroup(groupKey,
-            [
-                new PbtNodeRecord(retainedPath, BranchEncoding(1)),
-                new PbtNodeRecord(deletedPath, BranchEncoding(2)),
-            ]),
-        };
-        PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        bundle.SetNode(deletedPath, null);
-
-        using (RefCountingMemory payload = bundle.GetNodeGroup(groupKey)!)
-        {
-            PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(group.TryGetNode(PbtFourLevelGroupGeometry.PositionOf(retainedPath), out _), Is.True);
-                Assert.That(group.TryGetNode(PbtFourLevelGroupGeometry.PositionOf(deletedPath), out _), Is.False);
-            }
-        }
-
-        bundle.SetNode(retainedPath, null);
-        Assert.That(bundle.GetNodeGroup(groupKey), Is.Null);
-    }
-
-    [Test]
-    public void Malformed_persisted_group_is_rejected_and_lease_is_released_without_mutating_snapshot()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Malformed_persisted_group_is_rejected_by_updater_and_lease_is_released_without_mutating_snapshot(bool invalidFooter)
     {
         TrackingMemoryProvider memoryProvider = new();
+        byte[] malformed = invalidFooter ? new byte[PbtNodeGroupCodec.TrailerLength] : Bytes.FromHexString("01");
+        if (invalidFooter) malformed[^1] = 0x80;
         Reader reader = new(new PbtFullKey([0]), null)
         {
-            GroupKey = new PbtNodePath([], 0),
-            GroupPayload = [1],
+            GroupPayload = malformed,
             MemoryProvider = memoryProvider,
         };
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         PbtFullKey originalLeafKey = new([1]);
-        PbtNodePath originalNodePath = new([0], 1);
-        byte[] originalNode = BranchEncoding(1);
+        PbtNodePath originalGroupKey = new([0x80], 4);
+        byte[] originalGroup = EncodeGroup(originalGroupKey, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalGroupKey, 0), BranchEncoding(1))]);
+        using RefCountingMemory originalPayload = Memory(originalGroup);
         bundle.SetLeaf(originalLeafKey, new ValueHash256(Value(2)));
-        bundle.SetNode(originalNodePath, originalNode);
+        bundle.SetNodeGroup(originalGroupKey, originalPayload);
+        PbtWriteBatch changes = new();
+        changes.Set(new PbtFullKey([3]), new ValueHash256(Value(4)));
 
-        Assert.Throws<InvalidDataException>(() => bundle.GetNodeGroup(reader.GroupKey));
-        AssertSnapshotUnchanged(bundle, originalLeafKey, originalNodePath, originalNode);
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), new ValueHash256(Value(5)), changes));
+        AssertSnapshotUnchanged(bundle, originalLeafKey, originalGroupKey, originalGroup);
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
     }
 
     [Test]
-    public void Malformed_non_null_delta_is_rejected_and_persisted_lease_is_released_without_mutating_snapshot()
+    public void Malformed_group_replacement_is_rejected_without_mutating_snapshot()
     {
-        TrackingMemoryProvider memoryProvider = new();
-        PbtNodePath groupKey = new([], 0);
-        PbtNodePath originalNodePath = PbtFourLevelGroupGeometry.PathOf(groupKey, 14);
-        byte[] originalNode = BranchEncoding(1);
-        Reader reader = new(new PbtFullKey([0]), null)
-        {
-            GroupKey = groupKey,
-            GroupPayload = EncodeGroup(groupKey, [new PbtNodeRecord(originalNodePath, originalNode)]),
-            MemoryProvider = memoryProvider,
-        };
         PbtResourcePool pool = new(new PbtConfig());
+        Reader reader = new(new PbtFullKey([0]), null);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        PbtFullKey originalLeafKey = new([1]);
-        bundle.SetLeaf(originalLeafKey, new ValueHash256(Value(2)));
-        bundle.SetNode(originalNodePath, [0x7F]);
+        PbtFullKey leafKey = new([1]);
+        PbtNodePath groupKey = new([], 0);
+        byte[] original = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, BranchEncoding(1))]);
+        using RefCountingMemory originalPayload = Memory(original);
+        using RefCountingMemory malformed = Memory(Bytes.FromHexString("7f"));
+        bundle.SetLeaf(leafKey, new ValueHash256(Value(2)));
+        bundle.SetNodeGroup(groupKey, originalPayload);
 
-        Assert.Throws<InvalidDataException>(() => bundle.GetNodeGroup(groupKey));
-        AssertSnapshotUnchanged(bundle, originalLeafKey, originalNodePath, [0x7F]);
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        Assert.Throws<InvalidDataException>(() => bundle.SetNodeGroup(groupKey, malformed));
+        AssertSnapshotUnchanged(bundle, leafKey, groupKey, original);
+        Assert.That(reader.GroupReadCount, Is.Zero);
     }
 
     [Test]
@@ -224,12 +137,13 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtFullKey originalLeafKey = new([1]);
         ValueHash256 originalLeafValue = new(Value(2));
-        PbtNodePath originalNodePath = new([0x80], 1);
-        byte[] originalNode = [0x7F];
+        PbtNodePath originalNodePath = new([0x80], 4);
+        byte[] originalNode = EncodeGroup(originalNodePath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalNodePath, 0), BranchEncoding(1))]);
         Reader reader = new(new PbtFullKey([0]), null) { GroupReadException = new InvalidDataException("Configured group read failure.") };
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetLeaf(originalLeafKey, originalLeafValue);
-        bundle.SetNode(originalNodePath, originalNode);
+        using RefCountingMemory originalPayload = Memory(originalNode);
+        bundle.SetNodeGroup(originalNodePath, originalPayload);
         PbtWriteBatch changes = new();
         changes.Set(new PbtFullKey([3]), new ValueHash256(Value(4)));
 
@@ -237,14 +151,17 @@ public class PbtSnapshotBundleTests
         Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(5)), changes));
 
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        bool foundGroup = snapshot.Content.TryGetNodeGroup(originalNodePath, out RefCountingMemory? group);
+        using RefCountingMemory? groupLease = group;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.GroupReadCount, Is.EqualTo(1));
             Assert.That(store.ApplyCount, Is.Zero);
             Assert.That(snapshot.Content.Leaves, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.TryGetLeaf(originalLeafKey, out ValueHash256? leaf) && leaf == originalLeafValue, Is.True);
-            Assert.That(snapshot.Content.Nodes, Has.Count.EqualTo(1));
-            Assert.That(snapshot.Content.TryGetNode(originalNodePath, out byte[]? node) && node!.AsSpan().SequenceEqual(originalNode), Is.True);
+            Assert.That(snapshot.Content.NodeGroups, Has.Count.EqualTo(1));
+            Assert.That(foundGroup, Is.True);
+            Assert.That(group!.GetSpan().ToArray(), Is.EqualTo(originalNode));
         }
     }
 
@@ -273,11 +190,19 @@ public class PbtSnapshotBundleTests
         return snapshots;
     }
 
-    private static PbtSnapshotContent Content(params (PbtNodePath Path, byte[] Encoding)[] nodes)
+    private static PbtSnapshotContent Content(PbtNodePath groupKey, byte[]? encoding)
     {
         PbtSnapshotContent content = new();
-        foreach ((PbtNodePath path, byte[] encoding) in nodes) content.SetNode(path, encoding);
+        using RefCountingMemory? payload = encoding is null ? null : Memory(encoding);
+        content.SetNodeGroup(groupKey, payload);
         return content;
+    }
+
+    private static RefCountingMemory Memory(byte[] encoding)
+    {
+        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(encoding.Length);
+        encoding.CopyTo(payload.GetSpan());
+        return payload;
     }
 
     private static byte[] Value(byte marker)
@@ -307,18 +232,20 @@ public class PbtSnapshotBundleTests
     private static void AssertSnapshotUnchanged(PbtSnapshotBundle bundle, PbtFullKey leafKey, PbtNodePath nodePath, byte[] node)
     {
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        bool foundGroup = snapshot.Content.TryGetNodeGroup(nodePath, out RefCountingMemory? actual);
+        using RefCountingMemory? actualLease = actual;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.Content.Leaves, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.TryGetLeaf(leafKey, out _), Is.True);
-            Assert.That(snapshot.Content.Nodes, Has.Count.EqualTo(1));
-            Assert.That(snapshot.Content.TryGetNode(nodePath, out byte[]? actual) && actual!.AsSpan().SequenceEqual(node), Is.True);
+            Assert.That(snapshot.Content.NodeGroups, Has.Count.EqualTo(1));
+            Assert.That(foundGroup, Is.True);
+            Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(node));
         }
     }
 
     private sealed class Reader(PbtFullKey key, ValueHash256? value) : IPbtPersistence.IReader
     {
-        public byte[]? Node { get; set; }
         public PbtNodePath GroupKey { get; set; } = new([], 0);
         public byte[]? GroupPayload { get; set; }
         public IRefCountingMemoryProvider MemoryProvider { get; set; } = PooledRefCountingMemoryProvider.Instance;
@@ -329,7 +256,6 @@ public class PbtSnapshotBundleTests
         public ValueHash256? GetLeaf(PbtFullKey requested) => requested == key ? value : null;
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => [];
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => [];
-        public byte[]? GetNode(PbtNodePath path) => Node;
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
             GroupReadCount++;
@@ -339,7 +265,7 @@ public class PbtSnapshotBundleTests
             GroupPayload.CopyTo(memory.GetSpan());
             return memory;
         }
-        public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes() => [];
+        public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys() => [];
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
         public void Dispose() { }
     }
@@ -347,13 +273,12 @@ public class PbtSnapshotBundleTests
     private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore
     {
         public int ApplyCount { get; private set; }
-        public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => bundle.SetLeaf(key, value);
-        public void SetNode(PbtNodePath path, byte[]? encoding)
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             ApplyCount++;
-            bundle.SetNode(path, encoding);
+            bundle.SetNodeGroup(groupKey, payload);
         }
     }
 }

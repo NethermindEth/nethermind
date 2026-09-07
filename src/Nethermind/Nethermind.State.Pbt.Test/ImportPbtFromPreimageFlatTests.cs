@@ -10,6 +10,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -223,7 +224,11 @@ public class ImportPbtFromPreimageFlatTests
         {
             staging.SetLeaf(PbtStateKey.Account(TestItem.AddressC, PbtKeyDerivation.BasicDataLeafKey), TestItem.KeccakB.ValueHash256);
             PbtFullKey staleNodeKey = new([0x80]);
-            staging.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(staleNodeKey, TestItem.KeccakA.Bytes)));
+            PbtNodePath groupKey = new([], 0);
+            using PbtNodeGroupStore staleNodes = new();
+            staleNodes.SetNode(groupKey, PbtNodeCodec.Encode(new PbtLeafNode(staleNodeKey, TestItem.KeccakA.Bytes)));
+            using RefCountingMemory? payload = staleNodes.GetNodeGroup(groupKey);
+            staging.SetNodeGroup(groupKey, payload);
             staging.Commit();
         }
         pbtDb.GetColumnDb(PbtColumns.AccountLeaves)[new byte[] { 1 }] = [2];
@@ -272,7 +277,11 @@ public class ImportPbtFromPreimageFlatTests
             WriteFlags.None))
         {
             batch.SetLeaf(key, value);
-            foreach (PbtNodeRecord node in nodeStore.EnumerateRecords()) batch.SetNode(node.Path, node.Encoding.Span);
+            foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
+            {
+                using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);
+                batch.SetNodeGroup(groupKey, payload);
+            }
             batch.Commit();
         }
         if (corruptNode)
@@ -311,8 +320,12 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
         PbtScanReport report = await new PbtScanner(pbtDb, new PbtConfig(), LimboLogs.Instance).Scan(CancellationToken.None);
-        Assert.That(report.LeafCount, Is.EqualTo(4), "two account leaves and two storage leaves must be present");
-        Assert.That(report.InvalidLeafCount, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.LeafCount, Is.EqualTo(4), "two account leaves and two storage leaves must be present");
+            Assert.That(report.InvalidLeafCount, Is.Zero);
+            Assert.That(report.IsValid, Is.True, "persisted groups must match the reconstructed canonical nodes");
+        }
     }
 
     /// <summary>

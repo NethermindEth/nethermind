@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
@@ -36,7 +37,7 @@ public class PbtSnapshotCompactor(
             {
                 PbtSnapshotContent content = chainOldestFirst[i].Content;
                 foreach ((PbtFullKey key, ValueHash256? value) in content.Leaves) merged.SetLeaf(key, value);
-                foreach ((PbtNodePath path, byte[]? node) in content.Nodes) merged.SetNode(path, node ?? []);
+                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) merged.SetNodeGroup(groupKey, payload);
                 foreach ((ValueHash256 hash, ulong? count) in content.CodeReferences) merged.SetCodeReference(hash, count);
             }
 

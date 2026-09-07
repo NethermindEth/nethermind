@@ -554,7 +554,6 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(changedRoot, Is.Not.EqualTo(root));
-            Assert.That(store.NodeReads, Is.Zero);
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False);
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
             Assert.That(metrics.GroupParses, Is.EqualTo(store.Reads));
@@ -681,7 +680,6 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.Not.EqualTo(default(ValueHash256)));
-            Assert.That(store.NodeReads, Is.Zero, "the updater never falls back to per-node reads");
             Assert.That(store.GroupReads, Is.Not.Empty);
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
             Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
@@ -745,7 +743,6 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unchangedRoot, Is.EqualTo(root));
-            Assert.That(store.NodeReads, Is.Zero, "the updater never falls back to per-node reads");
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1));
             Assert.That(metrics.GroupParses, Is.EqualTo(1));
             Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(1), "same-group logical nodes use the active frame");
@@ -768,7 +765,6 @@ public class Eip8297CanonicalTreeTests
         PbtNodePath untouchedGroup = new([0x80], 4);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.NodeReads, Is.Zero);
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(2), "root group and changed left boundary group");
             Assert.That(metrics.GroupParses, Is.EqualTo(2));
             Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(2), "one frame resolution per entered physical group");
@@ -977,7 +973,6 @@ public class Eip8297CanonicalTreeTests
 
         internal int UnreleasedMemoryCount => TrackingMemoryProvider.CountUnreleased(MemoryProvider.Rented);
         internal int Reads { get; private set; }
-        internal int NodeReads { get; private set; }
         internal int Applies { get; private set; }
         internal int LastNodeWrites { get; private set; }
         internal Dictionary<PbtFullKey, ValueHash256?> LastLeafMutations { get; } = [];
@@ -985,13 +980,6 @@ public class Eip8297CanonicalTreeTests
         internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
         internal Func<PbtNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
         internal bool ThrowOnApply { get; set; }
-
-        public byte[]? GetNode(PbtNodePath path)
-        {
-            Reads++;
-            NodeReads++;
-            return OverrideNode is { } overrideNode ? overrideNode(path) : Inner.GetNode(path);
-        }
 
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
         {
@@ -1033,18 +1021,17 @@ public class Eip8297CanonicalTreeTests
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => LastLeafMutations[key] = value;
 
-        public void SetNode(PbtNodePath path, byte[]? encoding)
+        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             Applies++;
-            LastNodeWrites++;
+            LastNodeWrites += Inner.CountNodeChanges(groupKey, payload);
             if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
-            Inner.SetNode(path, encoding);
+            Inner.SetNodeGroup(groupKey, payload);
         }
 
         internal void ResetReads()
         {
             Reads = 0;
-            NodeReads = 0;
             LastNodeWrites = 0;
             GroupReads.Clear();
         }

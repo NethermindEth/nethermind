@@ -53,38 +53,6 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         }
     }
 
-    /// <summary>Enumerates owned copies of canonical path/node records in path order.</summary>
-    public IReadOnlyList<PbtNodeRecord> EnumerateRecords()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        List<PbtNodeRecord> records = [];
-        foreach ((PbtNodePath groupKey, RefCountingMemory payload) in _groups)
-        {
-            PbtNodeGroupReader reader = new(groupKey, payload.GetSpan());
-            PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
-            while (enumerator.MoveNext())
-            {
-                records.Add(new PbtNodeRecord(
-                    PbtFourLevelGroupGeometry.PathOf(groupKey, enumerator.CurrentPosition),
-                    enumerator.Current));
-            }
-        }
-        records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
-        return records;
-    }
-
-    /// <summary>Gets an owned copy of the encoded canonical node.</summary>
-    public byte[]? GetNode(PbtNodePath path)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(path);
-        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
-        if (!_groups.TryGetValue(location.GroupKey, out RefCountingMemory? payload)) return null;
-
-        PbtNodeGroupReader reader = new(location.GroupKey, payload.GetSpan());
-        return reader.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding) ? encoding.ToArray() : null;
-    }
-
     /// <inheritdoc/>
     public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
     {
@@ -102,17 +70,42 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     public void SetLeaf(PbtFullKey key, ValueHash256? value) { }
 
     /// <inheritdoc/>
-    public void SetNode(PbtNodePath path, byte[]? encoding)
+    public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(path);
-        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
-        if (encoding is not null) PbtNodeCodec.ValidateExact(encoding);
-        Dictionary<int, byte[]?> mutation = new() { [location.Position] = encoding };
-        RefCountingMemory? replacement = StageGroup(location.GroupKey, mutation);
-        if (_groups.Remove(location.GroupKey, out RefCountingMemory? replacedPayload))
-            ((IDisposable)replacedPayload).Dispose();
-        if (replacement is not null) _groups.Add(location.GroupKey, replacement);
+        ArgumentNullException.ThrowIfNull(groupKey);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
+
+        _groups.TryGetValue(groupKey, out RefCountingMemory? previous);
+        if (payload is null)
+        {
+            _groups.Remove(groupKey);
+        }
+        else
+        {
+            payload.AcquireLease();
+            try
+            {
+                _groups[groupKey] = payload;
+            }
+            catch
+            {
+                ((IDisposable)payload).Dispose();
+                throw;
+            }
+        }
+        ((IDisposable?)previous)?.Dispose();
+    }
+
+    /// <summary>Enumerates group keys in canonical order.</summary>
+    public IReadOnlyList<PbtNodePath> EnumerateNodeGroupKeys()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        PbtNodePath[] keys = [.. _groups.Keys];
+        Array.Sort(keys);
+        return keys;
     }
 
     /// <summary>Exports owned copies of canonical node-group payloads sorted by group key.</summary>
@@ -137,46 +130,6 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         _disposed = true;
         foreach (RefCountingMemory payload in _groups.Values) ((IDisposable)payload).Dispose();
         _groups.Clear();
-    }
-
-    private RefCountingMemory? StageGroup(PbtNodePath groupKey, Dictionary<int, byte[]?> mutations)
-    {
-        PbtNodeRecord?[] recordsByPosition = new PbtNodeRecord[PbtFourLevelGroupGeometry.PositionCount];
-        if (_groups.TryGetValue(groupKey, out RefCountingMemory? priorPayload))
-        {
-            PbtNodeGroupReader reader = new(groupKey, priorPayload.GetSpan());
-            PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
-            while (enumerator.MoveNext())
-            {
-                int position = enumerator.CurrentPosition;
-                recordsByPosition[position] = new PbtNodeRecord(
-                    PbtFourLevelGroupGeometry.PathOf(groupKey, position), enumerator.Current);
-            }
-        }
-
-        foreach ((int position, byte[]? encoding) in mutations)
-        {
-            recordsByPosition[position] = encoding is null
-                ? null
-                : new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding);
-        }
-
-        List<PbtNodeRecord> records = [];
-        foreach (PbtNodeRecord? record in recordsByPosition)
-            if (record is not null) records.Add(record);
-        if (records.Count == 0) return null;
-
-        BufferWriter writer = new(_memoryProvider);
-        try
-        {
-            PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
-            return writer.Detach()!;
-        }
-        catch
-        {
-            writer.Dispose();
-            throw;
-        }
     }
 }
 

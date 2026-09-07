@@ -38,78 +38,15 @@ public sealed class PbtReadOnlySnapshotBundle(
         return reader.GetLeaf(key);
     }
 
-    internal byte[]? GetNode(PbtNodePath path)
-    {
-        GuardDispose();
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].Content.TryGetNode(path, out byte[]? encoding)) return encoding;
-        }
-
-        return reader.GetNode(path);
-    }
-
-    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => GetNodeGroup(groupKey, []);
-
-    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtSnapshotContent> additionalLayers)
+    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
     {
         GuardDispose();
         ArgumentNullException.ThrowIfNull(groupKey);
-        ArgumentNullException.ThrowIfNull(additionalLayers);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-
-        RefCountingMemory? baseLease = reader.GetNodeGroup(groupKey);
-        try
-        {
-            ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
-            bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
-            if (baseLease is not null)
-            {
-                PbtNodeGroupReader baseReader = new(groupKey, baseLease.GetSpan());
-                for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
-                {
-                    if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                    if (baseReader.TryGetNodeRange(position, out int offset, out int length))
-                    {
-                        encodings[position] = baseLease.Memory.Slice(offset, length);
-                        present[position] = true;
-                    }
-                }
-            }
-
-            bool changed = false;
-            for (int index = 0; index < snapshots.Count; index++)
-                changed |= snapshots[index].Content.ApplyNodeGroupDeltas(groupKey, encodings, present);
-            for (int index = 0; index < additionalLayers.Count; index++)
-                changed |= additionalLayers[index].ApplyNodeGroupDeltas(groupKey, encodings, present);
-
-            if (!changed)
-            {
-                RefCountingMemory? result = baseLease;
-                baseLease = null;
-                return result;
-            }
-
-            bool anyPresent = false;
-            for (int position = 0; position < present.Length; position++) anyPresent |= present[position];
-            if (!anyPresent) return null;
-
-            BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
-            try
-            {
-                PbtNodeGroupCodec.Encode(ref writer, groupKey, encodings, present);
-                return writer.Detach()!;
-            }
-            finally
-            {
-                writer.Dispose();
-            }
-        }
-        finally
-        {
-            ((IDisposable?)baseLease)?.Dispose();
-        }
+        for (int index = snapshots.Count - 1; index >= 0; index--)
+            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
+        return reader.GetNodeGroup(groupKey);
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)
@@ -146,22 +83,6 @@ public sealed class PbtReadOnlySnapshotBundle(
         foreach ((PbtFullKey key, ValueHash256? value) in visible)
         {
             if (value is not null) yield return new KeyValuePair<PbtFullKey, ValueHash256>(key, value.Value);
-        }
-    }
-
-    internal IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
-    {
-        GuardDispose();
-        SortedDictionary<PbtNodePath, byte[]?> visible = [];
-        foreach ((PbtNodePath path, byte[] encoding) in reader.EnumerateNodes()) visible[path] = encoding;
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            foreach ((PbtNodePath path, byte[]? encoding) in snapshots[i].Content.Nodes) visible[path] = encoding;
-        }
-
-        foreach ((PbtNodePath path, byte[]? encoding) in visible)
-        {
-            if (encoding is not null) yield return new KeyValuePair<PbtNodePath, byte[]>(path, encoding);
         }
     }
 

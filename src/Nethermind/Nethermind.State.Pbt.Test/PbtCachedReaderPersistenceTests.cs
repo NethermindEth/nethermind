@@ -231,6 +231,36 @@ public class PbtCachedReaderPersistenceTests
         Assert.That(reader.GetLeaf(key), Is.EqualTo(value));
     }
 
+    [Test]
+    public async Task Group_operations_forward_borrowed_payloads_and_owned_read_leases()
+    {
+        Context ctx = new();
+        PbtNodePath groupKey = new([], 0);
+        using RefCountingMemory payload = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.TrailerLength]);
+        ctx.Reader.GetNodeGroup(groupKey).Returns(_ =>
+        {
+            payload.AcquireLease();
+            return payload;
+        });
+        ctx.Reader.EnumerateNodeGroupKeys().Returns(new[] { groupKey });
+        await using PbtCachedReaderPersistence persistence = ctx.Build();
+        using IPbtPersistence.IReader reader = persistence.CreateReader();
+        using RefCountingMemory lease = reader.GetNodeGroup(groupKey)!;
+        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
+            StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+
+        batch.SetNodeGroup(groupKey, payload);
+        batch.SetNodeGroup(groupKey, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lease, Is.SameAs(payload));
+            Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey }));
+        }
+        ctx.Batch.Received(1).SetNodeGroup(groupKey, payload);
+        ctx.Batch.Received(1).SetNodeGroup(groupKey, null);
+    }
+
     private sealed class Context
     {
         public IPbtPersistence Inner { get; } = Substitute.For<IPbtPersistence>();

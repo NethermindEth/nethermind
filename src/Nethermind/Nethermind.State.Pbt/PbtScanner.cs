@@ -3,6 +3,7 @@
 
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -37,7 +38,18 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             using PbtNodeGroupStore nodeStore = new();
             report.ComputedRoot = TrieUpdater.UpdateRoot(nodeStore, default, changes);
             report.RootMatches = report.ComputedRoot == report.PersistedRoot;
-            ScanNodes(report, nodeStore.EnumerateRecords(), cancellationToken);
+            List<PbtNodeRecord> expectedNodes = [];
+            foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);
+                PbtNodeGroupReader reader = new(groupKey, payload!.GetSpan());
+                PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
+                while (enumerator.MoveNext())
+                    expectedNodes.Add(new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupKey, enumerator.CurrentPosition), enumerator.Current));
+            }
+            expectedNodes.Sort(static (left, right) => left.Path.CompareTo(right.Path));
+            ScanNodes(report, expectedNodes, cancellationToken);
         }
         else
         {

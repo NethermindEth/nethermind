@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Pbt;
@@ -94,7 +94,17 @@ public class PbtRocksDbConfigAdjusterTests
         {
             PbtRocksDbPersistence persistence = new(db, new PbtConfig());
             using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default, WriteFlags.None);
-            batch.SetNode(path, encoding);
+            BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
+            try
+            {
+                PbtNodeGroupCodec.Encode(ref writer, path, [new PbtNodeRecord(path, encoding)]);
+                using RefCountingMemory payload = writer.Detach()!;
+                batch.SetNodeGroup(path, payload);
+            }
+            finally
+            {
+                writer.Dispose();
+            }
             batch.Commit();
         }
 
@@ -102,11 +112,12 @@ public class PbtRocksDbConfigAdjusterTests
         {
             PbtRocksDbPersistence persistence = new(db, new PbtConfig());
             using IPbtPersistence.IReader reader = persistence.CreateReader();
+            using RefCountingMemory payload = reader.GetNodeGroup(path)!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(state));
-                Assert.That(reader.GetNode(path), Is.EqualTo(encoding));
-                Assert.That(reader.EnumerateNodes(), Is.EqualTo(new[] { new KeyValuePair<PbtNodePath, byte[]>(path, encoding) }));
+                Assert.That(new PbtNodeGroupReader(path, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.RootPosition).ToArray(), Is.EqualTo(encoding));
+                Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { path }));
             }
         }
 

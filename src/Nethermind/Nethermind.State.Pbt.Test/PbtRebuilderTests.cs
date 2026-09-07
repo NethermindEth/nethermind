@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -113,8 +114,9 @@ public class PbtRebuilderTests
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and one-batch rebuild must have the same root");
-            Assert.That(CanonicalNodes(reader.EnumerateNodes()), Is.EqualTo(CanonicalNodes(incrementalStore.EnumerateRecords())),
-                "incremental replay and one-batch rebuild must have the exact same path/node graph");
+            Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys(), reader.GetNodeGroup),
+                Is.EqualTo(CanonicalGroups(incrementalStore.EnumerateNodeGroupKeys(), incrementalStore.GetNodeGroup)),
+                "incremental replay and one-batch rebuild must have the exact same group keys and payloads");
             Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
             Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
         }
@@ -188,20 +190,14 @@ public class PbtRebuilderTests
         Assert.That(reader.CurrentState, Is.EqualTo(targetState));
     }
 
-    private static string[] CanonicalNodes(IEnumerable<KeyValuePair<PbtNodePath, byte[]>> nodes)
+    private static string[] CanonicalGroups(IEnumerable<PbtNodePath> groupKeys, Func<PbtNodePath, RefCountingMemory?> getNodeGroup)
     {
         List<string> result = [];
-        foreach ((PbtNodePath path, byte[] encoding) in nodes)
-            result.Add($"{Convert.ToHexString(path.Encode())}:{Convert.ToHexString(encoding)}");
-        result.Sort(StringComparer.Ordinal);
-        return [.. result];
-    }
-
-    private static string[] CanonicalNodes(IReadOnlyList<PbtNodeRecord> nodes)
-    {
-        List<string> result = new(nodes.Count);
-        foreach (PbtNodeRecord node in nodes)
-            result.Add($"{Convert.ToHexString(node.Path.Encode())}:{Convert.ToHexString(node.Encoding.Span)}");
+        foreach (PbtNodePath groupKey in groupKeys)
+        {
+            using RefCountingMemory? payload = getNodeGroup(groupKey);
+            result.Add($"{Convert.ToHexString(groupKey.Encode())}:{Convert.ToHexString(payload!.GetSpan())}");
+        }
         result.Sort(StringComparer.Ordinal);
         return [.. result];
     }

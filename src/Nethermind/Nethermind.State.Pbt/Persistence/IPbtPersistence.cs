@@ -28,8 +28,6 @@ public interface IPbtPersistence
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves();
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix);
 
-        byte[]? GetNode(PbtNodePath path);
-
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
         /// A non-null result transfers exactly one reference to the caller, which must invoke
@@ -42,36 +40,10 @@ public interface IPbtPersistence
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="groupKey"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
-        RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
-        {
-            ArgumentNullException.ThrowIfNull(groupKey);
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        RefCountingMemory? GetNodeGroup(PbtNodePath groupKey);
 
-            List<PbtNodeRecord> records = [];
-            for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
-            {
-                if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
-                byte[]? encoding = GetNode(path);
-                if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
-            }
-
-            if (records.Count == 0) return null;
-            BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
-            try
-            {
-                PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
-                return writer.Detach()!;
-            }
-            catch
-            {
-                writer.Dispose();
-                throw;
-            }
-        }
-
-        IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes();
+        /// <summary>Enumerates group keys in ascending <see cref="PbtNodePath.CompareTo"/> order.</summary>
+        IEnumerable<PbtNodePath> EnumerateNodeGroupKeys();
 
         ulong GetCodeReference(in ValueHash256 codeHash);
     }
@@ -79,7 +51,13 @@ public interface IPbtPersistence
     public interface IWriteBatch : IDisposable
     {
         void SetLeaf(PbtFullKey key, ValueHash256? value);
-        void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding);
+        /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>
+        /// <remarks>
+        /// The payload is borrowed for this call and its bytes must remain immutable. The caller retains
+        /// its reference; an implementation retaining the payload must acquire an independent reference.
+        /// Validates the boundary key and complete payload before staging the write.
+        /// </remarks>
+        void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload);
         void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
         void Commit();
     }
