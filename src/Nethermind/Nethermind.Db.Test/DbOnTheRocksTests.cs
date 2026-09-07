@@ -90,8 +90,8 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reopened.Get(key), Is.EqualTo([7, 8, 9]));
-                Assert.That(reopened.Get([10, 11, 12]), Is.EqualTo([13, 14, 15]));
+                Assert.That(GetValue(reopened, key), Is.EqualTo([7, 8, 9]));
+                Assert.That(GetValue(reopened, [10, 11, 12]), Is.EqualTo([13, 14, 15]));
             }
             Assert.That(ReadOptionsFile(DbPath), Does.Contain("async_wal_precreate=false"));
         }
