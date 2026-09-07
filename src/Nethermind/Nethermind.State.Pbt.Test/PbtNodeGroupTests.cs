@@ -370,7 +370,6 @@ public class PbtNodeGroupTests
         internal int Publishes { get; private set; }
 
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => Inner.GetNodeGroup(groupKey);
-        public void SetLeaf(PbtFullKey key, ValueHash256? value) => Inner.SetLeaf(key, value);
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             Publishes++;

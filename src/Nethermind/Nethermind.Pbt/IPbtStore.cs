@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
@@ -25,7 +24,4 @@ public interface IPbtStore
     /// own reference before replacing the previous payload. Invalid keys or payloads leave the group unchanged.
     /// </remarks>
     void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload);
-
-    /// <summary>Writes or deletes a complete-key leaf.</summary>
-    void SetLeaf(PbtFullKey key, ValueHash256? value);
 }

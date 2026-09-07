@@ -150,8 +150,6 @@ public class ParallelUpdateRootTests
 
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
 
-        public void SetLeaf(PbtFullKey key, ValueHash256? value) => _inner.SetLeaf(key, value);
-
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             Writes += _inner.CountNodeChanges(groupKey, payload);

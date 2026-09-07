@@ -736,7 +736,7 @@ public class Eip8297CanonicalTreeTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Mixed_batch_stages_only_effective_leaf_outcomes(bool deleteKeyExists)
+    public void Mixed_batch_produces_only_the_remaining_trie_leaf(bool deleteKeyExists)
     {
         CountingPbtStore store = new();
         byte[] deleteKeyBytes = [0x00];
@@ -748,18 +748,12 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 rootAfterUpdate = TrieUpdater.UpdateRoot(store, root, Batch(
             (deleteKeyBytes, null), (setKeyBytes, Value(2))));
 
-        PbtFullKey deleteKey = new(deleteKeyBytes);
-        PbtFullKey setKey = new(setKeyBytes);
-        bool hasDeleteMutation = store.LastLeafMutations.TryGetValue(deleteKey, out ValueHash256? deleteValue);
-        bool hasSetMutation = store.LastLeafMutations.TryGetValue(setKey, out ValueHash256? setValue);
+        PbtLeafNode expectedLeaf = new(new PbtFullKey(setKeyBytes), Value(2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootAfterUpdate, Is.Not.EqualTo(default(ValueHash256)));
-            Assert.That(store.LastLeafMutations, Has.Count.EqualTo(deleteKeyExists ? 2 : 1));
-            Assert.That(hasDeleteMutation, Is.EqualTo(deleteKeyExists));
-            Assert.That(deleteValue, Is.Null);
-            Assert.That(hasSetMutation, Is.True);
-            Assert.That(setValue, Is.EqualTo(new ValueHash256(Value(2))));
+            Assert.That(rootAfterUpdate, Is.EqualTo(expectedLeaf.Hash));
+            Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(1));
+            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(PbtNodeCodec.Encode(expectedLeaf)));
         }
     }
 
@@ -1081,7 +1075,6 @@ public class Eip8297CanonicalTreeTests
         internal int Reads { get; private set; }
         internal int Applies { get; private set; }
         internal int LastNodeWrites { get; private set; }
-        internal Dictionary<PbtFullKey, ValueHash256?> LastLeafMutations { get; } = [];
         internal Dictionary<PbtNodePath, int> GroupReads { get; } = [];
         internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
         internal Func<PbtNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
@@ -1124,8 +1117,6 @@ public class Eip8297CanonicalTreeTests
             RefCountingMemory? innerPayload = Inner.GetNodeGroup(groupKey);
             return innerPayload;
         }
-
-        public void SetLeaf(PbtFullKey key, ValueHash256? value) => LastLeafMutations[key] = value;
 
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {

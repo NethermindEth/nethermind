@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -11,8 +10,6 @@ namespace Nethermind.State.Pbt;
 internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore
 {
     public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
-
-    public void SetLeaf(PbtFullKey key, ValueHash256? value) => bundle.SetLeaf(key, value);
 
     public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => bundle.SetNodeGroup(groupKey, payload);
 }

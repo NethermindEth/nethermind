@@ -65,12 +65,10 @@ public static class TrieUpdater
                 {
                     if (operation.Kind == PbtWriteOperationKind.Delete)
                     {
-                        store.SetLeaf(leaf.Key, null);
                         current = default;
                     }
                     else
                     {
-                        store.SetLeaf(operation.Key, operation.Value);
                         current = new(new PbtLeafNode(operation.Key, operation.Value), current.Path);
                     }
                 }
@@ -84,7 +82,7 @@ public static class TrieUpdater
             operations = operations[..setCount];
             if (operations.IsEmpty) return current;
             if (current.IsEmpty && operations.Length == 1)
-                return SetLeaf(store, operations[0]);
+                return CreateLeaf(operations[0]);
         }
         else
         {
@@ -107,7 +105,7 @@ public static class TrieUpdater
                 Subtree remaining = FoldMutations(store, metrics, ownerGroup, current, depth, operations[..remainingCount]);
                 if (terminalSet is not { } replacement) return remaining;
                 if (!remaining.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                return SetLeaf(store, replacement);
+                return CreateLeaf(replacement);
             }
         }
 
@@ -237,11 +235,8 @@ public static class TrieUpdater
         return branchDepth;
     }
 
-    private static Subtree SetLeaf(IPbtStore store, PbtWriteOperation operation)
-    {
-        store.SetLeaf(operation.Key, operation.Value);
-        return new(new PbtLeafNode(operation.Key, operation.Value), null);
-    }
+    private static Subtree CreateLeaf(PbtWriteOperation operation) =>
+        new(new PbtLeafNode(operation.Key, operation.Value), null);
 
     private static Subtree Resolve(GroupMutationFrame group, Subtree subtree) =>
         subtree.IsEmpty || subtree.Node is not null ? subtree : new(group.Take(subtree.Path!)!, subtree.Path);

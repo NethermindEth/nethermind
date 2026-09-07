@@ -35,6 +35,37 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.GetLeaf(key), Is.EqualTo(local));
     }
 
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Trie_updates_leave_independently_staged_flat_entries_unchanged(bool leafExists, bool delete)
+    {
+        PbtFullKey key = new(Bytes.FromHexString("80"));
+        ValueHash256 flatValue = new(Value(9));
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshotStore store = new(bundle);
+        PbtWriteBatch initial = new();
+        if (leafExists) initial.Set(key, new ValueHash256(Value(1)));
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, initial);
+        bundle.SetLeaf(key, flatValue);
+
+        PbtWriteBatch changes = new();
+        if (delete) changes.Delete(key);
+        else changes.Set(key, new ValueHash256(Value(2)));
+        ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(store, root, changes);
+
+        PbtLeafNode expectedLeaf = new(key, Value(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetLeaf(key), Is.EqualTo(flatValue));
+            Assert.That(bundle.PendingLeafMutations(), Is.EquivalentTo(new[] { new KeyValuePair<PbtFullKey, ValueHash256?>(key, flatValue) }));
+            Assert.That(updatedRoot, Is.EqualTo(delete ? default : expectedLeaf.Hash));
+            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(delete ? null : PbtNodeCodec.Encode(expectedLeaf)));
+        }
+    }
+
     [Test]
     public void Node_group_read_rejects_non_boundary_key_before_empty_persistence_lookup()
     {
@@ -274,7 +305,6 @@ public class PbtSnapshotBundleTests
     {
         public int ApplyCount { get; private set; }
         public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
-        public void SetLeaf(PbtFullKey key, ValueHash256? value) => bundle.SetLeaf(key, value);
         public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
         {
             ApplyCount++;
