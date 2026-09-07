@@ -91,8 +91,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public byte[] Get(in UInt256 index)
         {
-            byte[]? bytes = storageTree.Get(in index);
-            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes?.ToHexString()}");
+            byte[] bytes = storageTree.Get(in index);
+            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes.ToHexString()}");
             return bytes;
         }
 
@@ -156,7 +156,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Set(in UInt256 index, byte[] value)
         {
             writeBatch.Set(in index, value);
-            logger.Trace($"{scopeId}: {address}, Set {index} to {value?.ToHexString()}");
+            logger.Trace($"{scopeId}: {address}, Set {index} to {value.ToHexString()}");
         }
 
         public void Clear()

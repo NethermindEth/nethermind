@@ -347,12 +347,13 @@ namespace Nethermind.TxPool.Test
             }
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
 
             _blockTree.BestSuggestedHeader = head.Header;
             await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            AssertRevalidatedForHead();
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
@@ -406,7 +407,7 @@ namespace Nethermind.TxPool.Test
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             int pendingTransactionsCount = _txPool.GetPendingTransactionsCount();
             AcceptTxResult resubmissionResult = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
@@ -442,7 +443,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
         }
@@ -508,7 +509,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             using (Assert.EnterMultipleScope())
             {
@@ -542,7 +543,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             using (Assert.EnterMultipleScope())
             {
@@ -584,7 +585,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             using (Assert.EnterMultipleScope())
             {
@@ -654,7 +655,7 @@ namespace Nethermind.TxPool.Test
 
             await AddEmptyBlock();
 
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
         }
 
         [Test]
@@ -3537,6 +3538,9 @@ namespace Nethermind.TxPool.Test
                 await semaphoreSlim.WaitAsync(1000);
             }
         }
+
+        private void AssertRevalidatedForHead() =>
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
         private async Task RaiseBlockAddedToMainAndWaitForNewHead(Block block, Block previousBlock = null)
         {
