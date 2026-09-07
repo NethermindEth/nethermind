@@ -99,14 +99,8 @@ namespace Nethermind.Core.Test
             AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
         }
 
-        [TestCase(0UL)]
-        [TestCase(1UL)]
-        [TestCase(127UL)]
-        [TestCase(128UL)]
-        [TestCase(255UL)]
-        [TestCase(256UL)]
-        [TestCase(ulong.MaxValue)]
-        public void RlpWriter_encodes_ulong_like_Rlp(ulong value)
+        [Test]
+        public void RlpWriter_encodes_ulong_like_Rlp([Values(0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue)] ulong value)
         {
             int length = Rlp.LengthOf(value);
 
@@ -376,10 +370,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(127)]
-        public void Byte_array_of_length_1_and_first_byte_value_less_than_128(byte value)
+        [Test]
+        public void Byte_array_of_length_1_and_first_byte_value_less_than_128([Values(0, 1, 127)] byte value)
         {
             byte[] bytes = { value };
             Rlp rlp = Rlp.Encode(bytes);
@@ -392,9 +384,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(128)]
-        [TestCase(255)]
-        public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128(byte value)
+        [Test]
+        public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128([Values(128, 255)] byte value)
         {
             byte[] bytes = { value };
             Rlp rlp = Rlp.Encode(bytes);
@@ -560,9 +551,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(50)]
-        [TestCase(100)]
-        public void Over_limit_throws(int limit)
+        [Test]
+        public void Over_limit_throws([Values(50, 100)] int limit)
         {
             byte[] rlp = Prepare100BytesRlp();
             RlpLimit rlpLimit = new(limit);
@@ -1045,6 +1035,40 @@ namespace Nethermind.Core.Test
                 Assert.That(reader.Length, Is.Zero);
             }
         }
+
+        [Test]
+        public void SkipItems_advances_the_cursor_like_repeated_SkipItem([Range(-1, MixedItemCount)] int count)
+        {
+            byte[] rlp = MixedRlpItems();
+
+            RlpReader batched = new(rlp);
+            batched.SkipItems(count);
+
+            RlpReader oneByOne = new(rlp);
+            for (int i = 0; i < count; i++)
+            {
+                oneByOne.SkipItem();
+            }
+
+            Assert.That(batched.Position, Is.EqualTo(oneByOne.Position));
+        }
+
+        [Test]
+        public void SkipItems_over_every_item_lands_at_the_end()
+        {
+            byte[] rlp = MixedRlpItems();
+            RlpReader reader = new(rlp);
+
+            reader.SkipItems(MixedItemCount);
+
+            Assert.That(reader.Position, Is.EqualTo(rlp.Length));
+        }
+
+        private const int MixedItemCount = 5;
+
+        // 0x7F | "" | "abc" | [1, 2] | a 56-byte string, so a run crosses every prefix form
+        private static byte[] MixedRlpItems() =>
+            [0x7F, 0x80, 0x83, 0x61, 0x62, 0x63, 0xC2, 0x01, 0x02, 0xB8, 0x38, .. new byte[56]];
 
         private static byte[] BuildLongFormRlp(int prefix, int contentLength)
         {

@@ -461,9 +461,8 @@ public class SeqlockCacheTests
         Assert.That((validReads + misses), Is.EqualTo(iterations));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void TrySetExclusive_writes_value(bool present)
+    [Test]
+    public void TrySetExclusive_writes_value([Values] bool present)
     {
         SeqlockCache<StorageCell, byte[]> cache = new();
         StorageCell key = CreateKey(1);

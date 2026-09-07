@@ -191,7 +191,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new NotSupportedException();
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) => throw new NotSupportedException();
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
