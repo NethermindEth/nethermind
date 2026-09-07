@@ -265,6 +265,23 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void Storage_rows_under_an_account_row_that_is_a_deletion_fail_the_walk()
+    {
+        UInt256 slot = 1;
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, null);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slot, block: 0, [0x0C]);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf();
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 0, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Does.Contain((0UL, HistoryWalkMismatchKind.StorageRoot)),
+            "a contract created and destroyed in one block leaves a deletion row for the account; storage rows at that block contradict it, and the walk must say so rather than treat a deleted account as having no root to compare");
+    }
+
+    [Test]
     public void A_corrupt_slot_at_the_anchor_of_a_quiet_contract_fails_a_range_that_starts_above_genesis()
     {
         UInt256[] slots = [1, 2, 3];

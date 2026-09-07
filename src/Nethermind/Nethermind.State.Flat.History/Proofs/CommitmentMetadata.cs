@@ -112,7 +112,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         }
     }
 
-    private void DiscardAll()
+    public void DiscardAll()
     {
         ReadOnlySpan<byte> first = [0x00];
         Span<byte> last = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];

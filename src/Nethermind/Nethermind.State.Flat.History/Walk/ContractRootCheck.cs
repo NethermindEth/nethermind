@@ -50,7 +50,7 @@ internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, His
 
         ReadOnlySpan<byte> value = _rows.Value;
         ValueHash256 recorded = HistoryRowScanner.StorageRootOf(value);
-        if (!value.IsEmpty && recorded != rebuilt) sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.StorageRoot, rebuilt, recorded));
+        if (recorded != rebuilt) sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.StorageRoot, rebuilt, recorded));
         _previous = recorded;
         _hasRow = _rows.MoveNext();
     }

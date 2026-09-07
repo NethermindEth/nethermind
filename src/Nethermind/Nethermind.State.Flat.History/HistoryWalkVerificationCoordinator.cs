@@ -29,6 +29,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private readonly CommitmentMetadata _metadata;
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
+    private readonly OrphanStorageRowSweep? _rowSweep;
+    private volatile bool _rowSweepDone;
+    private volatile bool _discardPending;
     private readonly CancellationTokenSource _cts = new();
     private Task _loop = Task.CompletedTask;
     private HistoryWalkVerdict? _verdict;
@@ -43,8 +46,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         IFlatDbConfig config,
         ArchiveProofRetrofit retrofit,
         CommitmentMetadata metadata,
-        ILogManager logManager)
-        : this(db, history, headers, availability, rowFormat, config, retrofit, metadata, logManager, pollDelay: null)
+        ILogManager logManager,
+        OrphanStorageRowSweep? rowSweep = null)
+        : this(db, history, headers, availability, rowFormat, config, retrofit, metadata, logManager, pollDelay: null, rowSweep)
     {
     }
 
@@ -58,8 +62,12 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         ArchiveProofRetrofit retrofit,
         CommitmentMetadata metadata,
         ILogManager logManager,
-        TimeSpan? pollDelay)
+        TimeSpan? pollDelay,
+        OrphanStorageRowSweep? rowSweep = null)
     {
+        _rowSweep = rowSweep;
+        if (rowSweep is { Supported: true, AlreadyHandled: false }) rowSweep.Completed += OnRowSweepCompleted;
+        else _rowSweepDone = true;
         _availability = availability;
         _config = config;
         _metadata = metadata;
@@ -104,6 +112,19 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             while (!token.IsCancellationRequested)
             {
+                if (!_rowSweepDone)
+                {
+                    await Task.Delay(_pollDelay, token);
+                    continue;
+                }
+
+                if (_discardPending)
+                {
+                    _discardPending = false;
+                    _metadata.DiscardAll();
+                    if (_logger.IsInfo) _logger.Info("Archive proof commitments discarded: the history orphan storage row sweep changed the rows they were built from, so the tip series and the walk start again from clean rows.");
+                }
+
                 if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0)
                 {
                     WalkResources resources = WalkResources.Resolve(_config);
@@ -188,6 +209,12 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         }
     }
 
+    private void OnRowSweepCompleted(OrphanStorageRowReport report)
+    {
+        _discardPending = report.OrphanAccounts > 0;
+        _rowSweepDone = true;
+    }
+
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>
         _metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
 
@@ -216,6 +243,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (_disposed) return;
 
         _disposed = true;
+        if (_rowSweep is not null) _rowSweep.Completed -= OnRowSweepCompleted;
         _cts.Cancel();
         try
         {
@@ -233,6 +261,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (_disposed) return;
 
         _disposed = true;
+        if (_rowSweep is not null) _rowSweep.Completed -= OnRowSweepCompleted;
         await _cts.CancelAsync();
         try
         {

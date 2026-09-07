@@ -10,6 +10,9 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using System.Threading;
+using Nethermind.Core.Test.Builders;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -107,6 +110,48 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(verdict!.Verified, Is.True);
             Assert.That(verdict!.Mismatches, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task APendingRowSweepIsWaitedFor_AndARepairDiscardsTheCommitmentsBeforeTheWalkRuns()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 2; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        HistoryColumnsWriter.RecordAccount(_historyColumns, TestItem.AddressB, block: 1, null);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, TestItem.AddressB, 1, block: 1, [0x0C]);
+        availability.PublishWatermark(2, rowFormat.FormatVersion);
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.AdvanceTipSeries(0, 2, out _);
+
+        using OrphanStorageRowSweep sweep = new(_historyColumns, _db, Substitute.For<IPersistenceManager>(), rowFormat, LimboLogs.Instance);
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10), sweep);
+        coordinator.Start();
+        await Task.Delay(100);
+        bool seriesBeforeSweep = metadata.TryGetTipSeries(out _, out _);
+        HistoryWalkVerdict? verdictBeforeSweep = coordinator.LastVerdict;
+
+        sweep.RunToCompletion(repair: true, CancellationToken.None);
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdictBeforeSweep, Is.Null, "the walk must not read rows a pending sweep is about to change");
+            Assert.That(seriesBeforeSweep, Is.True);
+            Assert.That(metadata.TryGetTipSeries(out _, out _), Is.False, "a sweep that repaired rows invalidates every commitment built from them, so the tip series is discarded before the walk starts");
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True, "the walk then runs over the repaired rows and passes");
         }
     }
 

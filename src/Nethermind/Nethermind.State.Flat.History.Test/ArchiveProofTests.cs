@@ -676,7 +676,7 @@ public class ArchiveProofTests
     public void A_windowed_database_never_serves_historical_proofs()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> windowed = new();
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 128, ArchiveProofServeEnabled = true };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 128, ArchiveProofServeEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(windowed, config);
 
         ArchiveProofSource source = new(
