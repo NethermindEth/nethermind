@@ -531,7 +531,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOfLength(int value)
         {
             int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
-            // Unsigned: bits is positive, and a signed divide costs two extra instructions to round it.
+            // Unsigned shift: bits is positive, and a signed shift pays two instructions to round toward zero.
             return (bits + 7) >>> 3;
         }
 

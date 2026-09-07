@@ -248,15 +248,7 @@ public ref struct RlpReader
     }
 
     public ValueHash256? DecodeValueKeccak()
-    {
-        if (!ReadKeccakPrefix(allowNull: true))
-        {
-            return null;
-        }
-
-        // No interning to do for a value: the well-known hashes decode to the same bits anyway.
-        return new ValueHash256(Read(Hash256.Size));
-    }
+        => TryDecodeValueKeccak(out ValueHash256 keccak) ? keccak : null;
 
     public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
 
