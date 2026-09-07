@@ -211,8 +211,8 @@ internal static class RocksDbFeatureBenchmarkSupport
 
     public static DbConfig CreateConfig(RocksDbFeatureDatasetKind dataset, RocksDbFeatureVariant variant)
     {
-        string options = AdditionalOptions(dataset, variant);
         DbConfig config = new();
+        config.RocksDbOptions += GlobalOptions(variant);
 
         // The production flat layout composes FlatDb common options with each column's
         // specific options. Keep the same ordering so account's no-compression and
@@ -221,6 +221,8 @@ internal static class RocksDbFeatureBenchmarkSupport
         {
             config.RocksDbOptions += config.FlatDbRocksDbOptions;
         }
+
+        string options = DatasetAdditionalOptions(dataset, variant);
 
         switch (dataset)
         {
@@ -286,22 +288,17 @@ internal static class RocksDbFeatureBenchmarkSupport
         return batches;
     }
 
-    public static string AdditionalOptions(RocksDbFeatureDatasetKind dataset, RocksDbFeatureVariant variant) => variant switch
+    private static string GlobalOptions(RocksDbFeatureVariant variant) => variant switch
     {
-        RocksDbFeatureVariant.FlatAccountInterpolation when dataset == RocksDbFeatureDatasetKind.Account =>
-            "block_based_table_factory.index_block_search_type=kInterpolation;",
         RocksDbFeatureVariant.AutoIndexUniform =>
             "block_based_table_factory.index_block_search_type=kAuto;block_based_table_factory.uniform_cv_threshold=0.2;",
         RocksDbFeatureVariant.SeparatedKeyValue =>
             "block_based_table_factory.separate_key_value_in_data_block=true;",
-        // Flat already uses ribbonfilter:10:3 and Code explicitly disables filters. Blocks
-        // inherits the global Bloom filter, so it is the meaningful Ribbon comparison.
-        RocksDbFeatureVariant.RibbonFilter when dataset == RocksDbFeatureDatasetKind.Blocks =>
+        RocksDbFeatureVariant.RibbonFilter =>
             "block_based_table_factory.filter_policy=ribbonfilter:10:1;",
-        RocksDbFeatureVariant.DataBlockBinaryHash when dataset == RocksDbFeatureDatasetKind.Bytecode =>
+        RocksDbFeatureVariant.DataBlockBinaryHash =>
             "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;",
-        // Flat storage and trie already use LZ4, while bytecode inherits the Snappy default.
-        RocksDbFeatureVariant.Lz4 when dataset == RocksDbFeatureDatasetKind.Bytecode =>
+        RocksDbFeatureVariant.Lz4 =>
             "compression=kLZ4Compression;",
         RocksDbFeatureVariant.Format7 =>
             "block_based_table_factory.format_version=7;",
@@ -309,6 +306,11 @@ internal static class RocksDbFeatureBenchmarkSupport
             "memtable_batch_lookup_optimization=true;",
         _ => string.Empty,
     };
+
+    private static string DatasetAdditionalOptions(RocksDbFeatureDatasetKind dataset, RocksDbFeatureVariant variant) =>
+        variant == RocksDbFeatureVariant.FlatAccountInterpolation && dataset == RocksDbFeatureDatasetKind.Account
+            ? "block_based_table_factory.index_block_search_type=kInterpolation;"
+            : string.Empty;
 }
 
 internal sealed class RocksDbFeatureHardwareInfo : IHardwareInfo
