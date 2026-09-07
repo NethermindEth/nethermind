@@ -7,6 +7,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using DotNetty.Transport.Channels;
+using Nethermind.Logging;
 
 namespace Nethermind.Network;
 
@@ -33,6 +35,23 @@ public static class NetworkHelper
         => supportsDualStack && localIpConfig is null && IPAddress.Any.Equals(localIp)
             ? IPAddress.IPv6Any
             : localIp;
+
+    internal static async Task CloseFailedBindAsync(this IChannel? channel, ILogger logger, string listenerName)
+    {
+        if (channel is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await channel.CloseAsync();
+        }
+        catch (Exception e)
+        {
+            if (logger.IsWarn) logger.Warn($"Failed to close an unsuccessful {listenerName} bind attempt. {e}");
+        }
+    }
 
     private static PortInUseException MapOrRethrow(Exception exception, int[]? ports = null, string[]? urls = null)
     {

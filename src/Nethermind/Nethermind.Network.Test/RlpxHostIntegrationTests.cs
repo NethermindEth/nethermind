@@ -172,13 +172,18 @@ public class RlpxHostIntegrationTests
         int port = ipv6Blocker is not null ? ((IPEndPoint)ipv6Blocker.LocalEndPoint!).Port : GetAvailablePort();
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
         Ipv4ServerChannelFactory? channelFactory = portInUse ? null : new();
-        (RlpxHost host, _) = CreateListenerHost(null, IPAddress.Any, port, listenerState, channelFactory);
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        (RlpxHost host, _) = CreateListenerHost(null, IPAddress.Any, port, listenerState, channelFactory,
+            logManager: new OneLoggerLogManager(new ILogger(underlyingLogger)));
         try
         {
             await host.Init();
 
             Assert.That(listenerState.RlpxAddress, Is.EqualTo(IPAddress.Any));
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
+            underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
+                message.StartsWith("Failed to bind RlpxHost") && message.Contains(typeof(SocketException).FullName!)));
             if (channelFactory is not null)
             {
                 Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
@@ -364,7 +369,8 @@ public class RlpxHostIntegrationTests
         int port,
         NetworkListenerState? listenerState = null,
         IChannelFactory? channelFactory = null,
-        IPrivilegedIpProvider? privilegedIpProvider = null)
+        IPrivilegedIpProvider? privilegedIpProvider = null,
+        ILogManager? logManager = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -386,7 +392,7 @@ public class RlpxHostIntegrationTests
             networkConfig,
             ipResolver,
             privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             listenerState,
             channelFactory);
         return (host, listenerState);

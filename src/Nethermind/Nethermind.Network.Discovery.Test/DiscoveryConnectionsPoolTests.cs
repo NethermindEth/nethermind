@@ -96,7 +96,9 @@ public class DiscoveryConnectionsPoolTests
         using Socket? ipv6Blocker = portInUse ? CreateUdpListenerSocket(IPAddress.IPv6Any, 0) : null;
         int port = ipv6Blocker is not null ? ((IPEndPoint)ipv6Blocker.LocalEndPoint!).Port : GetAvailableUdpPort();
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
-        DiscoveryConnectionsPool pool = CreatePool(listenerState);
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        DiscoveryConnectionsPool pool = CreatePool(listenerState, new ILogger(underlyingLogger));
         IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
         TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         List<IChannel> createdChannels = [];
@@ -110,6 +112,8 @@ public class DiscoveryConnectionsPoolTests
             await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, port);
             await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
+            underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
+                message.StartsWith("Failed to bind discovery UDP channel") && message.Contains(typeof(SocketException).FullName!)));
             Assert.That(createdChannels, Has.Count.EqualTo(2));
             Assert.That(createdChannels[0].Open, Is.False);
             Assert.That(createdChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);

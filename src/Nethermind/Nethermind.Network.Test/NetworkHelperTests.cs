@@ -34,9 +34,13 @@ public class NetworkHelperTests
     [Test]
     public void GetInboundBindAddress_uses_automatic_dual_stack_only_where_wildcard_bind_is_exclusive()
     {
-        IPAddress expected = Socket.OSSupportsIPv6 && !OperatingSystem.IsMacOS()
-            ? IPAddress.IPv6Any
-            : IPAddress.Any;
+        IPAddress expected = (OperatingSystem.IsMacOS(), Socket.OSSupportsIPv6) switch
+        {
+            // macOS wildcards can share a port, so a successful IPv6 bind does not prove IPv4 ownership.
+            (true, _) => IPAddress.Any,
+            (false, false) => IPAddress.Any,
+            (false, true) => IPAddress.IPv6Any
+        };
 
         Assert.That(NetworkHelper.GetInboundBindAddress(IPAddress.Any, null), Is.EqualTo(expected));
     }

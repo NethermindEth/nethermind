@@ -159,7 +159,7 @@ namespace Nethermind.Network.Rlpx
             }
             catch (Exception e) when (!bindAddress.Equals(_listenerState.FallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort} ({e.Message}). Retrying on {_listenerState.FallbackAddress}:{LocalPort}.");
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort}. Retrying on {_listenerState.FallbackAddress}:{LocalPort}. {e}");
                 return await BindAsync(_listenerState.FallbackAddress);
             }
         }

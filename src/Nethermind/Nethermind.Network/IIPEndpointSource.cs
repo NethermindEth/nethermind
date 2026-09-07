@@ -3,9 +3,7 @@
 
 using System;
 using System.Net;
-using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Logging;
 
 namespace Nethermind.Network;
 
@@ -30,21 +28,4 @@ public static class EndpointExtensions
             IIPEndpointSource source => source.IPEndpoint,
             _ => (channel as IIPEndpointSource)?.IPEndpoint
         };
-
-    internal static async Task CloseFailedBindAsync(this IChannel? channel, ILogger logger, string listenerName)
-    {
-        if (channel is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await channel.CloseAsync();
-        }
-        catch (Exception e)
-        {
-            if (logger.IsWarn) logger.Warn($"Failed to close an unsuccessful {listenerName} bind attempt. {e}");
-        }
-    }
 }
