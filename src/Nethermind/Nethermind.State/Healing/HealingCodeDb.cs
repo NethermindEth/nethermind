@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -14,6 +16,8 @@ namespace Nethermind.State.Healing;
 [method: DebuggerStepThrough]
 public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery> recovery) : IKeyValueStoreWithBatching
 {
+    private readonly ConcurrentDictionary<ValueHash256, Lazy<Task<byte[]?>>> _inFlight = new();
+
     /// <summary>
     /// Reads the bytecode stored under <paramref name="key"/>, recovering it from peers when it is missing locally.
     /// </summary>
@@ -26,7 +30,7 @@ public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery
         byte[]? bytes = codeDb.Get(key, flags);
         if (bytes is null && key.Length == ValueHash256.MemorySize)
         {
-            bytes = recovery.Value.Recover(new ValueHash256(key)).GetAwaiter().GetResult();
+            bytes = Recover(new ValueHash256(key));
             if (bytes is not null)
             {
                 Set(key, bytes);
@@ -34,6 +38,22 @@ public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery
         }
 
         return bytes;
+    }
+
+    private byte[]? Recover(ValueHash256 codeHash)
+    {
+        // Each caller blocks a processing thread for the whole recovery, so concurrent misses share one
+        // request. The Lazy keeps it to one even though GetOrAdd may run its factory more than once.
+        Lazy<Task<byte[]?>> attempt = _inFlight.GetOrAdd(codeHash,
+            hash => new Lazy<Task<byte[]?>>(() => recovery.Value.Recover(hash)));
+        try
+        {
+            return attempt.Value.GetAwaiter().GetResult();
+        }
+        finally
+        {
+            _inFlight.TryRemove(codeHash, out _);
+        }
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>

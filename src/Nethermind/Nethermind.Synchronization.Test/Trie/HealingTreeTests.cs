@@ -103,6 +103,56 @@ public class HealingTreeTests
     }
 
     [Test]
+    public void code_recovery_collapses_concurrent_misses()
+    {
+        // The gate holds the first reader inside the recovery until the second has missed in the db and
+        // is on its way to join it, so the two are provably overlapping when the single request resolves.
+        TaskCompletionSource<byte[]?> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int reads = 0;
+        int recoveries = 0;
+
+        TestMemDb db = new() { ReadFunc = _ => { Interlocked.Increment(ref reads); return null!; } };
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>())
+            .Returns(_ => { Interlocked.Increment(ref recoveries); return gate.Task; });
+
+        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+
+        // Dedicated threads, not the pool: both readers park on the recovery, and a saturated pool
+        // could otherwise leave the second one queued behind the first.
+        Task<byte[]?> first = ReadOnOwnThread(codeDb);
+        Assert.That(() => Volatile.Read(ref recoveries), Is.EqualTo(1).After(10000, 10));
+
+        Task<byte[]?> second = ReadOnOwnThread(codeDb);
+        Assert.That(() => Volatile.Read(ref reads), Is.EqualTo(2).After(10000, 10));
+
+        gate.SetResult(_rlp);
+
+        Assert.That(Task.WhenAll(first, second).Wait(TimeSpan.FromSeconds(30)), Is.True);
+        Assert.That(first.Result, Is.EqualTo(_rlp));
+        Assert.That(second.Result, Is.EqualTo(_rlp));
+        Assert.That(recoveries, Is.EqualTo(1));
+
+        static Task<byte[]?> ReadOnOwnThread(HealingCodeDb codeDb)
+        {
+            TaskCompletionSource<byte[]?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            new Thread(() =>
+            {
+                try
+                {
+                    completion.SetResult(codeDb.Get(_key.Bytes));
+                }
+                catch (Exception e)
+                {
+                    completion.SetException(e);
+                }
+            })
+            { IsBackground = true }.Start();
+            return completion.Task;
+        }
+    }
+
+    [Test]
     public void code_recovery_skips_present_code()
     {
         TestMemDb db = new() { [_key.Bytes] = _rlp };
