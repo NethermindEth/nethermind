@@ -42,7 +42,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Path_append_and_prefix_composition_match_bit_reference(
         [Range(0, 7)] int pathOffset,
-        [Values(0, 1, 7, 8, 9, 63, 64, 65, 65519)] int prefixLength,
+        [Values(0, 1, 7, 8, 9, 63, 64, 65, 511)] int prefixLength,
         [Values(0, 1)] int direction)
     {
         byte[] keyBytes = new byte[PbtFullKey.MaxLength];
@@ -368,12 +368,122 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(7)]
+    [TestCase(8)]
+    [TestCase(271)]
+    [TestCase(272)]
+    [TestCase(527)]
+    [TestCase(528)]
+    public void Inline_paths_preserve_occupied_bytes_and_value_behavior(int bitDepth)
+    {
+        byte[] source = new byte[PbtFullKey.MaxLength];
+        source.AsSpan().Fill(0xA5);
+        PbtFullKey key = new(source);
+        PbtNodePath fromKey = PbtNodePath.FromKey(key, bitDepth);
+        byte[] expected = source.AsSpan(0, (bitDepth + 7) >> 3).ToArray();
+        if ((bitDepth & 7) != 0) expected[^1] &= (byte)(0xFF << (8 - (bitDepth & 7)));
+        byte[] constructorInput = (byte[])expected.Clone();
+        PbtNodePath constructed = new(constructorInput, bitDepth);
+        constructorInput.AsSpan().Clear();
+        source.AsSpan().Clear();
+        PbtNodePath decoded = PbtNodePath.Decode(constructed.Encode());
+        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(constructed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(constructed.Path.ToArray(), Is.EqualTo(expected));
+            Assert.That(constructed.Encode().Length, Is.EqualTo(4 + expected.Length));
+            Assert.That(fromKey, Is.EqualTo(constructed));
+            Assert.That(decoded, Is.EqualTo(constructed));
+            Assert.That(decoded.GetHashCode(), Is.EqualTo(constructed.GetHashCode()));
+            Assert.That(decoded.CompareTo(constructed), Is.Zero);
+            Assert.That(PbtFourLevelGroupGeometry.PathOf(location.GroupKey, location.Position), Is.EqualTo(constructed));
+            if (bitDepth > 0)
+            {
+                PbtNodePath parent = PbtNodePath.FromKey(key, bitDepth - 1);
+                Assert.That(parent.Append(new PbtBitPrefix([], 0), key.GetBit(bitDepth - 1)), Is.EqualTo(constructed));
+                Assert.That(parent.CompareTo(constructed), Is.LessThan(0));
+            }
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(34)]
+    [TestCase(66)]
+    public void Inline_full_keys_preserve_copies_and_dictionary_identity(int length)
+    {
+        byte[] source = new byte[length];
+        source.AsSpan().Fill(0xA5);
+        PbtFullKey key = new(source);
+        PbtFullKey copy = key;
+        source[^1] ^= 1;
+        PbtFullKey different = new(source);
+        source[^1] ^= 1;
+        PbtFullKey equal = new(source);
+        Dictionary<PbtFullKey, int> keys = new() { [key] = 42 };
+        source.AsSpan().Clear();
+        key = default;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy.Length, Is.EqualTo(length));
+            Assert.That(copy, Is.EqualTo(equal));
+            Assert.That(copy.GetHashCode(), Is.EqualTo(equal.GetHashCode()));
+            Assert.That(keys[equal], Is.EqualTo(42));
+            Assert.That(copy.CompareTo(equal), Is.Zero);
+            Assert.That(copy.CompareTo(different), Is.GreaterThan(0));
+            Assert.That(copy.FirstDifferingBit(different), Is.EqualTo(length * 8 - 1));
+            Assert.That(copy.FirstDifferingBit(equal), Is.EqualTo(length * 8));
+            Assert.That(key.Bytes.Length, Is.Zero);
+            Assert.That(key.Equals(default), Is.True);
+            Assert.That(key.CompareTo(copy), Is.LessThan(0));
+            Assert.That(key.GetHashCode(), Is.EqualTo(default(PbtFullKey).GetHashCode()));
+        }
+    }
+
+    [TestCase(67)]
+    [TestCase(8192)]
+    public void Oversized_keys_and_persisted_leaves_are_rejected(int length)
+    {
+        byte[] encoding = new byte[3 + length + 32];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(encoding.AsSpan(1), (ushort)length);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[length]));
+            Assert.Throws<InvalidDataException>(() => PbtNodeCodec.Decode(encoding));
+        }
+    }
+
+    [Test]
+    public void Invalid_inline_paths_and_default_complete_keys_reject_before_mutation()
+    {
+        PbtNodePath maximum = new(new byte[66], 528);
+        PbtWriteBatch batch = new();
+        using PbtSnapshotContent content = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new PbtNodePath(new byte[67], 529));
+            Assert.Throws<InvalidDataException>(() => PbtNodePath.Decode([0, 0, 2, 17, .. new byte[67]]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => maximum.Append(new PbtBitPrefix([], 0), 0));
+            Assert.Throws<ArgumentException>(() => new PbtNodePath(Bytes.FromHexString("01"), 1));
+            Assert.Throws<ArgumentException>(() => new PbtNodePath([], 8));
+            Assert.Throws<ArgumentException>(() => batch.Set(default, default));
+            Assert.Throws<ArgumentException>(() => batch.Delete(default));
+            Assert.Throws<ArgumentException>(() => content.SetLeaf(default, default));
+            Assert.Throws<ArgumentException>(() => new PbtLeafNode(default, default(ValueHash256)));
+            Assert.That(batch.Count, Is.Zero);
+            Assert.That(content.Leaves, Is.Empty);
+        }
+    }
+
     [Test]
     public void Full_key_and_persisted_path_validate_bounds_and_canonical_padding()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey([]));
-        Assert.DoesNotThrow(() => new PbtFullKey(new byte[8192]));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[8193]));
+        Assert.DoesNotThrow(() => new PbtFullKey(new byte[PbtFullKey.MaxLength]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[PbtFullKey.MaxLength + 1]));
         Assert.Throws<ArgumentException>(() => new PbtBitPrefix([0x01], 1));
         Assert.Throws<InvalidDataException>(() => PbtNodePath.Decode([0, 0, 0, 1, 0x01]));
 
@@ -392,18 +502,18 @@ public class Eip8297CanonicalTreeTests
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(Hash([0, .. key, .. value])));
     }
 
-    [TestCase(222)]
-    [TestCase(223)]
-    [TestCase(224)]
-    public void Node_hashes_match_independent_preimages_at_stack_threshold(int keyLength)
+    [TestCase(1, 188)]
+    [TestCase(34, 189)]
+    [TestCase(66, 190)]
+    public void Node_hashes_match_independent_preimages_at_stack_threshold(int keyLength, int prefixLength)
     {
         byte[] key = new byte[keyLength];
         key[^1] = 1;
         byte[] value = Value(7);
         PbtLeafNode leaf = new(new PbtFullKey(key), value);
 
-        int prefixBitCount = (keyLength - 34) * 8;
-        byte[] prefixBytes = key[..(keyLength - 34)];
+        int prefixBitCount = prefixLength * 8;
+        byte[] prefixBytes = new byte[prefixLength];
         PbtBitPrefix prefix = new(prefixBytes, prefixBitCount);
         ValueHash256 left = new(Hash([0, .. key, .. value]));
         ValueHash256 right = new(Value(8));
@@ -637,8 +747,8 @@ public class Eip8297CanonicalTreeTests
     [TestCase(12)]
     [TestCase(248)]
     [TestCase(252)]
-    [TestCase(30004)]
-    [TestCase(65524, Ignore = "A dense group of 8191-byte keys exceeds the existing uint16 group entries length limit.")]
+    [TestCase(520)]
+    [TestCase(524)]
     public void Dense_group_paths_survive_collapse_and_restoration(int groupDepth)
     {
         byte[] sharedKey = new byte[(groupDepth + 4 + 7) >> 3];

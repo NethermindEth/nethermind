@@ -108,7 +108,8 @@ public static class PbtFourLevelGroupGeometry
         }
 
         int depth = checked(groupKey.BitDepth + relativeDepth);
-        byte[] path = new byte[(depth + 7) >> 3];
+        Span<byte> path = stackalloc byte[(depth + 7) >> 3];
+        path.Clear();
         groupKey.Path.CopyTo(path);
         for (int index = 0; index < relativeDepth; index++)
         {
@@ -117,7 +118,7 @@ public static class PbtFourLevelGroupGeometry
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
 
-        return PbtNodePath.TakeOwnership(path, depth);
+        return new PbtNodePath(path, depth);
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
@@ -142,10 +143,11 @@ public static class PbtFourLevelGroupGeometry
     private static PbtNodePath Prefix(PbtNodePath path, int depth)
     {
         int byteLength = (depth + 7) >> 3;
-        byte[] prefix = path.Path[..byteLength].ToArray();
+        Span<byte> prefix = stackalloc byte[byteLength];
+        path.Path[..byteLength].CopyTo(prefix);
         if (byteLength != 0 && (depth & 7) != 0)
             prefix[^1] &= (byte)(0xFF << (8 - (depth & 7)));
-        return PbtNodePath.TakeOwnership(prefix, depth);
+        return new PbtNodePath(prefix, depth);
     }
 
     private static void ValidateGroupKey(PbtNodePath groupKey)

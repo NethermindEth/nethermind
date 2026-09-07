@@ -19,9 +19,9 @@ public static class Eip8297KeyDerivation
     {
         Validate32(address32, nameof(address32));
         ValueHash256 addressHash = Blake3Hash.Hash(address32);
-        byte[] key = new byte[AccountKeyLength];
+        Span<byte> key = stackalloc byte[AccountKeyLength];
         key[0] = AccountZone;
-        addressHash.Bytes.CopyTo(key.AsSpan(1));
+        addressHash.Bytes.CopyTo(key[1..]);
         key[^1] = subIndex;
         return new PbtFullKey(key);
     }
@@ -40,10 +40,10 @@ public static class Eip8297KeyDerivation
         treeIndex.ToBigEndian(suffixInput[32..]);
         ValueHash256 addressHash = Blake3Hash.Hash(address32);
         ValueHash256 suffixHash = Blake3Hash.Hash(suffixInput);
-        byte[] key = new byte[StorageKeyLength];
+        Span<byte> key = stackalloc byte[StorageKeyLength];
         key[0] = StorageZone;
-        addressHash.Bytes.CopyTo(key.AsSpan(1));
-        suffixHash.Bytes.CopyTo(key.AsSpan(33));
+        addressHash.Bytes.CopyTo(key[1..]);
+        suffixHash.Bytes.CopyTo(key[33..]);
         key[^1] = (byte)slot.u0;
         return new PbtFullKey(key);
     }
@@ -66,9 +66,9 @@ public static class Eip8297KeyDerivation
         codeHash32.CopyTo(input);
         new UInt256((ulong)(overflow >> 8)).ToBigEndian(input[32..]);
         ValueHash256 digest = Blake3Hash.Hash(input);
-        byte[] key = new byte[AccountKeyLength];
+        Span<byte> key = stackalloc byte[AccountKeyLength];
         key[0] = CodeZone;
-        digest.Bytes.CopyTo(key.AsSpan(1));
+        digest.Bytes.CopyTo(key[1..]);
         key[^1] = (byte)overflow;
         return new PbtFullKey(key);
     }

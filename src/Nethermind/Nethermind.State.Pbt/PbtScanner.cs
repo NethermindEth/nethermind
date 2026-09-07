@@ -76,13 +76,13 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             report.LeafKeyBytes += view.CurrentKey.Length;
             report.LeafBytes += view.CurrentValue.Length;
 
-            if (!TryValidateLeaf(view.CurrentKey, view.CurrentValue, out PbtFullKey? key))
+            if (!TryValidateLeaf(view.CurrentKey, view.CurrentValue, out PbtFullKey key))
             {
                 report.InvalidLeafCount++;
                 continue;
             }
 
-            leaves.Add(new KeyValuePair<PbtFullKey, ValueHash256>(key!, new ValueHash256(view.CurrentValue)));
+            leaves.Add(new KeyValuePair<PbtFullKey, ValueHash256>(key, new ValueHash256(view.CurrentValue)));
         }
     }
 
@@ -143,9 +143,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         return groupKey;
     }
 
-    private static bool TryValidateLeaf(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, out PbtFullKey? key)
+    private static bool TryValidateLeaf(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, out PbtFullKey key)
     {
-        key = null;
+        key = default;
         if (value.Length != ValueHash256.MemorySize || value.IndexOfAnyExcept((byte)0) < 0) return false;
         if (keyBytes.Length is not (Eip8297KeyDerivation.AccountKeyLength or Eip8297KeyDerivation.StorageKeyLength)) return false;
 

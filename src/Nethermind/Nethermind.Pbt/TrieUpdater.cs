@@ -271,10 +271,11 @@ public static class TrieUpdater
     {
         if (level == 0) return groupKey;
         int depth = groupKey.BitDepth + level;
-        byte[] path = new byte[(depth + 7) >> 3];
+        Span<byte> path = stackalloc byte[(depth + 7) >> 3];
+        path.Clear();
         groupKey.Path.CopyTo(path);
         path[^1] |= (byte)((slot & (0xF << (4 - level))) << (4 - (groupKey.BitDepth & 4)));
-        return PbtNodePath.TakeOwnership(path, depth);
+        return new PbtNodePath(path, depth);
     }
 
     /// <summary>A boundary occupant or an unplaced result, retaining the original path of a compressed prefix.</summary>

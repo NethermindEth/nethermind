@@ -1,15 +1,24 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
 /// <summary>An immutable complete EIP-8297 tree key.</summary>
-public sealed class PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
+/// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key.</remarks>
+public readonly struct PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
 {
-    public const int MaxLength = 8192;
-    private readonly byte[] _bytes;
+    public const int MaxLength = 66;
+    private readonly KeyBytes _bytes;
+
+    [InlineArray(MaxLength)]
+    private struct KeyBytes
+    {
+        private byte _element0;
+    }
 
     public PbtFullKey(ReadOnlySpan<byte> bytes)
     {
@@ -18,12 +27,14 @@ public sealed class PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
             throw new ArgumentOutOfRangeException(nameof(bytes), $"Key length must be between 1 and {MaxLength} bytes.");
         }
 
-        _bytes = bytes.ToArray();
+        bytes.CopyTo(_bytes);
+        Length = bytes.Length;
     }
 
-    public int Length => _bytes.Length;
-    public int BitLength => checked(_bytes.Length * 8);
-    public ReadOnlySpan<byte> Bytes => _bytes;
+    public int Length { get; }
+    public int BitLength => Length * 8;
+    [UnscopedRef]
+    public ReadOnlySpan<byte> Bytes => _bytes[..Length];
 
     public int GetBit(int bitIndex)
     {
@@ -33,11 +44,10 @@ public sealed class PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
     }
 
     public bool IsPrefixOf(PbtFullKey other) =>
-        Length <= other.Length && other.Bytes[..Length].SequenceEqual(_bytes);
+        Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
 
     public int FirstDifferingBit(PbtFullKey other, int startBit = 0)
     {
-        ArgumentNullException.ThrowIfNull(other);
         ArgumentOutOfRangeException.ThrowIfNegative(startBit);
         int commonBits = Math.Min(BitLength, other.BitLength);
         if (startBit > commonBits) throw new ArgumentOutOfRangeException(nameof(startBit));
@@ -67,14 +77,16 @@ public sealed class PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
         return commonBits;
     }
 
-    public int CompareTo(PbtFullKey? other) => other is null ? 1 : Bytes.SequenceCompareTo(other.Bytes);
-    public bool Equals(PbtFullKey? other) => other is not null && Bytes.SequenceEqual(other.Bytes);
+    public int CompareTo(PbtFullKey other) => Bytes.SequenceCompareTo(other.Bytes);
+    public bool Equals(PbtFullKey other) => Bytes.SequenceEqual(other.Bytes);
     public override bool Equals(object? obj) => obj is PbtFullKey other && Equals(other);
+    public static bool operator ==(PbtFullKey left, PbtFullKey right) => left.Equals(right);
+    public static bool operator !=(PbtFullKey left, PbtFullKey right) => !left.Equals(right);
 
     public override int GetHashCode()
     {
         HashCode hash = new();
-        hash.AddBytes(_bytes);
+        hash.AddBytes(Bytes);
         return hash.ToHashCode();
     }
 }

@@ -35,6 +35,39 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.GetLeaf(key), Is.EqualTo(local));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Leaf_enumeration_preserves_optional_value_key_prefix(bool filtered)
+    {
+        PbtFullKey matching = new(Bytes.FromHexString("a501"));
+        PbtFullKey other = new(Bytes.FromHexString("b502"));
+        PbtFullKey prefix = new(Bytes.FromHexString("a5"));
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtSnapshotContent sharedContent = new();
+        sharedContent.SetLeaf(matching, new ValueHash256(Value(1)));
+        sharedContent.SetLeaf(other, new ValueHash256(Value(2)));
+        PbtSnapshotPooledList sharedSnapshots = new(1)
+        {
+            new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
+        };
+        PbtReadOnlySnapshotBundle readOnly = new(sharedSnapshots, new Reader(matching, null));
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        List<PbtFullKey> expected = filtered ? [matching] : [matching, other];
+        List<PbtFullKey> sharedKeys = [];
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> leaf in filtered ? readOnly.EnumerateLeaves(prefix) : readOnly.EnumerateLeaves())
+            sharedKeys.Add(leaf.Key);
+        bundle.SetLeaf(matching, new ValueHash256(Value(3)));
+        List<PbtFullKey> visibleKeys = [];
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> leaf in filtered ? bundle.EnumerateLeaves(prefix) : bundle.EnumerateLeaves())
+            visibleKeys.Add(leaf.Key);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sharedKeys, Is.EqualTo(expected));
+            Assert.That(visibleKeys, Is.EqualTo(expected));
+        }
+    }
+
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(true, true)]

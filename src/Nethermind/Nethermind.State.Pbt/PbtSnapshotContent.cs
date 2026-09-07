@@ -21,7 +21,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value)
     {
-        ArgumentNullException.ThrowIfNull(key);
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         lock (_treeLock) Leaves[key] = value is null || value.Value == default ? null : value;
     }
 

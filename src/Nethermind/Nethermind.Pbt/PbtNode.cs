@@ -86,6 +86,7 @@ internal static class PbtNodeCodec
 
     internal static ValueHash256 HashLeaf(PbtFullKey key, ReadOnlySpan<byte> value)
     {
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
         int preimageLength = 1 + key.Length + 32;
         Span<byte> preimage = preimageLength <= MaxStackHashPreimageLength

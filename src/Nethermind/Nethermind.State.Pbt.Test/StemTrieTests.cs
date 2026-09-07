@@ -54,7 +54,7 @@ public class StemTrieTests
             (Key(0x12, 0x00, 31), Value(1)),
             (Key(0x12, 0x80, 31), Value(2)),
             (Key(0x10, 0x00, 65), Value(3)),
-            (Key(0x12, 0x40, 257), Value(4)),
+            (Key(0x12, 0x40, 66), Value(4)),
         ];
         using PbtTreeHarness incremental = new();
         foreach ((byte[] key, byte[]? value) in entries) incremental.ApplyBatch([(key, value)]);

@@ -22,18 +22,18 @@ internal static class PbtStateKey
     public static PbtFullKey AccountPrefix(Address address)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        byte[] prefix = new byte[33];
+        Span<byte> prefix = stackalloc byte[33];
         prefix[0] = Eip8297KeyDerivation.AccountZone;
-        addressHash.Bytes.CopyTo(prefix.AsSpan(1));
+        addressHash.Bytes.CopyTo(prefix[1..]);
         return new PbtFullKey(prefix);
     }
 
     public static PbtFullKey StoragePrefix(Address address)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        byte[] prefix = new byte[33];
+        Span<byte> prefix = stackalloc byte[33];
         prefix[0] = Eip8297KeyDerivation.StorageZone;
-        addressHash.Bytes.CopyTo(prefix.AsSpan(1));
+        addressHash.Bytes.CopyTo(prefix[1..]);
         return new PbtFullKey(prefix);
     }
 
@@ -43,9 +43,9 @@ internal static class PbtStateKey
         input.Clear();
         codeHash.Bytes.CopyTo(input);
         ValueHash256 digest = Blake3Hash.Hash(input);
-        byte[] prefix = new byte[33];
+        Span<byte> prefix = stackalloc byte[33];
         prefix[0] = Eip8297KeyDerivation.CodeZone;
-        digest.Bytes.CopyTo(prefix.AsSpan(1));
+        digest.Bytes.CopyTo(prefix[1..]);
         return new PbtFullKey(prefix);
     }
 

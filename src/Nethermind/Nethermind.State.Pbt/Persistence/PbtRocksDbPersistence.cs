@@ -215,6 +215,7 @@ public class PbtRocksDbPersistence(
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value)
         {
+            if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
             IWriteBatch leaves = _batch.GetColumnBatch(PbtColumns.FullLeaves);
             if (value is null) leaves.Set(key.Bytes, null, flags);
             else leaves.PutSpan(key.Bytes, value.Value.Bytes, flags);

@@ -6,9 +6,10 @@ using System.Buffers.Binary;
 namespace Nethermind.Pbt;
 
 /// <summary>Identifies a canonical tree node by its consumed MSB-first key path.</summary>
+/// <remarks>Paths are limited to 528 bits; keys larger than 66 bytes are unsupported.</remarks>
 public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePath>
 {
-    private readonly byte[] _path;
+    private readonly PbtFullKey _path;
 
     public PbtNodePath(ReadOnlySpan<byte> path, int bitDepth)
     {
@@ -19,24 +20,18 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
         {
             throw new ArgumentException("Unused path bits must be zero.", nameof(path));
         }
-        _path = path.ToArray();
-        BitDepth = bitDepth;
-    }
-
-    private PbtNodePath(byte[] path, int bitDepth)
-    {
-        _path = path;
+        _path = path.IsEmpty ? default : new PbtFullKey(path);
         BitDepth = bitDepth;
     }
 
     public int BitDepth { get; }
-    public ReadOnlySpan<byte> Path => _path;
+    public ReadOnlySpan<byte> Path => _path.Bytes;
 
     public byte[] Encode()
     {
         byte[] encoding = GC.AllocateUninitializedArray<byte>(4 + _path.Length);
         BinaryPrimitives.WriteUInt32BigEndian(encoding, (uint)BitDepth);
-        _path.CopyTo(encoding, 4);
+        Path.CopyTo(encoding.AsSpan(4));
         return encoding;
     }
 
@@ -60,29 +55,30 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
 
     internal static PbtNodePath FromKey(PbtFullKey key, int bitDepth)
     {
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         ArgumentOutOfRangeException.ThrowIfNegative(bitDepth);
         if (bitDepth > key.BitLength) throw new ArgumentOutOfRangeException(nameof(bitDepth));
-        byte[] path = new byte[(bitDepth + 7) >> 3];
+        Span<byte> path = stackalloc byte[(bitDepth + 7) >> 3];
         key.Bytes[..path.Length].CopyTo(path);
         if (path.Length != 0 && (bitDepth & 7) != 0) path[^1] &= (byte)(0xFF << (8 - (bitDepth & 7)));
-        return TakeOwnership(path, bitDepth);
+        return new PbtNodePath(path, bitDepth);
     }
-
-    internal static PbtNodePath TakeOwnership(byte[] path, int bitDepth) => new(path, bitDepth);
 
     internal PbtNodePath Append(PbtBitPrefix prefix, int direction)
     {
         if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
         int depth = checked(BitDepth + prefix.BitCount + 1);
-        byte[] path = new byte[(depth + 7) >> 3];
-        _path.CopyTo(path, 0);
+        if (depth > PbtFullKey.MaxLength * 8) throw new ArgumentOutOfRangeException(nameof(prefix));
+        Span<byte> path = stackalloc byte[(depth + 7) >> 3];
+        path.Clear();
+        Path.CopyTo(path);
         PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, path, BitDepth);
         if (direction != 0)
         {
             int bit = depth - 1;
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
-        return TakeOwnership(path, depth);
+        return new PbtNodePath(path, depth);
     }
 
     public int CompareTo(PbtNodePath? other)
@@ -98,7 +94,7 @@ public sealed class PbtNodePath : IEquatable<PbtNodePath>, IComparable<PbtNodePa
     {
         HashCode hash = new();
         hash.Add(BitDepth);
-        hash.AddBytes(_path);
+        hash.AddBytes(Path);
         return hash.ToHashCode();
     }
 }

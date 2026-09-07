@@ -41,7 +41,7 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
 
     public static PbtBitPrefix FromKey(PbtFullKey key, int startBit, int bitCount)
     {
-        ArgumentNullException.ThrowIfNull(key);
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         ArgumentOutOfRangeException.ThrowIfNegative(startBit);
         ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
         if (startBit > key.BitLength - bitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));

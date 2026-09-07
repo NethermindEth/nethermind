@@ -91,7 +91,7 @@ public sealed class PbtSnapshotBundle(
         SortedDictionary<PbtFullKey, ValueHash256?> visible = [];
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> shared = prefix is null
             ? readOnlyBundle.EnumerateLeaves()
-            : readOnlyBundle.EnumerateLeaves(prefix);
+            : readOnlyBundle.EnumerateLeaves(prefix.Value);
         foreach ((PbtFullKey key, ValueHash256 value) in shared) visible[key] = value;
         for (int i = 0; i < snapshots.Count; i++) AddLeaves(visible, snapshots[i].Content, prefix);
         AddLeaves(visible, WriteBuffer, prefix);
@@ -105,7 +105,7 @@ public sealed class PbtSnapshotBundle(
     {
         foreach ((PbtFullKey key, ValueHash256? value) in content.Leaves)
         {
-            if (prefix is null || prefix.IsPrefixOf(key)) visible[key] = value;
+            if (prefix is null || prefix.Value.IsPrefixOf(key)) visible[key] = value;
         }
     }
 

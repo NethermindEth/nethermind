@@ -42,6 +42,7 @@ public class PbtNodeGroupTests
     [TestCase(12)]
     [TestCase(252)]
     [TestCase(256)]
+    [TestCase(516)]
     public void Reader_validates_every_required_leaf_bit_and_ignores_suffix_bits(int groupDepth)
     {
         byte[] groupBytes = new byte[(groupDepth + 7) / 8];

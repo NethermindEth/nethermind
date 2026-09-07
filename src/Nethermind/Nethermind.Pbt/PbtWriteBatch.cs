@@ -16,14 +16,14 @@ public sealed class PbtWriteBatch
     /// <summary>Adds a complete-key value mutation.</summary>
     public void Set(PbtFullKey key, in ValueHash256 value)
     {
-        ArgumentNullException.ThrowIfNull(key);
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         _operations[key] = PbtWriteOperation.Set(key, value);
     }
 
     /// <summary>Adds an explicit complete-key deletion.</summary>
     public void Delete(PbtFullKey key)
     {
-        ArgumentNullException.ThrowIfNull(key);
+        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         _operations[key] = PbtWriteOperation.Delete(key);
     }
 

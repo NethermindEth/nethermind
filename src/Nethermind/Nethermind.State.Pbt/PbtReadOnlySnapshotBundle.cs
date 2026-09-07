@@ -70,13 +70,13 @@ public sealed class PbtReadOnlySnapshotBundle(
         SortedDictionary<PbtFullKey, ValueHash256?> visible = [];
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> persisted = prefix is null
             ? reader.EnumerateLeaves()
-            : reader.EnumerateLeaves(prefix);
+            : reader.EnumerateLeaves(prefix.Value);
         foreach ((PbtFullKey key, ValueHash256 value) in persisted) visible[key] = value;
         for (int i = 0; i < snapshots.Count; i++)
         {
             foreach ((PbtFullKey key, ValueHash256? value) in snapshots[i].Content.Leaves)
             {
-                if (prefix is null || prefix.IsPrefixOf(key)) visible[key] = value;
+                if (prefix is null || prefix.Value.IsPrefixOf(key)) visible[key] = value;
             }
         }
 
