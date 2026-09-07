@@ -252,13 +252,14 @@ public class CommitmentEmitterTests
     [Test]
     public void Coverage_grows_by_union_and_refuses_a_disjoint_range()
     {
+        Assert.That(_metadata.TryPublishVerifiedCoverage(0, 50, out _, out _), Is.True);
+        Assert.That(_metadata.TryPublishVerifiedCoverage(100, 200, out ulong keptFrom, out ulong keptTo), Is.False,
+            "coverage is one contiguous range; a disjoint build cannot silently replace what was already servable");
+        Assert.That((keptFrom, keptTo), Is.EqualTo((0UL, 50UL)));
+        Assert.That(_metadata.TryPublishVerifiedCoverage(40, 80, out ulong from, out ulong to), Is.True);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_metadata.TryPublishVerifiedCoverage(0, 50, out _, out _), Is.True);
-            Assert.That(_metadata.TryPublishVerifiedCoverage(100, 200, out ulong keptFrom, out ulong keptTo), Is.False,
-                "coverage is one contiguous range; a disjoint build cannot silently replace what was already servable");
-            Assert.That((keptFrom, keptTo), Is.EqualTo((0UL, 50UL)));
-            Assert.That(_metadata.TryPublishVerifiedCoverage(40, 80, out ulong from, out ulong to), Is.True);
             Assert.That((from, to), Is.EqualTo((0UL, 80UL)), "an overlapping build widens the range");
             Assert.That(_metadata.TryGetCoverage(out ulong storedFrom, out ulong storedTo) && storedFrom == 0 && storedTo == 80, Is.True);
         }

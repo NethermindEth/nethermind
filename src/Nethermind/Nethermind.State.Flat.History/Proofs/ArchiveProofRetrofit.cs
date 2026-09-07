@@ -20,6 +20,8 @@ public sealed class ArchiveProofRetrofit(
 
     public CommitmentDepthPolicy Policy => policy;
 
+    public CommitmentMetadata Metadata => metadata;
+
     public ulong WindowGranularity => policy.Interval;
 
     public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata);
