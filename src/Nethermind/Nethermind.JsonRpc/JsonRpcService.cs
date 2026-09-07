@@ -400,12 +400,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             {
                 bool isMissing = IsMissingParameterMarker(item);
                 missingParamsCount = isMissing ? missingParamsCount + 1 : initialMissingParamsCount;
-                if (isMissing
-                    && missingRequiredParameterIndex < 0
-                    && index < expectedParameters.Length
-                    && RequiresExplicitValue(in expectedParameters[index]))
+                if (isMissing)
                 {
-                    missingRequiredParameterIndex = index;
+                    TrackMissingRequiredParameter(expectedParameters, index, ref missingRequiredParameterIndex);
                 }
 
                 index++;
@@ -467,7 +464,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         int missingRequiredParameterIndex,
         ref int missingParamsCount)
     {
-        if (missingParamsCount >= 0 && missingRequiredParameterIndex >= 0)
+        // The JSON element deserializer walks every provided element against expectedParameters, so an
+        // over-long request has to be rejected here rather than indexing past the end.
+        if (providedParametersLength > expectedParameters.Length || missingParamsCount < 0)
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in requestId);
+        }
+
+        if (missingRequiredParameterIndex >= 0)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams,
                 $"missing value for required argument {missingRequiredParameterIndex}", null, in requestId);
@@ -475,40 +479,21 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         int explicitNullableParamsCount = 0;
 
-        if (missingParamsCount != 0)
+        for (int i = 0; i < missingParamsCount; i++)
         {
-            bool hasIncorrectParameters = true;
-            int firstMissingRequiredIndex = -1;
-            if (missingParamsCount > 0)
+            int parameterIndex = expectedParameters.Length - missingParamsCount + i;
+
+            // Preserve compatibility for calls that pass trailing nullable defaults as null or "".
+            bool isExplicit = providedParametersLength >= parameterIndex + 1;
+            if (expectedParameters[parameterIndex].IsNullable && isExplicit)
             {
-                hasIncorrectParameters = false;
-                for (int i = 0; i < missingParamsCount; i++)
-                {
-                    int parameterIndex = expectedParameters.Length - missingParamsCount + i;
-                    bool nullable = expectedParameters[parameterIndex].IsNullable;
-
-                    // Preserve compatibility for calls that pass trailing nullable defaults as null or "".
-                    bool isExplicit = providedParametersLength >= parameterIndex + 1;
-                    if (nullable && isExplicit)
-                    {
-                        explicitNullableParamsCount += 1;
-                    }
-
-                    if (!expectedParameters[parameterIndex].IsOptional && !nullable)
-                    {
-                        hasIncorrectParameters = true;
-                        firstMissingRequiredIndex = parameterIndex;
-                        break;
-                    }
-                }
+                explicitNullableParamsCount += 1;
             }
 
-            if (hasIncorrectParameters)
+            if (RequiresExplicitValue(in expectedParameters[parameterIndex]))
             {
-                string message = firstMissingRequiredIndex >= 0
-                    ? $"missing value for required argument {firstMissingRequiredIndex}"
-                    : "Invalid params";
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in requestId);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams,
+                    $"missing value for required argument {parameterIndex}", null, in requestId);
             }
         }
 
@@ -544,6 +529,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private static bool RequiresExplicitValue(in ExpectedParameter parameter) =>
         !parameter.IsOptional && !parameter.IsNullable;
+
+    /// <summary>
+    /// Records <paramref name="index"/> as the first argument where a missing-argument marker landed on a
+    /// parameter that requires an explicit value, leaving an already recorded index untouched.
+    /// </summary>
+    private static void TrackMissingRequiredParameter(ExpectedParameter[] expectedParameters, int index, ref int missingRequiredParameterIndex)
+    {
+        if (missingRequiredParameterIndex < 0
+            && index < expectedParameters.Length
+            && RequiresExplicitValue(in expectedParameters[index]))
+        {
+            missingRequiredParameterIndex = index;
+        }
+    }
 
     private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
     {
@@ -852,12 +851,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             bool isMissing = IsMissingParameterMarker(in reader);
             trailingMissingParamsCount = isMissing ? trailingMissingParamsCount + 1 : 0;
-            if (isMissing
-                && missingRequiredParameterIndex < 0
-                && providedParametersLength < expectedParameters.Length
-                && RequiresExplicitValue(in expectedParameters[providedParametersLength]))
+            if (isMissing)
             {
-                missingRequiredParameterIndex = providedParametersLength;
+                TrackMissingRequiredParameter(expectedParameters, providedParametersLength, ref missingRequiredParameterIndex);
             }
 
             Utf8JsonReader parameterReader = reader;
