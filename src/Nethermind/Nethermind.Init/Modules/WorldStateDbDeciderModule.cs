@@ -27,7 +27,10 @@ internal class WorldStateDbDeciderModule : Module
             .AddSingleton<IWorldStateManager, FlatStateActivationPolicy, ISyncConfig, Func<FlatWorldStateManager>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
                 (policy, syncConfig, flatFactory, patriciaFactory) =>
                 {
-                    if (!policy.ShouldTurnOnFlatDb()) return patriciaFactory().WorldStateManager;
+                    if (!policy.ShouldTurnOnFlatDb())
+                    {
+                        return patriciaFactory().WorldStateManager;
+                    }
                     // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
                     syncConfig.SnapServingEnabled ??= true;
                     return flatFactory();
@@ -66,7 +69,13 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, flatFactory, patriciaFactory) =>
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
-                        : (IFullStateFinder)patriciaFactory());
+                        : (IFullStateFinder)patriciaFactory())
+
+            .AddSingleton<IBalHealing, FlatStateActivationPolicy, Func<FlatBalHealing>>(
+                (policy, flatFactory) =>
+                    policy.ShouldTurnOnFlatDb()
+                        ? flatFactory()
+                        : NoopBalHealing.Instance);
 
     private sealed class ImportFallbackStateBoundary(
         FlatStateBoundary flat,

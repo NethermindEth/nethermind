@@ -17,17 +17,20 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
+    /// <summary>Warms EVM instructions using the mainnet BPO2 spec.</summary>
+    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository) =>
+        WarmUpEvmInstructions(state, codeInfoRepository, MainnetSpecProvider.Instance, MainnetSpecProvider.BPO2Activation);
+
+    /// <summary>Warms EVM instructions for the chain spec at the supplied activation.</summary>
+    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository, ISpecProvider specProvider, ForkActivation activation)
     {
-        IReleaseSpec spec = Fork.GetLatest();
-        IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine<TGasPolicy> vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        IBlockhashProvider hashProvider = new WarmupBlockhashProvider(specProvider);
+        VirtualMachine<TGasPolicy> vm = new(hashProvider, specProvider, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];
@@ -36,9 +39,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         address[^1] = 0x1;
         Address addressOne = new(address);
 
+        BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, activation.BlockNumber, Int64.MaxValue, activation.Timestamp ?? 0, Bytes.Empty, 0, 0);
+        IReleaseSpec spec = specProvider.GetSpec(header);
         state.CreateAccount(addressOne, 1000.Ether);
         state.Commit(spec);
-        BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
@@ -58,11 +62,13 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             vm._worldState = state;
             vm._codeInfoRepository = codeInfoRepository;
 
-            RunOpCodes<OnFlag>(vm, state, vmState, spec);
-            RunOpCodes<OffFlag>(vm, state, vmState, spec);
+            WarmUpOpcodeHandlers<OffFlag, OffFlag>(vm, state, vmState);
+            WarmUpOpcodeHandlers<OffFlag, OnFlag>(vm, state, vmState);
+            WarmUpOpcodeHandlers<OnFlag, OffFlag>(vm, state, vmState);
+            WarmUpOpcodeHandlers<OnFlag, OnFlag>(vm, state, vmState);
         }
 
-        TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
 
         RunTransactions(processor, state, spec);
@@ -73,13 +79,14 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         const int WarmUpIterations = 40;
 
         Address sender = Address.SystemUser;
-        Address recipient = new("0x0000000000000000000000000000000000000100");
+        // EIP-7951 reserves 0x100 for P256VERIFY; the warmup recipient must execute bytecode.
+        Address recipient = Address.FromNumber(0x10000);
 
         state.CreateAccountIfNotExists(recipient, 100.Ether);
 
         List<byte> bytes = [(byte)Instruction.JUMPDEST];
 
-        AddPrecompileCall(bytes);
+        AddPrecompileCall(bytes, spec);
 
         byte[] code = bytes.ToArray();
 
@@ -100,7 +107,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         }
     }
 
-    static void AddPrecompileCall(List<byte> codeToDeploy)
+    static void AddPrecompileCall(List<byte> codeToDeploy, IReleaseSpec spec)
     {
         byte[] x1 = Bytes.FromHexString("089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf");
         byte[] y1 = Bytes.FromHexString("2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36");
@@ -109,7 +116,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
         codeToDeploy.Add((byte)Instruction.PUSH32);     // x1
         codeToDeploy.AddRange(x1);
-        codeToDeploy.Add((byte)Instruction.PUSH0);
+        codeToDeploy.Add((byte)Instruction.PUSH1);
+        codeToDeploy.Add(0);
         codeToDeploy.Add((byte)Instruction.MSTORE);
         codeToDeploy.Add((byte)Instruction.PUSH32);     // y1
         codeToDeploy.AddRange(y1);
@@ -135,50 +143,61 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         codeToDeploy.Add(0x80);
         codeToDeploy.Add((byte)Instruction.PUSH1);  // args size
         codeToDeploy.Add(0x80);
-        codeToDeploy.Add((byte)Instruction.PUSH0);  // args offset
+        codeToDeploy.Add((byte)Instruction.PUSH1); // args offset
+        codeToDeploy.Add(0);
+        if (!spec.IsEip214Enabled)
+        {
+            codeToDeploy.Add((byte)Instruction.PUSH1);
+            codeToDeploy.Add(0);
+        }
         codeToDeploy.Add((byte)Instruction.PUSH1);  // address
         codeToDeploy.Add(0x06);
-        codeToDeploy.Add((byte)Instruction.PUSH1);
-        codeToDeploy.Add((byte)150);
-        codeToDeploy.Add((byte)Instruction.STATICCALL);
+        // BN254 addition costs 500 gas before EIP-1108 and 150 afterwards.
+        codeToDeploy.Add((byte)Instruction.PUSH2);
+        codeToDeploy.Add(0x01);
+        codeToDeploy.Add(0xf4);
+        codeToDeploy.Add((byte)(spec.IsEip214Enabled ? Instruction.STATICCALL : Instruction.CALL));
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, VmState<TGasPolicy> vmState, IReleaseSpec spec)
+    private static void WarmUpOpcodeHandlers<TTracingInst, TCancelable>(
+        VirtualMachine<TGasPolicy> vm,
+        IWorldState state,
+        VmState<TGasPolicy> vmState)
         where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
     {
         const int WarmUpIterations = 40;
 
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        vmState.InitializeStacks(txTracer, vmState.Env.CodeInfo.CodeSpan, out EvmStack stack);
-        TGasPolicy gas = TGasPolicy.FromULong(ulong.MaxValue);
-        int pc = 0;
+        // This drives RunByteCode directly, so it resolves the table itself rather than through a transaction.
+        vm.PrepareOpcodes<TTracingInst, TCancelable>();
+        byte[] code = new byte[EvmStack.WordSize + 2];
+        vmState.InitializeStacks(txTracer, code, out EvmStack stack);
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {
-            for (int i = 0; i < opcodes.Length; i++)
+            for (int i = 0; i <= byte.MaxValue; i++)
             {
-                // LOG4 needs 6 values on stack
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
+                code.AsSpan().Clear();
+                Instruction instruction = (Instruction)i;
+                code[0] = (byte)instruction;
+                if (instruction is Instruction.JUMP or Instruction.JUMPI)
+                    code[1] = (byte)Instruction.JUMPDEST;
+                else if (instruction is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
+                    code[1] = 0x80;
 
-                opcodes[i](vm, ref stack, ref gas, ref pc);
-                if (vm.ReturnData is VmState<TGasPolicy> returnState)
-                {
-                    returnState.Dispose();
-                    vm.ReturnData = null!;
-                }
+                for (int stackItem = 0; stackItem < 20; stackItem++)
+                    stack.PushOne<TTracingInst>();
+
+                vmState.ProgramCounter = 0;
+                vmState.Gas = TGasPolicy.FromULong(ulong.MaxValue);
+                CallResult callResult = vm.RunByteCode<TTracingInst, TCancelable>(ref stack, ref vmState.Gas);
+                callResult.StateToExecute?.Dispose();
 
                 state.Reset(resetBlockChanges: true);
                 stack.Head = 0;
-                gas = TGasPolicy.FromULong(ulong.MaxValue);
-                pc = 0;
             }
         }
     }

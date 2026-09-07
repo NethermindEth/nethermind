@@ -792,13 +792,32 @@ namespace Nethermind.Core.Test
         }
 #endif
 
-        [Test]
-        public void FastHash_ShortPaddingIncludesLength()
+        /// <remarks>
+        /// Covers the widths that have their own paths, not just a pair that shares one. 20 against 32
+        /// is the case that matters: both are dominant key widths with dedicated handling, and a
+        /// shorter key's tail read is the zero-extension of the longer one's, so a mixer whose
+        /// constants do not vary with width maps the two forms to the same value.
+        /// </remarks>
+        [TestCase(8, 9)]
+        [TestCase(20, 21)]
+        [TestCase(20, 32)]
+        [TestCase(31, 32)]
+        [TestCase(32, 33)]
+        [TestCase(32, 64)]
+        [TestCase(64, 65)]
+        public void FastHash_ShortPaddingIncludesLength(int length, int paddedLength)
         {
-            byte[] input = [1, 2, 3, 4, 5, 6, 7, 8];
-            byte[] extended = [1, 2, 3, 4, 5, 6, 7, 8, 0];
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                input[i] = (byte)(i + 1);
+            }
 
-            Assert.That(input.FastHash(), Is.Not.EqualTo(extended.FastHash()));
+            byte[] padded = new byte[paddedLength];
+            input.CopyTo(padded, 0);
+
+            Assert.That(input.FastHash(), Is.Not.EqualTo(padded.FastHash()),
+                $"{length} bytes and the same bytes zero-padded to {paddedLength}");
         }
 
         private const int HashDistributionSampleCount = 4096;
@@ -903,6 +922,47 @@ namespace Nethermind.Core.Test
                 Assert.That(inconsistentHashWidths, Is.Zero, "32-bit hashes");
                 AssertIntHashesAreDistributed(value => intHashes[value], "paired storage cells");
                 AssertHash64WindowsAreDistributed(hashes, "paired storage cells");
+            }
+        }
+
+        [TestCase(0, TestName = "StorageCell_VaryingOnlyTheAddressHeadIsDistributed")]
+        [TestCase(1, TestName = "StorageCell_VaryingOnlyTheLowSlotBytesIsDistributed")]
+        [TestCase(2, TestName = "StorageCell_VaryingOnlyTheHighSlotBytesIsDistributed")]
+        [TestCase(3, TestName = "StorageCell_VaryingOnlyTheAddressTailIsDistributed")]
+        public void StorageCell_EveryPartOfTheKeyReachesTheHash(int varying)
+        {
+            // One chain hashes the address and both halves of the slot, so a part that never reached the mixer
+            // would still leave the paired test above passing. Holding everything else fixed is what catches that.
+            byte[] addressBytes = new byte[Address.Size];
+            byte[] slotBytes = new byte[32];
+            long[] hashes = new long[HashDistributionSampleCount];
+
+            for (int value = 0; value < HashDistributionSampleCount; value++)
+            {
+                Span<byte> target = varying switch
+                {
+                    0 => addressBytes.AsSpan(0, sizeof(int)),
+                    1 => slotBytes.AsSpan(0, sizeof(int)),
+                    2 => slotBytes.AsSpan(24, sizeof(int)),
+                    // The address tail is read separately from the head, so only this case catches it being dropped.
+                    _ => addressBytes.AsSpan(16, sizeof(int))
+                };
+                BinaryPrimitives.WriteInt32LittleEndian(target, value);
+                StorageCell cell = new(new Address(addressBytes), new UInt256(slotBytes, isBigEndian: false));
+                hashes[value] = cell.GetHashCode64();
+            }
+
+            string context = varying switch
+            {
+                0 => "address heads over one slot",
+                1 => "low slot bytes under one address",
+                2 => "high slot bytes under one address",
+                _ => "address tails over one slot"
+            };
+            using (Assert.EnterMultipleScope())
+            {
+                AssertIntHashesAreDistributed(value => (int)hashes[value], context);
+                AssertHash64WindowsAreDistributed(hashes, context);
             }
         }
 

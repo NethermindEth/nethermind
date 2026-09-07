@@ -19,7 +19,8 @@ public static partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
@@ -27,8 +28,8 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<TOpMath>(ref gas);
 
         // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
-        ref byte topRef = ref stack.Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool ok);
-        if (!ok) goto StackUnderflow;
+        if (!stack.EnsureDepth(3)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b);
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
         if (c.IsZero)
