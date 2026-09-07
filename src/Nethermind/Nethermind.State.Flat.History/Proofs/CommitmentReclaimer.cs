@@ -25,6 +25,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     private bool _started;
     private int _disposed;
     private readonly object _wakeLock = new();
+    private bool _deferralLogged;
 
     public bool Enabled => settings.RecentEpochs > 0 || settings.FineEpochs > 0;
 
@@ -129,30 +130,40 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     private bool RunOnePass(CancellationToken token, bool yieldBetweenChunks)
     {
         ulong dropped = metadata.DroppedThroughEpoch;
-        if (dropped < metadata.RetainedFromEpoch)
-        {
-            long startedAt = Stopwatch.GetTimestamp();
-            CarryForward(_accounts, FlatHistoryColumns.AccountCommitments, dropped, token, yieldBetweenChunks);
-            CarryForward(_storages, FlatHistoryColumns.StorageCommitments, dropped, token, yieldBetweenChunks);
-            _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
-            _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
-            _storages.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
-            _storages.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
-            metadata.TryRaiseDroppedThroughEpoch(dropped + 1);
-            if (_logger.IsInfo) _logger.Info($"Archive proof commitment epoch {dropped} reclaimed in {Stopwatch.GetElapsedTime(startedAt)}: every node still live was carried into epoch {dropped + 1} first, then the epoch's files were unlinked.");
-            return true;
-        }
-
         ulong demoted = Math.Max(metadata.DemotedThroughEpoch, dropped);
-        if (demoted < metadata.FineFromEpoch)
+        bool dropPending = dropped < metadata.RetainedFromEpoch;
+        bool demotePending = demoted < metadata.FineFromEpoch;
+        if (!dropPending && !demotePending) return false;
+
+        bool reclaimed = metadata.TryReclaimOutsideWalk(() =>
         {
+            if (dropPending)
+            {
+                long startedAt = Stopwatch.GetTimestamp();
+                CarryForward(_accounts, FlatHistoryColumns.AccountCommitments, dropped, token, yieldBetweenChunks);
+                CarryForward(_storages, FlatHistoryColumns.StorageCommitments, dropped, token, yieldBetweenChunks);
+                _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
+                _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
+                _storages.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
+                _storages.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
+                metadata.TryRaiseDroppedThroughEpoch(dropped + 1);
+                if (_logger.IsInfo) _logger.Info($"Archive proof commitment epoch {dropped} reclaimed in {Stopwatch.GetElapsedTime(startedAt)}: every node still live was carried into epoch {dropped + 1} first, then the epoch's files were unlinked.");
+                return;
+            }
+
             _accounts.RemoveEpoch(demoted, CommitmentKeyLayout.FineTier);
             _storages.RemoveEpoch(demoted, CommitmentKeyLayout.FineTier);
             metadata.TryRaiseDemotedThroughEpoch(demoted + 1);
-            return true;
+        });
+
+        if (!reclaimed && !_deferralLogged)
+        {
+            _deferralLogged = true;
+            if (_logger.IsInfo) _logger.Info("Archive proof commitment reclaim deferred: a history walk is in progress and reads the per-block rows the reclaim would remove; it resumes when the walk publishes.");
         }
 
-        return false;
+        if (reclaimed) _deferralLogged = false;
+        return reclaimed;
     }
 
     private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, CancellationToken token, bool yieldBetweenChunks)

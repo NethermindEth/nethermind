@@ -239,9 +239,8 @@ public class ArchiveProofTests
             "groups below the checkpoint are not rescanned on resume, so what they found must ride along with the checkpoint");
     }
 
-    [TestCase(1L)]
-    [TestCase(40L)]
-    public void A_build_leaves_no_scratch_series_behind(long maxRowsPerPartition)
+    [Test]
+    public void A_build_leaves_no_scratch_series_behind([Values(1L, 40L)] long maxRowsPerPartition)
     {
         BuildCommitments(maxRowsPerPartition);
 
@@ -291,13 +290,8 @@ public class ArchiveProofTests
         }
     }
 
-    [TestCase(1ul)]
-    [TestCase(64ul)]
-    [TestCase(127ul)]
-    [TestCase(128ul)]
-    [TestCase(130ul)]
-    [TestCase(Blocks)]
-    public void Proofs_resolve_across_epoch_buckets(ulong block)
+    [Test]
+    public void Proofs_resolve_across_epoch_buckets([Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block)
     {
         _policy = EpochPolicy;
         BuildCommitments();
@@ -525,9 +519,8 @@ public class ArchiveProofTests
             "a fully covered height resolves from the commitment chain alone, every node verified against its parent down from the header");
     }
 
-    [TestCase(1L)]
-    [TestCase(40L)]
-    public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone(long maxRowsPerPartition)
+    [Test]
+    public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone([Values(1L, 40L)] long maxRowsPerPartition)
     {
         BuildCommitments(maxRowsPerPartition);
         AccountProof expected = _chain.ExpectedProof(Contract, Blocks, ContractSlots);
@@ -822,13 +815,13 @@ public class ArchiveProofTests
         _policy = EpochPolicy;
         _recentEpochs = 1;
         Address quiet = TestItem.AddressD;
-        UInt256[] slots = Enumerable.Range(0, 64).Select(static slot => (UInt256)(5000 + slot)).ToArray();
+        UInt256[] slots = Slots(64, 5000);
         _chain.AddBlock(Blocks + 1, block =>
         {
             foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
         });
 
-        UInt256[] transient = Enumerable.Range(0, 8).Select(static slot => (UInt256)(424242 + slot)).ToArray();
+        UInt256[] transient = Slots(8, 424242);
         for (ulong number = Blocks + 2; number <= 300; number++)
         {
             ulong current = number;
@@ -862,7 +855,7 @@ public class ArchiveProofTests
 
     private UInt256[] AddQuietContract(Address quiet, Action<ArchiveProofTestChain.BlockBuilder, ulong>? onLaterBlock = null)
     {
-        UInt256[] slots = Enumerable.Range(0, 16384).Select(static slot => (UInt256)(5000 + slot)).ToArray();
+        UInt256[] slots = Slots(16384, 5000);
         _chain.AddBlock(Blocks + 1, block =>
         {
             foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
@@ -1069,6 +1062,38 @@ public class ArchiveProofTests
         metadata.TryRaiseDemotedThroughEpoch(5);
         metadata.LowerDemotedThroughEpoch(2);
         Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(2ul));
+    }
+
+    [Test]
+    public void A_reclaim_requested_while_the_walk_runs_waits_for_the_root_fold()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        bool reclaimAttempted = false;
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, onItemDone: item =>
+        {
+            if (item != HistoryWalkRun.WorkItems / 2 - 1) return;
+
+            retrofit.PruneBelow(_chain.Head);
+            _reclaimer!.ReclaimNow(CancellationToken.None);
+            reclaimAttempted = true;
+        });
+
+        ulong droppedDuringWalk = retrofit.Metadata.DroppedThroughEpoch;
+        _reclaimer!.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reclaimAttempted, Is.True);
+            Assert.That(verdict.Mismatches, Is.Empty, "the depth-2 exact rows double as the series the root fold reads, so a reclaim that lands between the last partition and the fold would remove the fold's input and report a false state root mismatch; the reclaim has to wait for the walk");
+            Assert.That(droppedDuringWalk, Is.Zero, "nothing was dropped while the walk was recorded in progress");
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.GreaterThan(0ul), "once the walk has published, the deferred reclaim runs");
+        }
     }
 
     [Test]
@@ -1319,28 +1344,28 @@ public class ArchiveProofTests
     private void CorruptEveryStorageRow()
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
-        List<byte[]> keys = [];
-        using (ISortedView view = ((ISortedKeyValueStore)column).GetViewBetween(ReadOnlySpan<byte>.Empty, Bytes.FromHexString("0xff".PadRight(130, 'f'))))
-        {
-            while (view.MoveNext()) keys.Add(view.CurrentKey.ToArray());
-        }
-
-        foreach (byte[] key in keys) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
+        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
     }
 
     private void CorruptEveryAccountRow()
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        List<byte[]> keys = [];
-        using (ISortedView view = ((ISortedKeyValueStore)column).GetViewBetween(ReadOnlySpan<byte>.Empty, Bytes.FromHexString("0xff".PadRight(130, 'f'))))
-        {
-            while (view.MoveNext()) keys.Add(view.CurrentKey.ToArray());
-        }
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, tampered);
+    }
 
-        foreach (byte[] key in keys)
-        {
-            Account tampered = new(9999, 9999);
-            column.PutSpan(key, Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(tampered));
-        }
+    private static List<byte[]> AllKeys(IDb column)
+    {
+        List<byte[]> keys = [];
+        using ISortedView view = ((ISortedKeyValueStore)column).GetViewBetween(ReadOnlySpan<byte>.Empty, Bytes.FromHexString("0xff".PadRight(130, 'f')));
+        while (view.MoveNext()) keys.Add(view.CurrentKey.ToArray());
+        return keys;
+    }
+
+    private static UInt256[] Slots(int count, ulong first)
+    {
+        UInt256[] slots = new UInt256[count];
+        for (int index = 0; index < count; index++) slots[index] = first + (ulong)index;
+        return slots;
     }
 }

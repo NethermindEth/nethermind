@@ -7,6 +7,8 @@ public interface ICommitmentEmitterSource
 {
     CommitmentDepthPolicy Policy { get; }
 
+    CommitmentMetadata Metadata { get; }
+
     ulong WindowGranularity { get; }
 
     CommitmentEmitter CreateEmitter();
