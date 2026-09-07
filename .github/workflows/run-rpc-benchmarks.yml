@@ -155,6 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
+      arch: ${{ steps.resolve.outputs.arch }}
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       benchmark_tool: ${{ steps.resolve.outputs.benchmark_tool }}
@@ -597,6 +598,7 @@ jobs:
 
           {
             echo "should_run=true"
+            echo "arch=${arch}"
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "benchmark_tool=${benchmark_tool}"
@@ -711,72 +713,13 @@ jobs:
       - name: Prepare scratch and output dirs
         run: mkdir -p "${OUT_DIR}" "${STATE_DIR}"
 
-      - name: Reclaim root disk before pulling
-        # Only the ARM box has the ~19G root disk this protects; see its rationale below.
+      - name: Check ARM storage before pulling
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
-        # The box has a ~19G root disk. A pull that runs it out of space kills the docker daemon and the
-        # runner with it, so reclaim first and only refuse to start if the disk is still tight afterwards.
         env:
-          KEEP_IMAGES: |
-            ${{ needs.resolve.outputs.image_ref }}
-            ${{ needs.resolve.outputs.ref_image_ref }}
-          KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
-        run: |
-          set -uo pipefail
-          MIN_FREE_GB=6
-          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
-          report() { df -h /; du -xsh /var/lib/containerd /var/lib/docker 2>/dev/null || true; }
-
-          echo "== before =="; report
-          echo "Free before reclaim: $(avail_gb)G"
-
-          # Cheap, always-safe garbage first.
-          docker container prune -f || true
-          docker network prune -f || true
-          docker builder prune -af || true
-          docker image prune -f || true
-          # 'volume prune' only removes anonymous volumes; named expb volumes outlive their output dirs
-          # and later fail mounts with a 500.
-          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
-          apt-get clean 2>/dev/null || true
-          journalctl --vacuum-size=200M 2>/dev/null || true
-
-          # Stale benchmark images are the monotonic consumer: every campaign pushes multi-GB tags and
-          # nothing retires them. Docker here uses the CONTAINERD image store, so that content lands in
-          # /var/lib/containerd and `docker image prune -a --filter until=<age>` reports 0B against it
-          # (`docker system df` even reports a negative reclaimable) — an explicit `docker rmi` is the
-          # only thing that frees it. Drop unused tags oldest-first, and only as many as needed, so
-          # pinned A/B images survive whenever there is already room.
-          if (( $(avail_gb) < MIN_FREE_GB )); then
-            # Sweep arms come from tool_config.clients as `ctype@image`, and run-rpc-sweep.sh treats a
-            # failed pull as "probably local" — so dropping one of those yields a silently partial matrix
-            # rather than an error. Keep them too.
-            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null \
-              | tr ' ' '\n' | sed 's/.*@//' | grep -v '^$' || true)"
-            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
-            echo "Reclaiming stale images (keeping: ${keep_re:-none})"
-            while IFS= read -r img; do
-              (( $(avail_gb) >= MIN_FREE_GB )) && break
-              [[ -z "${img}" || "${img}" == *'<none>'* ]] && continue
-              [[ -n "${keep_re}" ]] && [[ "${img}" =~ ^(${keep_re})$ ]] && continue
-              # Never touch an image a container still references (another queued job may be mid-run).
-              [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
-              if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi
-            done < <(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' | sort | cut -f2-)
-          fi
-
-          free="$(avail_gb)"
-          echo "== after =="; report
-          echo "Free after reclaim: ${free}G (need ${MIN_FREE_GB}G)"
-          if (( free < MIN_FREE_GB )); then
-            echo "::error::Only ${free}G free on / after reclaim — refusing to start rather than risk killing the runner daemon."
-            echo "Everything reclaimable is already gone; the remaining usage needs a look over SSH."
-            du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
-            exit 1
-          fi
+          ARCH: ${{ needs.resolve.outputs.arch }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+        run: ./scripts/rpc-bench/check-storage-space.sh pre-pull
 
       - name: Prepare Docker image
         env:
@@ -1358,21 +1301,13 @@ jobs:
         # start-node.sh, so it can never reach the snapshot. Never fails the job.
         run: ./scripts/rpc-bench/cleanup.sh || true
 
-      - name: Reclaim root disk after the run
+      - name: Check ARM storage after the run
         if: always() && needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
-        # Leave / no fuller than we found it, so disk pressure cannot accumulate run over run into the
-        # daemon death this workflow used to cause. Tagged images survive; only garbage is dropped.
-        run: |
-          set -uo pipefail
-          docker container prune -f || true
-          docker network prune -f || true
-          docker builder prune -af || true
-          docker image prune -f || true
-          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
-          df -h / || true
-          docker system df || true
+        env:
+          ARCH: ${{ needs.resolve.outputs.arch }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+        run: ./scripts/rpc-bench/check-storage-space.sh post-run
 
       - name: Enforce quality gates
         if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
