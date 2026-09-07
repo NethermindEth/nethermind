@@ -116,33 +116,33 @@ internal sealed class FlatTrieWarmupSession :
 
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
-        if (!_transientResource.TryGetStateNode(in path, hash, out TrieNode? node)
-            && !_trieNodeCache.TryGet(address: null, in path, hash, out node))
+        if (!_trieNodeCache.TryGet(address: null, in path, hash, out TrieNode? node))
         {
             if (!_readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node))
             {
                 node = CreateUnknownNode(hash);
             }
 
-            node = _transientResource.GetOrAddStateNode(in path, node);
+            node = _trieNodeCache.GetOrAdd(null, in path, node);
         }
 
+        _transientResource.UpdateStateNode(in path, node);
         return ValidateNode(node, address: null, in path, hash);
     }
 
     private TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash)
     {
-        if (!_transientResource.TryGetStorageNode(address, in path, hash, out TrieNode? node)
-            && !_trieNodeCache.TryGet(address, in path, hash, out node))
+        if (!_trieNodeCache.TryGet(address, in path, hash, out TrieNode? node))
         {
             if (!_readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node))
             {
                 node = CreateUnknownNode(hash);
             }
 
-            node = _transientResource.GetOrAddStorageNode(address, in path, node);
+            node = _trieNodeCache.GetOrAdd(address, in path, node);
         }
 
+        _transientResource.UpdateStorageNode(address, in path, node);
         return ValidateNode(node, address, in path, hash);
     }
 

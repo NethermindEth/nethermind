@@ -173,10 +173,6 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
         else if (DoFindStateNodeExternal(path, hash, out node))
         {
         }
@@ -190,36 +186,13 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
-        // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
-        // _transientResource. Pin the transient per read (lease + ABA re-check) while the bundle is live,
-        // else fall back to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStateNode(transientResource, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStateNode(TransientResource transientResource, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStateNodeInPersistence(path, hash, out node)
-            ? transientResource.GetOrAddStateNode(path, node)
-            : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
+        // The warmer never reads the recyclable snapshots or transient node collection.
+        TrieNode node = TryFindStateNodeInPersistence(path, hash, out TrieNode? persistedNode)
+            ? persistedNode
+            : CreateWarmerUnknownNode(hash);
+        node = _trieNodeCache.GetOrAdd(null, in path, node);
+        _transientResource.UpdateStateNode(in path, node);
+        return node;
     }
 
     private static TrieNode CreateWarmerUnknownNode(Hash256 hash) => new(NodeType.Unknown, hash);
@@ -298,10 +271,6 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
         else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
         {
         }
@@ -316,38 +285,12 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
-        // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
-        // Pin the transient per read (lease + ABA re-check) while the bundle is live, else fall back
-        // to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
-                ? node
-                : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStorageNode(transientResource, address, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStorageNode(TransientResource transientResource, Hash256 address, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStorageNodeInPersistence(address, path, hash, out node)
-            ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
-            : transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, CreateWarmerUnknownNode(hash));
+        TrieNode node = TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? persistedNode)
+            ? persistedNode
+            : CreateWarmerUnknownNode(hash);
+        node = _trieNodeCache.GetOrAdd(address, in path, node);
+        _transientResource.UpdateStorageNode(address, in path, node);
+        return node;
     }
 
     private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)

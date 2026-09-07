@@ -80,7 +80,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<IProcessExitSource>(_ => new CancellationTokenSourceProcessExitSource(_cancellationTokenSource))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
-                .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
+                .AddSingleton<ITrieNodeCache>(_ => new TrieNodeCache(new FlatDbConfig(), LimboLogs.Instance))
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
             // Register keyed IDb for code database

@@ -31,6 +31,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
     private readonly int _bucketSize;
     private readonly int _bucketMask;
 
+    private readonly Lock _maintenanceLock = new();
     private int _nextShardToClear = 0;
 
     public TrieNodeCache(IFlatDbConfig flatDbConfig, ILogManager logManager)
@@ -85,7 +86,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
         int bucketIdx = hashCode & _bucketMask;
 
-        TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
+        TrieNode? maybeNode = Volatile.Read(ref _cacheShards[shardIdx][bucketIdx]);
         if (maybeNode is not null && maybeNode.Keccak == hash)
         {
             node = maybeNode;
@@ -96,49 +97,59 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return false;
     }
 
+    /// <inheritdoc/>
+    public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode node)
+    {
+        if (_maxCacheMemoryThreshold == 0) return node;
+
+        (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
+        ref TrieNode? entry = ref _cacheShards[shardIdx][hashCode & _bucketMask];
+        while (true)
+        {
+            TrieNode? existingNode = Volatile.Read(ref entry);
+            if (existingNode is not null && existingNode.Keccak == node.Keccak) return existingNode;
+            if (ReferenceEquals(Interlocked.CompareExchange(ref entry, node, existingNode), existingNode))
+            {
+                existingNode?.PrunePersistedRecursively(1);
+                return node;
+            }
+        }
+    }
+
     public void Add(TransientResource transientResource)
     {
-        if (_maxCacheMemoryThreshold == 0)
-        {
-            for (int i = 0; i < ShardCount; i++)
-            {
-                (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
-                for (int j = 0; j < shard.Length; j++)
-                {
-                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(1);
-
-                }
-            }
-            return;
-        }
-
-        void AddToCacheWithHashCode(int shardIdx, int hashCode, TrieNode newNode)
-        {
-            int bucketIdx = hashCode & _bucketMask;
-            newNode.PrunePersistedRecursively(1);
-            Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
-
-            TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
-            if (oldNode is not null)
-            {
-                long oldMemory = oldNode.GetMemorySize(false);
-                oldNode.PrunePersistedRecursively(1);
-
-                Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
-            }
-        }
-
-        Parallel.For(0, ShardCount, (i) =>
+        Parallel.For(0, ShardCount, i =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                shard[j].node?.PrunePersistedRecursively(1);
             }
         });
 
+        lock (_maintenanceLock)
+        {
+            PruneCache();
+        }
+    }
+
+    private void PruneCache()
+    {
+        // Nodes can grow as warmers resolve them. Sample their current sizes at retirement rather than
+        // charging their insertion sizes; concurrent insertions and growth are included in the next sample.
         long currentTotalMemory = 0;
-        for (int i = 0; i < ShardCount; i++) currentTotalMemory += _shardMemoryUsages[i];
+        for (int i = 0; i < ShardCount; i++)
+        {
+            long shardMemory = 0;
+            for (int j = 0; j < _bucketSize; j++)
+            {
+                TrieNode? node = Volatile.Read(ref _cacheShards[i][j]);
+                node?.PrunePersistedRecursively(1);
+                shardMemory += node?.GetMemorySize(false) ?? 0;
+            }
+            _shardMemoryUsages[i] = shardMemory;
+            currentTotalMemory += shardMemory;
+        }
 
         long prevMemory = currentTotalMemory;
         bool wasPruned = false;
@@ -151,11 +162,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
             // Prune any remaining reference
             for (int i = 0; i < _bucketSize; i++)
             {
-                _cacheShards[shardToClear][i]?.PrunePersistedRecursively(1);
+                Interlocked.Exchange(ref _cacheShards[shardToClear][i], null)?.PrunePersistedRecursively(1);
             }
-
-            // Clear the shard
-            Array.Clear(_cacheShards[shardToClear]);
 
             // Reset shard memory
             long freedMemory = Interlocked.Exchange(ref _shardMemoryUsages[shardToClear], 0);
@@ -174,22 +182,23 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     public void Clear()
     {
-        for (int i = 0; i < ShardCount; i++)
+        lock (_maintenanceLock)
         {
-            for (int j = 0; j < _bucketSize; j++)
+            for (int i = 0; i < ShardCount; i++)
             {
-                _cacheShards[i][j]?.PrunePersistedRecursively(1);
+                for (int j = 0; j < _bucketSize; j++)
+                {
+                    Interlocked.Exchange(ref _cacheShards[i][j], null)?.PrunePersistedRecursively(1);
+                }
+                _shardMemoryUsages[i] = 0;
             }
-            Array.Clear(_cacheShards[i]);
-            Interlocked.Exchange(ref _shardMemoryUsages[i], 0);
+            _nextShardToClear = 0;
+            Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = 0;
         }
-        _nextShardToClear = 0;
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = 0;
     }
 
     /// <summary>
-    /// Small cached for use in <see cref="TransientResource"/>. Its also sharded with the same shard mechanics so that
-    /// when adding to trie node cache can be done in parallel.
+    /// Tracks transient nodes whose retained child references are pruned at retirement.
     /// </summary>
     public class ChildCache
     {

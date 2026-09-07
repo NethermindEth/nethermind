@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -34,6 +35,7 @@ public class SnapshotBundleWarmerTests
             return false;
         }
 
+        public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode node) => node;
         public void Add(TransientResource transientResource) { }
         public void Clear() { }
     }
@@ -43,10 +45,6 @@ public class SnapshotBundleWarmerTests
 
     private static TrieNode Leaf(byte value) => new(NodeType.Leaf, new byte[] { 0xC1, value });
 
-    // The trie warmer never reads the recyclable _snapshots; it reads persistence plus the _transientResource
-    // node cache (which it also warms), pinned by a per-read lease. A node that lives only in the bundle's own
-    // committed snapshot list is visible to a normal read but Unknown to the warmer; a node in persistence is
-    // returned by both.
     [Test]
     public void Trie_warmer_reads_persistence_only_and_ignores_recyclable_snapshots()
     {
@@ -73,8 +71,6 @@ public class SnapshotBundleWarmerTests
         // from them, so afterwards they are reachable only through the path the warmer must not take.
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
 
-        // Read normally first: the warmer caches its own Unknown result into the transient, which a later
-        // normal read would then serve.
         TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
         TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
         TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
@@ -129,6 +125,35 @@ public class SnapshotBundleWarmerTests
         {
             bundle.ReleaseReadOnlyBundleLease();
         }
+    }
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public void Trie_warmer_publishes_directly_without_transient_promotion(bool storage, bool persisted)
+    {
+        TrieNodeCache cache = new(new FlatDbConfig(), LimboLogs.Instance);
+        TreePath path = TreePath.FromHexString("ab");
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        TrieNode persistedNode = new(NodeType.Unknown, TestItem.KeccakA);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, content =>
+        {
+            if (!persisted) return;
+            if (storage) content.StorageNodes[(address!, path)] = persistedNode;
+            else content.StateNodes[path] = persistedNode;
+        }), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TrieNode warmedNode = storage
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address!, in path, TestItem.KeccakA)
+            : bundle.FindStateNodeOrUnknownForTrieWarmer(in path, TestItem.KeccakA);
+
+        Assert.That(cache.TryGet(address, in path, TestItem.KeccakA, out TrieNode? cachedNode), Is.True);
+        Assert.That(cachedNode, Is.SameAs(warmedNode));
+        if (persisted) Assert.That(warmedNode, Is.SameAs(persistedNode));
+        cache.Clear();
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakB), returnSnapshot: false);
+        Assert.That(cache.TryGet(address, in path, TestItem.KeccakA, out _), Is.False);
     }
 
     private sealed record ChurnEpoch(SnapshotBundle Bundle, TrieNode Node);
