@@ -63,7 +63,7 @@ public class DbConfig : IDbConfig
         // Make the index in cache have higher priority, so it is kept more in cache.
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
 
-        "block_based_table_factory.format_version=5;" +
+        "block_based_table_factory.format_version=7;" +
 
         // Two level index split the index into two level. First index point to second level index, which actually
         // point to the block, which get binary searched to the value. This means potentially two iop instead of one per
