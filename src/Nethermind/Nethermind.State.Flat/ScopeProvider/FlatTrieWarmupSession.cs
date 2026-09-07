@@ -16,6 +16,7 @@ internal sealed class FlatTrieWarmupSession :
     IWorldStateScopeProvider.ITrieWarmupSession,
     ITrieWarmer.IAddressWarmer
 {
+    private readonly SnapshotBundle _snapshotBundle;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
     private readonly TransientResource _transientResource;
     private readonly ITrieNodeCache _trieNodeCache;
@@ -23,22 +24,25 @@ internal sealed class FlatTrieWarmupSession :
     private readonly PatriciaTree _stateTree;
     private readonly ILogManager _logManager;
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer?> _storageWarmers = [];
-    private volatile int _hintSequenceId;
+    private readonly int _hintSequenceId;
     private bool _isDisposed;
 
     public FlatTrieWarmupSession(
         in StateId baseState,
+        SnapshotBundle snapshotBundle,
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         TransientResource transientResource,
         ITrieNodeCache trieNodeCache,
         ITrieWarmer trieWarmer,
         ILogManager logManager)
     {
+        _snapshotBundle = snapshotBundle;
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _transientResource = transientResource;
         _trieNodeCache = trieNodeCache;
         _trieWarmer = trieWarmer;
         _logManager = logManager;
+        _hintSequenceId = snapshotBundle.HintSequenceId;
         _stateTree = new PatriciaTree(new StateResolver(this), logManager)
         {
             RootHash = baseState.StateRoot.ToCommitment()
@@ -47,15 +51,13 @@ internal sealed class FlatTrieWarmupSession :
 
     public void HintWarmAccount(in ValueAddress address)
     {
-        int sequenceId = _hintSequenceId;
-        if (Volatile.Read(ref _isDisposed) || !_transientResource.ShouldPrewarm(in address, null)) return;
-        _trieWarmer.PushAddressJob(this, address.ToAddress(), sequenceId);
+        if (ShouldStopWarming() || !_transientResource.ShouldPrewarm(in address, null)) return;
+        _trieWarmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId);
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
-        int sequenceId = _hintSequenceId;
-        if (Volatile.Read(ref _isDisposed) || !_transientResource.ShouldPrewarm(in address, index)) return;
+        if (ShouldStopWarming() || !_transientResource.ShouldPrewarm(in address, index)) return;
 
         Address accountAddress = address.ToAddress();
         StorageWarmer? storageWarmer = _storageWarmers.GetOrAdd(accountAddress, static (address, session) =>
@@ -67,16 +69,21 @@ internal sealed class FlatTrieWarmupSession :
         }, this);
         if (storageWarmer is not null)
         {
-            _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, sequenceId);
+            _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, _hintSequenceId);
         }
     }
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (_hintSequenceId != sequenceId) return false;
+        if (ShouldStopWarming(sequenceId)) return false;
         _stateTree.WarmUpPath(address.ToAccountPath.Bytes);
         return true;
     }
+
+    private bool ShouldStopWarming() => ShouldStopWarming(_hintSequenceId);
+
+    private bool ShouldStopWarming(int sequenceId) =>
+        Volatile.Read(ref _isDisposed) || _hintSequenceId != sequenceId || _snapshotBundle.HintSequenceId != sequenceId;
 
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
@@ -127,7 +134,6 @@ internal sealed class FlatTrieWarmupSession :
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
 
-        Interlocked.Increment(ref _hintSequenceId);
         try
         {
             _transientResource.ReleaseLease();
@@ -172,7 +178,7 @@ internal sealed class FlatTrieWarmupSession :
 
         public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
         {
-            if (session._hintSequenceId != sequenceId) return false;
+            if (session.ShouldStopWarming(sequenceId)) return false;
 
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, ref key);
