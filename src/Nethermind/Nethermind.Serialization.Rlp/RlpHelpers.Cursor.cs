@@ -92,6 +92,23 @@ internal static partial class RlpHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsEmptySequenceNext(ReadOnlySpan<byte> data, int position) => data[position] == Rlp.EmptyListByte;
 
+    /// <summary>Picks up a reader's buffer and cursor, consuming the empty sequence that encodes a null item.</summary>
+    /// <remarks>The opening step of every cursor-threaded decoder, and the one place each reads the reader.</remarks>
+    /// <returns>
+    /// <see langword="true"/> when an encoded null was consumed and the reader advanced past it; otherwise
+    /// <see langword="false"/>, with the cursor to thread in <paramref name="data"/> and <paramref name="position"/>.
+    /// </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumeNull(scoped ref RlpReader reader, out ReadOnlySpan<byte> data, out int position)
+    {
+        data = reader.Data;
+        position = reader.Position;
+        if (!IsEmptySequenceNext(data, position)) return false;
+
+        reader.Position = position + 1;
+        return true;
+    }
+
     /// <summary>Asserts that a decode finished exactly at <paramref name="expected"/>.</summary>
     /// <remarks>
     /// Takes the cursor by value so a threaded run does not have to write it back to an

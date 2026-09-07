@@ -26,14 +26,7 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            ReadOnlySpan<byte> rlp = decoderContext.Data;
-            int position = decoderContext.Position;
-
-            if (RlpHelpers.IsEmptySequenceNext(rlp, position))
-            {
-                decoderContext.Position = position + 1;
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             TxReceipt txReceipt = new();

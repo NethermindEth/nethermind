@@ -88,12 +88,8 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
     public void Decode(ref RlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ReadOnlySpan<byte> rlp = decoderContext.Data;
-        int position = decoderContext.Position;
-
-        if (RlpHelpers.IsEmptySequenceNext(rlp, position))
+        if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position))
         {
-            decoderContext.Position = position + 1;
             transaction = null;
             return;
         }
