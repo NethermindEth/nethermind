@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -191,64 +192,62 @@ public class EncryptionHandshakeServiceTests
         IEciesCipher cipher = Substitute.For<IEciesCipher>();
         cipher.Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>())
             .Returns((Success: false, PlainText: (byte[]?)null));
-        HandshakeService service = new(
-            _messageSerializationService,
-            cipher,
-            _testRandom,
-            _ecdsa,
-            NetTestVectors.StaticKeyB,
-            LimboLogs.Instance);
-        Packet malformedPacket = new(new byte[2]);
+        HandshakeService service = CreateService(cipher);
+        Packet malformedPacket = new(new byte[116]);
 
         Assert.Throws<NetworkingException>(() => Decrypt(service, authMessage, malformedPacket));
+        cipher.Received(1).Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Is<byte[]?>(m => m != null && m.Length == 2));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Skips_legacy_decrypt_for_packet_of_non_legacy_length(bool authMessage)
+    [Test]
+    public void Only_attempts_legacy_decryption_for_exact_packet_length(
+        [Values(true, false)] bool authMessage, [Values(-1, 0, 1)] int lengthDifference)
     {
         IEciesCipher cipher = Substitute.For<IEciesCipher>();
         cipher.Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>())
             .Returns((Success: false, PlainText: (byte[]?)null));
-        HandshakeService service = new(
-            _messageSerializationService,
-            cipher,
-            _testRandom,
-            _ecdsa,
-            NetTestVectors.StaticKeyB,
-            LimboLogs.Instance);
-        Packet packet = new(new byte[100]);
+        HandshakeService service = CreateService(cipher);
+        Packet packet = new(new byte[(authMessage ? 307 : 210) + lengthDifference]);
 
         Assert.Throws<NetworkingException>(() => Decrypt(service, authMessage, packet));
-        cipher.DidNotReceive().Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Is<byte[]?>(m => m == null));
+        cipher.Received(lengthDifference == 0 ? 1 : 0).Decrypt(Arg.Any<PrivateKey>(), packet.Data, null);
+        cipher.Received(1).Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Is<byte[]?>(m => m != null && m.Length == 2));
     }
 
-    [TestCase(true, 0)]
-    [TestCase(true, 1)]
-    [TestCase(true, 2)]
-    [TestCase(true, 82)]
-    [TestCase(false, 0)]
-    [TestCase(false, 1)]
-    [TestCase(false, 2)]
-    [TestCase(false, 82)]
-    public void Rejects_undersized_eip8_packet(bool authMessage, int length)
-    {
-        Packet malformedPacket = new(new byte[length]);
+    private HandshakeService CreateService(IEciesCipher cipher) => new(
+        _messageSerializationService,
+        cipher,
+        _testRandom,
+        _ecdsa,
+        NetTestVectors.StaticKeyB,
+        LimboLogs.Instance);
 
-        Assert.Throws<NetworkingException>(() => Decrypt(authMessage ? _recipientService : _initiatorService, authMessage, malformedPacket));
-    }
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Rejects_undersized_eip8_ecies_ciphertext(bool authMessage)
+    [Test]
+    public void Rejects_undersized_eip8_packet([Values(true, false)] bool authMessage, [Range(0, 115)] int length)
     {
-        // 103-byte EIP-8 packet: after the 2-byte size prefix, the 65-byte ephemeral key and the 16-byte IV,
-        // only 20 bytes remain for the ECIES body, less than the 32-byte MAC
-        byte[] data = new byte[103];
-        NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes.CopyTo(data, 2);
+        byte[] data = new byte[length];
+        if (length >= 2)
+        {
+            data[1] = (byte)(length - 2);
+            byte[] publicKey = NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes;
+            Array.Copy(publicKey, 0, data, 2, Math.Min(publicKey.Length, length - 2));
+        }
+
         Packet malformedPacket = new(data);
 
-        Assert.Throws<NetworkingException>(() => Decrypt(authMessage ? _recipientService : _initiatorService, authMessage, malformedPacket));
+        Assert.That(() => Decrypt(authMessage ? _recipientService : _initiatorService, authMessage, malformedPacket),
+            Throws.TypeOf<NetworkingException>().With.Property(nameof(NetworkingException.NetworkExceptionType)).EqualTo(NetworkExceptionType.Validation));
+    }
+
+    [Test]
+    public void Rejects_mac_only_eip8_packet_before_decryption([Values(true, false)] bool authMessage)
+    {
+        IEciesCipher cipher = Substitute.For<IEciesCipher>();
+        HandshakeService service = CreateService(cipher);
+        Packet packet = new(new byte[115]);
+
+        Assert.Throws<NetworkingException>(() => Decrypt(service, authMessage, packet));
+        cipher.DidNotReceiveWithAnyArgs().Decrypt(default!, default!);
     }
 
     [TestCase(true)]

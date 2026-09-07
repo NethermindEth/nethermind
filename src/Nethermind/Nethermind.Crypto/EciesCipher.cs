@@ -25,7 +25,7 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 
     public (bool Success, byte[]? PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
-        if (cipherText.Length <= ephemBytesLength + KeySize / 8 + MacSize)
+        if (cipherText.Length < ephemBytesLength + KeySize / 8 + MacSize)
         {
             return (false, null);
         }

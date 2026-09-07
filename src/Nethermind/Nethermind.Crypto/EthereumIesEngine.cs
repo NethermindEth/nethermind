@@ -61,15 +61,14 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
     /// <param name="macData">Additional data to include in the MAC computation (can be null or empty).</param>
     /// <returns>The resulting encrypted or decrypted data, with authentication applied.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="input"/> is null.</exception>
-    /// <exception cref="InvalidCipherTextException">Thrown when decrypting input not longer than the MAC, or when the MAC is invalid.</exception>
+    /// <exception cref="InvalidCipherTextException">Thrown when decrypting input shorter than the MAC, or when the MAC is invalid.</exception>
     public byte[] ProcessBlock(byte[] input, byte[]? macData)
     {
         ArgumentNullException.ThrowIfNull(input);
         (byte[] kdfKey, IesWithCipherParameters iesParameters, byte[] iv) = GetInitializedParameters();
 
-        // GetOutputSize subtracts the MAC, so a shorter input yields a negative size and `new byte[]` throws OverflowException.
-        // `<=` (not `<`) also rejects a MAC-only body: no valid RLPx handshake message decrypts to empty plaintext.
-        if (!_forEncryption && input.Length <= _mac.GetMacSize())
+        // Validate before GetOutputSize subtracts the MAC and produces a negative allocation size.
+        if (!_forEncryption && input.Length < _mac.GetMacSize())
         {
             ThrowInputTooShort();
         }
@@ -89,7 +88,7 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
 
         [StackTraceHidden, DoesNotReturn]
         static void ThrowInputTooShort()
-            => throw new InvalidCipherTextException("Length of input must be greater than the MAC");
+            => throw new InvalidCipherTextException("Length of input must be at least the MAC size");
     }
 
     private (byte[] KdfKey, IesWithCipherParameters IesParameters, byte[] Iv) GetInitializedParameters()

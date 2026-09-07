@@ -150,7 +150,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
-                if (auth.Data.Length < 2)
+                if (auth.Data.Length <= 2 + EciesOverhead)
                 {
                     throw new NetworkingException("Failed to decrypt AUTH message.", NetworkExceptionType.Validation);
                 }
@@ -252,7 +252,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             else
             {
-                if (ack.Data.Length < 2)
+                if (ack.Data.Length <= 2 + EciesOverhead)
                 {
                     throw new NetworkingException("Failed to decrypt ACK message.", NetworkExceptionType.Validation);
                 }
