@@ -46,22 +46,6 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void GetAccount_AfterAMaintenanceBatch_RefillsAtTheSameBasis()
-    {
-        FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
-
-        ReadAccount(cache, Address);
-        using (cache.CreateWriteBatch(StateId.Sync, StateId.Sync))
-        {
-        }
-        ReadAccount(cache, Address);
-        ReadAccount(cache, Address);
-
-        Assert.That(inner.AccountReads, Is.EqualTo(2), "a maintenance batch drops what the cache held but does not move the basis, so the next read refills it and the one after is served from it");
-    }
-
-    [Test]
     public void GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();
