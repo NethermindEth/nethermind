@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 
 namespace Nethermind.Core.Extensions;
 
@@ -20,4 +21,18 @@ public static unsafe partial class Bytes
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Bswap64(ulong value) => BinaryPrimitives.ReverseEndianness(value);
+
+    /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
+    /// <remarks>Exists as a std/zkevm pair: the guest has no SIMD, where a <see cref="Vector256{T}"/>
+    /// comparison expands to a byte-at-a-time element loop. Loads are unaligned, so a caller may pass
+    /// any byte offset.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool AreEqual32(ref byte a, ref byte b)
+        => Unsafe.ReadUnaligned<Vector256<byte>>(ref a) == Unsafe.ReadUnaligned<Vector256<byte>>(ref b);
+
+    /// <summary>Tests whether all 32 bytes at <paramref name="a"/> are zero.</summary>
+    /// <remarks><inheritdoc cref="AreEqual32" path="/remarks"/></remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsZero32(ref byte a)
+        => Unsafe.ReadUnaligned<Vector256<byte>>(ref a) == default;
 }

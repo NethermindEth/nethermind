@@ -12,6 +12,7 @@ using System.Threading;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -50,6 +51,10 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateOrWaitForJumpDestinationBitmap()
     {
+        // A single processor never queues the background analysis, so there is no completion event
+        // to allocate, signal or wait on; the guest folds the rest of the method away.
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return CreateJumpDestinationBitmap();
+
         object? previous = Volatile.Read(ref _analysisComplete);
         if (previous is null)
         {
