@@ -6,7 +6,23 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
+internal sealed class MismatchBudget(int total)
+{
+    private int _remaining = total;
+
+    public int TryTake(int wanted)
+    {
+        while (true)
+        {
+            int remaining = Volatile.Read(ref _remaining);
+            int granted = Math.Min(remaining, wanted);
+            if (granted <= 0) return 0;
+            if (Interlocked.CompareExchange(ref _remaining, remaining - granted, remaining) == remaining) return granted;
+        }
+    }
+}
+
+internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded, MismatchBudget? budget = null)
 {
     public const int MaxRecorded = 100_000;
     public const int MaxRecordedPerItem = 2_048;
@@ -14,11 +30,27 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
 
     private readonly List<HistoryWalkMismatch> _mismatches = [];
 
+    public MismatchBudget? Budget => budget;
+
+    public int Count
+    {
+        get
+        {
+            lock (_mismatches)
+            {
+                return _mismatches.Count;
+            }
+        }
+    }
+
     public void Add(in HistoryWalkMismatch mismatch)
     {
         lock (_mismatches)
         {
-            if (_mismatches.Count < capacity) _mismatches.Add(mismatch);
+            if (_mismatches.Count >= capacity) return;
+            if (budget is not null && budget.TryTake(1) == 0) return;
+
+            _mismatches.Add(mismatch);
         }
     }
 
@@ -26,10 +58,12 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded)
     {
         lock (_mismatches)
         {
-            int room = capacity - _mismatches.Count;
-            if (room <= 0) return;
+            int taken = Math.Min(capacity - _mismatches.Count, mismatches.Count);
+            if (taken <= 0) return;
+            if (budget is not null) taken = budget.TryTake(taken);
+            if (taken <= 0) return;
 
-            _mismatches.AddRange(mismatches.Count <= room ? mismatches : mismatches.GetRange(0, room));
+            _mismatches.AddRange(taken == mismatches.Count ? mismatches : mismatches.GetRange(0, taken));
         }
     }
 

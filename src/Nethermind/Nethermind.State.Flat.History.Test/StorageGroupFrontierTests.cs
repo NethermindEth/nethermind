@@ -42,6 +42,24 @@ public class StorageGroupFrontierTests
     }
 
     [Test]
+    public void Group_sinks_waiting_behind_the_frontier_share_one_budget_so_their_aggregate_never_exceeds_the_item_cap()
+    {
+        MismatchBudget budget = new(3);
+        MismatchSink[] sinks = [new(capacity: 10, budget), new(capacity: 10, budget), new(capacity: 10, budget)];
+        sinks[2].Add(Found(300));
+        sinks[0].AddRange([Found(100), Found(101), Found(102), Found(103)]);
+        sinks[1].Add(Found(200));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sinks[2].Count, Is.EqualTo(1));
+            Assert.That(sinks[0].Count, Is.EqualTo(2), "the budget grants what is left, not what was asked for");
+            Assert.That(sinks[1].Count, Is.Zero, "a group issued after the budget is spent keeps nothing; the item cap would have dropped it anyway");
+            Assert.That(sinks.Sum(static sink => sink.Count), Is.EqualTo(3));
+        }
+    }
+
+    [Test]
     public void A_checkpoint_fires_once_per_batch_of_contiguous_groups()
     {
         List<uint> checkpoints = [];

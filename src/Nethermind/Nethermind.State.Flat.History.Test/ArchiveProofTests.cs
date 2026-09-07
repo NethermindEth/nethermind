@@ -1271,10 +1271,12 @@ public class ArchiveProofTests
 
     private Address[] RebuildTheChainWithContractsInTheSameStorageRange(int count)
     {
+        const int maxSeeds = 1 << 20;
         byte range = Keccak.Compute(Contract.Bytes).Bytes[0];
         List<Address> siblings = [];
         for (uint seed = 1; siblings.Count < count; seed++)
         {
+            if (seed == maxSeeds) Assert.Fail($"No {count} addresses hash into storage range 0x{range:x2} within {maxSeeds} seeds");
             byte[] bytes = new byte[Address.Size];
             BitConverter.TryWriteBytes(bytes.AsSpan(), 0x2000_0000 + seed);
             Address candidate = new(bytes);
