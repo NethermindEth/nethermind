@@ -199,6 +199,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseAnd(a, b);
     }
 
@@ -207,6 +208,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseOr(a, b);
     }
 
@@ -215,6 +217,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.Xor(a, b);
     }
 
