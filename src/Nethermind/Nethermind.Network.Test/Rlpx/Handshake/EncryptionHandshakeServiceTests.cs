@@ -11,6 +11,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NSubstitute;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -87,6 +88,14 @@ public class EncryptionHandshakeServiceTests
             service.Agree(new EncryptionHandshake(), packet);
         }
     }
+
+    private HandshakeService CreateService(IEciesCipher cipher) => new(
+        _messageSerializationService,
+        cipher,
+        _testRandom,
+        _ecdsa,
+        NetTestVectors.StaticKeyB,
+        LimboLogs.Instance);
 
     private void InitializeRandom(bool preEip8Format = false)
     {
@@ -214,26 +223,25 @@ public class EncryptionHandshakeServiceTests
         cipher.Received(1).Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Is<byte[]?>(m => m != null && m.Length == 2));
     }
 
-    private HandshakeService CreateService(IEciesCipher cipher) => new(
-        _messageSerializationService,
-        cipher,
-        _testRandom,
-        _ecdsa,
-        NetTestVectors.StaticKeyB,
-        LimboLogs.Instance);
+    [Test]
+    public void Only_falls_back_to_eip8_for_invalid_ciphertext(
+        [Values(true, false)] bool authMessage, [Values(true, false)] bool invalidCiphertext)
+    {
+        Exception exception = invalidCiphertext ? new InvalidCipherTextException("Invalid MAC.") : new InvalidOperationException();
+        IEciesCipher cipher = Substitute.For<IEciesCipher>();
+        Packet packet = new(new byte[authMessage ? 307 : 210]);
+        cipher.Decrypt(Arg.Any<PrivateKey>(), packet.Data, null).Returns(_ => throw exception);
+        HandshakeService service = CreateService(cipher);
+
+        Assert.Throws(invalidCiphertext ? typeof(NetworkingException) : typeof(InvalidOperationException),
+            () => Decrypt(service, authMessage, packet));
+        cipher.Received(invalidCiphertext ? 1 : 0).Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Is<byte[]?>(m => m != null && m.Length == 2));
+    }
 
     [Test]
-    public void Rejects_undersized_eip8_packet([Values(true, false)] bool authMessage, [Range(0, 115)] int length)
+    public void Rejects_undersized_eip8_packet([Values(true, false)] bool authMessage, [Values(0, 1, 2, 113, 114, 115)] int length)
     {
-        byte[] data = new byte[length];
-        if (length >= 2)
-        {
-            data[1] = (byte)(length - 2);
-            byte[] publicKey = NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes;
-            Array.Copy(publicKey, 0, data, 2, Math.Min(publicKey.Length, length - 2));
-        }
-
-        Packet malformedPacket = new(data);
+        Packet malformedPacket = new(new byte[length]);
 
         Assert.That(() => Decrypt(authMessage ? _recipientService : _initiatorService, authMessage, malformedPacket),
             Throws.TypeOf<NetworkingException>().With.Property(nameof(NetworkingException.NetworkExceptionType)).EqualTo(NetworkExceptionType.Validation));

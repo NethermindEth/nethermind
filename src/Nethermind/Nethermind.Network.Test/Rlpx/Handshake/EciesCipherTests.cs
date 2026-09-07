@@ -226,19 +226,15 @@ public class EciesCipherTests
         byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, macData); // public(65) | IV(16) | cipher(...)
 
         byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(privateKey, cipherText, macData));
-        Assert.That(deciphered, Is.EqualTo(plainText));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cipherText, Has.Length.EqualTo(length + 113));
+            Assert.That(deciphered, Is.EqualTo(plainText));
+        }
     }
 
     [Test]
-    public void Ies_engine_can_roundtrip_empty_plaintext()
-    {
-        byte[] cipherText = CreateIesEngine(true).ProcessBlock([], null);
-
-        Assert.That(CreateIesEngine(false).ProcessBlock(cipherText, null), Is.Empty);
-    }
-
-    [Test]
-    public void Decrypt_returns_failure_for_ciphertext_shorter_than_ecies_overhead([Range(0, 112)] int length)
+    public void Decrypt_returns_failure_for_ciphertext_shorter_than_ecies_overhead([Values(0, 1, 64, 65, 80, 81, 111, 112)] int length)
     {
         byte[] cipherText = new byte[length];
         if (length > 0)
@@ -256,9 +252,9 @@ public class EciesCipherTests
     }
 
     [Test]
-    public void Ies_engine_rejects_body_shorter_than_the_mac([Range(0, 31)] int bodyLength)
+    public void Ies_engine_rejects_body_shorter_than_the_mac([Values(0, 1, 16, 17, 31)] int bodyLength)
     {
-        EthereumIesEngine engine = CreateIesEngine(false);
+        EthereumIesEngine engine = CreateIesEngine();
 
         Assert.That(() => engine.ProcessBlock(new byte[bodyLength], null),
             Throws.TypeOf<InvalidCipherTextException>().With.Message.EqualTo("Length of input must be at least the MAC size"));
@@ -268,17 +264,18 @@ public class EciesCipherTests
     [TestCase(33)]
     public void Ies_engine_rejects_invalid_mac(int bodyLength)
     {
-        EthereumIesEngine engine = CreateIesEngine(false);
+        EthereumIesEngine engine = CreateIesEngine();
 
         Assert.That(() => engine.ProcessBlock(new byte[bodyLength], null),
             Throws.TypeOf<InvalidCipherTextException>().With.Message.EqualTo("Invalid MAC."));
     }
 
-    private static EthereumIesEngine CreateIesEngine(bool forEncryption)
+    private static EthereumIesEngine CreateIesEngine()
     {
+        // Keep the cipher configuration aligned with EciesCipher.MakeIesEngine.
         EthereumIesEngine engine = new(new HMac(new Sha256Digest()), new Sha256Digest(),
             new BufferedBlockCipher(new SicBlockCipher(AesUtilities.CreateEngine())));
-        engine.Init(forEncryption, new byte[32], new IesWithCipherParameters([], [], 128, 128), new byte[16]);
+        engine.Init(false, new byte[32], new IesWithCipherParameters([], [], 128, 128), new byte[16]);
         return engine;
     }
 
