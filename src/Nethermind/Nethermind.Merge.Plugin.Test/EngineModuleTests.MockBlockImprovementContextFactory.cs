@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Threading;
@@ -17,18 +16,5 @@ public partial class EngineModuleTests
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
         UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
             new MockBlockImprovementContext(currentBestBlock, startDateTime);
-    }
-
-    private class MockBlockImprovementContext(Block currentBestBlock, DateTimeOffset startDateTime) : IBlockImprovementContext
-    {
-        public void Dispose() => Disposed = true;
-
-        public void CancelOngoingImprovements() { }
-
-        public Task<Block?> ImprovementTask { get; } = Task.FromResult((Block?)currentBestBlock);
-        public Block? CurrentBestBlock { get; } = currentBestBlock;
-        public UInt256 BlockFees { get; }
-        public bool Disposed { get; private set; }
-        public DateTimeOffset StartDateTime { get; } = startDateTime;
     }
 }

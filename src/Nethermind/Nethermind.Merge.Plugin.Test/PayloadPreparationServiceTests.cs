@@ -23,45 +23,124 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class PayloadPreparationServiceTests
 {
+    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(10);
+    private static readonly BlockHeader ParentHeader = Build.A.BlockHeader.TestObject;
+    private static readonly PayloadAttributes Attributes = new()
+    {
+        Timestamp = 100,
+        PrevRandao = TestItem.KeccakA,
+        SuggestedFeeRecipient = TestItem.AddressA
+    };
+
     [Test]
     [CancelAfter(30000)]
-    public void GetPayload_disposes_the_improvement_context_that_replaced_the_retrieved_one()
+    public void GetPayload_disposes_the_replacement_published_after_it_cancelled()
     {
-        Block emptyBlock = Build.A.Block.TestObject;
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+
+        factory.OnFirstContextDispose = () => Retrieve(service, payloadId);
+
+        service.StartPreparingPayload(ParentHeader, Attributes);
+
+        Assert.That(() => factory.Contexts.Count, Is.EqualTo(2).After(10000, 10));
+        Assert.That(() => factory.Contexts[1].Disposed, Is.True.After(5000, 10));
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public void GetPayload_disposes_the_replacement_published_before_it_cancelled()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+        TaskCompletionSource retrievalCancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource replacementPublished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        factory.OnFirstContextCancelling = () =>
+        {
+            retrievalCancelling.TrySetResult();
+            replacementPublished.Task.Wait(WaitTimeout);
+        };
+        service.BeforeImprove = improvement =>
+        {
+            if (improvement > 1) retrievalCancelling.Task.Wait(WaitTimeout);
+        };
+        service.AfterImprove = improvement =>
+        {
+            if (improvement > 1) replacementPublished.TrySetResult();
+        };
+
+        service.StartPreparingPayload(ParentHeader, Attributes);
+        Retrieve(service, payloadId);
+
+        IReadOnlyList<IBlockImprovementContext> contexts = factory.Contexts;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contexts, Has.Count.EqualTo(2));
+            Assert.That(contexts[1].Disposed, Is.True);
+            Assert.That(service.Stored(payloadId), Is.SameAs(contexts[0]));
+        }
+    }
+
+    private static void Retrieve(PayloadPreparationService service, string payloadId) =>
+        service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
+
+    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory)
+    {
         IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
         blockProducer
             .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<Block?>(emptyBlock));
+            .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
 
         ITxPool txPool = Substitute.For<ITxPool>();
+        // The improvement loop only rebuilds once new transactions have arrived.
         txPool.PendingTransactionsAdded.Returns(0, 1);
 
-        RaceReproducingContextFactory improvementContextFactory = new();
-        using PayloadPreparationService service = new(
+        return new TestPayloadPreparationService(
             blockProducer,
             txPool,
-            improvementContextFactory,
+            factory,
             Substitute.For<ITimerFactory>(),
             LimboLogs.Instance,
             TimeSpan.FromSeconds(12),
-            improvementDelay: TimeSpan.FromMilliseconds(1));
-
-        BlockHeader parentHeader = Build.A.BlockHeader.TestObject;
-        PayloadAttributes payloadAttributes = new() { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = TestItem.AddressA };
-        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
-
-        improvementContextFactory.RetrievePayloadOnFirstDispose(() => service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult());
-
-        service.StartPreparingPayload(parentHeader, payloadAttributes);
-
-        Assert.That(() => improvementContextFactory.Contexts.Count, Is.EqualTo(2).After(10000, 10));
-        Assert.That(() => improvementContextFactory.Contexts[1].Disposed, Is.True.After(5000, 10));
+            TimeSpan.FromMilliseconds(1));
     }
 
-    private sealed class RaceReproducingContextFactory : IBlockImprovementContextFactory
+    private sealed class TestPayloadPreparationService(
+        IBlockProducer blockProducer,
+        ITxPool txPool,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        TimeSpan timePerSlot,
+        TimeSpan improvementDelay)
+        : PayloadPreparationService(blockProducer, txPool, blockImprovementContextFactory, timerFactory, logManager, timePerSlot, improvementDelay: improvementDelay)
     {
-        private readonly List<TestBlockImprovementContext> _contexts = [];
-        private Action? _onFirstDispose;
+        private int _improvements;
+
+        public Action<int>? BeforeImprove { get; set; }
+        public Action<int>? AfterImprove { get; set; }
+
+        public IBlockImprovementContext? Stored(string payloadId) =>
+            _payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? context) ? context : null;
+
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        {
+            int improvement = Interlocked.Increment(ref _improvements);
+            BeforeImprove?.Invoke(improvement);
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
+            AfterImprove?.Invoke(improvement);
+        }
+    }
+
+    private sealed class RecordingBlockImprovementContextFactory : IBlockImprovementContextFactory
+    {
+        private readonly List<IBlockImprovementContext> _contexts = [];
+
+        public Action? OnFirstContextDispose { get; set; }
+        public Action? OnFirstContextCancelling { get; set; }
 
         public IReadOnlyList<IBlockImprovementContext> Contexts
         {
@@ -74,37 +153,19 @@ public class PayloadPreparationServiceTests
             }
         }
 
-        public void RetrievePayloadOnFirstDispose(Action retrievePayload) => _onFirstDispose = retrievePayload;
-
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             lock (_contexts)
             {
-                TestBlockImprovementContext context = new(currentBestBlock, startDateTime, cts, _contexts.Count == 0 ? () => _onFirstDispose?.Invoke() : null);
+                bool isFirst = _contexts.Count == 0;
+                MockBlockImprovementContext context = new(
+                    currentBestBlock,
+                    startDateTime,
+                    cts,
+                    isFirst ? () => OnFirstContextDispose?.Invoke() : null,
+                    isFirst ? () => OnFirstContextCancelling?.Invoke() : null);
                 _contexts.Add(context);
                 return context;
-            }
-        }
-    }
-
-    private sealed class TestBlockImprovementContext(Block currentBestBlock, DateTimeOffset startDateTime, SharedCancellationTokenSource cts, Action? onFirstDispose) : IBlockImprovementContext
-    {
-        private int _disposeCount;
-
-        public Task<Block?> ImprovementTask { get; } = Task.FromResult<Block?>(currentBestBlock);
-        public Block? CurrentBestBlock { get; } = currentBestBlock;
-        public UInt256 BlockFees { get; }
-        public bool Disposed { get; private set; }
-        public DateTimeOffset StartDateTime { get; } = startDateTime;
-
-        public void CancelOngoingImprovements() => cts.CancelAndDispose();
-
-        public void Dispose()
-        {
-            Disposed = true;
-            if (Interlocked.Increment(ref _disposeCount) == 1)
-            {
-                onFirstDispose?.Invoke();
             }
         }
     }

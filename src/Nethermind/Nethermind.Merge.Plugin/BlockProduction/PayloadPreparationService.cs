@@ -421,10 +421,27 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             {
                 // Stop any on-going improvements as they won't be used
                 blockContext.DisposeAndCancelOngoingImprovements();
+                RetainRetrievedContext(payloadId, blockContext);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Keeps the retrieved context as the stored one, disposing a replacement published while it was being retrieved.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ImproveBlock"/> publishes a replacement before it checks <paramref name="retrieved"/>'s
+    /// cancellation, so a replacement published before that cancellation is only seen from this side.
+    /// </remarks>
+    private void RetainRetrievedContext(string payloadId, IBlockImprovementContext retrieved)
+    {
+        if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? stored) && !ReferenceEquals(stored, retrieved))
+        {
+            stored.DisposeAndCancelOngoingImprovements();
+            _payloadStorage.TryUpdate(payloadId, retrieved, stored);
+        }
     }
 
     public void Dispose()
