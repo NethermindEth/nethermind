@@ -150,13 +150,7 @@ public class TrieNodeTests
     [Test]
     public void Warmer_owned_child_is_memoized_in_the_parent_only_once_decoded()
     {
-        (byte[] childRlp, Hash256 childHash) = EncodedLeaf();
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, new TrieNode(NodeType.Unknown, childHash));
-        TreePath path = TreePath.Empty;
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
-        Assert.That(parent.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
+        (TrieNode parent, byte[] childRlp, Hash256 childHash) = ResolvedParentOfHashedLeaf();
 
         TrieNode placeholder = new(NodeType.Unknown, childHash);
         placeholder.MarkWarmerOwned();
@@ -187,6 +181,39 @@ public class TrieNodeTests
             Assert.That(third, Is.SameAs(placeholder));
             Assert.That(fourth, Is.SameAs(placeholder));
             Assert.That(lookups, Is.EqualTo(3), "the resolved node was not memoized into the parent");
+        }
+    }
+
+    // The live resolver answers the memoized hash of an undecoded warmer child with a node of its own; that
+    // node must take the slot, or every traversal through the parent repeats the lookup, load and decode.
+    [Test]
+    public void Non_warmer_child_answering_a_memoized_hash_is_memoized_in_the_parent()
+    {
+        (TrieNode parent, _, Hash256 childHash) = ResolvedParentOfHashedLeaf();
+
+        TrieNode placeholder = new(NodeType.Unknown, childHash);
+        placeholder.MarkWarmerOwned();
+        TrieNode liveNode = new(NodeType.Unknown, childHash);
+        int lookups = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(Arg.Any<TreePath>(), childHash).Returns(_ =>
+        {
+            lookups++;
+            return lookups == 1 ? placeholder : liveNode;
+        });
+
+        TreePath childPath = TreePath.Empty;
+        parent.AppendChildPath(ref childPath, 0);
+        TrieNode first = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode second = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode third = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(placeholder));
+            Assert.That(second, Is.SameAs(liveNode));
+            Assert.That(third, Is.SameAs(liveNode));
+            Assert.That(lookups, Is.EqualTo(2), "a non-warmer child answering the memoized hash was not memoized into the parent");
         }
     }
 
@@ -1153,6 +1180,18 @@ public class TrieNodeTests
         TreePath path = TreePath.Empty;
         leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
         return (leaf.FullRlp.ToArray()!, leaf.Keccak!);
+    }
+
+    private static (TrieNode Parent, byte[] ChildRlp, Hash256 ChildHash) ResolvedParentOfHashedLeaf()
+    {
+        (byte[] childRlp, Hash256 childHash) = EncodedLeaf();
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, new TrieNode(NodeType.Unknown, childHash));
+        TreePath path = TreePath.Empty;
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        Assert.That(parent.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
+        return (parent, childRlp, childHash);
     }
 
     private class InMemoryScopedTrieStore : IScopedTrieStore
