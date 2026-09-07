@@ -752,7 +752,7 @@ public unsafe class EvmOpcodesBenchmark
         if (_vm.ReturnData is VmState<EthereumGasPolicy> nestedFrame)
         {
             nestedFrame.Dispose();
-            _vm.ReturnData = null!;
+            _vm.ReturnData = null;
         }
     }
 
