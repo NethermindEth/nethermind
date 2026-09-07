@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Nethermind.Core;
@@ -174,6 +175,54 @@ public class StartupTests
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         AssertErrorCodeResponse(response, ErrorCodes.LimitExceeded);
     }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_OverMaxRequestBodySizeWithoutContentLength_ReturnsPayloadTooLarge()
+    {
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
+            CreateJsonRpcRequest(),
+            setContentLength: false,
+            maxRequestBodySize: 1);
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
+        AssertErrorCodeResponse(response, ErrorCodes.LimitExceeded);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_BodyReadFailsWithIOException_ReturnsInvalidRequestBadRequest([Values] bool withInnerException)
+    {
+        IOException failure = withInnerException
+            ? new IOException("Bad chunk size data.", new OverflowException())
+            : new IOException("Bad chunk size data.");
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
+            CreateJsonRpcRequest(),
+            setContentLength: false,
+            body: new ThrowOnReadStream(failure));
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        AssertErrorCodeResponse(response, ErrorCodes.InvalidRequest);
+        AssertJsonResponse(response, static root =>
+            Assert.That(root.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("Could not read request body.")));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_BodyReadFailsWithWrappedCancellation_ReturnsTimeout()
+    {
+        (string response, _) = await ProcessJsonRpcRequestWithStatus(
+            CreateJsonRpcRequest(),
+            setContentLength: false,
+            body: new ThrowOnReadStream(new IOException("Unable to read data from the transport connection.", new OperationCanceledException())));
+
+        AssertErrorCodeResponse(response, ErrorCodes.Timeout);
+    }
+
+    [Test]
+    public void ProcessJsonRpcRequest_BodyReadFailsWithConnectionReset_Rethrows() =>
+        Assert.ThrowsAsync<ConnectionResetException>(async () => await ProcessJsonRpcRequestWithStatus(
+            CreateJsonRpcRequest(),
+            setContentLength: false,
+            body: new ThrowOnReadStream(new ConnectionResetException("Connection reset."))));
 
     [Test]
     public async Task ProcessJsonRpcRequest_AuthFailure_ReturnsUnauthorizedError()
@@ -477,7 +526,8 @@ public class StartupTests
         bool setContentLength = true,
         long? maxRequestBodySize = null,
         Startup? startup = null,
-        bool isAuthenticated = false)
+        bool isAuthenticated = false,
+        Stream? body = null)
     {
         byte[] requestBytes = Encoding.UTF8.GetBytes(request);
 
@@ -487,7 +537,7 @@ public class StartupTests
             {
                 Method = "POST",
                 ContentType = "application/json",
-                Body = new MemoryStream(requestBytes)
+                Body = body ?? new MemoryStream(requestBytes)
             }
         };
         if (setContentLength) ctx.Request.ContentLength = requestBytes.Length;
@@ -583,6 +633,22 @@ public class StartupTests
             Stopwatch.GetTimestamp());
 
         return new(sink, ctx, responseBody, jsonRpcLocalStats);
+    }
+
+    private sealed class ThrowOnReadStream(Exception exception) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw exception;
+        public override int Read(byte[] buffer, int offset, int count) => throw exception;
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private readonly record struct HttpJsonRpcResponseSinkFixture(HttpJsonRpcResponseSink Sink, DefaultHttpContext Context, MemoryStream ResponseBody, IJsonRpcLocalStats LocalStats);

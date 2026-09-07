@@ -580,6 +580,12 @@ public class Startup : IStartup
                 }
             }
         }
+        catch (IOException e) when (e is not Microsoft.AspNetCore.Http.BadHttpRequestException
+            and not Microsoft.AspNetCore.Connections.ConnectionResetException
+            and { InnerException: not OperationCanceledException })
+        {
+            throw new Microsoft.AspNetCore.Http.BadHttpRequestException("Could not read request body.", StatusCodes.Status400BadRequest, e);
+        }
         finally
         {
             await bodyReader.CompleteAsync();
