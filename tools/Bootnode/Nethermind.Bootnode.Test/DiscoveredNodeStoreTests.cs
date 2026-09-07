@@ -61,10 +61,8 @@ public class DiscoveredNodeStoreTests
         }
     }
 
-    [TestCase("127.0.0.1")]
-    [TestCase("::ffff:127.0.0.1")]
-    [TestCase("2001:db8::1")]
-    public void Node_dto_host_matches_node_host(string address)
+    [Test]
+    public void Node_dto_host_matches_node_host([Values("127.0.0.1", "::ffff:127.0.0.1", "2001:db8::1")] string address)
     {
         using PrivateKeyGenerator generator = new();
         using PrivateKey privateKey = generator.Generate();
@@ -320,9 +318,8 @@ public class DiscoveredNodeStoreTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Node_queries_match_global_order_across_bucket_boundaries(bool activeOnly)
+    [Test]
+    public void Node_queries_match_global_order_across_bucket_boundaries([Values] bool activeOnly)
     {
         DiscoveredNodeStore store = new();
         Random random = new(42);
