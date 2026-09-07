@@ -280,12 +280,13 @@ public static class TrieUpdater
 
         plan = EstablishRangeKnowledge(current, operations, plan, metrics);
         Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
-        bool partitioned = plan.Precalculated.IsEmpty && plan.BranchDepth <= depth;
+        bool hasComputedPartition = false;
         PartitionOutcome partition = default;
-        if (partitioned)
+        if (plan.Precalculated.IsEmpty && plan.BranchDepth <= depth)
         {
             partition = plan.BucketSort(operations, offsets, metrics);
             plan = partition.Plan;
+            hasComputedPartition = true;
         }
         int branchDepth = FindBranchDepth(current, operations[0].Key, plan);
         int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
@@ -303,13 +304,13 @@ public static class TrieUpdater
         }
 
         if (ownerGroup.BitDepth == depth)
-            return partitioned
-                ? FoldBoundary(store, metrics, ownerGroup, ref current, operations, offsets, partition)
+            return hasComputedPartition
+                ? FoldBoundaryFromPartition(store, metrics, ownerGroup, ref current, operations, offsets, partition)
                 : FoldBoundary(store, metrics, ownerGroup, ref current, operations, plan);
 
         using GroupMutationFrame group = new(store, PbtNodePath.FromKey(operations[0].Key, depth), metrics, ownerGroup.MemoryProvider);
-        Subtree result = partitioned
-            ? FoldBoundary(store, metrics, group, ref current, operations, offsets, partition)
+        Subtree result = hasComputedPartition
+            ? FoldBoundaryFromPartition(store, metrics, group, ref current, operations, offsets, partition)
             : FoldBoundary(store, metrics, group, ref current, operations, plan);
         try
         {
@@ -329,10 +330,10 @@ public static class TrieUpdater
     {
         Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
         PartitionOutcome partition = plan.BucketSort(operations, offsets, metrics);
-        return FoldBoundary(store, metrics, group, ref current, operations, offsets, partition);
+        return FoldBoundaryFromPartition(store, metrics, group, ref current, operations, offsets, partition);
     }
 
-    private static Subtree FoldBoundary(
+    private static Subtree FoldBoundaryFromPartition(
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
         GroupMutationFrame group,
