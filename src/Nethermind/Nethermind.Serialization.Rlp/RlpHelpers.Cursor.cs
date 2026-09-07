@@ -123,6 +123,7 @@ internal static partial class RlpHelpers
 
     /// <summary>Reads a multi-byte length field.</summary>
     /// <returns>The position past the field.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int DeserializeLength(ReadOnlySpan<byte> data, int position, int lengthOfLength, out int length)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
@@ -209,7 +210,11 @@ internal static partial class RlpHelpers
         return DecodeLargerByteArraySpan(data, position, prefix, limit, size, out value);
     }
 
+#if !ZK_EVM
+    // Cold path, kept out of line so the short-string case above stays small. The guest wants the
+    // opposite: with no call, its byte-string decodes are 1.3M ziskemu steps cheaper.
     [MethodImpl(MethodImplOptions.NoInlining)]
+#endif
     private static int DecodeLargerByteArraySpan(
         ReadOnlySpan<byte> data, int position, int prefix, RlpLimit? limit, int size, out ReadOnlySpan<byte> value)
     {
@@ -779,15 +784,44 @@ internal static partial class RlpHelpers
 
     /// <summary>Returns the shared instance for the two hashes that dominate account payloads.</summary>
     public static Hash256 InternKeccak(ReadOnlySpan<byte> span)
-        => span.SequenceEqual(Keccak.OfAnEmptyString.Bytes) ? Keccak.OfAnEmptyString
-            : span.SequenceEqual(Keccak.EmptyTreeHash.Bytes) ? Keccak.EmptyTreeHash
-            : new Hash256(span);
+    {
+        ulong first = FirstWord(span);
+        if (first == FirstWord(Keccak.OfAnEmptyString.Bytes))
+        {
+            if (span.SequenceEqual(Keccak.OfAnEmptyString.Bytes)) return Keccak.OfAnEmptyString;
+        }
+        else if (first == FirstWord(Keccak.EmptyTreeHash.Bytes))
+        {
+            if (span.SequenceEqual(Keccak.EmptyTreeHash.Bytes)) return Keccak.EmptyTreeHash;
+        }
+
+        return new Hash256(span);
+    }
 
     /// <inheritdoc cref="InternKeccak"/>
     public static ValueHash256 InternValueKeccak(ReadOnlySpan<byte> span)
-        => span.SequenceEqual(Keccak.OfAnEmptyString.Bytes) ? Keccak.OfAnEmptyString.ValueHash256
-            : span.SequenceEqual(Keccak.EmptyTreeHash.Bytes) ? Keccak.EmptyTreeHash.ValueHash256
-            : new ValueHash256(span);
+    {
+        ulong first = FirstWord(span);
+        if (first == FirstWord(Keccak.OfAnEmptyString.Bytes))
+        {
+            if (span.SequenceEqual(Keccak.OfAnEmptyString.Bytes)) return Keccak.OfAnEmptyString.ValueHash256;
+        }
+        else if (first == FirstWord(Keccak.EmptyTreeHash.Bytes))
+        {
+            if (span.SequenceEqual(Keccak.EmptyTreeHash.Bytes)) return Keccak.EmptyTreeHash.ValueHash256;
+        }
+
+        return new ValueHash256(span);
+    }
+
+    /// <summary>Reads the leading 8 bytes of a hash as one word.</summary>
+    /// <remarks>
+    /// The interning compares are 32-byte <c>memcmp</c>s that miss for every hash but two, so the
+    /// leading word discriminates first and a non-interned hash never reaches one.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong FirstWord(ReadOnlySpan<byte> span)
+        => Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(span));
 
     [DoesNotReturn, StackTraceHidden]
     public static T ThrowNullDecodedValue<T>() => throw new RlpException($"{typeof(T).Name} decoded as null");
