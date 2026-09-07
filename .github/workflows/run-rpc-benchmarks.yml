@@ -214,6 +214,7 @@ jobs:
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
       cpu_max_freq_khz: ${{ steps.resolve.outputs.cpu_max_freq_khz }}
+      cpu_stabilize: ${{ steps.resolve.outputs.cpu_stabilize }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
       warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
       warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
@@ -498,7 +499,9 @@ jobs:
           node_memory="$(nc '.memory')"
           cpu_max_freq_khz="$(nc '.cpu_max_freq_khz')"; [[ -n "${cpu_max_freq_khz}" ]] || cpu_max_freq_khz="${default_freq}"
           [[ "${cpu_max_freq_khz}" =~ ^[0-9]*$ ]] || fail "node_config.cpu_max_freq_khz must be an integer (kHz), got '${cpu_max_freq_khz}'."
-          [[ "${cpu_max_freq_khz}" != "0" ]] || cpu_max_freq_khz=""
+          # 0 = leave the clock alone: no cap and no turbo-off/governor pin either. On the amd64 box the default cap
+          # equals the base clock, so dropping only the cap while turbo stays off would change nothing.
+          cpu_stabilize="true"; [[ "${cpu_max_freq_khz}" != "0" ]] || { cpu_max_freq_khz=""; cpu_stabilize="false"; }
 
           # The cached master baseline is only comparable to a run whose cell has the same shape: everything that sizes,
           # paces or configures the measurement, plus the node's CPU/memory envelope. Folded into the cache key below, so
@@ -509,9 +512,9 @@ jobs:
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","node_env_vars",
                       "ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes","timings_rps","vus"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
-            --arg freq "${cpu_max_freq_khz}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
+            --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
             '{cell: ($t | with_entries(select(.key as $k | $keys | index($k)))),
-              node: {cpu_max_freq_khz: $freq, cpuset: $cpuset, memory: $memory}}')"
+              node: {cpu_max_freq_khz: $freq, cpu_stabilize: $stab, cpuset: $cpuset, memory: $memory}}')"
           cell_key="$(printf '%s' "${cell_shape}" | sha256sum | cut -c1-12)"
 
           # These paths reach root-privileged mount/rm on the runner.
@@ -573,6 +576,7 @@ jobs:
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
             echo "cpu_max_freq_khz=${cpu_max_freq_khz}"
+            echo "cpu_stabilize=${cpu_stabilize}"
             echo "eth_call_corpus=${eth_call_corpus}"
             echo "warmup_seconds=${warmup_seconds}"
             echo "warmup_rps=${warmup_rps}"
@@ -654,7 +658,7 @@ jobs:
           echo "Scratch:     ${{ needs.resolve.outputs.scratch_root }}"
           echo "Corpus dir:  ${{ needs.resolve.outputs.corpus_dir }}"
           echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
-          echo "CPU cap kHz: ${{ needs.resolve.outputs.cpu_max_freq_khz }}"
+          echo "CPU cap kHz: ${{ needs.resolve.outputs.cpu_max_freq_khz }} (stabilize=${{ needs.resolve.outputs.cpu_stabilize }})"
           echo "Baseline:    ${{ needs.resolve.outputs.baseline_mode }} (${{ needs.resolve.outputs.baseline_image }})"
           echo "tool_config: ${{ needs.resolve.outputs.tool_config }}"
 
@@ -749,7 +753,10 @@ jobs:
         env:
           CPU_MAX_FREQ_KHZ: ${{ needs.resolve.outputs.cpu_max_freq_khz }}
           STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/cpu-state
-        run: ./scripts/rpc-bench/cpu-stabilize.sh apply
+        # cpu_stabilize=false (node_config.cpu_max_freq_khz 0) runs the clock free; restore only clears a cap a killed run left behind.
+        run: |
+          if [[ "${{ needs.resolve.outputs.cpu_stabilize }}" == "true" ]]; then ./scripts/rpc-bench/cpu-stabilize.sh apply
+          else ./scripts/rpc-bench/cpu-stabilize.sh restore; fi
 
       - name: Start node
         if: needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'

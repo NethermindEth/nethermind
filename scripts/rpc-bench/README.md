@@ -195,7 +195,7 @@ from `Dockerfile` on the runner.
   "health_timeout_minutes": 30,
   "cpuset": "",                    // e.g. "2-7,10-15" to pin the node like expb does
   "memory": "",                    // e.g. "64g"
-  "cpu_max_freq_khz": "",          // scaling_max_freq cap for the whole job; empty = 3800000 on amd64, none on arm64; 0 = no cap
+  "cpu_max_freq_khz": "",          // scaling_max_freq cap for the whole job; empty = 3800000 on amd64, none on arm64; 0 = free-running clock (no cap, turbo and governor untouched)
   "reference_db_source": "",       // reference-node keys: unreachable while reference_client is pinned to `none`
   "reference_image": "",
   "reference_flags": "",
