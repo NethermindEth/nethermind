@@ -149,6 +149,8 @@ namespace Nethermind.Db.Test
                 {
                     Assert.That(db.Get([50]), Is.EqualTo([0xF0]));
                     Assert.That(afterReinsert.Get([50]), Is.EqualTo([0xF0]));
+                    Assert.That(beforeDeletes.Get([50]), Is.EqualTo([50]));
+                    Assert.That(afterDeletes.Get([50]), Is.Null);
                 }
 
                 db.Flush();
