@@ -44,6 +44,8 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        // EXPERIMENTAL: Precreate the next WAL asynchronously to reduce foreground rotation file creation.
+        // Disabled when WAL recycling is enabled.
         "async_wal_precreate=true;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
