@@ -124,8 +124,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// commitment, so node bytes can be ground against a seed that is already known. Seeding makes the
     /// grind per-payload and quadratic in the node count rather than one-time and universal; closing it
     /// properly means bounding the witness or rejecting unreachable nodes. The mixer's several multiplies
-    /// per probe, against the single load the leading bytes cost, are the price of that; the guest step
-    /// count for the change is not measured.
+    /// per probe, against the single load the leading bytes cost, are the price of that.
     /// </para>
     /// </remarks>
     private readonly struct NodeKey(in ValueHash256 hash) : IEquatable<NodeKey>
