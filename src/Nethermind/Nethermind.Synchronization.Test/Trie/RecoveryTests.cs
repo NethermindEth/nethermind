@@ -107,9 +107,8 @@ public class RecoveryTests
     [Test]
     public async Task can_recover_eth66()
     {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
-        Assert.That(response![0].Item1, Is.EqualTo(_path));
-        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
+        AssertRecoveredNode(response);
     }
 
     [Test]
@@ -139,9 +138,8 @@ public class RecoveryTests
     [Test]
     public async Task can_recover_eth67([Values(1, 2)] int peerCount)
     {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, Eth67Peers(peerCount));
-        Assert.That(response![0].Item1, Is.EqualTo(_path));
-        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, Eth67Peers(peerCount));
+        AssertRecoveredNode(response);
     }
 
     [Test]
@@ -253,9 +251,8 @@ public class RecoveryTests
             _snapRecovery,
             LimboLogs.Instance);
 
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(recovery, _peerEth67);
-        Assert.That(response![0].Item1, Is.EqualTo(_path));
-        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(recovery, _peerEth67);
+        AssertRecoveredNode(response);
     }
 
     [Test]
@@ -314,6 +311,16 @@ public class RecoveryTests
         _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns<SyncPeerAllocation>(_ => throw new InvalidOperationException("peer pool unavailable"));
+    }
+
+    private void AssertRecoveredNode(IOwnedReadOnlyList<(TreePath, byte[])>? response)
+    {
+        Assert.That(response, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response![0].Item1, Is.EqualTo(_path), "path");
+            Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp), "rlp");
+        }
     }
 
     private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
