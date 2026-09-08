@@ -68,7 +68,12 @@ public class SimpleDispatcherTests
     {
         ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
         peerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new SyncPeerAllocation(new PeerInfo(Substitute.For<ISyncPeer>()), AllocationContexts.State)));
+            .Returns(_ =>
+            {
+                SyncPeerAllocation allocation = new(AllocationContexts.State);
+                allocation.AllocatePeer(new PeerInfo(Substitute.For<ISyncPeer>()));
+                return Task.FromResult(allocation);
+            });
 
         return new SimpleDispatcher<TestRequest>(
             feed,

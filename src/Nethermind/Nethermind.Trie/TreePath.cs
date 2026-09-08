@@ -12,7 +12,6 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using System.Numerics;
 
 namespace Nethermind.Trie;
 
@@ -261,7 +260,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
     public readonly override bool Equals(object? obj) => obj is TreePath other && Equals(in other);
 
-    public readonly override int GetHashCode() => (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
+    public readonly override int GetHashCode() =>
+        SpanExtensions.CombineHash((uint)Path.GetHashCode(), (uint)Length);
 
     /// <summary>
     /// Used for scoped pattern where inside the scope the path is appended with some nibbles and it will

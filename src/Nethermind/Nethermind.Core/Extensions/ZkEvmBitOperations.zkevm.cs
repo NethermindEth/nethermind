@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -9,20 +8,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
 
-/// <summary>
-/// RISC-V (zkVM) substitute for the <see cref="BitOperations"/> primitives
-/// <see cref="SpanExtensions"/> uses for in-memory hashing. RISC-V lacks a CRC32
-/// instruction, so the BCL's <c>Crc32C</c> falls back to a slow software loop.
-/// </summary>
-/// <remarks>
-/// The replacement is a multiply-fold that lowers to one hardware MUL. It is not
-/// CRC32C, but the output only feeds ephemeral <c>GetHashCode</c> values (never
-/// persisted or sent over the wire), so any well-distributed hash suffices.
-/// </remarks>
+/// <summary>Byte-swapping primitives for the RISC-V guest.</summary>
 public static partial class ZkEvmBitOperations
 {
-    private static readonly ulong[] PrimeConstant = [0xD6E8FEB86659FD93UL];
-
     private static readonly ulong[] SwapMasks = [0x00FF00FF00FF00FFUL, 0x0000FFFF0000FFFFUL];
 
     // RISC-V has no byte-swap instruction; this all-64-bit form beats the BCL's ReverseEndianness.
@@ -76,22 +64,4 @@ public static partial class ZkEvmBitOperations
         return (x << 32) | (x >> 32);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, ulong data)
-    {
-        ulong x = (crc ^ data) * MemoryMarshal.GetArrayDataReference(PrimeConstant);
-        return (uint)(x ^ (x >> 29));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, uint data) => Crc32C(crc, (ulong)data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, ushort data) => Crc32C(crc, (ulong)data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, byte data) => Crc32C(crc, (ulong)data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint RotateLeft(uint value, int offset) => BitOperations.RotateLeft(value, offset);
 }

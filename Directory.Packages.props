@@ -22,6 +22,7 @@
     <PackageVersion Include="DynamicExpresso.Core" Version="2.19.3" />
     <PackageVersion Include="FastEnum" Version="2.0.7" />
     <PackageVersion Include="Fody" Version="6.9.3" />
+    <PackageVersion Include="FodyHelpers" Version="6.9.3" />
     <PackageVersion Include="Google.Protobuf" Version="3.35.1" />
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.35.1" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
