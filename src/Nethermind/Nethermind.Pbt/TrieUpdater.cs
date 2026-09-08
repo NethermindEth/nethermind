@@ -371,38 +371,82 @@ public static class TrieUpdater
             Resolve(group, ref boundaries[slot]);
             if (!boundaries[slot].IsEmpty) occupied |= 1 << slot;
         }
-        return Compose(group, boundaries, occupied, 0, boundaries.Length, 0);
-    }
-
-    private static Subtree Compose(GroupMutationFrame group, Span<Subtree> boundaries, int occupied, int slot, int width, int level)
-    {
         if (occupied == 0) return default;
-        if (width == 1) return Subtree.Move(ref boundaries[slot]);
 
-        int halfWidth = width / 2;
-        int leftMask = occupied & ((1 << halfWidth) - 1);
-        int rightMask = occupied >> halfWidth;
-        if (leftMask == 0) return Compose(group, boundaries, rightMask, slot + halfWidth, halfWidth, level + 1);
-        if (rightMask == 0) return Compose(group, boundaries, leftMask, slot, halfWidth, level + 1);
-
-        PbtNodePath branchPath = BoundaryPath(group.GroupKey, slot, level);
-        // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
-        int position = 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
-        Subtree left = Compose(group, boundaries, leftMask, slot, halfWidth, level + 1);
-        Subtree right = default;
+        ComposeFrameBuffer frames = default;
+        int frameCount = 1;
+        frames[0] = new(occupied, 0, boundaries.Length, 0);
+        Subtree result = default;
         try
         {
-            // The left root must be emitted before any descendants of the right subtree.
-            ValueHash256 leftHash = Place(group, ref left, position - width, branchPath.BitDepth + 1);
-            right = Compose(group, boundaries, rightMask, slot + halfWidth, halfWidth, level + 1);
-            ValueHash256 rightHash = Place(group, ref right, position - 1, branchPath.BitDepth + 1);
-            return new Subtree(branchPath, leftHash, rightHash);
+            while (frameCount != 0)
+            {
+                ref ComposeFrame frame = ref frames[frameCount - 1];
+                int halfWidth = frame.Width / 2;
+                if (frame.Stage == ComposeStage.LeftCompleted)
+                {
+                    // The left root must be emitted before any descendants of the right subtree.
+                    frame.LeftHash = Place(group, ref result, frame.Position - frame.Width, frame.BranchPath!.BitDepth + 1);
+                    frame.Stage = ComposeStage.RightCompleted;
+                    frames[frameCount++] = new(frame.Occupied >> halfWidth, frame.Slot + halfWidth, halfWidth, frame.Level + 1);
+                    continue;
+                }
+                if (frame.Stage == ComposeStage.RightCompleted)
+                {
+                    ValueHash256 rightHash = Place(group, ref result, frame.Position - 1, frame.BranchPath!.BitDepth + 1);
+                    result = new Subtree(frame.BranchPath, frame.LeftHash, rightHash);
+                    frameCount--;
+                    continue;
+                }
+                if (frame.Width == 1)
+                {
+                    result = Subtree.Move(ref boundaries[frame.Slot]);
+                    frameCount--;
+                    continue;
+                }
+
+                int leftMask = frame.Occupied & ((1 << halfWidth) - 1);
+                int rightMask = frame.Occupied >> halfWidth;
+                if (leftMask == 0)
+                {
+                    frame = new(rightMask, frame.Slot + halfWidth, halfWidth, frame.Level + 1);
+                    continue;
+                }
+                if (rightMask == 0)
+                {
+                    frame = new(leftMask, frame.Slot, halfWidth, frame.Level + 1);
+                    continue;
+                }
+
+                frame.BranchPath = BoundaryPath(group.GroupKey, frame.Slot, frame.Level);
+                // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
+                frame.Position = 2 * (frame.Slot + frame.Width) - 2 - BitOperations.PopCount((uint)frame.Slot);
+                frame.Stage = ComposeStage.LeftCompleted;
+                frames[frameCount++] = new(leftMask, frame.Slot, halfWidth, frame.Level + 1);
+            }
+            return Subtree.Move(ref result);
         }
-        finally
-        {
-            left.Dispose();
-            right.Dispose();
-        }
+        finally { result.Dispose(); }
+    }
+
+    private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
+
+    private struct ComposeFrame(int occupied, int slot, int width, int level)
+    {
+        internal int Occupied = occupied;
+        internal int Slot = slot;
+        internal int Width = width;
+        internal int Level = level;
+        internal ComposeStage Stage;
+        internal PbtNodePath? BranchPath;
+        internal int Position;
+        internal ValueHash256 LeftHash;
+    }
+
+    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup + 1)]
+    private struct ComposeFrameBuffer
+    {
+        private ComposeFrame _element;
     }
 
     private static void Decompose(GroupMutationFrame group, ref Subtree current, int depth, Span<Subtree> boundaries)

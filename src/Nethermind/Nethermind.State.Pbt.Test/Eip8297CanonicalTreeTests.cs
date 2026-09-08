@@ -1480,15 +1480,18 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(4)]
-    [TestCase(8)]
-    [TestCase(12)]
-    [TestCase(248)]
-    [TestCase(252)]
-    [TestCase(520)]
-    [TestCase(524)]
-    public void Dense_group_paths_survive_collapse_and_restoration(int groupDepth)
+    private static IEnumerable<TestCaseData> DenseGroupCollapseCases()
+    {
+        int[] groupDepths = [0, 4, 8, 12, 248, 252, 520, 524];
+        int[] retainedMasks = [0x0000, 0x0001, 0x8000, 0x000A, 0xA000, 0xA55A, 0x8001, 0xFFFF];
+        foreach (int groupDepth in groupDepths)
+        foreach (int retainedMask in retainedMasks)
+            yield return new TestCaseData(groupDepth, retainedMask)
+                .SetName($"Dense_group_paths_survive_collapse_and_restoration(depth={groupDepth}, retained=0x{retainedMask:X4})");
+    }
+
+    [TestCaseSource(nameof(DenseGroupCollapseCases))]
+    public void Dense_group_paths_survive_collapse_and_restoration(int groupDepth, int retainedMask)
     {
         byte[] sharedKey = new byte[(groupDepth + 4 + 7) >> 3];
         new Random(8297).NextBytes(sharedKey);
@@ -1500,7 +1503,7 @@ public class Eip8297CanonicalTreeTests
             int shift = 4 - (groupDepth & 4);
             key[groupDepth >> 3] = (byte)((key[groupDepth >> 3] & ~(0xF << shift)) | (slot << shift));
             initial.Add((key, Value((byte)(slot + 1))));
-            if (slot != 0 && slot != 15) deletions.Add((key, null));
+            if ((retainedMask & (1 << slot)) == 0) deletions.Add((key, null));
         }
 
         using PbtTreeHarness bulk = new();
