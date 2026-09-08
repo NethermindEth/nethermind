@@ -699,8 +699,8 @@ public class FrameTxMempoolDosMeasurement
             builder.AddSingleton(_specProvider);
             builder.WithGenesisPostProcessor((_, worldState, specProvider) =>
             {
-                // Replaces the account TestBlockchain funds in genesis, clearing the placeholder code and
-                // storage slot it puts on this address so only the measured code is reachable.
+                // Replaces the account TestBlockchain funds in genesis, dropping the placeholder code so only
+                // the measured code is reachable. Its storage slot survives; no measured shape reads storage.
                 worldState.CreateAccount(Sender, SenderBalance);
                 if (senderCode.Length > 0) worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
                 worldState.RecalculateStateRoot();
