@@ -501,11 +501,7 @@ public class SnapshotBundleWarmerTests
         TrieNode child = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[33]);
         child.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
         child.Seal();
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, child);
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
-        TrieNode sharedParent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
-        sharedParent.ResolveNode(NullTrieNodeResolver.Instance, rootPath);
+        TrieNode sharedParent = EncodedParent(child);
 
         (byte[] oldRlp, Hash256 oldHash) = EncodedLeaf();
         Assert.That(oldHash, Is.Not.EqualTo(child.Keccak));
@@ -523,7 +519,7 @@ public class SnapshotBundleWarmerTests
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
 
         ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
-        TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
+        TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, sharedParent.Keccak!);
         TrieNode ReadWarmedChild() => (iterator
             ? warmedParent.CreateChildIterator().GetChildWithChildPath(warmer, ref childPath, 0)
             : warmedParent.GetChildWithChildPath(warmer, ref childPath, 0))!;
@@ -532,14 +528,39 @@ public class SnapshotBundleWarmerTests
         StateTrieStoreAdapter state = new(bundle, new ConcurrencyController(1));
         ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
         Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
-        TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);
+        TrieNode liveParent = live.FindCachedOrUnknown(rootPath, sharedParent.Keccak!);
         TrieNode liveChild = liveParent.GetChildWithChildPath(live, ref childPath, 0)!;
         Assert.That(() => liveChild.ResolveNode(live, childPath), Throws.Nothing);
         Assert.That(liveChild.FullRlp.ToArray(), Is.EqualTo(child.FullRlp.ToArray()));
-        TrieNode? retainedChild = iterator
-            ? liveParent.CreateChildIterator().GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, 0)
-            : liveParent.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, 0);
-        Assert.That(retainedChild, Is.SameAs(liveChild));
+    }
+
+    [Test]
+    public void Resolved_warmer_child_is_retained([Values] bool storage, [Values] bool iterator)
+    {
+        Hash256 address = TestItem.KeccakC;
+        TreePath rootPath = TreePath.Empty;
+        TreePath childPath = TreePath.FromHexString("0");
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode parent = EncodedParent(new TrieNode(NodeType.Unknown, hash, rlp));
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
+        using SnapshotBundle bundle = new(
+            FlatTestHelpers.MakeBundle(_pool, reader, content =>
+            {
+                if (storage) content.StorageNodes[(address, rootPath)] = parent;
+                else content.StateNodes[rootPath] = parent;
+            }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
+        ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
+        TrieNode? ReadChild(ITrieNodeResolver resolver) => iterator
+            ? parent.CreateChildIterator().GetChildWithChildPath(resolver, ref childPath, 0)
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0);
+
+        Assert.That(warmer.FindCachedOrUnknown(rootPath, parent.Keccak!), Is.SameAs(parent));
+        TrieNode warmedChild = ReadChild(warmer)!;
+        warmedChild.ResolveNode(warmer, childPath);
+        Assert.That(ReadChild(warmer), Is.SameAs(warmedChild));
+        Assert.That(ReadChild(NullTrieNodeResolver.Instance), Is.SameAs(warmedChild));
     }
 
     [Test]
@@ -559,6 +580,17 @@ public class SnapshotBundleWarmerTests
 
         Assert.Throws<NodeHashMismatchException>(() =>
             WarmerResolver(bundle, storage ? address : null).FindCachedOrUnknown(path, requestedHash));
+    }
+
+    private static TrieNode EncodedParent(TrieNode child)
+    {
+        TreePath rootPath = TreePath.Empty;
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, child);
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
+        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        parent.ResolveNode(NullTrieNodeResolver.Instance, rootPath);
+        return parent;
     }
 
     private static ITrieNodeResolver WarmerResolver(SnapshotBundle bundle, Hash256? address)

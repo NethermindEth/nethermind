@@ -187,7 +187,7 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Pruned_child_of_non_persisted_parent_is_not_retained([Values] bool iterator)
+    public void Pruned_child_is_not_retained([Values] bool iterator, [Values] bool persistParentAfterPruning)
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
         TrieNode child = new(NodeType.Unknown, hash, rlp);
@@ -198,6 +198,7 @@ public class TrieNodeTests
         resolver.FindCachedOrUnknown(path, hash).Returns(child);
         parent.GetChildWithChildPath(resolver, ref path, 0);
         parent.PrunePersistedRecursively(1);
+        if (persistParentAfterPruning) parent.IsPersisted = true;
         resolver.ClearReceivedCalls();
 
         for (int i = 0; i < 2; i++)
@@ -218,6 +219,7 @@ public class TrieNodeTests
         TrieNode warmer = new(NodeType.Unknown, hash);
         warmer.MarkWarmerOwned();
         TrieNode available = new(NodeType.Unknown, hash, rlp);
+        available.MarkWarmerOwned();
         TreePath path = TreePath.Empty;
         TrieNode parent = CreateParent(available, ref path);
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
@@ -229,6 +231,8 @@ public class TrieNodeTests
 
         Assert.That(ReadChild(), Is.SameAs(warmer));
         Assert.That(ReadChild(), Is.SameAs(missing));
+        Assert.That(ReadChild(), Is.SameAs(available));
+        available.ResolveNode(NullTrieNodeResolver.Instance, path);
         Assert.That(ReadChild(), Is.SameAs(available));
         resolver.ClearReceivedCalls();
         Assert.That(ReadChild(), Is.SameAs(available));
