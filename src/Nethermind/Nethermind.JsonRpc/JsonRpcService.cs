@@ -591,14 +591,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // "invalid params" (or a generic internal error) for history the node does not hold reads as a
             // retry-forever signal to indexers. EIP-4444 defines the accurate code.
             ResourceNotFoundException or TargetInvocationException { InnerException: ResourceNotFoundException } =>
-                GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
-                    ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
+                    ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction)),
 
             TargetParameterCountException or ArgumentException =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
@@ -612,7 +612,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction)),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, description, null, in request.IdRef, returnAction),
@@ -629,6 +629,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => HandleException(ex, methodName, request, returnAction)
         };
 
+        // GetExceptionText drops the stack trace from error.data on purpose, so the arms that answer with it and log
+        // nothing else of their own would leave the trace recoverable nowhere - a diagnosis regression, not part of
+        // the leak fix. Debug, because those arms are the caller's fault (#13156). HandleException logs at Error for
+        // itself and is deliberately not routed through here: a second line would be duplicate, not detail.
+        JsonRpcErrorResponse KeepTrace(Exception ex, JsonRpcErrorResponse response)
+        {
+            _logger.DebugError($"Exception during {methodName} execution", ex);
+            return response;
+        }
+
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(request, ex)}", ex);
@@ -644,7 +654,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
             // can investigate whether it's a legitimate pruning gap or a deeper issue.
             if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
-            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction);
+            // The Warn above carries the message but not the exception, so the trace still needs KeepTrace.
+            return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
     }
 

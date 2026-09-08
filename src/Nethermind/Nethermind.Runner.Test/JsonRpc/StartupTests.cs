@@ -246,14 +246,14 @@ public class StartupTests
     // it a multi-second wall-clock test that depends on the runner not being starved. The narrowing itself is
     // pinned instantly by the two IOException propagation tests above.
     [Explicit("~5s: waits out Kestrel's MinRequestBodyDataRate grace period")]
-    [TestCase("7fffffff", StatusCodes.Status408RequestTimeout, TestName = "Chunk size int.MaxValue never completes")]
-    public Task Kestrel_ValidButUnfulfilledChunkSize_StillTimesOut(string chunkSizeLine, int expectedStatusCode) =>
-        Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(chunkSizeLine, expectedStatusCode);
+    [TestCase("7fffffff", StatusCodes.Status408RequestTimeout, "Request body read timed out.", TestName = "Chunk size int.MaxValue never completes")]
+    public Task Kestrel_ValidButUnfulfilledChunkSize_StillTimesOut(string chunkSizeLine, int expectedStatusCode, string expectedMessage) =>
+        Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(chunkSizeLine, expectedStatusCode, expectedMessage);
 
-    [TestCase("80000000", StatusCodes.Status400BadRequest, TestName = "Chunk size int.MaxValue + 1")]
-    [TestCase("ffffffff", StatusCodes.Status400BadRequest, TestName = "Chunk size uint.MaxValue")]
-    [TestCase("zzz", StatusCodes.Status400BadRequest, TestName = "Non-hex chunk size")]
-    public async Task Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(string chunkSizeLine, int expectedStatusCode)
+    [TestCase("80000000", StatusCodes.Status400BadRequest, "Invalid request body.", TestName = "Chunk size int.MaxValue + 1")]
+    [TestCase("ffffffff", StatusCodes.Status400BadRequest, "Invalid request body.", TestName = "Chunk size uint.MaxValue")]
+    [TestCase("zzz", StatusCodes.Status400BadRequest, "Invalid request body.", TestName = "Non-hex chunk size")]
+    public async Task Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(string chunkSizeLine, int expectedStatusCode, string expectedMessage)
     {
         await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(Startup, CreateUrl());
         byte[] request = Encoding.ASCII.GetBytes(
@@ -265,10 +265,11 @@ public class StartupTests
         Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
         Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
         AssertErrorCodeResponse(body, ErrorCodes.InvalidRequest);
-        // "zzz" is rejected by Kestrel itself, with its own "Bad chunk size data." text. This endpoint serves
-        // unauthenticated callers, so what reaches them has to be a message this repo authored either way.
+        // Kestrel authors its own text for these - "Bad chunk size data." for "zzz", a MinRequestBodyDataRate
+        // message for the 408. This endpoint serves unauthenticated callers, so what reaches them has to be a
+        // message this repo authored, which is why the expectation is a literal per status rather than a passthrough.
         AssertJsonResponse(body, root =>
-            Assert.That(root.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("Invalid request body.")));
+            Assert.That(root.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo(expectedMessage)));
     }
 
     [Test]
