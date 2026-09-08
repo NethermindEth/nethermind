@@ -1276,7 +1276,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
         // Enough gas to push CALL operands and reach the cold-access charge for the EOA, but
         // 1 gas short of the cold-access charge for its delegation target. CALL pushes 7 stack
-        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then ConsumeAccountAccessGas
+        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then TryConsumeAccountAccessGas
         // for codeSource (cold), then for delegated (cold) — we cap at codeSource cold + 1 short.
         ulong pushOperandsCost = 7 * GasCostOf.VeryLow;
         ulong executionGas = pushOperandsCost + GasCostOf.Call + Eip8038Constants.ColdAccountAccess + GasCostOf.WarmStateRead - 1;
@@ -1681,6 +1681,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             changes = [testAccount];
             yield return new TestCaseData(changes, code, null, GasCostOf.SelfBalance, EvmExceptionType.OutOfGas)
             { TestName = "selfbalance_oog_post_state_access" };
+
+            code = new byte[1025];
+            code.AsSpan(0, 1024).Fill((byte)Instruction.PUSH0);
+            code[^1] = (byte)Instruction.SELFBALANCE;
+            foreach (bool sufficientGas in new[] { false, true })
+            {
+                yield return new TestCaseData(changes, code, null,
+                    1024UL * GasCostOf.Base + GasCostOf.SelfBalance - (sufficientGas ? 0UL : 1UL),
+                    sufficientGas ? EvmExceptionType.StackOverflow : EvmExceptionType.OutOfGas)
+                { TestName = sufficientGas ? "selfbalance_stack_overflow" : "selfbalance_oog_before_stack_overflow" };
+            }
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)

@@ -113,7 +113,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
 
                 FastBlocksAllocationStrategy strategy = new(TransferSpeedType.Receipts, block.Number, true);
-                SyncPeerAllocation peer = await syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
+                using SyncPeerAllocation peer = await syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer is not null)
                 {
@@ -135,10 +135,6 @@ namespace Nethermind.Init.Steps.Migrations
                     catch (Exception e)
                     {
                         if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.", e);
-                    }
-                    finally
-                    {
-                        syncPeerPool.Free(peer);
                     }
                 }
                 else

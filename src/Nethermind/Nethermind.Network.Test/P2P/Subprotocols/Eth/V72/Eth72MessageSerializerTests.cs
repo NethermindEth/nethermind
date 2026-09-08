@@ -138,9 +138,8 @@ public class Eth72MessageSerializerTests
         }
     }
 
-    [TestCase(Ckzg.BytesPerCell - 1)]
-    [TestCase(Ckzg.BytesPerCell + 1)]
-    public void CellsMessageSerializer_should_reject_non_canonical_cell_length(int cellLength) =>
+    [Test]
+    public void CellsMessageSerializer_should_reject_non_canonical_cell_length([Values(Ckzg.BytesPerCell - 1, Ckzg.BytesPerCell + 1)] int cellLength) =>
         AssertCellsMessageRejected([Hash256.Zero], [[new byte[cellLength]]], BlobCellMask.FromIndices([1]).ToBytes());
 
     [TestCase(1, 0)]
@@ -342,9 +341,8 @@ public class Eth72MessageSerializerTests
         Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
     }
 
-    [TestCase("size")]
-    [TestCase("hash")]
-    public void NewPooledTransactionHashesMessageSerializer_should_reject_empty_list_element(string field)
+    [Test]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_empty_list_element([Values("size", "hash")] string field)
     {
         Rlp sizes = Rlp.Encode(field == "size" ? [Rlp.OfEmptyList] : [Rlp.Encode(1)]);
         Rlp hashes = Rlp.Encode(field == "hash" ? [Rlp.OfEmptyList] : [Rlp.Encode(Hash256.Zero)]);
@@ -360,9 +358,8 @@ public class Eth72MessageSerializerTests
         Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
     }
 
-    [TestCase(0)]
-    [TestCase(2)]
-    public void NewPooledTransactionHashesMessageSerializer_should_reject_invalid_cell_mask_length(int maskLength)
+    [Test]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_invalid_cell_mask_length([Values(0, 2)] int maskLength)
     {
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
         using NewPooledTransactionHashesMessage72 message = new([1], [1], [Hash256.Zero], new byte[maskLength]);
@@ -409,9 +406,8 @@ public class Eth72MessageSerializerTests
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
     }
 
-    [TestCase(0UL)]
-    [TestCase(2_147_483_648UL)]
-    public void NewPooledTransactionHashesMessageSerializer_should_reject_non_positive_or_overflowed_sizes(ulong size)
+    [Test]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_non_positive_or_overflowed_sizes([Values(0UL, 2_147_483_648UL)] ulong size)
     {
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
 

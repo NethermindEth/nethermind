@@ -441,11 +441,8 @@ public class SnapProviderTests
         Assert.That(container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
     }
 
-    [TestCase("badreq-roothash.zip")]
-    [TestCase("badreq-roothash-2.zip")]
-    [TestCase("badreq-roothash-3.zip")]
-    [TestCase("badreq-trieexception.zip")]
-    public void Test_EdgeCases(string testFileName)
+    [Test]
+    public void Test_EdgeCases([Values("badreq-roothash.zip", "badreq-roothash-2.zip", "badreq-roothash-3.zip", "badreq-trieexception.zip")] string testFileName)
     {
         using DeflateStream decompressor =
             new(
