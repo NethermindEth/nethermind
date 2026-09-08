@@ -1100,7 +1100,7 @@ public class ArchiveProofTests
         finally
         {
             hold.Set();
-            joined = reclaim.Wait(TimeSpan.FromSeconds(5));
+            joined = reclaim.ContinueWith(static _ => { }, TaskContinuationOptions.ExecuteSynchronously).Wait(TimeSpan.FromSeconds(5));
         }
 
         return joined;
