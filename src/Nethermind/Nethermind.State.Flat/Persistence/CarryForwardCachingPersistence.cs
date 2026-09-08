@@ -159,7 +159,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached)) return cached;
+            if (current && parent._accounts.TryGetValue(address, out Account? cached) && parent.IsCurrent(generation)) return cached;
 
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
@@ -170,7 +170,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             (Address, UInt256) key = (address, slot);
             bool current = parent.IsCurrent(generation);
-            if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
+            if (current && parent._slots.TryGetValue(key, out CachedSlot cached) && parent.IsCurrent(generation))
             {
                 if (cached.Found) outValue = cached.Value;
                 return cached.Found;

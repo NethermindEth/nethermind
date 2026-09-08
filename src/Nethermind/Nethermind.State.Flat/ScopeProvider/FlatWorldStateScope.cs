@@ -23,6 +23,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
+    private readonly IWorldStateScopeProvider.ITrieWarmupSession _warmupSession;
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
@@ -65,22 +66,32 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _commitTarget = commitTarget;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
         _configuration = configuration;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
-        _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        try
+        {
+            _stateTree = new(
+                new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
+                logManager
+            )
+            {
+                RootHash = currentStateId.StateRoot.ToCommitment()
+            };
+
+            _warmupSession = CreateTrieWarmupSession();
+            _warmer.OnEnterScope();
+        }
+        catch
+        {
+            _warmupSession?.Dispose();
+            snapshotBundle.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()
@@ -88,6 +99,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         _snapshotBundle.Dispose();
+        _warmupSession.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -292,7 +304,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     public void HintWarmAccount(in ValueAddress address)
     {
         if (IsDisposed || _pausePrewarmer || (_warmupWriteSet is not null && !NeedsStateTrieWarmup(address.ToAddress()))) return;
-        GetWarmupSession()?.HintWarmAccount(in address);
+        _warmupSession.HintWarmAccount(in address);
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index) => HintWarmSlot(in address, in index, singleProducer: false);
@@ -300,11 +312,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     internal void HintWarmSlot(in ValueAddress address, in UInt256 index, bool singleProducer)
     {
         if (IsDisposed || _pausePrewarmer) return;
-        GetWarmupSession()?.HintWarmSlot(in address, in index, singleProducer);
+        if (_warmupSession is FlatTrieWarmupSession session) session.HintWarmSlot(in address, in index, singleProducer);
     }
-
-    private FlatTrieWarmupSession? GetWarmupSession() =>
-        _snapshotBundle.GetTrieWarmupSession(_baseStateId, _warmer, _logManager);
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
@@ -329,12 +338,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
+        _snapshotBundle.StopWarming();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        CancelHintBal();
+        _snapshotBundle.StopWarming();
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
@@ -440,8 +452,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             finally
             {
                 _dirtyAccounts.Clear();
-
-                scope._snapshotBundle.StopWarming();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]

@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -57,6 +59,74 @@ public class CarryForwardCachingPersistenceTests
         ReadAccount(cache, TestItem.AddressA);
 
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
+    }
+
+    [Test]
+    public void Read_CommitAndRefillDuringCacheLookup_ReturnsPinnedValue([Values] bool accountRead)
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        Action? duringLookup = null;
+        if (accountRead)
+            ReplaceCacheComparer(cache, "_accounts", new CallbackComparer<Address>(() => duringLookup?.Invoke()));
+        else
+            ReplaceCacheComparer(cache, "_slots", new CallbackComparer<(Address, UInt256)>(() => duringLookup?.Invoke()));
+
+        using IPersistence.IPersistenceReader oldReader = cache.CreateReader();
+        object expected = ReadValue(oldReader);
+        object? refilled = null;
+        duringLookup = () =>
+        {
+            duringLookup = null;
+            using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            {
+                batch.SetAccount(Address, new Account(2, 200));
+                batch.SetStorage(Address, 1, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x22")));
+            }
+            inner.ReaderState = Basis1;
+            inner.Account = new Account(2, 200);
+            inner.Slot = SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x22"));
+            using IPersistence.IPersistenceReader newReader = cache.CreateReader();
+            refilled = ReadValue(newReader);
+        };
+
+        object actual = ReadValue(oldReader);
+        using IPersistence.IPersistenceReader latestReader = cache.CreateReader();
+        object latest = ReadValue(latestReader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refilled, Is.Not.Null, "the commit must run inside the dictionary lookup");
+            Assert.That(refilled, Is.Not.EqualTo(expected));
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(latest, Is.EqualTo(refilled), "the old reader must not populate the new generation");
+        }
+
+        object ReadValue(IPersistence.IPersistenceReader reader)
+        {
+            if (accountRead) return reader.GetAccount(Address)!;
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(Address, 1, ref value), Is.True);
+            return value.ToEvmBytes();
+        }
+    }
+
+    private static void ReplaceCacheComparer<TKey>(CarryForwardCachingPersistence cache, string fieldName, IEqualityComparer<TKey> comparer)
+    {
+        FieldInfo field = typeof(CarryForwardCachingPersistence).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+        field.SetValue(cache, Activator.CreateInstance(field.FieldType, [comparer]));
+    }
+
+    private sealed class CallbackComparer<TKey>(Action duringLookup) : IEqualityComparer<TKey> where TKey : notnull
+    {
+        public bool Equals(TKey? x, TKey? y) => EqualityComparer<TKey>.Default.Equals(x, y);
+
+        public int GetHashCode(TKey key)
+        {
+            // Hashing runs after the reader's generation check but before the dictionary returns its value.
+            duringLookup();
+            return EqualityComparer<TKey>.Default.GetHashCode(key);
+        }
     }
 
     private static IEnumerable<TestCaseData> SlotReadCases()
@@ -119,6 +189,8 @@ public class CarryForwardCachingPersistenceTests
     public sealed class FakePersistence : IPersistence
     {
         public StateId ReaderState = Basis0;
+        public Account Account = new(1, 100);
+        public SlotValue Slot = SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x11"));
         public int AccountReads;
         public int SlotReads;
 
@@ -129,20 +201,24 @@ public class CarryForwardCachingPersistenceTests
 
         private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader
         {
+            private readonly StateId _state = parent.ReaderState;
+            private readonly Account _account = parent.Account;
+            private readonly SlotValue _slot = parent.Slot;
+
             public Account? GetAccount(Address address)
             {
                 parent.AccountReads++;
-                return new Account(1, 100);
+                return _account;
             }
 
             public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
             {
                 parent.SlotReads++;
-                outValue = SlotValue.FromSpanWithoutLeadingZero([0x11]);
+                outValue = _slot;
                 return true;
             }
 
-            public StateId CurrentState => parent.ReaderState;
+            public StateId CurrentState => _state;
             public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
