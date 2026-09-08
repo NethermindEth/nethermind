@@ -135,13 +135,16 @@ public class PayloadPreparationServiceTests
         // The cleanup timer evicts the entry between the candidate's creation and its publication.
         factory.OnContextCreated = () => service.Remove(payloadId);
 
-        service.Improve(payloadId, round);
+        // A round that started before the slot window makes the published candidate's own follow-up
+        // improvement skip itself, so what this call leaves behind is what the assertions observe.
+        service.Improve(payloadId, round, DateTimeOffset.UtcNow - 2 * TimePerSlot);
 
         IReadOnlyList<IBlockImprovementContext> contexts = factory.Contexts;
+        IBlockImprovementContext? stored = service.Stored(payloadId);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(contexts, Has.Count.EqualTo(1), "the candidate is re-offered, not rebuilt and orphaned");
-            Assert.That(service.Stored(payloadId), Is.SameAs(contexts[0]));
+            Assert.That(stored, Is.SameAs(contexts[0]));
             Assert.That(contexts[0].Disposed, Is.False);
         }
     }
@@ -208,8 +211,8 @@ public class PayloadPreparationServiceTests
 
         public void Remove(string payloadId) => _payloadStorage.TryRemove(payloadId, out _);
 
-        public void Improve(string payloadId, SharedCancellationTokenSource cts) =>
-            ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, DateTimeOffset.UtcNow, UInt256.Zero, cts);
+        public void Improve(string payloadId, SharedCancellationTokenSource cts, DateTimeOffset? startDateTime = null) =>
+            ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, startDateTime ?? DateTimeOffset.UtcNow, UInt256.Zero, cts);
 
         protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
