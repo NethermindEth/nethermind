@@ -16,6 +16,7 @@ using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -1125,6 +1126,37 @@ public class FrameTxProcessorTests
         {
             Assert.That(execution, Is.LessThanOrEqualTo(blockGasLimit), "the execution dimension fits the block");
             Assert.That(state, Is.GreaterThan(blockGasLimit), "only the state dimension exceeds it");
+            Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
+        }
+    }
+
+    /// <remarks>The mirror of the state case: the execution dimension carries the block budget as well as the
+    /// per-transaction cap, so a reservation under that cap but over the block is unestimable, matching what
+    /// <see cref="Eip8037BlockGasInclusionCheck"/> refuses even in an empty block.</remarks>
+    [Test]
+    public void EstimateGas_FrameTxWhoseExecutionBudgetAloneExceedsTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        const ulong blockGasLimit = 300_000;
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(blockGasLimit).TestObject;
+
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(execution, Is.GreaterThan(blockGasLimit), "only the execution dimension exceeds the block");
+            Assert.That(execution, Is.LessThanOrEqualTo(Eip7825Constants.DefaultTxGasLimitCap), "the per-tx cap cannot be what fires");
+            Assert.That(state, Is.LessThanOrEqualTo(blockGasLimit), "the state dimension fits the block");
+            Assert.That(Eip8037BlockGasInclusionCheck.Validate(blockGasLimit, 0, 0, execution, state),
+                Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.ExecutionDimensionExceeded),
+                "an empty block cannot hold this reservation");
             Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
         }
     }
