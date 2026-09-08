@@ -252,7 +252,7 @@ internal static class TrieUpdater<TKey, TPath>
         try
         {
             result = FoldMutations(store, metrics, group, ref root, operations, plan);
-            ValueHash256 hash = Place(group, ref result, PbtFourLevelGroupGeometry.RootPosition, 0);
+            ValueHash256 hash = group.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
             group.Flush();
             return hash;
         }
@@ -280,7 +280,7 @@ internal static class TrieUpdater<TKey, TPath>
         BucketPlan plan)
     {
         int depth = plan.Depth;
-        Resolve(ownerGroup, ref current);
+        ownerGroup.Resolve(ref current);
         if (operations.IsEmpty) return Subtree.Move(ref current);
 
         if (current.IsEmpty || current.IsLeaf)
@@ -436,7 +436,7 @@ internal static class TrieUpdater<TKey, TPath>
         for (int slot = 0; slot < boundaries.Length; slot++)
         {
             // Consume original boundary positions before ordered emission can pass their old locations.
-            Resolve(group, ref boundaries[slot]);
+            group.Resolve(ref boundaries[slot]);
             if (!boundaries[slot].IsEmpty) occupied |= 1 << slot;
         }
         if (occupied == 0) return default;
@@ -454,7 +454,7 @@ internal static class TrieUpdater<TKey, TPath>
                 if (frame.Stage == ComposeStage.LeftCompleted)
                 {
                     // The left root must be emitted before any descendants of the right subtree.
-                    frame.LeftHash = Place(group, ref result, frame.Path.Position - frame.Path.Width, group.GroupKey.BitDepth + frame.Path.Length + 1);
+                    frame.LeftHash = group.Write(frame.Path.Position - frame.Path.Width, group.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
                     frame.Stage = ComposeStage.RightCompleted;
                     if (halfWidth == 1)
                         result = Subtree.Move(ref boundaries[frame.Path.Slot + 1]);
@@ -464,7 +464,7 @@ internal static class TrieUpdater<TKey, TPath>
                 }
                 if (frame.Stage == ComposeStage.RightCompleted)
                 {
-                    ValueHash256 rightHash = Place(group, ref result, frame.Path.Position - 1, group.GroupKey.BitDepth + frame.Path.Length + 1);
+                    ValueHash256 rightHash = group.Write(frame.Path.Position - 1, group.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
                     TPath branchPath = BoundaryPath(group.GroupKey, frame.Path.Slot, frame.Path.Length);
                     result = new Subtree(branchPath, frame.LeftHash, rightHash);
                     frameCount--;
@@ -527,7 +527,7 @@ internal static class TrieUpdater<TKey, TPath>
             return;
         }
 
-        Resolve(group, ref current);
+        group.Resolve(ref current);
         if (!current.IsEmpty && current.IsLeaf)
         {
             boundaries[BoundarySlot(current.Key.Bytes, depth)] = Subtree.Move(ref current);
@@ -620,19 +620,6 @@ internal static class TrieUpdater<TKey, TPath>
         // A single reference does not prove prefix freedom for a variable-length child subset.
         prefixesValidated = validatePrefixes && (isSorted || equalLengths || operations.Length <= 2);
         return branchDepth;
-    }
-
-    internal static void Resolve(GroupMutationFrame group, ref Subtree subtree)
-    {
-        if (subtree.IsReference)
-            subtree = group.Take(subtree.Path!, hash: subtree.Hash);
-    }
-
-    internal static ValueHash256 Place(GroupMutationFrame group, ref Subtree subtree, int position, int depth)
-    {
-        if (subtree.IsEmpty) return default;
-        Resolve(group, ref subtree);
-        return group.Write(position, depth, ref subtree);
     }
 
     internal static void Dispose(Span<Subtree> subtrees)
@@ -927,8 +914,16 @@ internal static class TrieUpdater<TKey, TPath>
             return node;
         }
 
+        internal void Resolve(ref Subtree subtree)
+        {
+            if (subtree.IsReference)
+                subtree = Take(subtree.Path!, hash: subtree.Hash);
+        }
+
         internal ValueHash256 Write(int position, int depth, ref Subtree node)
         {
+            if (node.IsEmpty) return default;
+            Resolve(ref node);
             if (position < _nextPosition) throw new InvalidOperationException("PBT nodes must be placed in increasing position order.");
             CopyUntouchedBefore(position);
             Span<byte> encoding = _writer.GetSpan(position, node.EncodedLength(depth));

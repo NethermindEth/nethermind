@@ -73,10 +73,10 @@ public static partial class TrieUpdater
                     sharedGroup = new(store, new PbtStorageNodePath([(byte)(slot << 4)], 4), metrics, memoryProvider);
                     sharedGroups[slot] = sharedGroup;
                     zoneBoundaries[slot] = new(16, 16);
-                    Resolve(rootGroup, ref rootBoundaries.AsSpan()[slot]);
+                    rootGroup.Resolve(ref rootBoundaries.AsSpan()[slot]);
                     Decompose(sharedGroup, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan());
                 }
-                Resolve(sharedGroup, ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
+                sharedGroup.Resolve(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
                 worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
             }
 
@@ -96,7 +96,7 @@ public static partial class TrieUpdater
             Subtree result = Compose(rootGroup, rootBoundaries.AsSpan());
             try
             {
-                ValueHash256 hash = Place(rootGroup, ref result, PbtFourLevelGroupGeometry.RootPosition, 0);
+                ValueHash256 hash = rootGroup.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
                 rootGroup.Flush();
                 return hash;
             }
