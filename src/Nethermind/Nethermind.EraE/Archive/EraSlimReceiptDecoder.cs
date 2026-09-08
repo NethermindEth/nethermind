@@ -68,7 +68,9 @@ internal sealed class EraSlimReceiptDecoder
 
         int logsLength = ctx.ReadSequenceLength();
         int logsEnd = ctx.Position + logsLength;
-        int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd);
+        RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
+        int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, logsRlpLimit.Limit + 1);
+        Rlp.GuardLimit(logCount, (logsEnd - ctx.Position) / LogEntryDecoder.MinEncodedLength, logsRlpLimit);
 
         LogEntry[] logs = new LogEntry[logCount];
         for (int i = 0; i < logCount; i++)
