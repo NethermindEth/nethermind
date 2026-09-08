@@ -18,8 +18,10 @@ namespace Nethermind.Core.Test;
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = false)]
 public sealed class ChunkFilterAttribute : Attribute, ITestAction
 {
+    /// <inheritdoc/>
     public ActionTargets Targets => ActionTargets.Test;
 
+    /// <inheritdoc/>
     public void BeforeTest(ITest test)
     {
         if (test.IsSuite) return;
@@ -29,6 +31,7 @@ public sealed class ChunkFilterAttribute : Attribute, ITestAction
         }
     }
 
+    /// <inheritdoc/>
     public void AfterTest(ITest test)
     {
     }

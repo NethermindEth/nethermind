@@ -32,6 +32,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -91,10 +92,7 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource(configFile));
-            configProvider.Initialize();
-            resultQueue.Enqueue((configFile, configProvider));
+            resultQueue.Enqueue((configFile, LoadConfigProvider(configFile)));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
@@ -103,40 +101,42 @@ public class EthereumRunnerTests
 
         {
             // Special case for verify trie on state sync finished
-            ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
-            configProvider.Initialize();
+            ConfigProvider configProvider = LoadConfigProvider("configs/mainnet.json");
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Add(("mainnet-verify-trie-starter", configProvider));
         }
 
         {
             // Flashbots
-            ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
-            configProvider.Initialize();
+            ConfigProvider configProvider = LoadConfigProvider("configs/mainnet.json");
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
             result.Add(("flashbots", configProvider));
         }
 
         {
             // Censorship detector
-            ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
-            configProvider.Initialize();
+            ConfigProvider configProvider = LoadConfigProvider("configs/mainnet.json");
             configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
             result.Add(("censorship-detector", configProvider));
         }
 
-        // These runner smoke/step tests build a node from the production configs but with an in-memory or
-        // otherwise minimal DB, which cannot back the flat persisted-snapshot catalog. Run the patricia
-        // baseline (matching the default test suite); production flat default is exercised elsewhere.
-        foreach ((string _, ConfigProvider configProvider) in result)
+        return result;
+    }
+
+    private static ConfigProvider LoadConfigProvider(string configFile)
+    {
+        JsonConfigSource configSource = new(configFile);
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(configSource);
+        configProvider.Initialize();
+
+        if (!TestBlockchain.UseFlatDbByDefault &&
+            !configSource.GetRawValue(nameof(FlatDbConfig), nameof(IFlatDbConfig.Enabled)).IsSet)
         {
             configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         }
 
-        return result;
+        return configProvider;
     }
 
     [OneTimeTearDown]

@@ -202,8 +202,7 @@ public class TestBlockchain : IDisposable
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IConfigProvider configProvider = CreateConfigProvider();
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
@@ -236,17 +235,28 @@ public class TestBlockchain : IDisposable
         return this;
     }
 
+    private bool? _useFlatDb;
+
     /// <summary>
-    /// Whether this test chain uses the flat state backend. Defaults to flat (matching the production
-    /// default); set the <c>TEST_USE_TRIE=1</c> environment variable to run the suite under patricia, or set
-    /// this to <c>true</c>/<c>false</c> per fixture.
+    /// Whether generic test harnesses use the flat state backend by default.
+    /// </summary>
+    /// <remarks>Set <c>TEST_USE_TRIE=1</c> to select patricia.</remarks>
+    public static bool UseFlatDbByDefault => Environment.GetEnvironmentVariable("TEST_USE_TRIE") != "1";
+
+    /// <summary>
+    /// Whether this test chain uses the flat state backend. Defaults to <see cref="UseFlatDbByDefault"/> unless
+    /// its configuration explicitly selects a backend; set this property to override either default per fixture.
     /// </summary>
     /// <remarks>
-    /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
+    /// Backend-agnostic tests can leave this unspecified. Pin to <c>false</c> for tests that assert
     /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
     /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
     /// </remarks>
-    public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_TRIE") != "1";
+    public bool UseFlatDb
+    {
+        get => _useFlatDb ?? UseFlatDbByDefault;
+        set => _useFlatDb = value;
+    }
 
     protected virtual ChainSpec CreateChainSpec() => new();
 
@@ -280,6 +290,28 @@ public class TestBlockchain : IDisposable
                 ctx.Resolve<Configuration>().SlotTime
             ))
     ;
+
+    protected IConfigProvider CreateConfigProvider()
+    {
+        IConfig[] configs = [.. CreateConfigs()];
+        ConfigProvider configProvider = new(configs);
+        if (_useFlatDb is bool useFlatDb)
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = useFlatDb;
+            return configProvider;
+        }
+
+        foreach (IConfig config in configs)
+        {
+            if (config is IFlatDbConfig)
+            {
+                return configProvider;
+            }
+        }
+
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDbByDefault;
+        return configProvider;
+    }
 
     protected virtual IEnumerable<IConfig> CreateConfigs() => [new BlocksConfig()
         {

@@ -114,7 +114,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
+        IConfigProvider configProvider = CreateConfigProvider();
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         configurer?.Invoke(builder);

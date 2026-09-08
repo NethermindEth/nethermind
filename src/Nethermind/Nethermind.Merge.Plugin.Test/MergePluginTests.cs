@@ -16,6 +16,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Db;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -86,12 +87,31 @@ public class MergePluginTests
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
+    [Test]
+    public void Build_container_preserves_explicit_backend_selection([Values] bool enabled)
+    {
+        FlatDbConfig flatDbConfig = new() { Enabled = enabled };
+        ConfigProvider configProvider = new(_mergeConfig, _jsonRpcConfig, flatDbConfig);
+
+        using IContainer container = BuildContainer(configProvider, preserveFlatDbConfig: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
+            Assert.That(flatDbConfig.Enabled, Is.EqualTo(enabled));
+        }
+    }
+
+    private IContainer BuildContainer(
+        IConfigProvider? configProvider = null,
+        Action<ContainerBuilder>? configure = null,
+        bool preserveFlatDbConfig = false)
     {
         IConfigProvider effectiveConfigProvider = configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig);
-        // These plugin-wiring tests run the patricia baseline: the flat backend's persisted-snapshot catalog
-        // needs a DB that isn't wired here, and the production flat default would otherwise fail resolution.
-        effectiveConfigProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+        if (!preserveFlatDbConfig)
+        {
+            effectiveConfigProvider.GetConfig<IFlatDbConfig>().Enabled = TestBlockchain.UseFlatDbByDefault;
+        }
 
         // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
         // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.

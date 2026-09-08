@@ -97,7 +97,7 @@ public class WorldStateManagerTests
         IDb blockInfosDb;
         {
             using IContainer ctx = new ContainerBuilder()
-                .AddModule(new TestNethermindModule(configProvider))
+                .AddModule(new TestNethermindModule(configProvider, preserveFlatDbConfig: true))
                 .AddSingleton<IFinalizedStateProvider>(manualFinalizedStateProvider)
                 .AddSingleton(blockTree)
                 .Build();
@@ -154,7 +154,7 @@ public class WorldStateManagerTests
         }
 
         using IContainer ctx = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider))
+            .AddModule(new TestNethermindModule(configProvider, preserveFlatDbConfig: true))
             .Build();
 
         IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;

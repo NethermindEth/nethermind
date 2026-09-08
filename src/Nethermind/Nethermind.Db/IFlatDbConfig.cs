@@ -16,7 +16,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
-    [ConfigItem(Description = "Enabled", DefaultValue = "true")]
+    [ConfigItem(Description = "Enables the flat-state DB backend. Set to false to use the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]

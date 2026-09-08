@@ -145,7 +145,7 @@ public class HealingTreeTests
             configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
-                .AddModule(new TestNethermindModule(configProvider))
+                .AddModule(new TestNethermindModule(configProvider, preserveFlatDbConfig: true))
                 .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
                 .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
                 .Build();

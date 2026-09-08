@@ -78,7 +78,7 @@ internal class Program
             new("--chunk", "-c") { Description = "Run only the Nth of M interleaved chunks of the collected fixture files, e.g. '2of8'. Used to split a large fixture set across CI jobs." };
 
         public static Option<bool> FlatDb { get; } =
-            new("--flatdb") { Description = "Run with the flat state layout (equivalent to setting TEST_USE_FLAT=1)." };
+            new("--flatdb") { Description = "Run with the flat state layout, overriding TEST_USE_TRIE." };
 
         public static Option<bool?> ParallelExecution { get; } =
             new("--parallelExecution") { Description = "Force BAL parallel execution on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
@@ -156,9 +156,9 @@ internal class Program
 
         if (parseResult.GetValue(Options.FlatDb))
         {
-            // The test fixture bases read TEST_USE_FLAT per test, so setting it here covers
+            // The test fixture bases read TEST_USE_TRIE per test, so clearing it here covers
             // both blockchain/engine and state test runs without plumbing a flag through.
-            Environment.SetEnvironmentVariable("TEST_USE_FLAT", "1");
+            Environment.SetEnvironmentVariable("TEST_USE_TRIE", null);
         }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
