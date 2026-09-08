@@ -3793,6 +3793,40 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        /// <summary>
+        /// Head processing drops the sender from the account cache before it clears the mined transactions out of
+        /// the bucket, and the ready-filtered snapshot takes no lock against it. A reader in that window sees a
+        /// stale entry ahead of one already at the account nonce, and must read it as spent rather than as a gap
+        /// blocking everything behind it.
+        /// </summary>
+        [Test]
+        public void Stale_ordinary_tx_does_not_hide_the_next_one_at_the_account_nonce()
+        {
+            _txPool = CreatePool();
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+
+            Transaction mined = Build.A.Transaction.WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction next = Build.A.Transaction.WithNonce(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(mined, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(next, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // The account cache half of a head change, which runs before the bucket is cleaned.
+            _stateProvider.IncrementNonce(sender);
+            _txPool.ResetAddress(sender);
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True);
+                Assert.That(readyForSender, Does.Contain(next));
+            }
+        }
+
         /// <summary>An account nonce past the keyed sequences, which is the ordinary shape once a sender has sent anything.</summary>
         private const ulong AccountNonceAheadOfKeyedSequences = 100;
 

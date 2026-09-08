@@ -341,26 +341,30 @@ namespace Nethermind.TxPool
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
         /// <remarks>An EIP-8250 keyed set does not use the account nonce, so readiness is per-key currency instead.</remarks>
-        private bool IsNonceReady(Transaction tx, Address sender) =>
+        private bool IsNonceReady(Transaction tx, ulong accountNonce) =>
             KeyedNonceManager.UsesKeyedNonce(tx)
                 ? IsKeyedNonceCurrent(tx)
-                : tx.Nonce == _accounts.GetNonce(sender);
+                : tx.Nonce == accountNonce;
 
         /// <summary>Whether a sender's bucket holds anything includable in the next block.</summary>
         /// <remarks>Scanned rather than judged on the bucket's lowest entry: an EIP-8250 keyed transaction is
         /// ordered by its own sequence, so it can sort either side of an eligible account-nonce transaction whose
-        /// domain it says nothing about. Account-nonce entries do execute in nonce order, so once one of them is
-        /// unready the rest are too and the scan skips them; only keyed entries are judged all the way down.</remarks>
+        /// domain it says nothing about. Account-nonce entries do execute in nonce order, so once one at or above
+        /// the account nonce is unready the rest are too and the scan skips them; only keyed entries are judged all
+        /// the way down.</remarks>
         private bool HasReadyTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
         {
+            ulong accountNonce = _accounts.GetNonce(sender);
             bool accountNonceBlocked = false;
             foreach (Transaction tx in bucket)
             {
                 bool keyed = KeyedNonceManager.UsesKeyedNonce(tx);
                 if (!keyed && accountNonceBlocked) continue;
-                if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, sender)) return true;
+                if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, accountNonce)) return true;
 
-                accountNonceBlocked |= !keyed;
+                // An entry under the account nonce is stale rather than blocking: it awaits a head change the
+                // pool has not processed yet, and the next entry may sit exactly at the nonce.
+                accountNonceBlocked |= !keyed && tx.Nonce >= accountNonce;
             }
 
             return false;
