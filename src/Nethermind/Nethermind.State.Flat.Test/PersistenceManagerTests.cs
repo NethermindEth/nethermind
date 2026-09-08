@@ -125,40 +125,61 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void RunMaintenance_HandsOutABatchAtTheCurrentStateAndDisposesIt()
+    public void RunMaintenance_HandsOutASyncBatchAndDisposesIt()
     {
         IPersistence.IWriteBatch batch = Substitute.For<IPersistence.IWriteBatch>();
-        _persistence.CreateWriteBatch(Block0, Block0, Arg.Any<WriteFlags>()).Returns(batch);
+        _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Arg.Any<WriteFlags>()).Returns(batch);
         IPersistence.IWriteBatch? received = null;
 
-        _persistenceManager.RunMaintenance(b => received = b, CancellationToken.None);
+        bool applied = _persistenceManager.RunMaintenance(b => received = b, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(applied, Is.True);
             Assert.That(received, Is.SameAs(batch));
-            _persistence.Received(1).CreateWriteBatch(Block0, Block0, WriteFlags.None);
+            _persistence.Received(1).CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.None);
             batch.Received(1).Dispose();
-            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "a maintenance batch is written under the state the base already holds, so the persisted state id does not move and the batch keeps its WAL");
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "a sync batch never writes the state pointer, so a clear landing under it cannot be undone by the batch's dispose");
         }
     }
 
     [Test]
-    public void RunMaintenance_OnAClearedBase_HandsOutASyncBatchRatherThanOneAtTheCachedState()
+    public void RunMaintenance_IsRefusedWhileAStateSyncWrites_AndAllowedAgainWhenItEnds()
     {
-        StateId cached = _persistenceManager.GetCurrentPersistedStateId();
-        IPersistence.IPersistenceReader cleared = Substitute.For<IPersistence.IPersistenceReader>();
-        cleared.CurrentState.Returns(StateId.PreGenesis);
-        _persistence.CreateReader().Returns(cleared);
-        IPersistence.IWriteBatch batch = Substitute.For<IPersistence.IWriteBatch>();
-        _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Arg.Any<WriteFlags>()).Returns(batch);
+        IPersistence.IPersistenceReader finalized = Substitute.For<IPersistence.IPersistenceReader>();
+        StateId pivot = CreateStateId(42);
+        finalized.CurrentState.Returns(pivot);
+        _persistence.CreateReader(ReaderFlags.Sync).Returns(finalized);
+        _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Arg.Any<WriteFlags>()).Returns(_ => Substitute.For<IPersistence.IWriteBatch>());
+        int invoked = 0;
 
-        _persistenceManager.RunMaintenance(_ => { }, CancellationToken.None);
+        _persistenceManager.BeginStateSync();
+        bool duringSync = _persistenceManager.RunMaintenance(_ => invoked++, CancellationToken.None);
+        _persistenceManager.EndStateSync();
+        bool afterSync = _persistenceManager.RunMaintenance(_ => invoked++, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cached, Is.EqualTo(Block0));
-            _persistence.Received(1).CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.None);
-            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "the cached id is stale after a clear; the batch must follow the base's own pointer or it is refused as applied on top of the wrong state");
+            Assert.That(duringSync, Is.False, "a maintenance batch may never interleave with a state sync's writes");
+            Assert.That(afterSync, Is.True);
+            Assert.That(invoked, Is.EqualTo(1));
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(pivot), "the end of a sync re-reads the pointer through a sync reader, never through the cached one");
+        }
+    }
+
+    [Test]
+    public void ClearForStateSync_ClearsTheBaseAndRefusesMaintenanceUntilTheSyncEnds()
+    {
+        int invoked = 0;
+
+        _persistenceManager.ClearForStateSync();
+        bool applied = _persistenceManager.RunMaintenance(_ => invoked++, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _persistence.Received(1).Clear();
+            Assert.That(applied, Is.False);
+            Assert.That(invoked, Is.Zero);
         }
     }
 

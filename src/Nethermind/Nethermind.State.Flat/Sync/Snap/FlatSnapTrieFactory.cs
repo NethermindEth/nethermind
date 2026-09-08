@@ -17,14 +17,14 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// EnsureInitialize/FinalizeSync are driven by the snap-sync runner at start/end of the run,
 /// so they don't need internal locking — they're never called concurrently with CreateXxxTree.
 /// </summary>
-public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
+public class FlatSnapTrieFactory(IPersistence persistence, IPersistenceManager persistenceManager, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
 
     public void EnsureInitialize()
     {
         if (_logger.IsInfo) _logger.Info("Clearing database");
-        persistence.Clear();
+        persistenceManager.ClearForStateSync();
     }
 
     public void FinalizeSync() => persistence.Flush();
