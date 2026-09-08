@@ -2552,6 +2552,9 @@ jobs:
                  printf "cpu              %.1f s\n", (last-first)/1000000
                  printf "nr_throttled     %s\n", thr
                }' "${samples}" | tee "${{ runner.temp }}/pressure-summary.txt"
+          # Per-sample rows let a CPU difference be placed in a phase (startup, blocks, shutdown).
+          echo "--- samples: epoch,mem_current,anon,mem_psi_avg10,cpu_usec,nr_throttled ---"
+          cat "${samples}"
           {
             echo "### Pressure: ${{ matrix.tag }} run ${{ matrix.run }}"
             echo '```'
