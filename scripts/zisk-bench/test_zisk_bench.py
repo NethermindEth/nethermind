@@ -5,8 +5,10 @@
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+import unittest.mock
 
 
 def load(name: str):
@@ -22,8 +24,8 @@ def load(name: str):
 PARSER = load("parse-stats.py")
 REPORT = load("report.py")
 
-# Verbatim shape of `ziskemu -X --no-thousands-sep`, which is what the parse is pinned to: the output
-# hash first, then the REPORT, then the cost distribution with its own separator rows.
+# Verbatim shape of `ziskemu -X`, which is what the parse is pinned to: the output hash first, then
+# the REPORT, then the cost distribution with its own separator rows.
 ZISKEMU_LOG = """d38ffa0643d60c76a25c4ab4ffeeb40d99f2dbedf240b3854b23a9d50233a8330101000000000000000100
 
 REPORT
@@ -43,6 +45,40 @@ BASE                        287309824   0.58%
 TOTAL                     49687273981 100.00%
 """
 
+# Copied out of the measurement job for block 25526356 (actions/runs/34105317341). The pinned image
+# groups digits even though the recipe passes `--no-thousands-sep`, which is why both parsers have to
+# accept separators; before they did, the very first block failed with "no STEPS line in the log".
+ZISKEMU_LOG_WITH_SEPARATORS = """018cc34e1eb14c42412dc26aeca8e7e1bf540f216753c7431568985b66ecca1f0101000000000000000100
+
+REPORT\x20
+----------------------------------------
+STEPS                        406,243,606
+
+COST DISTRIBUTION                   COST       %
+------------------------------------------------
+MAIN                      27,624,565,208  61.34%
+OPCODES                    6,223,986,843  13.82%
+PRECOMPILES                6,875,247,706  15.27%
+MEMORY                     4,027,415,979   8.94%
+                        ------------------------
+VARIABLE                  44,751,215,736  99.36%
+BASE                         287,309,824   0.64%
+                        ------------------------
+TOTAL                     45,038,525,560 100.00%
+
+FROPS                      4,877,143,744  10.90%
+ROM USAGE                        878,275  20.94%
+
+COST BY BASE OPCODE                COUNT       %            COST       %
+------------------------------------------------------------------------
+OP and                        18,991,411   4.67%   1,139,484,660   2.55%
+OP add                        46,947,817  11.56%     710,601,755   1.59%
+
+COST BY PRECOMPILED OPCODE           COUNT       %            COST       %
+--------------------------------------------------------------------------
+OP keccak                        165,632   0.04%   6,369,212,928  14.23%
+"""
+
 
 def row(name, steps, total, main=1, opcodes=1, precompiles=1, memory=1):
     return {
@@ -60,10 +96,11 @@ class ParseStatsTests(unittest.TestCase):
             if into is not None:
                 results.write_text(json.dumps(into), encoding="utf-8")
 
-            PARSER.main.__globals__["sys"].argv = [
+            argv = [
                 "parse-stats.py", "--input", name, "--log", str(log_path), "--into", str(results),
             ]
-            PARSER.main()
+            with unittest.mock.patch.object(sys, "argv", argv):
+                PARSER.main()
             return json.loads(results.read_text(encoding="utf-8"))
 
     def test_reads_steps_and_every_cost_bucket(self):
@@ -78,6 +115,19 @@ class ParseStatsTests(unittest.TestCase):
             "precompiles": 8023714093,
             "memory": 5334595573,
             "total": 49687273981,
+        })
+
+    def test_reads_the_grouped_digits_the_pinned_image_actually_prints(self):
+        rows = self.parse(ZISKEMU_LOG_WITH_SEPARATORS, name="25526356.ssz")
+
+        self.assertEqual(rows[0], {
+            "input": "25526356.ssz",
+            "steps": 406243606,
+            "main": 27624565208,
+            "opcodes": 6223986843,
+            "precompiles": 6875247706,
+            "memory": 4027415979,
+            "total": 45038525560,
         })
 
     def test_a_fuller_report_does_not_disturb_the_parse(self):
@@ -165,14 +215,64 @@ class ReportTests(unittest.TestCase):
         body, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertIn("**all 1 blocks**", body)
-        self.assertIn("| new | 5,000 | new |", body)
+        self.assertIn("| new | 500 | new | 5,000 | new |", body)
+
+    def test_a_flagged_regression_is_visible_in_the_body_not_only_the_output(self):
+        current = {"a.ssz": row("a.ssz", 100, 1100)}
+        baseline = {"a.ssz": row("a.ssz", 100, 1000)}
+
+        body, _ = REPORT.render(current, baseline, "c0ffee")
+
+        self.assertIn("Prover cost is up against the baseline", body)
+
+    def test_the_per_block_threshold_also_covers_the_totals_row(self):
+        # The aggregate delta is a cost-weighted mean of the per-block ones, so it cannot exceed the
+        # largest of them: a totals row over the threshold always has a block over it too.
+        current = {"big.ssz": row("big.ssz", 100, 1_000_000), "small.ssz": row("small.ssz", 100, 1_100)}
+        baseline = {"big.ssz": row("big.ssz", 100, 1_000_000), "small.ssz": row("small.ssz", 100, 1_000)}
+
+        body, regressed = REPORT.render(current, baseline, "c0ffee")
+
+        self.assertTrue(regressed)
+        self.assertIn("**+0.010%**", body)  # the totals row alone would have stayed quiet
+
+    def test_a_block_dropped_from_the_benchmark_is_called_out(self):
+        # Silence here would shrink the benchmark without shrinking the confidence in it.
+        current = {"a.ssz": row("a.ssz", 100, 1000)}
+        baseline = {"a.ssz": row("a.ssz", 100, 1000), "gone.ssz": row("gone.ssz", 100, 1000)}
+
+        body, _ = REPORT.render(current, baseline, "c0ffee")
+
+        self.assertIn("this run did not: gone", body)
+
+    def test_the_baseline_commit_is_named_so_the_delta_can_be_attributed(self):
+        rows = {"a.ssz": row("a.ssz", 100, 1000)}
+
+        body, _ = REPORT.render(rows, rows, "c0ffee", "ba5e1111aaaa", "ba5e1111aaaa")
+
+        self.assertIn("Compared against `ba5e1111aaaa`.", body)
+
+    def test_a_baseline_from_another_commit_says_so(self):
+        # `restore-keys` serves the newest matching cache, which need not be the pull request's base.
+        rows = {"a.ssz": row("a.ssz", 100, 1000)}
+
+        body, _ = REPORT.render(rows, rows, "c0ffee", "0lde5t000000", "ba5e1111aaaa")
+
+        self.assertIn("not this pull request's base (`ba5e1111aaaa`)", body)
+
+    def test_an_unrecorded_baseline_is_not_passed_off_as_a_known_commit(self):
+        rows = {"a.ssz": row("a.ssz", 100, 1000)}
+
+        body, _ = REPORT.render(rows, rows, "c0ffee")
+
+        self.assertIn("Compared against an unrecorded master commit.", body)
 
     def test_without_a_baseline_it_reports_absolutes_only(self):
         current = {"a.ssz": row("a.ssz", 100, 1000)}
 
         body, regressed = REPORT.render(current, None, "c0ffee")
 
-        self.assertIn("No master baseline cached yet", body)
+        self.assertIn("No baseline was restored", body)
         self.assertNotIn("Δ", body)
         self.assertFalse(regressed)
 
@@ -186,6 +286,28 @@ class ReportTests(unittest.TestCase):
 
         self.assertIn("| 25532382 |", body)
         self.assertNotIn("25532382.ssz", body)
+
+
+class BaselineFileTests(unittest.TestCase):
+    """A measured file is the bare array `parse-stats.py` writes; a staged baseline wraps it."""
+
+    def load(self, document):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            return REPORT.load(path)
+
+    def test_reads_a_freshly_measured_array(self):
+        rows, commit = self.load([row("a.ssz", 100, 1000)])
+
+        self.assertEqual(list(rows), ["a.ssz"])
+        self.assertEqual(commit, "")
+
+    def test_reads_a_staged_baseline_and_its_commit(self):
+        rows, commit = self.load({"commit": "ba5e1111aaaa", "rows": [row("a.ssz", 100, 1000)]})
+
+        self.assertEqual(list(rows), ["a.ssz"])
+        self.assertEqual(commit, "ba5e1111aaaa")
 
 
 class InputListTests(unittest.TestCase):
