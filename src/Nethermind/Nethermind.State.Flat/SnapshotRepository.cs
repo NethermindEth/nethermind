@@ -449,10 +449,16 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber = 0)
     {
         using ArrayPoolList<IDisposable> deferred = new(0);
+        Exception? primaryFailure = null;
         try
         {
             using Lock.Scope scope = _retention.Sync.EnterScope();
             return RemoveOrphanedStates(committedHead, forkChoiceHead, minBlockNumber, deferred);
+        }
+        catch (Exception exception)
+        {
+            primaryFailure = exception;
+            throw;
         }
         finally
         {
@@ -464,7 +470,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 try { snapshot.Dispose(); }
                 catch (Exception exception) { (failures ??= []).Add(exception); }
             }
-            if (failures is not null) throw new AggregateException(failures);
+            if (failures is not null)
+            {
+                if (primaryFailure is not null) failures.Insert(0, primaryFailure);
+                throw new AggregateException(failures);
+            }
         }
     }
 
@@ -492,16 +502,25 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         ReadOnlySpan<(long First, long Last)> ambiguousHeights = MergeGaps(gaps.AsSpan());
 
         int gapIndex = 0;
+        int ambiguousCandidates = 0;
         using PooledSet<StateId> orphans = [];
         foreach (StateId stateId in inMemory)
         {
             if (retained.Contains(stateId)) continue;
-            if (IsAmbiguousHeight(Height(stateId), ambiguousHeights, ref gapIndex) && !HasOnlyOrphanedParents(stateId, orphans)) continue;
+            if (IsAmbiguousHeight(Height(stateId), ambiguousHeights, ref gapIndex) && !HasOnlyOrphanedParents(stateId, orphans))
+            {
+                ambiguousCandidates++;
+                continue;
+            }
             orphans.Add(stateId);
         }
         // With no in-memory orphan, head-height probes cover recently converted payload siblings;
         // other persisted fork heights are left to normal persistence pruning.
-        if (orphans.Count == 0 && !HasPersistedForkAt(committedHead) && !HasPersistedForkAt(forkChoiceHead)) return 0;
+        if (orphans.Count == 0 && !HasPersistedForkAt(committedHead) && !HasPersistedForkAt(forkChoiceHead))
+        {
+            LogAmbiguousCandidates();
+            return 0;
+        }
 
         // A sibling may have been converted before it aged out of recent-commit retention.
         using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(minBlockNumber, long.MaxValue);
@@ -511,6 +530,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // orphan; ascending traversal then propagates that decision through its descendants.
         persisted.AsSpan().Sort();
         gapIndex = 0;
+        ambiguousCandidates = 0;
         int memoryIndex = 0;
         int persistedIndex = 0;
         while (memoryIndex < inMemory.Count || persistedIndex < persisted.Count)
@@ -519,9 +539,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 && (persistedIndex == persisted.Count || inMemory[memoryIndex].CompareTo(persisted[persistedIndex]) <= 0);
             StateId stateId = fromMemory ? inMemory[memoryIndex++] : persisted[persistedIndex++];
             if (retained.Contains(stateId)) continue;
-            bool competingHeight = (fromMemory || retainedHeights.Contains(stateId.BlockNumber))
-                && !IsAmbiguousHeight(Height(stateId), ambiguousHeights, ref gapIndex);
-            if (!orphans.Contains(stateId) && !competingHeight && !HasOnlyOrphanedParents(stateId, orphans)) continue;
+            bool ambiguous = IsAmbiguousHeight(Height(stateId), ambiguousHeights, ref gapIndex);
+            bool competingHeight = (fromMemory || retainedHeights.Contains(stateId.BlockNumber)) && !ambiguous;
+            if (!orphans.Contains(stateId) && !competingHeight && !HasOnlyOrphanedParents(stateId, orphans))
+            {
+                if (ambiguous) ambiguousCandidates++;
+                continue;
+            }
             orphans.Add(stateId);
         }
 
@@ -534,7 +558,14 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
         foreach (StateId stateId in persisted)
             if (orphans.Contains(stateId) && RemovePersistedStateExact(stateId, deferred)) pruned++;
+        LogAmbiguousCandidates();
         return pruned;
+
+        void LogAmbiguousCandidates()
+        {
+            if (ambiguousCandidates > 0 && _logger.IsDebug)
+                _logger.Debug($"Preserved {ambiguousCandidates} snapshot candidate entries during orphan pruning because compaction gaps leave their ancestry ambiguous.");
+        }
     }
 
     private static ReadOnlySpan<(long First, long Last)> MergeGaps(Span<(long First, long Last)> gaps)

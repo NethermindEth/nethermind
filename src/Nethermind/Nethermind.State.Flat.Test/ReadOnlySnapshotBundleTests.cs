@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -30,6 +31,82 @@ public class ReadOnlySnapshotBundleTests
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
         new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
             PersistedSnapshotStack.Empty(recordDetailedMetrics));
+
+    [Test]
+    public async Task SiblingPruning_PreservesLeasedReads_AndBackstopResumesAfterRelease([Values] bool persistedFork)
+    {
+        using FlatTestContainer tier = new();
+        SnapshotRepository repository = tier.Repository;
+        SnapshotRetention retention = tier.Resolve<SnapshotRetention>();
+        StateId start = new(0, TestItem.KeccakA);
+        StateId canonicalParent = new(1, TestItem.KeccakA);
+        StateId canonicalHead = new(2, TestItem.KeccakA);
+        StateId forkParent = new(1, TestItem.KeccakB);
+        StateId readerHead = new(2, TestItem.KeccakB);
+        StateId unrelated = new(2, TestItem.KeccakC);
+        Account account = new(1, 100);
+        foreach ((StateId from, StateId to) in new[]
+                 { (start, canonicalParent), (canonicalParent, canonicalHead), (start, forkParent), (forkParent, readerHead), (canonicalParent, unrelated) })
+        {
+            using Snapshot snapshot = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            snapshot.Content.Accounts[TestItem.AddressA] = account;
+            if (persistedFork && (to == forkParent || to == readerHead))
+            {
+                tier.Loader.ConvertAndRegister(snapshot);
+            }
+            else
+            {
+                snapshot.AcquireLease();
+                if (!repository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
+                {
+                    snapshot.Dispose();
+                    Assert.Fail($"Duplicate snapshot {to}");
+                }
+                repository.AddStateId(to);
+            }
+        }
+        repository.SetLastCommittedStateId(canonicalHead);
+
+        retention.Register(readerHead);
+        ReadOnlySnapshotBundle bundle;
+        try
+        {
+            AssembledSnapshotResult assembled = repository.AssembleSnapshots(readerHead, start, 2);
+            bundle = new ReadOnlySnapshotBundle(assembled.InMemory, Substitute.For<IPersistence.IPersistenceReader>(),
+                false, new PersistedSnapshotStack(assembled.Persisted, false), retention, readerHead);
+        }
+        catch
+        {
+            retention.Release(readerHead);
+            throw;
+        }
+
+        using (bundle)
+        {
+            await Task.Run(() => repository.RemoveSiblingAndDescendents(canonicalParent));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(repository.HasState(readerHead), Is.False);
+                Assert.That(bundle.SnapshotCount, Is.EqualTo(2));
+                Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+                Assert.That(repository.HasState(unrelated), Is.True);
+            }
+
+            using AssembledSnapshotResult retry = repository.AssembleSnapshots(readerHead, start, 2);
+            Assert.That(retry.SnapshotCount, Is.Zero, "a later assembly cannot use the removed branch");
+            Assert.That(repository.RemoveOrphanedStates(canonicalHead, canonicalHead, 1), Is.Zero,
+                "the missing registered head makes ancestry classification conservative");
+        }
+
+        Assert.That(repository.RemoveOrphanedStates(canonicalHead, canonicalHead, 1), Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.HasState(forkParent), Is.False);
+            Assert.That(repository.HasState(unrelated), Is.False);
+            Assert.That(repository.HasState(canonicalHead), Is.True);
+        }
+    }
 
     [Test]
     public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)

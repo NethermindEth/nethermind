@@ -334,15 +334,14 @@ public class ForkchoiceUpdatedHandler(
         }
 
         BlockHeader? recoveryHead = PrunedStateRecovery.FindRecoveryHead(_blockTree, stateReader!, newHeadHeader);
-        if (recoveryHead is null)
+        Block? block = recoveryHead is null ? null : _blockTree.FindBlock(recoveryHead.Hash!, BlockTreeLookupOptions.None);
+        if (block is null)
         {
-            // State can arrive without a head change, so a failed search is cached only briefly.
+            // State or a missing body can arrive without a head change, so failures are cached only briefly.
             Volatile.Write(ref _lastRecoveryFailure, new(newHeadHeader.Hash!, _blockTree.HeadHash, _timestamper.UtcNow));
             return false;
         }
-
-        Block? block = _blockTree.FindBlock(recoveryHead.Hash!, BlockTreeLookupOptions.None);
-        if (block is null) return false;
+        recoveryHead = block.Header;
 
         if (_logger.IsInfo) _logger.Info($"Re-executing through {recoveryHead.ToString(BlockHeader.Format.Short)} toward {newHeadHeader.ToString(BlockHeader.Format.Short)}: its state has been pruned.");
 

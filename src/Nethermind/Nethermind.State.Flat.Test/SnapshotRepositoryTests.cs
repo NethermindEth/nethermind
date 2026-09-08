@@ -11,8 +11,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -769,6 +772,81 @@ public class SnapshotRepositoryTests
                 Assert.That(await pruning, Is.EqualTo(2));
         }
         Assert.That(otherCleaned, Is.True, "all detached leases must be released even when one cleanup throws");
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_PreservesPrimaryFailure([Values] bool cleanupThrows)
+    {
+        ISnapshotCatalog catalog = Substitute.For<ISnapshotCatalog>();
+        using FlatTestContainer tier = new(configure: builder => builder.AddSingleton(catalog));
+        SnapshotRepository repository = tier.Repository;
+        StateId start = CreateStateId(0);
+        StateId head = CreateStateId(1);
+        StateId orphan = CreateStateId(1, 1);
+        StateId persistedOrphan = CreateStateId(1, 2);
+        InvalidOperationException primary = new("Catalog removal failed");
+        InvalidOperationException cleanup = new("Snapshot cleanup failed");
+        bool cleaned = false;
+        Snapshot snapshot = new CleanupSnapshot(start, orphan, tier.ResourcePool, () =>
+        {
+            cleaned = true;
+            if (cleanupThrows) throw cleanup;
+        });
+        Assert.That(repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
+        repository.AddStateId(orphan);
+        Assert.That(repository.TryAdd(tier.ResourcePool.CreateSnapshot(start, head, ResourcePool.Usage.ReadOnlyProcessingEnv), SnapshotTier.InMemoryBase), Is.True);
+        repository.AddStateId(head);
+        repository.SetLastCommittedStateId(head);
+        using Snapshot persisted = tier.ResourcePool.CreateSnapshot(start, persistedOrphan, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        tier.ConvertToPersistedBase(persisted).Dispose();
+        catalog.Remove(persistedOrphan, 1).Returns(_ => throw primary);
+
+        Exception? failure = Assert.Catch(() => repository.RemoveOrphanedStates(head, head));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleaned, Is.True);
+            if (cleanupThrows)
+                Assert.That((failure as AggregateException)?.InnerExceptions, Is.EqualTo(new Exception[] { primary, cleanup }));
+            else
+                Assert.That(failure, Is.SameAs(primary));
+        }
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_ReportsCandidatesPreservedByCompactionGaps([Values] bool hasOrphan)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger wrappedLogger = new(logger);
+        logs.GetClassLogger<SnapshotRepository>().Returns(wrappedLogger);
+        using FlatTestContainer tier = new(configure: builder => builder.AddSingleton(logs));
+        SnapshotRepository repository = tier.Repository;
+        StateId start = CreateStateId(0);
+        StateId head = CreateStateId(2);
+        StateId interior = CreateStateId(1);
+        foreach (StateId to in new[] { head, interior })
+        {
+            Assert.That(repository.TryAdd(tier.ResourcePool.CreateSnapshot(start, to, ResourcePool.Usage.ReadOnlyProcessingEnv), SnapshotTier.InMemoryBase), Is.True);
+            repository.AddStateId(to);
+        }
+        if (hasOrphan)
+        {
+            StateId orphan = CreateStateId(2, 1);
+            Assert.That(repository.TryAdd(tier.ResourcePool.CreateSnapshot(start, orphan, ResourcePool.Usage.ReadOnlyProcessingEnv), SnapshotTier.InMemoryBase), Is.True);
+            repository.AddStateId(orphan);
+        }
+        repository.SetLastCommittedStateId(head);
+
+        int pruned = repository.RemoveOrphanedStates(head, head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(hasOrphan ? 1 : 0));
+            Assert.That(repository.HasState(interior), Is.True);
+            logger.Received().Debug(Arg.Is<string>(message => message.Contains("Preserved 1 snapshot candidate entries") && message.Contains("compaction gaps")));
+        }
     }
 
     private sealed class CleanupSnapshot(StateId from, StateId to, IResourcePool pool, Action cleanup)

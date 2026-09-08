@@ -114,12 +114,20 @@ public class PersistenceManager(
     {
         StateId currentPersistedState = GetCurrentPersistedStateId();
         // PreGenesis (nothing persisted) carries the ulong.MaxValue sentinel, so subtracting it would
-        // wrap; the in-memory depth from genesis is then latestSnapshot.BlockNumber + 1. A latest below
-        // the persisted block means a deep reorg stranded the persisted base on an orphaned fork;
-        // persistence stalls until the chain climbs back. SaturatingSub keeps the depth at 0 rather than
-        // underflowing, so the keep-in-memory guard returns early.
-        if (currentPersistedState != StateId.PreGenesis && latestSnapshot.BlockNumber < currentPersistedState.BlockNumber && _logger.IsWarn)
-            _logger.Warn($"Latest snapshot {latestSnapshot} is below persisted state {currentPersistedState}; persisted base may be on an orphaned fork. Skipping persistence.");
+        // wrap; the in-memory depth from genesis is then latestSnapshot.BlockNumber + 1. A queued trigger
+        // can outlive its snapshot; a still-available state below the persisted block may instead mean a
+        // deep reorg stranded the persisted base. SaturatingSub prevents either case from underflowing
+        // into the force-persist backstop.
+        if (currentPersistedState != StateId.PreGenesis && latestSnapshot.BlockNumber < currentPersistedState.BlockNumber)
+        {
+            if (snapshotRepository.HasState(latestSnapshot))
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Latest snapshot {latestSnapshot} is below persisted state {currentPersistedState}; persisted base may be on an orphaned fork. Skipping persistence.");
+            }
+            else if (_logger.IsDebug)
+                _logger.Debug($"Persistence trigger {latestSnapshot} is no longer available and is below persisted state {currentPersistedState}.");
+        }
 
         ulong snapshotsDepth = currentPersistedState == StateId.PreGenesis
             ? latestSnapshot.BlockNumber + 1

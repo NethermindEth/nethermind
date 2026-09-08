@@ -4,6 +4,11 @@
 namespace Nethermind.State.Flat;
 
 /// <summary>Coordinates snapshot pruning with the lifetime of assembled state views.</summary>
+/// <remarks>
+/// Budget-driven orphan pruning retains registered heads and their ancestry. Persistence may still
+/// remove repository entries as the durable boundary advances; assembled views keep independent
+/// snapshot leases, so removing those entries does not invalidate their reads.
+/// </remarks>
 public sealed class SnapshotRetention
 {
     private readonly Dictionary<StateId, int> _activeHeads = [];

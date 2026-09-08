@@ -755,7 +755,8 @@ public class PersistenceManagerTests
         toPersist.Dispose();
     }
 
-    public void DetermineSnapshotAction_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow()
+    [Test]
+    public void DetermineSnapshotAction_LatestSnapshotBelowPersistedBlock_ReturnsNullWithoutUnderflow([Values] bool triggerAvailable)
     {
         // A deep reorg below a force-persisted unfinalized block can leave the latest snapshot behind the
         // last persisted block. The in-memory depth must saturate to 0 (not underflow to ~2^64) so the
@@ -768,17 +769,18 @@ public class PersistenceManagerTests
         IPersistence persistence = Substitute.For<IPersistence>();
         persistence.CreateReader().Returns(reader);
 
-        using PersistenceManager pm = new(
-            _config,
-            ScheduleHelper.CreateWithOffset(_config, 0),
-            _finalizedStateProvider,
-            persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        logger.IsDebug.Returns(true);
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger wrappedLogger = new(logger);
+        logs.GetClassLogger<PersistenceManager>().Returns(wrappedLogger);
+        using FlatTestContainer container = new(_config, configure: builder => builder
+            .AddSingleton<IPersistence>(persistence)
+            .AddSingleton<IFinalizedStateProvider>(_finalizedStateProvider)
+            .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
+            .AddSingleton<ILogManager>(logs));
+        PersistenceManager pm = container.Resolve<PersistenceManager>();
 
         // Latest snapshot (50) is below the persisted block (100); finalized far behind so the buggy
         // underflow path would take the backstop branch. Stage a head-ancestor snapshot it would return.
@@ -786,14 +788,27 @@ public class PersistenceManagerTests
         StateId headAncestor = CreateStateId(101);
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
 
-        using Snapshot staged = CreateSnapshot(persisted, headAncestor, compacted: false);
-        _snapshotRepository.SetLastCommittedStateId(headAncestor);
+        if (triggerAvailable)
+        {
+            Snapshot trigger = container.ResourcePool.CreateSnapshot(CreateStateId(49), latest, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            Assert.That(container.Repository.TryAdd(trigger, SnapshotTier.InMemoryBase), Is.True);
+            container.Repository.AddStateId(latest);
+        }
+        Snapshot staged = container.ResourcePool.CreateSnapshot(persisted, headAncestor, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        Assert.That(container.Repository.TryAdd(staged, SnapshotTier.InMemoryBase), Is.True);
+        container.Repository.AddStateId(headAncestor);
+        container.Repository.SetLastCommittedStateId(headAncestor);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(latest);
         using Snapshot? toDispose = toPersist; // dispose if the buggy underflow path returned a snapshot
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            logger.Received(triggerAvailable ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("persisted base may be on an orphaned fork")));
+            logger.Received(triggerAvailable ? 0 : 1).Debug(Arg.Is<string>(message => message.Contains("Persistence trigger") && message.Contains("no longer available")));
+        }
     }
 
     [Test]

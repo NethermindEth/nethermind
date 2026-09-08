@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -39,8 +40,12 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public async Task forkChoiceUpdatedV1_pruned_state_recovery_only_changes_flat_forks([Values] bool canonical, [Values] bool useFlat)
+    [TestCase(false, false, false)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(true, true, false)]
+    [TestCase(false, true, true)]
+    public async Task forkChoiceUpdatedV1_pruned_state_recovery_only_changes_flat_forks(bool canonical, bool useFlat, bool missingBody)
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         ManualTimestamper recoveryClock = new(DateTime.UnixEpoch);
@@ -68,6 +73,15 @@ public partial class EngineModuleTests
         Hash256 target = branch[0].BlockHash;
         bool syncing = useFlat && !canonical;
         stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(false);
+        Block? removedBody = null;
+        IBlockStore blockStore = chain.Container.Resolve<IBlockStore>();
+        if (missingBody)
+        {
+            stateReader.HasStateForBlock(chain.BlockTree.Genesis).Returns(true);
+            removedBody = chain.BlockTree.FindBlock(target, BlockTreeLookupOptions.None)!;
+            blockStore.Delete(removedBody.Number, target);
+            Assert.That(chain.BlockTree.FindBlock(target, BlockTreeLookupOptions.None), Is.Null);
+        }
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(new(target, target, target));
 
         using (Assert.EnterMultipleScope())
@@ -111,6 +125,7 @@ public partial class EngineModuleTests
             ResultWrapper<ForkchoiceUpdatedV1Result> moved = await rpc.engine_forkchoiceUpdatedV1(new(alternative[0].BlockHash, Keccak.Zero, Keccak.Zero));
             Assert.That(moved.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(false);
+            if (missingBody) stateReader.HasStateForBlock(chain.BlockTree.Genesis).Returns(true);
             stateReader.ClearReceivedCalls();
             ResultWrapper<ForkchoiceUpdatedV1Result> changedHead = await rpc.engine_forkchoiceUpdatedV1(new(target, target, target));
             using (Assert.EnterMultipleScope())
@@ -119,6 +134,7 @@ public partial class EngineModuleTests
                 Assert.That(stateReader.ReceivedCalls().Count(), Is.GreaterThan(1), "a changed head must invalidate failed searches");
             }
 
+            if (removedBody is not null) blockStore.Insert(removedBody);
             stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
             ResultWrapper<ForkchoiceUpdatedV1Result> available = await rpc.engine_forkchoiceUpdatedV1(new(target, target, target));
             using (Assert.EnterMultipleScope())
