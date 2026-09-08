@@ -34,11 +34,17 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const ulong PackByteHighBits = 0x0002040810204081UL;
 
     private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
+    /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
+    internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
+    /// <summary>The jump-destination bitmap, built on first use; one bit per code byte.</summary>
+    internal long[] JumpDestinationBitmap => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
         _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
@@ -538,7 +544,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     /// Checks if the position is in a code segment.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsJumpDestination(long[] bitvec, int pos)
+    internal static bool IsJumpDestination(long[] bitvec, int pos)
     {
         int vecIndex = pos >> BitShiftPerInt64;
         // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't.
