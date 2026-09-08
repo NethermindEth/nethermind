@@ -18,7 +18,8 @@ public abstract class SpecProviderBase(ILogger? logger = null)
     private IReleaseSpec? _genesisSpec;
 
     /// <exception cref="ArgumentException">
-    /// A block-number transition is ordered after a timestamp transition, so it could never activate.
+    /// <paramref name="transitions"/> is empty, does not start at genesis block 0, or orders a block-number
+    /// transition after a timestamp transition, where it could never activate.
     /// </exception>
     protected void LoadTransitions((ForkActivation Activation, IReleaseSpec Spec)[] transitions)
     {
