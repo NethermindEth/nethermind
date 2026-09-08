@@ -106,9 +106,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
         if (DynamicGasLimitBlock is not null)
             blockNumbers.Add(DynamicGasLimitBlock.Value);
-        // The gas price floor of the transaction pool changes here, so it needs its own release spec boundary.
-        if (Gas50xBlock is not null)
-            blockNumbers.Add(Gas50xBlock.Value);
         if (TipXDCX is not null)
             blockNumbers.Add(TipXDCX.Value);
         if (TIPXDCXMinerDisable is not null)

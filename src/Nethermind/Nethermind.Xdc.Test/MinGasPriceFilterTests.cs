@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
@@ -21,17 +20,18 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 internal class MinGasPriceFilterTests
 {
-    private const ulong MinGasPrice = XdcConstants.DefaultMinGasPrice;
-    private static readonly Address BlockSigner = new("0x00000000000000000000000000000000b000089");
+    private const ulong MinGasPrice = XdcConstants.MinGasPrice;
+    private static readonly Address BlockSigner = TestItem.AddressA;
+    private static readonly Address Randomize = TestItem.AddressB;
 
-    private static MinGasPriceFilter CreateFilter(UInt256 minimumGasPrice, ulong headNumber = 100, ISpecProvider? specProvider = null)
+    private static MinGasPriceFilter CreateFilter(ulong headNumber = 100, ISpecProvider? specProvider = null)
     {
         IChainHeadInfoProvider chainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
         chainHeadInfoProvider.HeadNumber.Returns(headNumber);
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcSpec.MinimumGasPrice.Returns(minimumGasPrice);
         xdcSpec.BlockSignerContract.Returns(BlockSigner);
+        xdcSpec.RandomizeSMCBinary.Returns(Randomize);
 
         specProvider ??= Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
@@ -39,10 +39,10 @@ internal class MinGasPriceFilterTests
         return new MinGasPriceFilter(chainHeadInfoProvider, specProvider, LimboLogs.Instance);
     }
 
-    private static AcceptTxResult Accept(MinGasPriceFilter filter, Transaction tx)
+    private static AcceptTxResult Accept(MinGasPriceFilter filter, Transaction tx, TxHandlingOptions options = TxHandlingOptions.None)
     {
         TxFilteringState state = default;
-        return filter.Accept(tx, ref state, TxHandlingOptions.None);
+        return filter.Accept(tx, ref state, options);
     }
 
     [TestCase(MinGasPrice, true, TestName = "Exactly at the minimum accepted")]
@@ -51,19 +51,19 @@ internal class MinGasPriceFilterTests
     [TestCase(0ul, false, TestName = "Zero gas price rejected")]
     public void Accept_ComparesLegacyGasPriceWithMinimum(ulong gasPrice, bool expectedAccepted)
     {
-        MinGasPriceFilter filter = CreateFilter(MinGasPrice);
+        MinGasPriceFilter filter = CreateFilter();
         Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).WithGasPrice(gasPrice).WithTo(TestItem.AddressC).TestObject;
 
         Assert.That((bool)Accept(filter, tx), Is.EqualTo(expectedAccepted));
     }
 
-    // The reference client compares tx.GasPrice(), which is the fee cap for a dynamic fee transaction, so a low
-    // priority fee alone is not a reason to reject.
+    // The reference client compares tx.GasPrice(), which is the fee cap for a dynamic fee transaction. XDC's base fee
+    // equals the floor, so comparing the priority fee instead would reject everything the reference accepts.
     [TestCase(MinGasPrice, 1ul, true, TestName = "Fee cap at the minimum accepted regardless of priority fee")]
     [TestCase(MinGasPrice - 1, MinGasPrice - 1, false, TestName = "Fee cap below the minimum rejected")]
     public void Accept_Uses1559FeeCap(ulong maxFeePerGas, ulong maxPriorityFeePerGas, bool expectedAccepted)
     {
-        MinGasPriceFilter filter = CreateFilter(MinGasPrice);
+        MinGasPriceFilter filter = CreateFilter();
         Transaction tx = Build.A.Transaction
             .WithType(TxType.EIP1559)
             .WithMaxFeePerGas(maxFeePerGas)
@@ -75,45 +75,32 @@ internal class MinGasPriceFilterTests
     }
 
     [Test]
-    public void Accept_SpecialTransaction_IsAcceptedWithoutPayingAnything()
+    public void Accept_SpecialTransactions_AreAcceptedWithoutPayingAnything()
     {
-        MinGasPriceFilter filter = CreateFilter(MinGasPrice);
-        Transaction tx = Build.A.Transaction.WithGasPrice(0).WithTo(BlockSigner).TestObject;
+        MinGasPriceFilter filter = CreateFilter();
 
-        Assert.That(Accept(filter, tx), Is.EqualTo(AcceptTxResult.Accepted));
-    }
-
-    [Test]
-    public void Accept_MinimumNotConfigured_IsInert()
-    {
-        MinGasPriceFilter filter = CreateFilter(UInt256.Zero);
-        Transaction tx = Build.A.Transaction.WithGasPrice(0).WithTo(TestItem.AddressC).TestObject;
-
-        Assert.That(Accept(filter, tx), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.Multiple(() =>
+        {
+            Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(0).WithTo(BlockSigner).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(0).WithTo(Randomize).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
+        });
     }
 
     [Test]
     public void Accept_UnderpricedLocalTransaction_IsRejected()
     {
-        MinGasPriceFilter filter = CreateFilter(MinGasPrice);
+        MinGasPriceFilter filter = CreateFilter();
         Transaction tx = Build.A.Transaction.WithGasPrice(1).WithTo(TestItem.AddressC).TestObject;
-        TxFilteringState state = default;
 
-        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.PersistentBroadcast);
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.FeeTooLow));
+        Assert.That(Accept(filter, tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.FeeTooLow));
     }
 
     [Test]
-    public void Accept_UsesSpecOfHead()
+    public void Accept_ContractCreation_IsSubjectToTheMinimum()
     {
-        const ulong headNumber = 1234;
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        MinGasPriceFilter filter = CreateFilter(MinGasPrice, headNumber, specProvider);
+        MinGasPriceFilter filter = CreateFilter();
 
-        Accept(filter, Build.A.Transaction.WithGasPrice(MinGasPrice).WithTo(TestItem.AddressC).TestObject);
-
-        specProvider.Received().GetSpec(Arg.Is<ForkActivation>(f => f.BlockNumber == headNumber));
+        Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(1).WithTo(null).TestObject), Is.EqualTo(AcceptTxResult.FeeTooLow));
     }
 
     [TestCase(1ul, false, TestName = "Pool rejects underpriced transaction")]
@@ -121,7 +108,6 @@ internal class MinGasPriceFilterTests
     public async Task SubmitTx_UnderMinGasPrice_IsRejectedOnPoolAdmission(ulong gasPrice, bool expectedAccepted)
     {
         using XdcTestBlockchain chain = await XdcTestBlockchain.Create(5, false);
-        chain.ChangeReleaseSpec(spec => spec.MinimumGasPrice = MinGasPrice);
 
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(TestItem.AddressB)
