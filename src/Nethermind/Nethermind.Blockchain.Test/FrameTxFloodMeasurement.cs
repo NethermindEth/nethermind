@@ -21,7 +21,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -312,7 +311,7 @@ public class FrameTxFloodMeasurement
         if (offeredRate > 0) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
         FloodOutcome outcome = offeredRate > 0
             ? MeasureProductionUnderFlood(rig, offeredRate)
             : NoFloodProductionOutcome(rig);
@@ -361,45 +360,84 @@ public class FrameTxFloodMeasurement
         return new FloodOutcome(0, 0, 0, 0, 0, 0, 0, rig.Measure(MeasureWindow));
     }
 
-    private sealed class FloodGenerator
+    /// <summary>Open-loop submitter that owns its thread and its cancellation.</summary>
+    /// <remarks><see cref="Run{T}"/> is the only way to start it and stops it on every exit path, so the thread
+    /// cannot outlive the caller's window however that window ends. It runs once, and the caller that constructed
+    /// it disposes it.</remarks>
+    internal sealed class FloodGenerator : IDisposable
     {
+        private static readonly TimeSpan JoinTimeout = TimeSpan.FromSeconds(30);
+
         public int Submitted;
         public int Rejected;
         private double _maxLagUs;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly Thread _thread;
+        private bool _started;
+        private bool _disposed;
 
         public double MaxLagUs => Volatile.Read(ref _maxLagUs);
-        public Thread Thread { get; }
 
-        public FloodGenerator(FloodTestBlockchain chain, Transaction[] txs, int offeredRate, CancellationTokenSource cts) =>
-            Thread = new Thread(() =>
+        public bool IsRunning => _started && _thread.IsAlive;
+
+        public FloodGenerator(Func<Transaction, AcceptTxResult> submit, Transaction[] txs, int offeredRate)
+        {
+            CancellationToken token = _cts.Token;
+            _thread = new Thread(() =>
             {
                 double ticksPerTx = (double)Stopwatch.Frequency / offeredRate;
                 long start = Stopwatch.GetTimestamp();
-                for (int i = 0; !cts.IsCancellationRequested; i++)
+                for (int i = 0; !token.IsCancellationRequested; i++)
                 {
                     long due = start + (long)(i * ticksPerTx);
-                    WaitUntil(due, cts.Token);
-                    if (cts.IsCancellationRequested) break;
+                    WaitUntil(due, token);
+                    if (token.IsCancellationRequested) break;
 
                     long lag = Stopwatch.GetTimestamp() - due;
                     double lagUs = lag * 1_000_000.0 / Stopwatch.Frequency;
                     if (lagUs > MaxLagUs) Volatile.Write(ref _maxLagUs, lagUs);
 
-                    AcceptTxResult result = chain.TxPool.SubmitTx(txs[i % txs.Length], TxHandlingOptions.None);
-                    if (result == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref Rejected);
+                    if (submit(txs[i % txs.Length]) == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref Rejected);
                     Interlocked.Increment(ref Submitted);
                 }
             })
             { IsBackground = true, Name = "frame-tx-flood" };
+        }
 
-        public void Start() => Thread.Start();
+        /// <summary>Runs <paramref name="body"/> with the generator submitting, and stops it on every exit path.</summary>
+        /// <remarks>Stopping is not disposal: the caller owns the instance and disposes it.</remarks>
+        public T Run<T>(Func<T> body)
+        {
+            _thread.Start();
+            _started = true;
+            try
+            {
+                return body();
+            }
+            finally
+            {
+                // Throwing here would mask a failure from the body, but a generator still submitting into
+                // infrastructure the caller is about to tear down has to be visible in the run's output.
+                if (!Stop()) TestContext.Error.WriteLine("frame-tx flood generator did not stop within the join timeout");
+            }
+        }
 
         public void ResetMaxLag() => Volatile.Write(ref _maxLagUs, 0);
 
-        public bool Stop(CancellationTokenSource cts)
+        /// <summary>Cancels and joins the submitting thread, returning whether it stopped within the timeout.</summary>
+        public bool Stop()
         {
-            cts.Cancel();
-            return Thread.Join(TimeSpan.FromSeconds(30));
+            _cts.Cancel();
+            return !_started || _thread.Join(JoinTimeout);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+
+            Stop();
+            _disposed = true;
+            _cts.Dispose();
         }
     }
 
@@ -560,7 +598,7 @@ public class FrameTxFloodMeasurement
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
         rig.RunFor(WarmupWindow);
         double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
 
@@ -685,53 +723,46 @@ public class FrameTxFloodMeasurement
         _floodTxs = BuildFloodTransactions(_saltCursor);
         _saltCursor += FloodPoolSize;
 
-        using CancellationTokenSource cts = new();
-        FloodGenerator generator = new(_chain, _floodTxs, offeredRate, cts);
-        generator.Start();
+        using FloodGenerator generator = new(
+            tx => _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), _floodTxs, offeredRate);
 
-        warmup();
-
-        int submittedAtStart = Volatile.Read(ref generator.Submitted);
-        int rejectedAtStart = Volatile.Read(ref generator.Rejected);
-        long rejectionCounterAtStart = rejectionCounter?.Invoke() ?? 0;
-        long shedAtStart = ShedCount();
-        int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
-
-        generator.ResetMaxLag();
-        onWindowStart?.Invoke();
-        long windowStart = Stopwatch.GetTimestamp();
-
-        List<double> sampleMicros;
-        try
+        return generator.Run(() =>
         {
-            sampleMicros = measure(MeasureWindow);
-        }
-        catch
-        {
-            generator.Stop(cts);
-            throw;
-        }
+            warmup();
 
-        long windowEnd = Stopwatch.GetTimestamp();
+            int submittedAtStart = Volatile.Read(ref generator.Submitted);
+            int rejectedAtStart = Volatile.Read(ref generator.Rejected);
+            long rejectionCounterAtStart = rejectionCounter?.Invoke() ?? 0;
+            long shedAtStart = ShedCount();
+            int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
 
-        // Every counter is read after the join. Reading them while the generator still submits lets a
-        // transaction land between two reads and be counted by one but not the other, which breaks the
-        // accounting the rows assert on.
-        Assert.That(generator.Stop(cts), Is.True,
-            "the generator did not stop, so its counters would be read while it still writes them");
+            generator.ResetMaxLag();
+            onWindowStart?.Invoke();
+            long windowStart = Stopwatch.GetTimestamp();
 
-        int submittedInWindow = generator.Submitted - submittedAtStart;
-        int rejectedInWindow = rejectionCounter is null
-            ? generator.Rejected - rejectedAtStart
-            : (int)(rejectionCounter() - rejectionCounterAtStart);
-        int pendingPoolGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
-        int shedInWindow = (int)(ShedCount() - shedAtStart);
+            List<double> sampleMicros = measure(MeasureWindow);
 
-        double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
-        double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
+            long windowEnd = Stopwatch.GetTimestamp();
 
-        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs,
-            pendingPoolGrowth, shedInWindow, sampleMicros);
+            // Every counter is read after the join. Reading them while the generator still submits lets a
+            // transaction land between two reads and be counted by one but not the other, which breaks the
+            // accounting the rows assert on.
+            Assert.That(generator.Stop(), Is.True,
+                "the generator did not stop, so its counters would be read while it still writes them");
+
+            int submittedInWindow = generator.Submitted - submittedAtStart;
+            int rejectedInWindow = rejectionCounter is null
+                ? generator.Rejected - rejectedAtStart
+                : (int)(rejectionCounter() - rejectionCounterAtStart);
+            int pendingPoolGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
+            int shedInWindow = (int)(ShedCount() - shedAtStart);
+
+            double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
+            double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
+
+            return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs,
+                pendingPoolGrowth, shedInWindow, sampleMicros);
+        });
     }
 
     /// <summary>
@@ -1012,7 +1043,8 @@ public class FrameTxFloodMeasurement
     /// <summary>Runs a never-approving frame transaction through the production transaction executor.</summary>
     private sealed class ProducerRig : IDisposable
     {
-        private readonly IDisposable _stateScope;
+        private readonly IReadOnlyTxProcessingScope _processingScope;
+        private readonly IReadOnlyTxProcessorSource _processorSource;
         private readonly IReleaseSpec _spec;
         private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
         private readonly int _kRetry;
@@ -1038,9 +1070,12 @@ public class FrameTxFloodMeasurement
 
         public int FailingExecutions => _adapter.Attempts;
 
-        private ProducerRig(IDisposable stateScope, IReleaseSpec spec, ulong ceiling, int kRetry)
+        private ProducerRig(
+            IReadOnlyTxProcessingScope processingScope, IReadOnlyTxProcessorSource processorSource,
+            IReleaseSpec spec, ulong ceiling, int kRetry)
         {
-            _stateScope = stateScope;
+            _processingScope = processingScope;
+            _processorSource = processorSource;
             _spec = spec;
             _kRetry = kRetry;
             _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
@@ -1054,41 +1089,53 @@ public class FrameTxFloodMeasurement
                 .TestObject;
         }
 
-        public static ProducerRig Create(ISpecProvider specProvider, int kRetry, ulong ceiling)
+        /// <summary>
+        /// Takes the processing stack from the chain's production wiring; only the executor under measurement,
+        /// its counting adapter, the eviction gate the rig drives and a disabled block access list manager are
+        /// built here.
+        /// </summary>
+        /// <remarks>The returned rig owns the processing scope and its source; nothing else does, so a throw
+        /// before the rig is returned has to close them.</remarks>
+        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling)
         {
+            ISpecProvider specProvider = chain.SpecProvider;
             IReleaseSpec spec = specProvider.GenesisSpec;
-            IWorldState state = TestWorldStateFactory.CreateForTest();
-            IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
 
-            state.CreateAccount(Attacker, AttackerBalance);
-            state.InsertCode(Attacker, PrefixCode("keccak-wide"), spec);
-            state.Commit(spec);
-            state.CommitTree(0);
+            IReadOnlyTxProcessorSource source = chain.ReadOnlyTxProcessingEnvFactory.Create();
+            IReadOnlyTxProcessingScope? scope = null;
+            try
+            {
+                scope = source.Build(chain.BlockTree.Head?.Header);
+                IWorldState state = scope.WorldState;
 
-            EthereumCodeInfoRepository codeInfo = new(state);
-            EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-            EthereumTransactionProcessor processor = new(
-                BlobBaseFeeCalculator.Instance, specProvider, state, vm, codeInfo, LimboLogs.Instance);
-            CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(processor), measureBurn: false);
+                CountingAdapter adapter = new(
+                    new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
 
-            ProducerRig rig = new(scope, spec, ceiling, kRetry);
+                ProducerRig rig = new(scope, source, spec, ceiling, kRetry);
 
-            IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-            balManager.Enabled.Returns(false);
+                IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
+                balManager.Enabled.Returns(false);
 
-            ITxPool gate = Substitute.For<ITxPool>();
-            gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
+                ITxPool gate = Substitute.For<ITxPool>();
+                gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
 
-            rig._adapter = adapter;
-            rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
-                adapter,
-                state,
-                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
-                LimboLogs.Instance,
-                balManager,
-                gate);
+                rig._adapter = adapter;
+                rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
+                    adapter,
+                    state,
+                    new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                    LimboLogs.Instance,
+                    balManager,
+                    gate);
 
-            return rig;
+                return rig;
+            }
+            catch
+            {
+                scope?.Dispose();
+                source.Dispose();
+                throw;
+            }
         }
 
         private bool OnEvictionRequested() => ++_attemptsOnCurrent >= _kRetry;
@@ -1127,7 +1174,11 @@ public class FrameTxFloodMeasurement
             }
         }
 
-        public void Dispose() => _stateScope.Dispose();
+        public void Dispose()
+        {
+            _processingScope.Dispose();
+            _processorSource.Dispose();
+        }
     }
 
     private static void Emit(string line)
