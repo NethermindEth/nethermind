@@ -58,6 +58,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             if (nodeRlp is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
+                recoveredNodes.Dispose();
                 return null;
             }
 

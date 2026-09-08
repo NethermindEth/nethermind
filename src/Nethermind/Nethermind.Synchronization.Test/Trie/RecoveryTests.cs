@@ -131,6 +131,18 @@ public class RecoveryTests
     }
 
     [Test]
+    public async Task cannot_recover_eth66_partial_path()
+    {
+        // The first node resolves and is collected, then its child is unavailable, so the walk gives up mid-path.
+        TrieNode extension = new(new ExtensionData { Key = [3], Value = TestItem.KeccakB });
+        _returnedRlp = extension.RlpEncode(Substitute.For<ITrieNodeResolver>(), ref _path).ToArray()!;
+        _hash = Keccak.Compute(_returnedRlp);
+
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
     public async Task can_recover_eth67()
     {
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67);

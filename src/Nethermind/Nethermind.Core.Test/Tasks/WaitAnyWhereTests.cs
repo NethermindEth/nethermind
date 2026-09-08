@@ -67,17 +67,32 @@ public class WaitAnyWhereTests
 
         Disposable result = await Wait.AnyWhere(r => r is not null, Task.FromResult(winner), pending.Task);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.SameAs(winner));
-            Assert.That(straggler.Disposed, Is.False);
-        });
+        Assert.That(result, Is.SameAs(winner));
 
         // The straggler produces its result only after the winner has already been forwarded.
         pending.SetResult(straggler);
 
         Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
         Assert.That(winner.Disposed, Is.False);
+    }
+
+    [Test]
+    public void Result_of_a_task_abandoned_by_a_failure_is_disposed()
+    {
+        Disposable straggler = new();
+        TaskCompletionSource<Disposable> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<Disposable> anyWhere = Wait.AnyWhere(
+            r => r is not null,
+            Task.FromException<Disposable>(new InvalidOperationException()),
+            pending.Task);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => anyWhere);
+
+        // The straggler produces its result only after the failure has already unwound the call.
+        pending.SetResult(straggler);
+
+        Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
     }
 
     [Test]
