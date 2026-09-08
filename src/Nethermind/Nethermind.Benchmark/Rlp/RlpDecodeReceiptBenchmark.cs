@@ -12,7 +12,6 @@ namespace Nethermind.Benchmarks.Rlp
     /// <remarks>
     /// One decode is far below this machine's scheduling jitter, so each benchmark repeats
     /// <see cref="Batch"/> decodes per invocation and reports the per-decode figure.
-    /// <see cref="Control"/> touches no RLP code: when it moves between runs, the run drifted.
     /// </remarks>
     public class RlpDecodeReceiptBenchmark
     {
@@ -72,6 +71,7 @@ namespace Nethermind.Benchmarks.Rlp
             return receipt;
         }
 
+        /// <remarks>Touches no RLP code: when this row moves between runs, the run drifted.</remarks>
         [Benchmark(OperationsPerInvoke = Batch)]
         public Hash256 Control()
         {
