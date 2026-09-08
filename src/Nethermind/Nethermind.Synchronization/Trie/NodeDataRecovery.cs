@@ -91,12 +91,13 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         }
         catch (OperationCanceledException)
         {
+            recoveredNodes.Dispose();
             return null;
         }
         catch (Exception ex)
         {
+            recoveredNodes.Dispose();
             // Never fault the sibling recovery racing this one in PathNodeRecovery.
-            // The abandoned rental is GC-reclaimable, so it is not worth a finally to return it.
             if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
             return null;
         }
