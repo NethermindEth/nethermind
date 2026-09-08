@@ -111,11 +111,22 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// Equality is spelled out word-wise rather than deferred to
     /// <see cref="ValueHash256.Equals(ValueHash256)"/>, which compares
     /// <see cref="System.Runtime.Intrinsics.Vector256{T}"/>s and so expands to a byte-at-a-time loop on
-    /// the guest's target. The hash code goes through the run-seeded mixer rather than the keccak's own
-    /// leading bytes: those are uniformly distributed, which answers accidental collisions but not a
-    /// chosen witness. Unseeded, one offline grind yields node hashes sharing a bucket for every block
-    /// and payload, and nothing here rejects unreachable witness nodes. See
-    /// <see cref="SpanExtensions.SeedHashes"/>.
+    /// the guest's target.
+    /// <para>
+    /// The hash code goes through the run-seeded mixer rather than the keccak's own leading bytes: those
+    /// are uniformly distributed, which answers accidental collisions but not a chosen witness. Unseeded,
+    /// one offline grind yields node hashes sharing a bucket for every block and payload, and nothing
+    /// here rejects unreachable witness nodes. See <see cref="SpanExtensions.SeedHashes"/>.
+    /// </para>
+    /// <para>
+    /// Unlike the seed's other consumers, this one is not a fixed point: the seed commits to
+    /// <c>NewPayloadRequest</c> alone, and <c>StatelessInput.Witness</c> is a sibling field outside that
+    /// commitment, so node bytes can be ground against a seed that is already known. Seeding makes the
+    /// grind per-payload and quadratic in the node count rather than one-time and universal; closing it
+    /// properly means bounding the witness or rejecting unreachable nodes. The mixer's several multiplies
+    /// per probe, against the single load the leading bytes cost, are the price of that; the guest step
+    /// count for the change is not measured.
+    /// </para>
     /// </remarks>
     private readonly struct NodeKey(in ValueHash256 hash) : IEquatable<NodeKey>
     {
