@@ -105,8 +105,9 @@ namespace Nethermind.Trie
 
         internal bool IsWarmerResolved => (ReadBlockAndFlags() & _warmerResolvedMask) != 0;
 
-        /// <summary>Whether this warmer-owned node still requires verified resolution.</summary>
-        /// <remarks>Shared parent slots retain its hash so live readers use their own snapshot lookup.</remarks>
+        /// <summary>Whether this node is owned by the trie warmer and has not yet been resolved with verified RLP.</summary>
+        /// <remarks>Shared parent slots retain the hash of an unresolved warmer-owned child so live readers
+        /// use their own snapshot lookup.</remarks>
         internal bool IsUnresolvedWarmerOwned =>
             (ReadBlockAndFlags() & (_warmerOwnedMask | _warmerResolvedMask)) == _warmerOwnedMask;
 
