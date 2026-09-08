@@ -3757,6 +3757,75 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_SponsoredFrameTx_IsAdmittedWithAnUnfundedSender()
+        {
+            // The whole point of EIP-8141 sponsorship: the payer covers the fee, so pricing it against the
+            // sender turns every sponsored transaction away before the payer is resolved at all.
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx));
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public void SubmitTx_UnfundedSender_WhoseSponsorCannotCoverTheMaxCost_IsRejected()
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        [Test]
+        public void SubmitTx_UnfundedSender_WithNoPayerResolved_IsRejected()
+        {
+            // No verdict leaves nothing to reserve against, so the sender is what the payer gate prices:
+            // taking frame txs out of the sender-balance filters must not make an unpriced one free to pool.
+            CreatePoolWithSimulator(FrameTxSimulationResult.Undecided("simulator unavailable"));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        [Test]
+        public void SubmitTx_UnfundedSender_PayingForItsOwnFrameTx_IsRejected()
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+
+            Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 1), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        [TestCase(false, TestName = "account nonce")]
+        [TestCase(true, TestName = "keyed nonce")]
+        public async Task Sponsored_frame_transaction_is_retained_when_its_unfunded_sender_bucket_is_updated(bool keyedNonce)
+        {
+            // The bucket update prices the whole bucket against the sender: without the payer carve-out it
+            // evicts on the next head what admission just accepted. Both nonce arms take separate branches.
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD), keyedNonce ? KeyedNonceSpecProvider() : null);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: keyedNonce ? [UInt256.One] : null);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the payer still covers it, so the sender's balance must not evict it");
+        }
+
+        [Test]
         public async Task Frame_transaction_is_evicted_when_its_prefix_stops_validating_against_the_new_head()
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));

@@ -27,7 +27,8 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (tx.IsFree())
+            // Frame transactions are deferred to FrameTxPayerExposureFilter, which runs after payer resolution.
+            if (tx.IsFree() || tx.SupportsFrames)
             {
                 return AcceptTxResult.Accepted;
             }
@@ -48,6 +49,11 @@ namespace Nethermind.TxPool.Filters
                 if (otherTx.Nonce >= bucketState.TxNonce)
                 {
                     return false;
+                }
+
+                if (!otherTx.FeeChargedToSender())
+                {
+                    return true;
                 }
 
                 bucketState.Overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(bucketState.CumulativeCost, out bucketState.CumulativeCost);

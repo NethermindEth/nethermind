@@ -1641,7 +1641,7 @@ namespace Nethermind.TxPool
                             }
                         }
 
-                        if (tx.CheckForNotEnoughBalance(UInt256.Zero, balance, out _))
+                        if (tx.FeeChargedToSender() && tx.CheckForNotEnoughBalance(UInt256.Zero, balance, out _))
                         {
                             MarkForEviction(tx, allowLaterPoolReentrance: true);
                         }
@@ -1695,7 +1695,9 @@ namespace Nethermind.TxPool
                             tx.CalculateEffectiveGasPrice(isEip1559,
                                 _headInfo.CurrentBaseFee);
 
-                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
+                        // Short-circuits for a frame tx, so its payer-funded cost is left out of the running
+                        // total the sender's other transactions are measured against.
+                        if (tx.FeeChargedToSender() && tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
                         {
                             // balance too low, remove tx from the pool
                             MarkForEviction(tx, false);

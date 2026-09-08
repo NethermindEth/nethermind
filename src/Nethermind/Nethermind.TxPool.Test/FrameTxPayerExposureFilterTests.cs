@@ -153,16 +153,24 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
-    [Test]
-    public void Accept_UnresolvedFramePayer_PassesThrough()
+    [TestCase(TestCost, false, TestName = "the sender covers the max cost")]
+    [TestCase(TestCost - 1, true, TestName = "the sender falls short")]
+    public void Accept_UnresolvedFramePayer_GatesTheSenderAndReservesNothing(int senderBalance, bool rejected)
     {
-        // FrameTxPayerFilter left the payer null (RequiresSimulation / NoPayer): not gated here.
+        // FrameTxPayerFilter left the payer null (RequiresSimulation with no verdict). Nothing can be
+        // reserved, but the sibling balance filters skip frame txs, so this is the only gate left.
         Transaction tx = FrameTxCostingExactly(TestCost);
         tx.PayerAddress = null;
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
 
-        AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx);
+        AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx, senderAccounts);
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+            Assert.That(tx.PayerExposure, Is.Null, "an unresolved payer leaves no reservation to release");
+        }
     }
 
     [Test]

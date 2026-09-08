@@ -64,6 +64,17 @@ namespace Nethermind.TxPool
             return balance <= tx.Value ? default : tx.GasPrice;
         }
 
+        /// <summary>Whether the sender's balance is what a pooled <paramref name="tx"/>'s gas and blob fees are
+        /// measured against.</summary>
+        /// <remarks>An EIP-8141 frame transaction that resolved a third-party payer is measured against that payer
+        /// instead — by <see cref="Filters.FrameTxPayerExposureFilter"/> at admission, and against the same account
+        /// by the revalidation sweep. Charging it to the sender would evict a sponsored transaction whose sponsor
+        /// still covers it, and let it spend the sender's budget for its other transactions. One admitted with no
+        /// payer resolved names no other account, so it stays on the sender. Only meaningful once admission has
+        /// recorded a payer.</remarks>
+        internal static bool FeeChargedToSender(this Transaction tx) =>
+            !tx.SupportsFrames || tx.PayerAddress is null || tx.PayerAddress == tx.SenderAddress;
+
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
             => tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
 
