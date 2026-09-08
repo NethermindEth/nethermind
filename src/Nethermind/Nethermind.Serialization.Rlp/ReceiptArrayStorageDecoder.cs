@@ -63,9 +63,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
     protected override TxReceipt[] DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.Data[decoderContext.Position] == CompactEncoding)
+        if (decoderContext.PeekByte() == CompactEncoding)
         {
-            decoderContext.Position++;
+            decoderContext.ReadByte();
             return TakeCompletePrefix(CompactDecoder.DecodeArray(
                 ref decoderContext,
                 RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes));

@@ -21,7 +21,7 @@ public ref struct RlpReader
 
     // Packed rather than two bools: constructing a reader is hot, and a 1-byte store is the most
     // expensive access class on the zkVM, so this pays one where there were two.
-    private Flags _flags;
+    private readonly Flags _flags;
 
     [Flags]
     private enum Flags : byte
