@@ -116,7 +116,7 @@ public class GasEstimator(
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
         // EIP-8037: each dimension gets its own block budget, and only execution carries the per-tx cap.
-        return executionReservation > Math.Min(header.GasLimit, spec.GetTxGasLimitCap()) || stateReservation > header.GasLimit
+        return executionReservation > Eip7825Constants.DefaultTxGasLimitCap || stateReservation > header.GasLimit
             ? EstimationResult.Failure(CannotEstimateGasExceeded)
             : EstimationResult.Success(maxGas);
     }
