@@ -653,19 +653,17 @@ internal static class TrieUpdater<TKey, TPath>
         private readonly ValueHash256 _valueOrLeft;
         private readonly ValueHash256 _right;
 
-        internal Subtree(RefCountingMemory lease, ReadOnlyMemory<byte> encoding, TPath path, ValueHash256 hash = default)
+        internal Subtree(RefCountingMemory lease, ReadOnlyMemory<byte> encoding, TPath path)
         {
             _lease = lease;
             _kind = NodeKind.Original;
             _encoding = encoding;
             Path = path;
-            Hash = hash != default ? hash : PbtNodeCodec.Hash(new PbtNodeReader(encoding.Span));
         }
 
         internal Subtree(ValueHash256 hash, TPath path)
         {
             _kind = hash == default ? NodeKind.Empty : NodeKind.Reference;
-            Hash = hash;
             Path = path;
         }
 
@@ -675,11 +673,6 @@ internal static class TrieUpdater<TKey, TPath>
             _key = operation.Key;
             _valueOrLeft = operation.Value;
             Path = path;
-            Span<byte> preimage = stackalloc byte[1 + _key.Length + 32];
-            preimage[0] = 0;
-            _key.Bytes.CopyTo(preimage[1..]);
-            _valueOrLeft.Bytes.CopyTo(preimage[(1 + _key.Length)..]);
-            Hash = Blake3Hash.Hash(preimage);
         }
 
         internal Subtree(TPath path, in ValueHash256 left, in ValueHash256 right)
@@ -688,13 +681,10 @@ internal static class TrieUpdater<TKey, TPath>
             _valueOrLeft = left;
             _right = right;
             Path = path;
-            Span<byte> encoding = stackalloc byte[3 + 64];
-            PbtNodeCodec.CreateBranchEncoding(encoding, 0, left, right);
-            Hash = Blake3Hash.Hash(encoding);
         }
 
         private Subtree(RefCountingMemory? lease, NodeKind kind, ReadOnlyMemory<byte> encoding, TKey key,
-            ValueHash256 valueOrLeft, ValueHash256 right, TPath? path, ValueHash256 hash)
+            ValueHash256 valueOrLeft, ValueHash256 right, TPath? path)
         {
             _lease = lease;
             _kind = kind;
@@ -703,7 +693,6 @@ internal static class TrieUpdater<TKey, TPath>
             _valueOrLeft = valueOrLeft;
             _right = right;
             Path = path;
-            Hash = hash;
         }
 
         internal static Subtree TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.Subtree source)
@@ -720,14 +709,13 @@ internal static class TrieUpdater<TKey, TPath>
                 ? sourcePath as TPath ?? TPath.Create(sourcePath.Path, sourcePath.BitDepth)
                 : null;
             Subtree result = new(source._lease, source._kind, source._encoding, key,
-                source._valueOrLeft, source._right, path, source.Hash);
+                source._valueOrLeft, source._right, path);
             source = default;
             return result;
         }
 
         private readonly PbtNodeReader Reader => new(_encoding.Span);
         internal readonly TPath? Path { get; }
-        internal readonly ValueHash256 Hash { get; }
         internal readonly bool IsEmpty => _kind == NodeKind.Empty;
         internal readonly bool IsReference => _kind == NodeKind.Reference;
         internal readonly bool IsLeaf => _kind == NodeKind.Leaf || (_kind == NodeKind.Original && Reader.IsLeaf);
@@ -746,12 +734,12 @@ internal static class TrieUpdater<TKey, TPath>
             if (_kind == NodeKind.Original && (IsLeaf || depth == Path!.BitDepth))
             {
                 _encoding.Span.CopyTo(encoding);
-                return Hash;
+                return PbtNodeCodec.Hash(new PbtNodeReader(encoding));
             }
             if (IsLeaf)
             {
                 PbtNodeCodec.EncodeLeaf(encoding, _key, _valueOrLeft.Bytes);
-                return Hash;
+                return PbtNodeCodec.Hash(new PbtNodeReader(encoding));
             }
 
             // EIP-8297 promotion absorbs skipped path bits; the source anchor remains unchanged until placement.
@@ -763,7 +751,7 @@ internal static class TrieUpdater<TKey, TPath>
             PbtBitPrefix.CopyBits(Path.Path, Math.Min(depth, pathDepth), pathBits, prefix, 0);
             int prefixOffset = Math.Max(0, depth - pathDepth);
             PbtBitPrefix.CopyBits(Prefix, prefixOffset, bitCount - pathBits, prefix, pathBits);
-            return depth == pathDepth ? Hash : Blake3Hash.Hash(encoding);
+            return Blake3Hash.Hash(encoding);
         }
 
         internal static Subtree Move(ref Subtree source)
@@ -839,12 +827,12 @@ internal static class TrieUpdater<TKey, TPath>
             ? default
             : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
 
-        internal Subtree Acquire(int position, TPath path, ValueHash256 hash)
+        internal Subtree Acquire(int position, TPath path)
         {
             ReadOnlyMemory<byte> encoding = GetEncoding(position);
             if (encoding.IsEmpty) return default;
             _lease!.AcquireLease();
-            try { return new(_lease, encoding, path, hash); }
+            try { return new(_lease, encoding, path); }
             catch
             {
                 ((IDisposable)_lease).Dispose();
@@ -902,12 +890,12 @@ internal static class TrieUpdater<TKey, TPath>
         internal TPath GroupKey => _reader.GroupKey;
         internal int BitDepth => _reader.BitDepth;
 
-        internal Subtree Take(TPath path, bool allowAbsent = false, ValueHash256 hash = default)
+        internal Subtree Take(TPath path, bool allowAbsent = false)
         {
             int position = _reader.Position(path);
             if (position < _nextPosition) throw new InvalidOperationException("Cannot take a PBT node after its output position has passed.");
             Subtree node = (_taken & (1U << position)) == 0
-                ? _reader.Acquire(position, path, hash)
+                ? _reader.Acquire(position, path)
                 : default;
             if (node.IsEmpty && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
             _taken |= 1U << position;
@@ -917,7 +905,7 @@ internal static class TrieUpdater<TKey, TPath>
         internal void Resolve(ref Subtree subtree)
         {
             if (subtree.IsReference)
-                subtree = Take(subtree.Path!, hash: subtree.Hash);
+                subtree = Take(subtree.Path!);
         }
 
         internal ValueHash256 Write(int position, int depth, ref Subtree node)
