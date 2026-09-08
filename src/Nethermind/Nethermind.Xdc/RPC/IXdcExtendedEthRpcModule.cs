@@ -38,7 +38,7 @@ public interface IXdcExtendedEthRpcModule : IRpcModule
     /// <remarks>
     /// Overrides the client's own <c>eth_getAccountInfo</c>, which reports the code itself in place of the
     /// hash, size and storage root XDC callers expect. Registered after the core module so this definition
-    /// wins; <c>XdcRpcModuleOverrideTests</c> guards that ordering.
+    /// wins; <c>XdcTestBlockchainTests.XdcOverridesTheCoreAccountInfoEndpoint</c> guards that ordering.
     /// </remarks>
     [JsonRpcMethod(
         Description = "Returns balance, nonce, code hash and size, and storage root for an account.",

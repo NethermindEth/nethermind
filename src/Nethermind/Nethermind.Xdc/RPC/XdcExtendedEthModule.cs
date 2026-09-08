@@ -137,14 +137,30 @@ internal sealed class XdcExtendedEthModule(
             return Task.FromResult(ResultWrapper<XdcAccountInfo>.Success(XdcAccountInfo.Absent(accountAddress)));
         }
 
+        long codeSize = 0;
+        // An account without code needs no lookup, which covers every externally owned account.
+        if (account.HasCode)
+        {
+            byte[]? code = stateReader.GetCode(account.CodeHash);
+            if (code is null)
+            {
+                // The account claims code the code store cannot produce; reporting zero here would be
+                // indistinguishable from an externally owned account.
+                return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
+                    $"Code {account.CodeHash} of account {accountAddress} is not available",
+                    ErrorCodes.ResourceUnavailable));
+            }
+
+            codeSize = code.Length;
+        }
+
         return Task.FromResult(ResultWrapper<XdcAccountInfo>.Success(new XdcAccountInfo
         {
             Address = accountAddress,
             Balance = account.Balance,
             Nonce = account.Nonce,
             CodeHash = new Hash256(account.CodeHash),
-            // An account without code needs no lookup, which covers every externally owned account.
-            CodeSize = account.HasCode ? stateReader.GetCode(account.CodeHash)?.Length ?? 0 : 0,
+            CodeSize = codeSize,
             StorageHash = new Hash256(account.StorageRoot),
         }));
     }

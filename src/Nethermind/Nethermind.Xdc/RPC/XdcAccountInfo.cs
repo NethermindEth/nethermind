@@ -14,29 +14,26 @@ namespace Nethermind.Xdc.RPC;
 /// the empty-code and empty-trie hashes, matching the reference and letting a caller tell an absent
 /// account apart from one that exists with neither code nor storage.
 /// </remarks>
-public class XdcAccountInfo
+public sealed class XdcAccountInfo
 {
     /// <summary>The account queried, echoed back.</summary>
-    public Address? Address { get; set; }
+    public Address Address { get; init; } = Core.Address.Zero;
 
-    public UInt256 Balance { get; set; }
+    /// <summary>The account's balance in wei; zero when the account does not exist.</summary>
+    public UInt256 Balance { get; init; }
 
-    public ulong Nonce { get; set; }
+    /// <summary>Number of transactions sent from the account; zero when the account does not exist.</summary>
+    public ulong Nonce { get; init; }
 
     /// <summary>Hash of the account's code, or zero when the account does not exist.</summary>
-    public Hash256? CodeHash { get; set; }
+    public Hash256 CodeHash { get; init; } = Hash256.Zero;
 
     /// <summary>Length of the account's code in bytes; zero for an account that holds none.</summary>
-    public long CodeSize { get; set; }
+    public long CodeSize { get; init; }
 
     /// <summary>Root of the account's storage trie, or zero when the account does not exist.</summary>
-    public Hash256? StorageHash { get; set; }
+    public Hash256 StorageHash { get; init; } = Hash256.Zero;
 
     /// <summary>Builds the all-zero report the reference returns for an address with no account.</summary>
-    public static XdcAccountInfo Absent(Address address) => new()
-    {
-        Address = address,
-        CodeHash = Hash256.Zero,
-        StorageHash = Hash256.Zero,
-    };
+    public static XdcAccountInfo Absent(Address address) => new() { Address = address };
 }
