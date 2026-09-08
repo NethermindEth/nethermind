@@ -65,7 +65,7 @@ public class SnapshotCompactionBenchmark
         CompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
-        SnapshotRepository repository = new(null!, null!, NullSnapshotCatalog.Instance, config, LimboLogs.Instance);
+        SnapshotRepository repository = new(null!, null!, NullSnapshotCatalog.Instance, config, LimboLogs.Instance, new SnapshotRetention());
         _compactor = new SnapshotCompactor(config, schedule, resourcePool, repository, LimboLogs.Instance);
 
         // Contract addresses and their account-path hashes are shared across every snapshot (the same hot
