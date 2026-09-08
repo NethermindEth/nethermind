@@ -698,7 +698,6 @@ jobs:
         run: >-
           dotnet publish tools/AccountIndexPrepare/AccountIndexPrepare.csproj
           --configuration Release --runtime "${RID}" --self-contained true
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -p:DebugType=None --output "${RUNNER_TEMP}/account-index-prepare"
 
       - name: Smoke-test Linux x64 helper
