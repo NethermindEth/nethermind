@@ -777,9 +777,10 @@ public class FrameTxProcessorTests
     public void Execute_FrameParamStatusOfCurrentFrame_ExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        // The sentinel write past the FRAMEPARAM separates the halt from an implementation that pushes
-        // zero and runs on, which would leave slot 0 at zero either way.
+        // Sentinels either side of the FRAMEPARAM separate the halt from an implementation that pushes zero
+        // and runs on, which would leave slot 0 at zero either way: slot 2 is rolled back, slot 1 never runs.
         DeployContract(Observer, Prepare.EvmCode
+            .PushData(0xaa).PushData(2).Op(Instruction.SSTORE)
             .PushData(0x05).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
             .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
@@ -794,9 +795,10 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
-            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(frame.ExecutionGasLimit),
-                "an exceptional halt consumes the frame's gas limit");
+            Assert.That(tracer.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "an exceptional halt consumes the frame's execution gas limit");
             AssertStorage(Observer, 1, UInt256.Zero, "the halt is what stopped the frame, not a zero-valued read");
+            AssertStorage(Observer, 2, UInt256.Zero, "the halted frame's earlier write is rolled back");
         }
     }
 
@@ -899,9 +901,10 @@ public class FrameTxProcessorTests
     public void Execute_SigParamResolvedSignerOfArbitraryEntry_ExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        // The sentinel write past the SIGPARAM separates the halt from an implementation that pushes the
-        // absent signer as zero and runs on, which would leave slot 0 at zero either way.
+        // Sentinels either side of the SIGPARAM separate the halt from an implementation that pushes the absent
+        // signer as zero and runs on, which would leave slot 0 at zero either way.
         DeployContract(Observer, Prepare.EvmCode
+            .PushData(0xaa).PushData(2).Op(Instruction.SSTORE)
             .PushData(0x00).PushData(0).Op(Instruction.SIGPARAM).PushData(0).Op(Instruction.SSTORE)
             .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
@@ -916,9 +919,10 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
-            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(frame.ExecutionGasLimit),
-                "an exceptional halt consumes the frame's gas limit");
+            Assert.That(tracer.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "an exceptional halt consumes the frame's execution gas limit");
             AssertStorage(Observer, 1, UInt256.Zero, "the halt is what stopped the frame, not a zero-valued read");
+            AssertStorage(Observer, 2, UInt256.Zero, "the halted frame's earlier write is rolled back");
         }
     }
 

@@ -34,7 +34,7 @@ public class FrameTxPrefixSimulatorCodeCacheTests
     [Test]
     public async Task A_simulated_deploy_frame_does_not_deposit_into_the_main_processing_code_cache()
     {
-        // Marked so the assertion cannot be satisfied by a hash the process-wide cache never held anyway.
+        // Marked so that a failure can only be this deployment's deposit, not another fixture's.
         byte[] deployedCode = Prepare.EvmCode
             .PushData(0x8141).Op(Instruction.POP)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
@@ -45,6 +45,9 @@ public class FrameTxPrefixSimulatorCodeCacheTests
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
+            // Isolated from StaticCodeCache.Instance, whose contents no test in this assembly controls;
+            // a shared-cache simulator would still deposit into this instance.
+            builder.AddSingleton<ICodeCache>(new StaticCodeCache(Evm.MemoryAllowance.CodeCacheSize));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
                 new FunctionalGenesisPostProcessor(_ =>
                 {
