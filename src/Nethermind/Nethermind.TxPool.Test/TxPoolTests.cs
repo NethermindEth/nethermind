@@ -3006,6 +3006,45 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void EvictTransaction_keeps_a_frame_tx_until_its_retry_budget_is_spent()
+        {
+            const int budget = 3;
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance));
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            int evicted = 0;
+            _txPool.EvictedPending += (_, _) => evicted++;
+
+            using (Assert.EnterMultipleScope())
+            {
+                for (int attempt = 1; attempt < budget; attempt++)
+                {
+                    Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "a transiently-failing frame tx is kept below its retry budget");
+                    Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction stays pending below the budget");
+                }
+
+                Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "the frame tx is evicted once its retry budget is spent");
+                Assert.That(evicted, Is.EqualTo(1), "eviction is surfaced exactly once, on the budget-th attempt");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the frame transaction leaves the pool on the budget-th attempt");
+            }
+        }
+
         // Both filters are wired into the pool, and the placement filter runs ahead of the one that would
         // otherwise claim the same layout — deleting either line leaves every filter fixture green.
         [Test]

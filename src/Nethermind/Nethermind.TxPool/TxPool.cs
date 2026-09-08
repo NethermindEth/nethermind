@@ -18,6 +18,7 @@ using Nethermind.Network.Contract.Messages;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -71,6 +72,7 @@ namespace Nethermind.TxPool
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
+        private readonly ConcurrentDictionary<Hash256, int> _frameEvictionAttempts = new();
 
         // Candidate filter for the shed pass, calibrated on a 12s slot; on a faster chain it simply admits
         // more transactions to the deadline order, which is the order the spec asks for anyway.
@@ -2289,6 +2291,8 @@ namespace Nethermind.TxPool
 
             _broadcaster.StopBroadcast(hash);
 
+            if (!_frameEvictionAttempts.IsEmpty) _frameEvictionAttempts.TryRemove(hash, out _);
+
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
             return true;
@@ -2298,6 +2302,13 @@ namespace Nethermind.TxPool
         /// <remarks>The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure turns on chain state that can change.</remarks>
         public bool EvictTransaction(Transaction tx)
         {
+            int budget = _txPoolConfig.FrameTxEvictionRetryBudget;
+            if (tx.SupportsFrames && budget > 1
+                && _frameEvictionAttempts.AddOrUpdate(tx.Hash!, 1, static (_, attempts) => attempts + 1) < budget)
+            {
+                return false;
+            }
+
             if (!RemoveTransaction(tx.Hash)) return false;
 
             EvictedPending?.Invoke(this, new TxEventArgs(tx));

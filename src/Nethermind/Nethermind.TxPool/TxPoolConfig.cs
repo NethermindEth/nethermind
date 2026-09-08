@@ -23,6 +23,7 @@ public class TxPoolConfig : ITxPoolConfig
     public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
     public int FrameTxSimulationTimeoutMs { get; set; } = 250;
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
+    public int FrameTxEvictionRetryBudget { get; set; } = 3;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
     public int HashCacheSize { get; set; } = 512 * 1024;
     public ulong? GasLimit { get; set; } = null;

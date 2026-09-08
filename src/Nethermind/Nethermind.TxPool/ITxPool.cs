@@ -86,7 +86,9 @@ namespace Nethermind.TxPool
         /// <see cref="RemovedPending"/>, and the hash leaves the long-term known-hash cache so the same
         /// transaction may be resubmitted. That last part is what makes this a drop rather than a verdict —
         /// the reasons block production evicts for turn on head state and can reverse — so callers must not
-        /// use it to blacklist a transaction.
+        /// use it to blacklist a transaction. For the same reason a frame transaction is not dropped on its
+        /// first failed attempt: it is kept until it has failed <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/>
+        /// times, and the earlier calls report <see langword="false"/> and retain it.
         /// Removal is atomic and the rest of the work follows it, so repeated calls are idempotent: only the
         /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
         /// eviction, and a call for a transaction the pool does not hold changes nothing.
