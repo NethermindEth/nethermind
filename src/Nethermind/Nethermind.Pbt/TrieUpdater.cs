@@ -443,32 +443,35 @@ internal static class TrieUpdater<TKey, TPath>
 
         ComposeFrameBuffer frames = default;
         int frameCount = 1;
-        frames[0] = new(occupied, 0, boundaries.Length, 0);
+        frames[0] = new(occupied, default);
         Subtree result = default;
         try
         {
             while (frameCount != 0)
             {
                 ref ComposeFrame frame = ref frames[frameCount - 1];
-                int halfWidth = frame.Width / 2;
+                int halfWidth = frame.Path.Width / 2;
                 if (frame.Stage == ComposeStage.LeftCompleted)
                 {
                     // The left root must be emitted before any descendants of the right subtree.
-                    frame.LeftHash = Place(group, ref result, frame.Position - frame.Width, frame.BranchPath!.BitDepth + 1);
+                    frame.LeftHash = Place(group, ref result, frame.Path.Position - frame.Path.Width, frame.BranchPath!.BitDepth + 1);
                     frame.Stage = ComposeStage.RightCompleted;
-                    frames[frameCount++] = new(frame.Occupied >> halfWidth, frame.Slot + halfWidth, halfWidth, frame.Level + 1);
+                    if (halfWidth == 1)
+                        result = Subtree.Move(ref boundaries[frame.Path.Slot + 1]);
+                    else
+                        frames[frameCount++] = new(frame.Occupied >> halfWidth, frame.Path.Right);
                     continue;
                 }
                 if (frame.Stage == ComposeStage.RightCompleted)
                 {
-                    ValueHash256 rightHash = Place(group, ref result, frame.Position - 1, frame.BranchPath!.BitDepth + 1);
+                    ValueHash256 rightHash = Place(group, ref result, frame.Path.Position - 1, frame.BranchPath!.BitDepth + 1);
                     result = new Subtree(frame.BranchPath, frame.LeftHash, rightHash);
                     frameCount--;
                     continue;
                 }
-                if (frame.Width == 1)
+                if (BitOperations.IsPow2(frame.Occupied))
                 {
-                    result = Subtree.Move(ref boundaries[frame.Slot]);
+                    result = Subtree.Move(ref boundaries[frame.Path.Slot + BitOperations.TrailingZeroCount(frame.Occupied)]);
                     frameCount--;
                     continue;
                 }
@@ -477,20 +480,21 @@ internal static class TrieUpdater<TKey, TPath>
                 int rightMask = frame.Occupied >> halfWidth;
                 if (leftMask == 0)
                 {
-                    frame = new(rightMask, frame.Slot + halfWidth, halfWidth, frame.Level + 1);
+                    frame = new(rightMask, frame.Path.Right);
                     continue;
                 }
                 if (rightMask == 0)
                 {
-                    frame = new(leftMask, frame.Slot, halfWidth, frame.Level + 1);
+                    frame = new(leftMask, frame.Path.Left);
                     continue;
                 }
 
-                frame.BranchPath = BoundaryPath(group.GroupKey, frame.Slot, frame.Level);
-                // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
-                frame.Position = 2 * (frame.Slot + frame.Width) - 2 - BitOperations.PopCount((uint)frame.Slot);
+                frame.BranchPath = BoundaryPath(group.GroupKey, frame.Path.Slot, frame.Path.Length);
                 frame.Stage = ComposeStage.LeftCompleted;
-                frames[frameCount++] = new(leftMask, frame.Slot, halfWidth, frame.Level + 1);
+                if (halfWidth == 1)
+                    result = Subtree.Move(ref boundaries[frame.Path.Slot]);
+                else
+                    frames[frameCount++] = new(leftMask, frame.Path.Left);
             }
             return Subtree.Move(ref result);
         }
@@ -499,19 +503,16 @@ internal static class TrieUpdater<TKey, TPath>
 
     private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
 
-    private struct ComposeFrame(int occupied, int slot, int width, int level)
+    private struct ComposeFrame(int occupied, NodeGroupPath path)
     {
         internal int Occupied = occupied;
-        internal int Slot = slot;
-        internal int Width = width;
-        internal int Level = level;
+        internal NodeGroupPath Path = path;
         internal ComposeStage Stage;
         internal TPath? BranchPath;
-        internal int Position;
         internal ValueHash256 LeftHash;
     }
 
-    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup + 1)]
+    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup)]
     private struct ComposeFrameBuffer
     {
         private ComposeFrame _element;

@@ -19,6 +19,36 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtNodeGroupTests
 {
     [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void Node_group_paths_pack_internal_node_geometry_into_one_byte(int length)
+    {
+        for (int prefix = 0; prefix < 1 << length; prefix++)
+        {
+            int slot = prefix << (4 - length);
+            NodeGroupPath path = new(slot, length);
+            PbtNodePath nodePath = PbtPathOperations.FromKey<PbtNodePath>([(byte)(slot << 4)], length);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Unsafe.SizeOf<NodeGroupPath>(), Is.EqualTo(1));
+                Assert.That(path.Slot, Is.EqualTo(slot));
+                Assert.That(path.Length, Is.EqualTo(length));
+                Assert.That(path.Width, Is.EqualTo(16 >> length));
+                Assert.That(path.Position, Is.EqualTo(PbtFourLevelGroupGeometry.PositionOf(nodePath)));
+                if (length < 3)
+                {
+                    Assert.That(path.Left.Slot, Is.EqualTo(slot));
+                    Assert.That(path.Right.Slot, Is.EqualTo(slot + (8 >> length)));
+                    Assert.That(path.Left.Length, Is.EqualTo(length + 1));
+                    Assert.That(path.Right.Length, Is.EqualTo(length + 1));
+                }
+            }
+        }
+    }
+
+    [TestCase(0)]
     [TestCase(4)]
     [TestCase(268)]
     public void Small_and_storage_paths_share_identity_and_accept_wide_leaf_payloads(int depth)
