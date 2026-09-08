@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
@@ -14,6 +16,7 @@ using System.Linq;
 using BenchmarkDotNet.Columns;
 using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
+using Nethermind.Benchmarks.Store;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -48,8 +51,20 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            if (args.Contains("--rocksdb-account-auto-standalone"))
+            {
+                RunRocksDbAccountAutoStandalone(args);
+                return;
+            }
+
+            if (args.Contains("--rocksdb-account-auto-benchmarks"))
+            {
+                RocksDbAccountAutoBenchmarkSelection.Configure(
+                    GetOptionalEnum<RocksDbAccountAutoMode>(args, "--rocksdb-account-auto-mode"));
+            }
+
             bool quickMode = args.Contains("--quick");
-            string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
+            string[] benchmarkArgs = RemoveAccountAutoArguments(args);
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
 
             List<Assembly> additionalJobAssemblies = [
@@ -80,6 +95,54 @@ namespace Nethermind.Benchmark.Runner
                     .FromAssemblies(releaseAssemblies)
                     .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
+        }
+
+        private static void RunRocksDbAccountAutoStandalone(string[] args)
+        {
+            RocksDbAccountAutoMode mode = Enum.Parse<RocksDbAccountAutoMode>(
+                GetArgument(args, "--rocksdb-account-auto-mode", nameof(RocksDbAccountAutoMode.BinaryBaseline)), true);
+            int operations = int.Parse(GetArgument(args, "--rocksdb-account-auto-operations", "4096"));
+
+            RocksDbAccountAutoStandaloneRunner.Run(mode, operations);
+        }
+
+        private static TEnum? GetOptionalEnum<TEnum>(string[] args, string name) where TEnum : struct, Enum
+        {
+            string? value = GetOptionalArgument(args, name);
+            if (value is null) return null;
+            if (Enum.TryParse(value, ignoreCase: true, out TEnum result)) return result;
+            throw new ArgumentException($"Unknown {name} value '{value}'.", name);
+        }
+
+        private static string? GetOptionalArgument(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == name) return args[i + 1];
+            }
+
+            return null;
+        }
+
+        private static string GetArgument(string[] args, string name, string defaultValue) =>
+            GetOptionalArgument(args, name) ?? defaultValue;
+
+        private static string[] RemoveAccountAutoArguments(string[] args)
+        {
+            List<string> benchmarkArgs = [];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] is "--quick" or "--rocksdb-account-auto-benchmarks") continue;
+                if (args[i] is "--rocksdb-account-auto-mode" or "--rocksdb-account-auto-operations")
+                {
+                    i++;
+                    continue;
+                }
+
+                benchmarkArgs.Add(args[i]);
+            }
+
+            return benchmarkArgs.ToArray();
         }
     }
 }
