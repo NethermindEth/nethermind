@@ -44,6 +44,20 @@ namespace Nethermind.Trie
                 return Unsafe.As<BranchData>(item._nodeData!).Branches;
             }
 
+            /// <inheritdoc cref="BranchChildren"/>
+            /// <remarks>
+            /// <inheritdoc cref="BranchChildren" path="/remarks"/>
+            /// A walk that also needs the child index takes the first element by reference and advances
+            /// it, rather than indexing: measured on the guest, indexing the span costs the scale per
+            /// child, +995,495 ziskemu steps a block across the four passes that do so.
+            /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static ref object? FirstBranchChild(TrieNode item)
+            {
+                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
+                return ref Unsafe.As<BranchData>(item._nodeData!)[0];
+            }
+
             [SkipLocalsInit]
             public static CappedArray<byte> EncodeExtension(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
@@ -367,10 +381,10 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 ushort candidateMask = 0;
-                ReadOnlySpan<object?> children = BranchChildren(item);
-                for (int i = 0; i < children.Length; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = children[i];
+                    object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         totalLength++;
@@ -462,10 +476,10 @@ namespace Nethermind.Trie
                 ushort candidateMask = 0;
                 ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
                 int cursor = item.SeekChildPosition(nodeRlp, 0);
-                ReadOnlySpan<object?> children = BranchChildren(item);
-                for (int i = 0; i < children.Length; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = children[i];
+                    object? data = child;
                     if (data is null)
                     {
                         int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
@@ -534,10 +548,10 @@ namespace Nethermind.Trie
             private static int WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int position = 0;
-                ReadOnlySpan<object?> children = BranchChildren(item);
-                for (int i = 0; i < children.Length; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = children[i];
+                    object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         destination[position++] = 128;
@@ -582,10 +596,10 @@ namespace Nethermind.Trie
                 // sixteen short copies into two.
                 int runStart = -1;
                 int runLength = 0;
-                ReadOnlySpan<object?> children = BranchChildren(item);
-                for (int i = 0; i < children.Length; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = children[i];
+                    object? data = child;
                     if (data is null)
                     {
                         int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
