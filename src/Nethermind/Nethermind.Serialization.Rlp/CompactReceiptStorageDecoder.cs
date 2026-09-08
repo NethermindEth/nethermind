@@ -40,9 +40,9 @@ namespace Nethermind.Serialization.Rlp
             (position, txReceipt.Sender) = RlpHelpers.DecodeAddressOrNull(rlp, position);
             (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
 
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
-            int lastCheck = position + sequenceLength;
-            decoderContext.Position = position;
+            int sequenceStart = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int lastCheck = sequenceStart + sequenceLength;
+            decoderContext.Position = sequenceStart;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);

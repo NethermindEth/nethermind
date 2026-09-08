@@ -53,6 +53,7 @@ namespace Nethermind.Serialization.Rlp
 
             position = decoderContext.Position;
 
+            // BaseFeePerGas is a field, so it takes the `out` form; the rest are properties and take the pair form.
             if (position != headerCheck) position = RlpHelpers.DecodeUInt256(rlp, position, out blockHeader.BaseFeePerGas);
             if (position != headerCheck) (position, blockHeader.WithdrawalsRoot) = RlpHelpers.DecodeKeccak(rlp, position);
             if (position != headerCheck) (position, blockHeader.BlobGasUsed) = RlpHelpers.DecodeULong(rlp, position);

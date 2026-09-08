@@ -102,7 +102,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         {
             if (rlp[position] <= Transaction.MaxTxType) // it is typed transactions
             {
-                transactionSequence = rlp.Slice(position, rlp.Length);
+                transactionSequence = rlp.Slice(position);
                 txType = (TxType)rlp[position++];
                 ThrowIfLegacy(txType);
             }

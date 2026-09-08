@@ -33,8 +33,8 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<Hash256> topics = new(topicCount);
             while (position < untilPosition)
             {
-                position = RlpHelpers.DecodeZeroPrefixKeccak(rlp, position, out Hash256? topic);
-                topics.Add(topic ?? RlpHelpers.ThrowNullDecodedValue<Hash256>());
+                position = RlpHelpers.DecodeZeroPrefixKeccakNonNull(rlp, position, out Hash256 topic);
+                topics.Add(topic);
             }
 
             RlpHelpers.Check(position, untilPosition);
