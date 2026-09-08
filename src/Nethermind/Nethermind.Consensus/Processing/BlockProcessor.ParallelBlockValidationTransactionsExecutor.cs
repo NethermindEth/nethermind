@@ -280,9 +280,6 @@ public partial class BlockProcessor
                 gasResultPool[i] = new GasValidationResultSlot();
             }
 
-            // Grow into locals and publish only once every buffer is sized and every new slot is
-            // populated; the guard above reads _receiptsTracerPool.Length, so a pool left half built
-            // by a failure part way through would be reused as if it were complete.
             _receiptsTracerPool = receiptsTracerPool;
             _gasResultPool = gasResultPool;
             _txExecutionOrder = txExecutionOrder;
