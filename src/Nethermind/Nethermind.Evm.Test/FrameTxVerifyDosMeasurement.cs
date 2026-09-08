@@ -184,7 +184,7 @@ public class FrameTxVerifyDosMeasurement
     /// <summary>The unpaid gas one block-production attempt burns on a prefix that never approves — the
     /// per-attempt multiplicand for the pool-retention count measured in the TxPool tests.</summary>
     [TestCase(100_000L, TestName = "burn at the spec default budget")]
-    [TestCase(236_285L, TestName = "burn at the measured pool prefix")]
+    [TestCase(322_800L, TestName = "burn at the measured pool prefix")]
     public void UnpaidBurnPerAttempt(long verifyGas)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
