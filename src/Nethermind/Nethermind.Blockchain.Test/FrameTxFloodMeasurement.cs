@@ -238,9 +238,6 @@ public class FrameTxFloodMeasurement
 
     private const double BrokenBaselineDriftPercent = 25.0;
 
-    // p99 is a near-max order statistic over a few hundred samples, so it is inherently noisier than
-    // the median: one scheduling hiccup can double it without the two baselines describing different
-    // machines. The median keeps the tight bound that actually detects a different machine.
     private const double BrokenBaselineTailDriftPercent = 100.0;
 
     private const double MaxSustainedLagPeriods = 5.0;
