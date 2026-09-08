@@ -77,22 +77,60 @@ public class WaitAnyWhereTests
     }
 
     [Test]
-    public void Result_of_a_task_abandoned_by_a_failure_is_disposed()
+    public void Result_of_a_task_abandoned_by_a_failure_is_disposed([Values] bool cancelled)
     {
         Disposable straggler = new();
         TaskCompletionSource<Disposable> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        Task<Disposable> failed = cancelled
+            ? Task.FromCanceled<Disposable>(new CancellationToken(true))
+            : Task.FromException<Disposable>(new InvalidOperationException());
         Task<Disposable> anyWhere = Wait.AnyWhere(
             r => r is not null,
-            Task.FromException<Disposable>(new InvalidOperationException()),
+            failed,
             pending.Task);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => anyWhere);
+        Assert.ThrowsAsync(cancelled ? typeof(TaskCanceledException) : typeof(InvalidOperationException), () => anyWhere);
 
         // The straggler produces its result only after the failure has already unwound the call.
         pending.SetResult(straggler);
 
         Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
+    }
+
+    [Test]
+    public void Throwing_predicate_disposes_current_and_abandoned_results()
+    {
+        Disposable current = new();
+        Disposable straggler = new();
+        TaskCompletionSource<Disposable> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<Disposable> anyWhere = Wait.AnyWhere(
+            _ => throw new InvalidOperationException(), Task.FromResult(current), pending.Task);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => anyWhere);
+        Assert.That(current.Disposed, Is.True);
+
+        pending.SetResult(straggler);
+
+        Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
+    }
+
+    [Test]
+    public async Task Disposable_results_typed_as_object_are_disposed([Values] bool rejected)
+    {
+        Disposable discarded = new();
+        object accepted = new();
+        TaskCompletionSource<object> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (rejected) pending.SetResult(discarded);
+
+        object result = await Wait.AnyWhere(
+            r => ReferenceEquals(r, accepted), pending.Task, Task.FromResult(accepted));
+
+        Assert.That(result, Is.SameAs(accepted));
+        if (!rejected) pending.SetResult(discarded);
+
+        Assert.That(() => discarded.Disposed, Is.True.After(1000, 10));
     }
 
     [Test]
