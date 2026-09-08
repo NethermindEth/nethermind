@@ -20,6 +20,12 @@ public static class RpcTransactionErrors
 
     public static string NullEntryIn(string field) => $"{field} must not contain a null entry";
 
-    public static string FrameGasAboveCap(ulong totalGasLimit, ulong gasCap)
-        => $"frame gas limits ({totalGasLimit}) exceed the gas cap ({gasCap})";
+    /// <summary>Reports the gas an EIP-8141 frame transaction reserves against the RPC cap.</summary>
+    /// <remarks>The two terms are reported apart so the caller can see which one it has to shrink; either
+    /// may be zero, and a signature-free transaction is the common case.</remarks>
+    /// <param name="frameGas">The sum of the frame gas limits.</param>
+    /// <param name="signatureGas">The signature verification the processor runs before deriving any budget.</param>
+    /// <param name="gasCap">The cap the reservation exceeded.</param>
+    public static string FrameGasAboveCap(ulong frameGas, ulong signatureGas, ulong gasCap)
+        => $"frame gas limits ({frameGas}) and signature verification ({signatureGas}) exceed the gas cap ({gasCap})";
 }
