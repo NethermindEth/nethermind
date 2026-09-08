@@ -734,6 +734,7 @@ public partial class VirtualMachine<TGasPolicy>(
         GetExecutionHandlers().CreditStateGasRefund(this, ref gas, amount, trackSpillRefund);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     internal void CreditStateGasRefund<Eip8037>(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
         where Eip8037 : struct, IFlag
     {
@@ -994,6 +995,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
         _txTracer.ReportAction(TGasPolicy.GetRemainingGas(currentState.Gas),
@@ -1022,6 +1024,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="callResult">
     /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
     /// </param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     protected void TraceTransactionActionEnd(VmState<TGasPolicy> currentState, in CallResult callResult)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
