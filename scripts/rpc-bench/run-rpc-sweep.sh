@@ -68,7 +68,6 @@ CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"
 CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 ACCOUNT_INDEX_SWEEP="${ACCOUNT_INDEX_SWEEP:-false}"
-ACCOUNT_INDEX_HELPER_PATH="${ACCOUNT_INDEX_HELPER_PATH:-}"
 
 # Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
 # "250k" silently yields an empty duration and the cell quietly falls back to the workload default.
@@ -113,8 +112,6 @@ if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
     || { echo "::error::Account index sweep requires the flat state layout"; exit 1; }
   [[ "$DB_ISOLATION_ALL" == "" || "$DB_ISOLATION_ALL" == "overlay" ]] \
     || { echo "::error::Account index sweep requires overlay isolation"; exit 1; }
-  [[ -x "$ACCOUNT_INDEX_HELPER_PATH" ]] \
-    || { echo "::error::Account index helper is missing or not executable"; exit 1; }
   [[ "$RPS_LIST" == "100" ]] \
     || { echo "::error::Account index sweep requires exactly rps_list=100"; exit 1; }
   [[ "$CORPUS_WARMUP_DURATION" == "120" || "$CORPUS_WARMUP_DURATION" == "120s" ]] \
@@ -317,11 +314,8 @@ cell_fail=0   # load-test cells that ran but failed (distinct from a client skip
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
 warmup_fail=0 # requested warm-up missing a usable aggregate or delivering under 80% of its target
-preparation_fail=0 # helper aggregate missing, inconsistent across arms, or not safely torn down
+start_fail=0 # an Account CV arm failed to start or the fixed sweep was incomplete
 BASELINE_LABEL=""  # first successfully started client; all later clients diff against it
-ACCOUNT_BASE_COUNT=""
-ACCOUNT_BASE_DIGEST=""
-ACCOUNT_BASE_HELPER_SHA=""
 
 case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
@@ -425,89 +419,22 @@ for entry in $SWEEP_ENTRIES; do
         RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
         ACCOUNT_INDEX_SWEEP="$ACCOUNT_INDEX_SWEEP" \
         ACCOUNT_INDEX_PREPARE_MODE="${arm_mode:-}" ACCOUNT_INDEX_PREPARE_THRESHOLD="${arm_threshold:-}" \
-        ACCOUNT_INDEX_HELPER_PATH="$ACCOUNT_INDEX_HELPER_PATH" \
-        ACCOUNT_INDEX_PREPARE_OUTPUT="$cst/account-index-prepare.json" \
         DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
         "$here/start-node.sh"; then
     echo "::warning::${label} failed to start — cleaning its isolated view before skipping cells"
-    if [[ -f "$cst/account-index-start-cleaned" ]]; then
-      rm -f "$cst/account-index-start-cleaned"
-      echo "   start-node.sh already verified and tore down the failed isolated view"
-    elif ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
+    if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
            "$here/stop-node.sh"; then
       echo "::error::${label}: cleanup after start failure failed"
       stop_fail=1
     fi
     if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
       echo "::error::${label}: Account CV sweep cannot continue after an arm failed to start"
-      preparation_fail=1
+      start_fail=1
       echo "::endgroup::"
       break
     fi
     echo "::endgroup::"
     continue
-  fi
-  if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
-    prep_identity="$(python3 - "$cst/account-index-prepare.json" <<'PY'
-import json
-import re
-import sys
-
-try:
-    with open(sys.argv[1], encoding="utf-8") as handle:
-        value = json.load(handle)
-    if set(value) != {"schema_version", "mode", "threshold", "resolved_index_search_type",
-                      "resolved_uniform_cv_threshold", "automatic_compactions_disabled",
-                      "account_entry_count", "account_sst_count", "uniform_index_count",
-                      "persisted_index_bytes", "filter_bytes", "table_reader_memory_bytes",
-                      "account_content_sha256", "preparation_cpu_seconds", "preparation_wall_seconds",
-                      "preparation_working_set_before_bytes", "preparation_working_set_after_bytes",
-                      "preparation_peak_memory_bytes", "preparation_private_bytes_before",
-                      "preparation_private_bytes_after", "helper_sha256"}:
-        raise ValueError("schema")
-    if not isinstance(value["account_entry_count"], int) or value["account_entry_count"] < 1:
-        raise ValueError("entry count")
-    if not re.fullmatch(r"[0-9a-f]{64}", value["account_content_sha256"]):
-        raise ValueError("content digest")
-    if not re.fullmatch(r"[0-9a-f]{64}", value["helper_sha256"]):
-        raise ValueError("helper digest")
-    print(value["account_entry_count"], value["account_content_sha256"], value["helper_sha256"])
-except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, KeyError) as error:
-    print(f"invalid preparation aggregate: {error}", file=sys.stderr)
-    raise SystemExit(1)
-PY
-    )"
-    if [[ "$?" -ne 0 ]]; then
-      echo "::error::${label}: Account preparation aggregate is missing or invalid"
-      if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
-           "$here/stop-node.sh"; then stop_fail=1; fi
-      preparation_fail=1
-      echo "::endgroup::"
-      break
-    fi
-    read -r account_count account_digest helper_sha <<< "$prep_identity"
-    if [[ -z "$ACCOUNT_BASE_COUNT" ]]; then
-      ACCOUNT_BASE_COUNT="$account_count"
-      ACCOUNT_BASE_DIGEST="$account_digest"
-      ACCOUNT_BASE_HELPER_SHA="$helper_sha"
-    elif [[ "$account_count" != "$ACCOUNT_BASE_COUNT" || "$account_digest" != "$ACCOUNT_BASE_DIGEST" ]]; then
-      echo "::error::${label}: Account content count/digest differs from the first arm; refusing a cross-arm comparison"
-      if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
-           "$here/stop-node.sh"; then stop_fail=1; fi
-      preparation_fail=1
-      echo "::endgroup::"
-      break
-    elif [[ "$helper_sha" != "$ACCOUNT_BASE_HELPER_SHA" ]]; then
-      echo "::error::${label}: Account helper SHA differs from the first arm"
-      if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
-           "$here/stop-node.sh"; then stop_fail=1; fi
-      preparation_fail=1
-      echo "::endgroup::"
-      break
-    fi
-    prep_public="$OUT_DIR/account-index-preparation/$label"
-    mkdir -p "$prep_public"
-    cp "$cst/account-index-prepare.json" "$prep_public/account-index-prepare.json"
   fi
 
   LABELS+=("$label")
@@ -887,7 +814,7 @@ if [[ "${#LABELS[@]}" -ge 2 ]]; then
 fi
 fail=0
 if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "${#LABELS[@]}" -ne 9 ]]; then
-  echo "::error::Account CV sweep completed ${#LABELS[@]} of the fixed nine arms"; preparation_fail=1
+  echo "::error::Account CV sweep completed ${#LABELS[@]} of the fixed nine arms"; start_fail=1
 fi
 if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "${#SUMMARIES[@]}" -ne 9 ]]; then
   echo "::error::Account CV sweep produced ${#SUMMARIES[@]} of the fixed nine measured summaries"; cell_fail=1
@@ -907,7 +834,7 @@ fi
 if [[ "$warmup_fail" -gt 0 ]]; then
   echo "::error::one or more requested warm-up(s) failed the usable-aggregate/80%-delivery contract — measured results are invalid"; fail=1
 fi
-if [[ "$preparation_fail" -gt 0 ]]; then
-  echo "::error::one or more Account preparation aggregates failed validation or cross-arm identity checks"; fail=1
+if [[ "$start_fail" -gt 0 ]]; then
+  echo "::error::Account CV sweep did not complete all nine arms"; fail=1
 fi
 exit "$fail"

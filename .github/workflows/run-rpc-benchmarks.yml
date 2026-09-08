@@ -127,7 +127,7 @@ on:
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
-          Account CV sweep opt-in: {"account_index_sweep":true} selects the fixed nine-arm, sequential Account preparation sweep; it is only accepted with jsonbench-sweep and enforces the pinned image, ARM flat snapshot, overlay isolation and the private 497-record corpus.
+          Account CV sweep opt-in: {"account_index_sweep":true} selects the fixed nine-arm, sequential Account runtime-option sweep; it is only accepted with jsonbench-sweep and enforces the pinned image, ARM flat snapshot, overlay isolation and the private 497-record corpus.
           All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
@@ -674,49 +674,10 @@ jobs:
 
           echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} warmup=${warmup_seconds}s@${warmup_rps}rps"
 
-  # Build the isolated Account preparation helper on hosted runners before reserving the scarce
-  # snapshot runner. Both runtime identifiers are built so an ARM dispatch never falls back to a
-  # framework-dependent or host-architecture binary.
-  build-account-index-helper:
-    needs: [resolve]
-    if: always() && needs.resolve.outputs.account_index_sweep == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        rid: [linux-x64, linux-arm64]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-
-      - name: Publish self-contained helper
-        env:
-          RID: ${{ matrix.rid }}
-        run: >-
-          dotnet publish tools/AccountIndexPrepare/AccountIndexPrepare.csproj
-          --configuration Release --runtime "${RID}" --self-contained true
-          -p:DebugType=None --output "${RUNNER_TEMP}/account-index-prepare"
-
-      - name: Smoke-test Linux x64 helper
-        if: matrix.rid == 'linux-x64'
-        run: |
-          "${RUNNER_TEMP}/account-index-prepare/AccountIndexPrepare" --self-test
-
-      - name: Upload helper
-        uses: actions/upload-artifact@v7
-        with:
-          name: account-index-helper-${{ matrix.rid }}
-          path: ${{ runner.temp }}/account-index-prepare/
-          if-no-files-found: error
-          retention-days: 2
-
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
   benchmark:
-    needs: [resolve, build-account-index-helper]
-    if: always() && needs.resolve.outputs.should_run == 'true' && (needs.build-account-index-helper.result == 'success' || needs.build-account-index-helper.result == 'skipped')
+    needs: resolve
+    if: needs.resolve.outputs.should_run == 'true'
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
     env:
@@ -735,25 +696,6 @@ jobs:
 
       - name: Make scripts executable
         run: chmod +x scripts/rpc-bench/*.sh
-
-      - name: Download Account preparation helper
-        if: needs.resolve.outputs.account_index_sweep == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: account-index-helper-${{ needs.resolve.outputs.arch == 'arm64' && 'linux-arm64' || 'linux-x64' }}
-          path: ${{ runner.temp }}/account-index-prepare
-
-      - name: Verify Account preparation helper
-        if: needs.resolve.outputs.account_index_sweep == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          helper="${RUNNER_TEMP}/account-index-prepare/AccountIndexPrepare"
-          [[ -f "${helper}" ]] || { echo "::error::AccountIndexPrepare artifact is missing"; exit 1; }
-          chmod +x "${helper}"
-          file "${helper}"
-          sha256sum "${helper}"
-          echo "ACCOUNT_INDEX_HELPER_PATH=${helper}" >> "${GITHUB_ENV}"
 
       - name: Verify perf profiling prerequisites
         if: needs.resolve.outputs.perf == 'true'

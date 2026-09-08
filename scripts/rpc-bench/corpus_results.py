@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from corpus_parity import PARITY_COUNTER_FIELDS, PARITY_LABEL_FIELDS
-from account_index_sweep import ContractError as AccountIndexContractError, validate_sanitized_preparation
 
 # metric name -> aggregate fields copied into the sanitized summary
 METRIC_FIELDS: dict[str, tuple[str, ...]] = {
@@ -39,7 +38,7 @@ STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
                     "timings.csv", "parity-diffs.json", "timings.meta.json",
                     "resources.json", "diagnostic.json", "warmup-diagnostic.json",
-                    "node-health.json", "account-index-prepare.json")
+                    "node-health.json")
 
 
 class CorpusResultsError(Exception):
@@ -348,16 +347,6 @@ def _validate_node_health(path: Path) -> None:
             raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
 
 
-def _validate_account_preparation(path: Path) -> None:
-    """Validate the helper's aggregate-only report; raw paths and SST metadata never stage."""
-    with path.open("r", encoding="utf-8") as source:
-        data = json.load(source)
-    try:
-        validate_sanitized_preparation(data)
-    except AccountIndexContractError as error:
-        raise CorpusResultsError(f"{path.name}: invalid Account preparation aggregate") from error
-
-
 def _safe_summary_state(path: Path) -> tuple[bool, bool, str, int, int | None, float | None]:
     """Inspect a raw summary without returning or logging any request-derived data."""
     try:
@@ -589,8 +578,6 @@ def stage(output_root: str, stage_root: str) -> None:
                 _validate_timings_meta(path)
             elif path.name == "resources.json":
                 _validate_resources(path)
-            elif path.name == "account-index-prepare.json":
-                _validate_account_preparation(path)
             elif path.name in ("diagnostic.json", "warmup-diagnostic.json"):
                 _validate_diagnostic(path)
             elif path.name == "node-health.json":
