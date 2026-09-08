@@ -22,10 +22,10 @@ namespace Nethermind.JsonRpc;
 
 /// <summary>Reads JSON-RPC requests off a transport and writes the responses to a sink.</summary>
 /// <remarks>
-/// What is left here is the transport-facing state machine: the pipe read loop, the complete-body fast path, batch
-/// iteration and per-request dispatch classification. Decoding bytes into requests lives in
-/// <see cref="JsonRpcRequestDecoder"/>, batch enumeration behind <see cref="IJsonRpcBatchItemSource"/>, and
-/// recording and tracing in <see cref="JsonRpcDiagnostics"/>.
+/// Owns the transport-facing state machine only: the pipe read loop, the complete-body fast path, batch iteration
+/// and per-request dispatch classification. Decoding bytes into requests belongs to
+/// <see cref="JsonRpcRequestDecoder"/>, batch enumeration to <see cref="IJsonRpcBatchItemSource"/>, and recording
+/// and tracing to <see cref="JsonRpcDiagnostics"/>.
 /// </remarks>
 public sealed class JsonRpcProcessor : IJsonRpcProcessor
 {
@@ -407,10 +407,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// <see cref="JsonRpcRequestDecoder.IsRequestDecodingException"/>); dispatching a decoded request happens outside
     /// it, so a node fault surfacing as an <see cref="InvalidOperationException"/> is not answered as a parse error.
     /// <para>
-    /// The <see cref="JsonException"/> catch around the batch run is wider than a decode. That is pre-existing and
-    /// left alone here: a serialization failure part-way through a batch is still answered -32700, after the array
-    /// has already been closed. Narrowing it turns a malformed 200 into a 500, so it wants its own change rather
-    /// than riding along with a refactor.
+    /// The <see cref="JsonException"/> catch around the batch run is knowingly wider than a decode: a serialization
+    /// failure part-way through a batch is answered -32700, which the sink appends after
+    /// <c>EndBatchAsync</c> has already closed the array. Narrowing it to the envelope decode would turn that
+    /// malformed 200 into a 500, so the scope is a client-visible contract and not to be changed incidentally.
     /// </para>
     /// </remarks>
     private async ValueTask<(CompleteBodyOutcome Outcome, JsonRpcResult.Entry? Entry)> TryProcessCompleteBodyAsync(
@@ -546,10 +546,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     /// <summary>Runs one JSON-RPC batch: size limit, then decode-dispatch-write per item, then close the array.</summary>
     /// <remarks>
-    /// One loop for both transports. The raw-bytes and parsed-document paths differ only in how items are
-    /// enumerated, which <typeparamref name="TSource"/> supplies - constrained to <c>struct</c>, so this dispatches
-    /// without boxing and JITs once per source. They used to be two copies of this algorithm, which is why the
-    /// response-body-limit bug had to be fixed twice and why the two drifted on their Trace numbering.
+    /// One loop for both transports: the raw-bytes and parsed-document paths differ only in how items are
+    /// enumerated, which <typeparamref name="TSource"/> supplies. Constrained to <c>struct</c> so the calls into it
+    /// do not box and it JITs once per source; that also means <paramref name="source"/> is iterated in place, so
+    /// its cursor must be mutable state on the struct rather than a copy.
     /// </remarks>
     private async ValueTask RunBatchAsync<TSource>(
         TSource source,

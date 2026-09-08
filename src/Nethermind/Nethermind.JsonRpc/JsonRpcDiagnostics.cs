@@ -11,7 +11,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -23,10 +22,10 @@ namespace Nethermind.JsonRpc;
 /// response dumps.
 /// </summary>
 /// <remarks>
-/// Every member is a no-op or a pass-through unless the corresponding diagnostic is switched on, so callers can
-/// invoke them unconditionally on the hot path. Split out of <c>JsonRpcProcessor</c> because none of it participates
-/// in parsing or dispatch, and because it is the only reason the processor had to own a recorder that exists for
-/// some values of <see cref="IJsonRpcConfig.RpcRecorderState"/> and not others.
+/// Every member is a no-op or a pass-through unless the corresponding diagnostic is switched on, so callers may
+/// invoke them unconditionally on the hot path. The recorder exists only for some values of
+/// <see cref="IJsonRpcConfig.RpcRecorderState"/>, so both <c>IsRecording</c> predicates test for it rather than
+/// inferring it from the flags.
 /// </remarks>
 internal sealed class JsonRpcDiagnostics
 {
