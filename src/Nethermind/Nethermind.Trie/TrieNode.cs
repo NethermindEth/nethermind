@@ -927,6 +927,7 @@ namespace Nethermind.Trie
             else if (childOrRef is Hash256 reference)
             {
                 child = tree.FindCachedOrUnknown(childPath, reference);
+                if (!child.IsUnresolvedWarmerOwned) _nodeData![childIndex] = child;
             }
             else
             {
@@ -1681,6 +1682,7 @@ namespace Nethermind.Trie
                 else if (childOrRef is Hash256 reference)
                 {
                     child = tree.FindCachedOrUnknown(childPath, reference);
+                    if (!child.IsUnresolvedWarmerOwned) node._nodeData![childIndex] = child;
                 }
                 else
                 {

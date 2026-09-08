@@ -164,21 +164,30 @@ public class TrieNodeTests
         parent.ResolveNode(NullTrieNodeResolver.Instance, path);
         parent.AppendChildPath(ref path, 0);
 
+        TrieNode? ReadChild(ITrieNodeResolver resolver) => iterator
+            ? parent.CreateChildIterator().GetChildWithChildPath(resolver, ref path, 0)
+            : parent.GetChildWithChildPath(resolver, ref path, 0, keepChildRef: true);
+
         ITrieNodeResolver firstResolver = Substitute.For<ITrieNodeResolver>();
         firstResolver.FindCachedOrUnknown(path, hash).Returns(child);
-        TrieNode? first = iterator
-            ? parent.CreateChildIterator().GetChildWithChildPath(firstResolver, ref path, 0)
-            : parent.GetChildWithChildPath(firstResolver, ref path, 0);
+        TrieNode? first = ReadChild(firstResolver);
         Assert.That(first, Is.SameAs(child));
 
         TrieNode replacement = new(NodeType.Unknown, hash, rlp);
+        if (warmerOwned) replacement.MarkWarmerOwned();
         ITrieNodeResolver secondResolver = Substitute.For<ITrieNodeResolver>();
         secondResolver.FindCachedOrUnknown(path, hash).Returns(replacement);
-        TrieNode? second = iterator
-            ? parent.CreateChildIterator().GetChildWithChildPath(secondResolver, ref path, 0)
-            : parent.GetChildWithChildPath(secondResolver, ref path, 0);
+        TrieNode? second = ReadChild(secondResolver);
 
         Assert.That(second, Is.SameAs(warmerOwned && !resolved ? replacement : child));
+
+        second!.ResolveNode(NullTrieNodeResolver.Instance, path);
+        secondResolver.FindCachedOrUnknown(path, hash).Returns(second);
+        Assert.That(ReadChild(secondResolver), Is.SameAs(second));
+        secondResolver.ClearReceivedCalls();
+
+        Assert.That(ReadChild(secondResolver), Is.SameAs(second));
+        secondResolver.DidNotReceive().FindCachedOrUnknown(path, hash);
     }
 
     [Test]
