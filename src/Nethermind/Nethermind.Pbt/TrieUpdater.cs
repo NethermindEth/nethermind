@@ -454,7 +454,7 @@ internal static class TrieUpdater<TKey, TPath>
                 if (frame.Stage == ComposeStage.LeftCompleted)
                 {
                     // The left root must be emitted before any descendants of the right subtree.
-                    frame.LeftHash = Place(group, ref result, frame.Path.Position - frame.Path.Width, frame.BranchPath!.BitDepth + 1);
+                    frame.LeftHash = Place(group, ref result, frame.Path.Position - frame.Path.Width, group.GroupKey.BitDepth + frame.Path.Length + 1);
                     frame.Stage = ComposeStage.RightCompleted;
                     if (halfWidth == 1)
                         result = Subtree.Move(ref boundaries[frame.Path.Slot + 1]);
@@ -464,8 +464,9 @@ internal static class TrieUpdater<TKey, TPath>
                 }
                 if (frame.Stage == ComposeStage.RightCompleted)
                 {
-                    ValueHash256 rightHash = Place(group, ref result, frame.Path.Position - 1, frame.BranchPath!.BitDepth + 1);
-                    result = new Subtree(frame.BranchPath, frame.LeftHash, rightHash);
+                    ValueHash256 rightHash = Place(group, ref result, frame.Path.Position - 1, group.GroupKey.BitDepth + frame.Path.Length + 1);
+                    TPath branchPath = BoundaryPath(group.GroupKey, frame.Path.Slot, frame.Path.Length);
+                    result = new Subtree(branchPath, frame.LeftHash, rightHash);
                     frameCount--;
                     continue;
                 }
@@ -489,7 +490,6 @@ internal static class TrieUpdater<TKey, TPath>
                     continue;
                 }
 
-                frame.BranchPath = BoundaryPath(group.GroupKey, frame.Path.Slot, frame.Path.Length);
                 frame.Stage = ComposeStage.LeftCompleted;
                 if (halfWidth == 1)
                     result = Subtree.Move(ref boundaries[frame.Path.Slot]);
@@ -508,7 +508,6 @@ internal static class TrieUpdater<TKey, TPath>
         internal int Occupied = occupied;
         internal NodeGroupPath Path = path;
         internal ComposeStage Stage;
-        internal TPath? BranchPath;
         internal ValueHash256 LeftHash;
     }
 
