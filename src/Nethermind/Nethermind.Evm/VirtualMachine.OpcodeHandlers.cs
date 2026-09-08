@@ -532,6 +532,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionStop(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct Math2Opcode<TOpMath, TTracingInst> : IOpcodeBody
         where TOpMath : struct, EvmInstructions.IOpMath2Param
         where TTracingInst : struct, IFlag
@@ -555,6 +556,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct Math3Opcode<TOpMath, TTracingInst> : IOpcodeBody
         where TOpMath : struct, EvmInstructions.IOpMath3Param
         where TTracingInst : struct, IFlag
@@ -575,6 +577,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct Math1Opcode<TOpMath, TTracingInst> : IOpcodeBody
         where TOpMath : struct, EvmInstructions.IOpMath1Param
         where TTracingInst : struct, IFlag
@@ -598,6 +601,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct BitwiseOpcode<TOpBitwise, TTracingInst> : IOpcodeBody
         where TOpBitwise : struct, EvmInstructions.IOpBitwise
         where TTracingInst : struct, IFlag
@@ -621,6 +625,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct ExpOpcode<TTracingInst, Eip160> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip160 : struct, IFlag
@@ -629,12 +634,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionExp<TGasPolicy, TTracingInst, Eip160>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SignExtendOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSignExtend(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct CountLeadingZerosOpcode : IOpcodeBody
     {
         public static bool HasCheckedBody => true;
@@ -646,6 +653,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.CountLeadingZerosCore<OffFlag>(ref stack);
     }
 
+    [SkipLocalsInit]
     private readonly struct ByteOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -662,6 +670,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionByte<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
+    [SkipLocalsInit]
     private readonly struct ShiftOpcode<TOpShift, TTracingInst> : IOpcodeBody
         where TOpShift : struct, EvmInstructions.IOpShift
         where TTracingInst : struct, IFlag
@@ -682,6 +691,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref stack, ref gas);
     }
 
+    [SkipLocalsInit]
     private readonly struct SarOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -698,12 +708,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionSar<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
+    [SkipLocalsInit]
     private readonly struct KeccakOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionKeccak256<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct EnvAddressOpcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpEnvAddress<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -722,6 +734,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionEnvAddress<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct Env32BytesOpcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpEnv32Bytes<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -740,6 +753,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionEnv32Bytes<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct EnvUInt256Opcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpEnvUInt256<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -758,6 +772,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionEnvUInt256<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct EnvUInt32Opcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpEnvUInt32<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -776,6 +791,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionEnvUInt32<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct EnvUInt64Opcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpEnvUInt64<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -794,6 +810,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionEnvUInt64<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BlkAddressOpcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpBlkAddress<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -812,6 +829,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionBlkAddress<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BlkUInt256Opcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpBlkUInt256<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -830,6 +848,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionBlkUInt256<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BlkUInt64Opcode<TOpEnv, TTracingInst> : IOpcodeBody
         where TOpEnv : struct, EvmInstructions.IOpBlkUInt64<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -848,6 +867,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionBlkUInt64<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BalanceOpcode<TTracingInst, TSpec> : IOpcodeBody where TTracingInst : struct, IFlag
         where TSpec : struct, EvmInstructions.IAccessSpec
     {
@@ -855,6 +875,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionBalance<TGasPolicy, TTracingInst, TSpec>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct CallDataLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody => true;
@@ -866,12 +887,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.CallDataLoadCore<TGasPolicy, TTracingInst>(ref stack, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct CallDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionCallDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct CodeSizeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -888,12 +911,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionCodeSize<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
+    [SkipLocalsInit]
     private readonly struct CodeCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionCodeCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct ExtCodeSizeOpcode<TTracingInst, Eip8038, Eip2929> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
@@ -907,6 +932,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct ExtCodeCopyOpcode<TTracingInst, Eip8038, Eip2929> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
@@ -916,6 +942,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct ReturnDataSizeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -933,12 +960,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionReturnDataSize<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct ReturnDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionReturnDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct ExtCodeHashOpcode<TTracingInst, TSpec> : IOpcodeBody where TTracingInst : struct, IFlag
         where TSpec : struct, EvmInstructions.IAccessSpec
     {
@@ -946,12 +975,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionExtCodeHash<TGasPolicy, TTracingInst, TSpec>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BlockHashOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionBlockHash<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct PrevRandaoOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -969,6 +1000,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionPrevRandao<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SelfBalanceOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -986,30 +1018,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionSelfBalance<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BlobHashOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionBlobHash<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct BlobBaseFeeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionBlobBaseFee<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SlotNumOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSlotNum<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct ApproveOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionApprove(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct TxParamOpcode<TTracingInst, TEip8250, TEip8272> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where TEip8250 : struct, IFlag
@@ -1019,60 +1056,70 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct FrameDataLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionFrameDataLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct FrameDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionFrameDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct FrameParamOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionFrameParam<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SigParamOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSigParam<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SigDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSigDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct RecentRootRefLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct TxTraceOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionTxTrace<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct TxDiffOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionTxDiff<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct EventDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionEventDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct PopOpcode : IOpcodeBody
     {
         public static bool HasCheckedBody => true;
@@ -1088,24 +1135,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct MLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct MStoreOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct MStore8Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionMStore8<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
@@ -1122,6 +1173,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OffFlag, Eip8038, Eip2929>, TTracingInst, TCancelable>()
             : OpcodeHandler<SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929>, TTracingInst, TCancelable>();
 
+    [SkipLocalsInit]
     private readonly struct SLoadOpcode<TTracingInst, Eip8038, Eip2929> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
@@ -1131,6 +1183,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SStoreMeteredOpcode<TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where TStipendFix : struct, IFlag
@@ -1142,6 +1195,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
@@ -1151,6 +1205,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionSStoreUnmetered<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct JumpOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
@@ -1163,6 +1218,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct ProgramCounterOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -1179,6 +1235,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionProgramCounter<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, programCounter);
     }
 
+    [SkipLocalsInit]
     private readonly struct GasOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody
@@ -1195,30 +1252,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
+    [SkipLocalsInit]
     private readonly struct JumpDestOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionJumpDest(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct TLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionTLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct TStoreOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionTStore(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct MCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionMCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct Push0Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static int PushSize => 0;
@@ -1238,12 +1300,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct Push2Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
     }
 
+    [SkipLocalsInit]
     private readonly struct PushOpcode<TOpCount, TTracingInst> : IOpcodeBody
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
@@ -1270,6 +1334,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    [SkipLocalsInit]
     private readonly struct DupOpcode<TOpCount, TTracingInst> : IOpcodeBody
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
@@ -1291,6 +1356,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionDup<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SwapOpcode<TOpCount, TTracingInst> : IOpcodeBody
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
@@ -1311,30 +1377,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct LogOpcode<TOpCount> : IOpcodeBody where TOpCount : struct, EvmInstructions.IOpCount
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionLog<TGasPolicy, TOpCount>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct DupNOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionDupN<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
 
+    [SkipLocalsInit]
     private readonly struct SwapNOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSwapN<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
 
+    [SkipLocalsInit]
     private readonly struct ExchangeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionExchange<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
 
+    [SkipLocalsInit]
     private readonly struct CreateOpcode<TOpCreate, TTracingInst, TEip8037, TSpec> : IOpcodeBody
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
@@ -1345,6 +1416,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037, TSpec>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct CallOpcode<TOpCall, TTracingInst, TEip8037, TEip7708, TSpec> : IOpcodeBody
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -1356,24 +1428,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmInstructions.InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct ReturnOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionReturn(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct RevertOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionRevert(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct InvalidOpcode : IOpcodeBody
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionInvalid(ref stack, ref gas, vm);
     }
 
+    [SkipLocalsInit]
     private readonly struct SelfDestructOpcode<TEip8037, TEip7708, TSpec> : IOpcodeBody
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag

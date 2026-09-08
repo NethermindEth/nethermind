@@ -5,6 +5,7 @@
     <AssemblyName>Nethermind.Bootnode</AssemblyName>
     <RootNamespace>Nethermind.Bootnode</RootNamespace>
     <Nullable>enable</Nullable>
+    <VersionPrefix>1.0.0</VersionPrefix>
   </PropertyGroup>
 
   <PropertyGroup Label="PackagesLock">
