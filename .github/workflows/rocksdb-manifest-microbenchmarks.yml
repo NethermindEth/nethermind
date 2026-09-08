@@ -1,0 +1,265 @@
+on:
+  push:
+    branches:
+      - test/rocksdb-manifest-benchmarks
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BENCHMARK_PROJECT: src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj
+  RESULTS_ROOT: rocksdb-manifest-results
+
+jobs:
+  microbenchmark:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - id: manifest-recovery
+            operation: Recovery
+            variant: OptimizeManifestRecovery
+            method: RecoveryOpenReadClose
+          - id: manifest-reuse
+            operation: Reuse
+            variant: ReuseManifest
+            method: ReuseOpenWriteFlushReadClose
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Capture benchmark environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RESULTS_ROOT}"
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "operation=${{ matrix.operation }}"
+            echo "variant=${{ matrix.variant }}"
+            echo "method=${{ matrix.method }}"
+            echo "runner=${RUNNER_NAME}"
+            echo
+            uname -a
+            echo
+            dotnet --info
+            echo
+            git status --short --branch
+          } | tee "${RESULTS_ROOT}/provenance.txt"
+
+      - name: Restore benchmark project
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore "${BENCHMARK_PROJECT}" --locked-mode
+
+      - name: Build benchmark project
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build "${BENCHMARK_PROJECT}" \
+            --configuration Release \
+            --no-restore \
+            --disable-build-servers \
+            -m:2 \
+            -p:RunAnalyzersDuringBuild=false
+
+      - name: Run baseline and variant probes
+        shell: bash
+        env:
+          OPERATION: ${{ matrix.operation }}
+          VARIANT: ${{ matrix.variant }}
+          METHOD: ${{ matrix.method }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${RESULTS_ROOT}/standalone" "${RESULTS_ROOT}/bdn-baseline" "${RESULTS_ROOT}/bdn-variant"
+
+          run_standalone() {
+            local arm="$1"
+            local variant="$2"
+            local log="${RESULTS_ROOT}/standalone/${arm}.log"
+            local report="${RESULTS_ROOT}/standalone/${arm}.json"
+            echo "Running standalone ${arm}: Blocks/${OPERATION}/${variant}"
+            dotnet run --project "${BENCHMARK_PROJECT}" --configuration Release --no-build -- \
+              --rocksdb-manifest-standalone \
+              --rocksdb-manifest-variant "${variant}" \
+              --rocksdb-manifest-operation "${OPERATION}" 2>&1 | tee "${log}"
+            python3 - "${log}" "${variant}" "${OPERATION}" "${report}" <<'PY'
+          import json
+          import math
+          import sys
+
+          log_path, expected_variant, expected_operation, report_path = sys.argv[1:]
+          report = None
+          with open(log_path, encoding="utf-8") as stream:
+              for line in reversed(stream.readlines()):
+                  try:
+                      candidate = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict) and candidate.get("schema") == "rocksdb-manifest-v1":
+                      report = candidate
+                      break
+
+          if report is None:
+              raise SystemExit(f"No manifest report found in {log_path}.")
+          required = {
+              "schema", "dataset", "variant", "operation", "sst_count_expected",
+              "sst_count_template", "sst_count_before", "sst_count_after", "record_count",
+              "template_checksum", "persisted_checksum", "expected_checksum",
+              "data_checksum_matches", "template_manifest_name", "template_manifest_bytes",
+              "manifest_before_name", "manifest_before_bytes", "manifest_after_name",
+              "manifest_after_bytes", "manifest_same_file", "manifest_bytes_delta",
+              "prepare", "clean_close", "template_copy", "operation_phase",
+              "memory_semantics", "activation_evidence",
+          }
+          missing = sorted(required.difference(report))
+          if missing:
+              raise SystemExit(f"Manifest report is missing schema fields in {log_path}: {', '.join(missing)}")
+          if report.get("schema") != "rocksdb-manifest-v1":
+              raise SystemExit(f"Unexpected manifest report schema in {log_path}: {report.get('schema')}.")
+          if report.get("dataset") != "Blocks":
+              raise SystemExit(f"Unexpected manifest report dataset in {log_path}: {report.get('dataset')}.")
+          if report.get("variant") != expected_variant or report.get("operation") != expected_operation:
+              raise SystemExit(f"Unexpected scenario in {log_path}: {report.get('variant')}/{report.get('operation')}.")
+          if report.get("data_checksum_matches") is not True:
+              raise SystemExit(f"Persisted data checksum failed in {log_path}.")
+          if report.get("sst_count_template") != report.get("sst_count_expected"):
+              raise SystemExit(f"The template SST count was not validated in {log_path}.")
+          if report.get("sst_count_before") != report.get("sst_count_expected"):
+              raise SystemExit(f"The pre-operation SST count was not exact in {log_path}.")
+          expected_after = report["sst_count_before"] + (1 if expected_operation == "Reuse" else 0)
+          if report.get("sst_count_after") != expected_after:
+              raise SystemExit(f"Unexpected post-operation SST count in {log_path}: {report.get('sst_count_after')} (expected {expected_after}).")
+          if report.get("manifest_before_name") != report.get("template_manifest_name"):
+              raise SystemExit(f"The operation MANIFEST name did not match the first clean close in {log_path}.")
+          if report.get("manifest_before_bytes") != report.get("template_manifest_bytes"):
+              raise SystemExit(f"The operation MANIFEST size did not match the first clean close in {log_path}.")
+          for key in ("template_manifest_bytes", "manifest_before_bytes", "manifest_after_bytes"):
+              if not isinstance(report.get(key), int) or report[key] <= 0:
+                  raise SystemExit(f"Invalid positive integer {key} in {log_path}.")
+          for key in ("template_manifest_name", "manifest_before_name", "manifest_after_name", "activation_evidence"):
+              if not report.get(key):
+                  raise SystemExit(f"Missing {key} in {log_path}.")
+          for phase in ("prepare", "clean_close", "template_copy", "operation_phase"):
+              values = report.get(phase, {})
+              for key in ("wall_ms", "cpu_ms", "private_bytes_phase_max", "working_set_bytes_phase_max"):
+                  value = values.get(key)
+                  if not isinstance(value, (int, float)) or not math.isfinite(value):
+                      raise SystemExit(f"Missing finite {phase}.{key} in {log_path}.")
+
+          with open(report_path, "w", encoding="utf-8") as stream:
+              json.dump(report, stream, sort_keys=True)
+              stream.write("\n")
+          print(f"Validated standalone report {report_path}.")
+          PY
+          }
+
+          run_bdn() {
+            local arm="$1"
+            local variant="$2"
+            local artifacts="${RESULTS_ROOT}/bdn-${arm}"
+            local log="${RESULTS_ROOT}/bdn-${arm}.log"
+            echo "Running BDN ${arm}: Blocks/${OPERATION}/${variant}/${METHOD}"
+            dotnet run --project "${BENCHMARK_PROJECT}" --configuration Release --no-build -- \
+              --rocksdb-manifest-benchmarks \
+              --rocksdb-manifest-variant "${variant}" \
+              --quick \
+              --filter "*RocksDbManifestBenchmarks.${METHOD}*" \
+              --warmupCount 5 \
+              --iterationCount 15 \
+              --launchCount 1 \
+              --invocationCount 1 \
+              --unrollFactor 1 \
+              --exporters json csv \
+              --artifacts "${artifacts}" 2>&1 | tee "${log}"
+            grep -Fq "Summary" "${log}"
+            if grep -Eiq "no benchmarks|there are no benchmarks" "${log}"; then
+              echo "BenchmarkDotNet reported no selected benchmark." >&2
+              return 1
+            fi
+            grep -Fq "${METHOD}" "${log}"
+            find "${artifacts}" -type f \( -name '*.json' -o -name '*.csv' \) -print -quit | grep -q .
+            python3 - "${artifacts}" "${METHOD}" <<'PY'
+          import glob
+          import json
+          import math
+          import os
+          import sys
+
+          artifacts_root, method = sys.argv[1:]
+          measurements = 0
+          for path in glob.glob(os.path.join(artifacts_root, "**", "*.json"), recursive=True):
+              try:
+                  with open(path, encoding="utf-8") as stream:
+                      report = json.load(stream)
+              except (OSError, ValueError):
+                  continue
+              for benchmark in report.get("Benchmarks", []):
+                  if benchmark.get("Method") != method:
+                      continue
+                  parameters = benchmark.get("Parameters")
+                  has_variant = (
+                      isinstance(parameters, str) and "Variant=" in parameters
+                  ) or (
+                      isinstance(parameters, dict) and bool(parameters.get("Variant"))
+                  )
+                  if not has_variant:
+                      raise SystemExit(f"Missing Variant parameter in {path}.")
+                  mean = benchmark.get("Statistics", {}).get("Mean")
+                  if isinstance(mean, (int, float)) and math.isfinite(mean) and mean > 0:
+                      measurements += 1
+
+          if measurements == 0:
+              raise SystemExit(f"No nonempty {method} measurements found in {artifacts_root}.")
+          print(f"Validated {measurements} nonempty {method} measurement(s) in {artifacts_root}.")
+          PY
+          }
+
+          # Keep baseline immediately beside its option variant on the same hosted VM.
+          run_standalone baseline Baseline
+          run_standalone variant "${VARIANT}"
+
+          python3 - "${RESULTS_ROOT}/standalone/baseline.json" "${RESULTS_ROOT}/standalone/variant.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              baseline = json.load(stream)
+          with open(sys.argv[2], encoding="utf-8") as stream:
+              variant = json.load(stream)
+          if baseline["persisted_checksum"] != variant["persisted_checksum"]:
+              raise SystemExit("Standalone baseline/variant persisted checksums differ.")
+          if baseline["expected_checksum"] != variant["expected_checksum"]:
+              raise SystemExit("Standalone baseline/variant expected checksums differ.")
+          print("Standalone baseline/variant data checksums match.")
+          PY
+
+          run_bdn baseline Baseline
+          run_bdn variant "${VARIANT}"
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocksdb-manifest-${{ matrix.id }}
+          path: rocksdb-manifest-results
+          if-no-files-found: error
+          retention-days: 14

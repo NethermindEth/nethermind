@@ -55,12 +55,24 @@ namespace Nethermind.Benchmark.Runner
                 return;
             }
 
+            if (args.Contains("--rocksdb-manifest-standalone"))
+            {
+                RunRocksDbManifestStandalone(args);
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             if (args.Contains("--rocksdb-feature-benchmarks"))
             {
                 RocksDbFeatureBenchmarkSelection.Configure(
                     GetOptionalEnum<RocksDbFeatureDatasetKind>(args, "--rocksdb-feature-dataset"),
                     GetOptionalEnum<RocksDbFeatureVariant>(args, "--rocksdb-feature-variant"));
+            }
+
+            if (args.Contains("--rocksdb-manifest-benchmarks"))
+            {
+                RocksDbManifestBenchmarkSelection.Configure(
+                    GetOptionalEnum<RocksDbManifestVariant>(args, "--rocksdb-manifest-variant"));
             }
 
             string[] benchmarkArgs = RemoveFeatureArguments(args);
@@ -107,6 +119,18 @@ namespace Nethermind.Benchmark.Runner
             RocksDbFeatureStandaloneRunner.Run(dataset, variant, operations);
         }
 
+        private static void RunRocksDbManifestStandalone(string[] args)
+        {
+            RocksDbManifestVariant variant = Enum.Parse<RocksDbManifestVariant>(
+                GetArgument(args, "--rocksdb-manifest-variant", nameof(RocksDbManifestVariant.Baseline)), true);
+            RocksDbManifestOperation operation = Enum.Parse<RocksDbManifestOperation>(
+                GetArgument(args, "--rocksdb-manifest-operation", nameof(RocksDbManifestOperation.Recovery)), true);
+            int sstCount = int.Parse(GetArgument(args, "--rocksdb-manifest-sst-count", RocksDbManifestBenchmarkDefaults.SstCount.ToString()));
+            int recordsPerSst = int.Parse(GetArgument(args, "--rocksdb-manifest-records-per-sst", RocksDbManifestBenchmarkDefaults.RecordsPerSst.ToString()));
+
+            RocksDbManifestStandaloneRunner.Run(variant, operation, sstCount, recordsPerSst);
+        }
+
         private static string GetArgument(string[] args, string name, string defaultValue)
         {
             for (int i = 0; i < args.Length - 1; i++)
@@ -140,8 +164,8 @@ namespace Nethermind.Benchmark.Runner
             List<string> benchmarkArgs = [];
             for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "--quick" || args[i] == "--rocksdb-feature-benchmarks") continue;
-                if (args[i] is "--rocksdb-feature-dataset" or "--rocksdb-feature-variant")
+                if (args[i] is "--quick" or "--rocksdb-feature-benchmarks" or "--rocksdb-manifest-benchmarks") continue;
+                if (args[i] is "--rocksdb-feature-dataset" or "--rocksdb-feature-variant" or "--rocksdb-manifest-variant")
                 {
                     i++;
                     continue;
