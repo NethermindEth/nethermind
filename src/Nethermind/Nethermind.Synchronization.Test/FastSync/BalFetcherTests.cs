@@ -92,7 +92,7 @@ public class BalFetcherTests
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
         _pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(SyncPeerAllocation.FailedAllocation);
+            .Returns(ci => new SyncPeerAllocation((AllocationContexts)ci[1]));
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
@@ -229,7 +229,12 @@ public class BalFetcherTests
 
     private void AllocatePeer(PeerInfo peer) =>
         _pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => new SyncPeerAllocation(peer, (AllocationContexts)ci[1]));
+            .Returns(ci =>
+            {
+                SyncPeerAllocation allocation = new((AllocationContexts)ci[1]);
+                allocation.AllocatePeer(peer);
+                return allocation;
+            });
 
     private PeerInfo Snap2Peer()
     {
