@@ -70,33 +70,11 @@ public class BootnodeNodeRecordProviderTests
         AssertEndpointEntries(decoded, expectedIp, expectedIp6);
     }
 
-    [Test]
-    public async Task Discovery_only_node_record_publishes_configured_endpoint_families_supported_by_listener()
-    {
-        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dataDir);
-
-        using PrivateKeyGenerator generator = new();
-        using PrivateKey privateKey = generator.Generate();
-        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
-        NetworkConfig networkConfig = new()
-        {
-            DiscoveryPort = 30303,
-            P2PPort = 0
-        };
-
-        IPAddress ipV4 = IPAddress.Parse("192.0.2.1");
-        IPAddress ipV6 = IPAddress.Parse("2001:db8::1");
-        IIPResolver.NethermindIp resolvedIp = new(IPAddress.IPv6Any, ipV4, ipV4, ipV6);
-
-        NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, resolvedIp).GetCurrentAsync();
-        NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
-
-        AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
-    }
-
-    [Test]
-    public async Task Discovery_only_node_record_uses_bound_listener_after_fallback()
+    [TestCase("::", "2001:db8::1")]
+    [TestCase("0.0.0.0", null)]
+    public async Task Discovery_only_node_record_publishes_configured_endpoint_families_supported_by_listener(
+        string discoveryAddress,
+        string? expectedIp6)
     {
         string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataDir);
@@ -118,10 +96,10 @@ public class BootnodeNodeRecordProviderTests
             dataDir,
             networkConfig,
             resolvedIp,
-            discoveryAddress: IPAddress.Any).GetCurrentAsync();
+            discoveryAddress: IPAddress.Parse(discoveryAddress)).GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
-        AssertEndpointEntries(decoded, "192.0.2.1", expectedIp6: null);
+        AssertEndpointEntries(decoded, "192.0.2.1", expectedIp6);
     }
 
     [Test]

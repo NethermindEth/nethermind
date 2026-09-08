@@ -235,10 +235,13 @@ public class CodecTests
 
         Assert.That(decoded, Is.InstanceOf<PongMsg>());
         PongMsg decodedPong = (PongMsg)decoded;
-        Assert.That(decodedPong.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedPong.EnrSequence, Is.EqualTo(message.EnrSequence));
-        Assert.That(decodedPong.RecipientIp, Is.EqualTo(IPAddress.Parse(expectedIp ?? recipientIp)));
-        Assert.That(decodedPong.RecipientPort, Is.EqualTo(message.RecipientPort));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedPong.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(decodedPong.EnrSequence, Is.EqualTo(message.EnrSequence));
+            Assert.That(decodedPong.RecipientIp, Is.EqualTo(IPAddress.Parse(expectedIp ?? recipientIp)));
+            Assert.That(decodedPong.RecipientPort, Is.EqualTo(message.RecipientPort));
+        }
     }
 
     [Test]

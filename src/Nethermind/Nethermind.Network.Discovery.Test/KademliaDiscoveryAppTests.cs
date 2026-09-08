@@ -54,7 +54,7 @@ public class KademliaDiscoveryAppTests
     [Test]
     public async Task Activation_WaitsForInitializationAfterChannelActivates()
     {
-        TestKademliaDiscoveryApp app = new(pauseInitialization: true);
+        await using TestKademliaDiscoveryApp app = new(pauseInitialization: true);
         app.ActivateChannel();
 
         Task startTask = app.StartAsync();
@@ -64,33 +64,30 @@ public class KademliaDiscoveryAppTests
         app.AllowInitialization();
         await startTask;
         await app.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await app.DisposeAsync();
     }
 
     [Test]
     public async Task Activation_WaitsForChannelAfterInitializationCompletes()
     {
-        TestKademliaDiscoveryApp app = new();
+        await using TestKademliaDiscoveryApp app = new();
 
         await app.StartAsync();
         Assert.That(app.Started.Task.IsCompleted, Is.False);
 
         app.ActivateChannel();
         await app.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await app.DisposeAsync();
     }
 
     [Test]
     public async Task Activation_DoesNotStartAfterStop()
     {
-        TestKademliaDiscoveryApp app = new();
+        await using TestKademliaDiscoveryApp app = new();
 
         await app.StartAsync();
         await app.StopAsync();
         app.ActivateChannel();
 
         Assert.That(app.Started.Task.IsCompleted, Is.False);
-        await app.DisposeAsync();
     }
 
     private sealed class TestKademliaDiscoveryApp(

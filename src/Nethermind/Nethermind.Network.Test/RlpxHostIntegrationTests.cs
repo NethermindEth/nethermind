@@ -7,9 +7,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -35,7 +38,8 @@ public class RlpxHostIntegrationTests
     public async Task ShouldContact_FiltersCorrectly(bool filterEnabled, bool subnetBucketing, string? externalIp,
         string addr1, string addr2, bool secondExpected)
     {
-        RlpxHost host = CreateHost(filterEnabled, subnetBucketing, externalIp);
+        await using IContainer container = CreateFilterContainer(filterEnabled, subnetBucketing, externalIp);
+        RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
             Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
@@ -50,7 +54,8 @@ public class RlpxHostIntegrationTests
     [Test]
     public async Task TrackSessionActivity_RefreshesFilterOnReceivedAndDeliveredMessages()
     {
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true);
+        await using IContainer container = CreateFilterContainer(filterEnabled: true, subnetBucketing: true);
+        RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
             IPAddress receivedIp = IPAddress.Parse("203.0.113.1");
@@ -85,7 +90,8 @@ public class RlpxHostIntegrationTests
         privilegedIpProvider.IsPrivileged(privilegedIp).Returns(true);
 
         // Exact-match filtering would otherwise block the second attempt from the same IP.
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: false, privilegedIpProvider: privilegedIpProvider);
+        await using IContainer container = CreateFilterContainer(filterEnabled: true, subnetBucketing: false, privilegedIpProvider: privilegedIpProvider);
+        RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
             Assert.That(host.ShouldContact(privilegedIp), Is.True, "first attempt accepted");
@@ -95,6 +101,65 @@ public class RlpxHostIntegrationTests
         {
             await host.Shutdown();
         }
+    }
+
+    private static IEnumerable<TestCaseData> InboundBindAddressCases()
+    {
+        yield return new TestCaseData("0.0.0.0", null, true, "::");
+        yield return new TestCaseData("0.0.0.0", "0.0.0.0", true, "0.0.0.0");
+        yield return new TestCaseData("0.0.0.0", "0", true, "0.0.0.0");
+        yield return new TestCaseData("0.0.0.0", " 0.0.0.0 ", true, "0.0.0.0");
+        yield return new TestCaseData("::", null, true, "::");
+        yield return new TestCaseData("::", "::", true, "::");
+        yield return new TestCaseData("127.0.0.1", null, true, "127.0.0.1");
+        yield return new TestCaseData("192.168.1.5", null, true, "192.168.1.5");
+        yield return new TestCaseData("192.168.1.5", "192.168.1.5", true, "192.168.1.5");
+        yield return new TestCaseData("2001:db8::1", null, true, "2001:db8::1");
+        yield return new TestCaseData("2001:db8::1", null, false, "2001:db8::1");
+        yield return new TestCaseData("0.0.0.0", null, false, "0.0.0.0");
+        yield return new TestCaseData("::", null, false, "::");
+    }
+
+    [Parallelizable(ParallelScope.Self)]
+    [TestCaseSource(nameof(InboundBindAddressCases))]
+    public void GetInboundBindAddress_honors_explicit_configuration_and_dual_stack_support(string localIp, string? localIpConfig, bool supportsDualStack, string expectedIp)
+    {
+        IPAddress result = NetworkHelper.GetInboundBindAddress(IPAddress.Parse(localIp), localIpConfig, supportsDualStack);
+
+        Assert.That(result, Is.EqualTo(IPAddress.Parse(expectedIp)));
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.Self)]
+    public void GetInboundBindAddress_uses_automatic_dual_stack_only_where_wildcard_bind_is_exclusive()
+    {
+        IPAddress expected = (OperatingSystem.IsMacOS(), Socket.OSSupportsIPv6) switch
+        {
+            // macOS wildcards can share a port, so a successful IPv6 bind does not prove IPv4 ownership.
+            (true, _) => IPAddress.Any,
+            (false, false) => IPAddress.Any,
+            (false, true) => IPAddress.IPv6Any
+        };
+
+        Assert.That(NetworkHelper.GetInboundBindAddress(IPAddress.Any, null), Is.EqualTo(expected));
+    }
+
+    [Parallelizable(ParallelScope.Self)]
+    [TestCase("::ffff:192.168.1.5", "192.168.1.5")]
+    [TestCase("::ffff:7f00:1", "127.0.0.1")]
+    [TestCase("2001:db8::1", "2001:db8::1")]
+    [TestCase("127.0.0.1", "127.0.0.1")]
+    public void NormalizeMappedIPv4_reduces_mapped_addresses_to_ipv4(string input, string expectedIp)
+        => Assert.That(IPAddress.Parse(input).NormalizeMappedIPv4(), Is.EqualTo(IPAddress.Parse(expectedIp)));
+
+    [Test]
+    public void TryGetLocalIPEndpoint_UsesChannelEndpointSourceAsFallback()
+    {
+        IPEndPoint expected = new(IPAddress.Loopback, 30303);
+        IChannel channel = Substitute.For<IChannel, IIPEndpointSource>();
+        ((IIPEndpointSource)channel).IPEndpoint.Returns(expected);
+
+        Assert.That(channel.TryGetLocalIPEndpoint(), Is.SameAs(expected));
     }
 
     [TestCase("0.0.0.0", "0.0.0.0", true, false)]
@@ -113,7 +178,9 @@ public class RlpxHostIntegrationTests
         }
 
         int port = GetAvailablePort();
-        (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, IPAddress.Parse(configuredIp), port);
+        await using IContainer container = CreateListenerContainer(configuredIp, IPAddress.Parse(configuredIp), port);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
         try
         {
             await host.Init();
@@ -136,11 +203,13 @@ public class RlpxHostIntegrationTests
     {
         int port = GetAvailablePort();
         IPrivilegedIpProvider privilegedIpProvider = Substitute.For<IPrivilegedIpProvider>();
-        (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(
+        await using IContainer container = CreateListenerContainer(
             null,
             IPAddress.Any,
             port,
             privilegedIpProvider: privilegedIpProvider);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
         TaskCompletionSource<string> remoteHost = new(TaskCreationOptions.RunContinuationsAsynchronously);
         host.SessionCreated += (_, args) => remoteHost.TrySetResult(args.Session.RemoteHost);
         bool acceptsIpv6 = Socket.OSSupportsIPv6 && !OperatingSystem.IsMacOS();
@@ -174,8 +243,9 @@ public class RlpxHostIntegrationTests
         Ipv4ServerChannelFactory? channelFactory = portInUse ? null : new();
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
         underlyingLogger.IsWarn.Returns(true);
-        (RlpxHost host, _) = CreateListenerHost(null, IPAddress.Any, port, listenerState, channelFactory,
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Any, port, listenerState, channelFactory,
             logManager: new OneLoggerLogManager(new ILogger(underlyingLogger)));
+        RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
             await host.Init();
@@ -187,8 +257,11 @@ public class RlpxHostIntegrationTests
             if (channelFactory is not null)
             {
                 Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
-                Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
-                Assert.That(channelFactory.CreatedChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
+                    Assert.That(channelFactory.CreatedChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
+                }
             }
         }
         finally
@@ -211,12 +284,22 @@ public class RlpxHostIntegrationTests
             port = ((IPEndPoint)ipv4Blocker.LocalEndPoint!).Port;
             NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
             Ipv4ServerChannelFactory channelFactory = new();
-            (RlpxHost host, _) = CreateListenerHost(null, IPAddress.Any, port, listenerState, channelFactory);
-
-            Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
-            Assert.That(listenerState.RlpxAddress, Is.Null);
-            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
-            AssertChannelsClosed(channelFactory.CreatedChannels);
+            await using IContainer container = CreateListenerContainer(null, IPAddress.Any, port, listenerState, channelFactory);
+            RlpxHost host = container.Resolve<RlpxHost>();
+            try
+            {
+                Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
+                Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(listenerState.RlpxAddress, Is.Null);
+                    AssertChannelsClosed(channelFactory.CreatedChannels);
+                }
+            }
+            finally
+            {
+                await host.Shutdown();
+            }
         }
 
         using Socket releasedIpv4 = CreateTcpListenerSocket(IPAddress.Any, port);
@@ -245,10 +328,18 @@ public class RlpxHostIntegrationTests
         using (Socket blocker = CreateTcpListenerSocket(blockerAddress, 0, blockerExclusiveAddressUse))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
-            (RlpxHost host, NetworkListenerState listenerState) = CreateListenerHost(configuredIp, listenerAddress, port);
-
-            Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
-            Assert.That(listenerState.RlpxAddress, Is.Null);
+            await using IContainer container = CreateListenerContainer(configuredIp, listenerAddress, port);
+            RlpxHost host = container.Resolve<RlpxHost>();
+            NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
+            try
+            {
+                Assert.That(async () => await host.Init(), Throws.TypeOf<PortInUseException>());
+                Assert.That(listenerState.RlpxAddress, Is.Null);
+            }
+            finally
+            {
+                await host.Shutdown();
+            }
         }
 
         using Socket released = CreateTcpListenerSocket(blockerAddress, port);
@@ -260,7 +351,8 @@ public class RlpxHostIntegrationTests
         int port = GetAvailablePort();
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
         listenerState.Changed += (_, _) => throw new InvalidOperationException("subscriber failure");
-        (RlpxHost host, _) = CreateListenerHost("0.0.0.0", IPAddress.Any, port, listenerState);
+        await using IContainer container = CreateListenerContainer("0.0.0.0", IPAddress.Any, port, listenerState);
+        RlpxHost host = container.Resolve<RlpxHost>();
         bool shutDown = false;
         try
         {
@@ -286,7 +378,8 @@ public class RlpxHostIntegrationTests
         int port = GetAvailablePort();
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.Any, LimboLogs.Instance);
         Ipv4ServerChannelFactory channelFactory = new();
-        (RlpxHost host, _) = CreateListenerHost("0.0.0.0", IPAddress.Any, port, listenerState, channelFactory);
+        await using IContainer container = CreateListenerContainer("0.0.0.0", IPAddress.Any, port, listenerState, channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
             await host.Init();
@@ -334,7 +427,7 @@ public class RlpxHostIntegrationTests
             Is.EqualTo(replacementAddress));
     }
 
-    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
+    private static IContainer CreateFilterContainer(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
         IPrivilegedIpProvider? privilegedIpProvider = null)
     {
         NetworkConfig networkConfig = new()
@@ -351,19 +444,10 @@ public class RlpxHostIntegrationTests
         ipResolver.Resolve(Arg.Any<CancellationToken>())
             .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp is null ? IPAddress.None : IPAddress.Parse(externalIp))));
 
-        return new RlpxHost(
-            Substitute.For<IMessageSerializationService>(),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            ipResolver,
-            privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
-            LimboLogs.Instance,
-            new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance));
+        return CreateContainer(networkConfig, ipResolver, privilegedIpProvider: privilegedIpProvider);
     }
 
-    private static (RlpxHost Host, NetworkListenerState ListenerState) CreateListenerHost(
+    private static IContainer CreateListenerContainer(
         string? localIpConfig,
         IPAddress resolvedLocalIp,
         int port,
@@ -383,19 +467,38 @@ public class RlpxHostIntegrationTests
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
             new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(resolvedLocalIp, IPAddress.Loopback)));
-        listenerState ??= new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
-        RlpxHost host = new(
-            Substitute.For<IMessageSerializationService>(),
-            Substitute.For<IHandshakeService>(),
-            Substitute.For<ISessionMonitor>(),
-            NullDisconnectsAnalyzer.Instance,
-            networkConfig,
-            ipResolver,
-            privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
-            logManager ?? LimboLogs.Instance,
-            listenerState,
-            channelFactory);
-        return (host, listenerState);
+        return CreateContainer(networkConfig, ipResolver, listenerState, channelFactory, privilegedIpProvider, logManager);
+    }
+
+    private static IContainer CreateContainer(
+        INetworkConfig networkConfig,
+        IIPResolver ipResolver,
+        NetworkListenerState? listenerState = null,
+        IChannelFactory? channelFactory = null,
+        IPrivilegedIpProvider? privilegedIpProvider = null,
+        ILogManager? logManager = null)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new NetworkModule(new ConfigProvider(networkConfig)));
+        builder.RegisterInstance(networkConfig);
+        builder.RegisterInstance(ipResolver);
+        builder.RegisterInstance(logManager ?? LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(Substitute.For<IMessageSerializationService>());
+        builder.RegisterInstance(Substitute.For<IHandshakeService>());
+        builder.RegisterInstance(Substitute.For<ISessionMonitor>());
+        builder.RegisterInstance(NullDisconnectsAnalyzer.Instance).As<IDisconnectsAnalyzer>();
+        builder.RegisterInstance(privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>());
+        if (listenerState is not null)
+        {
+            builder.RegisterInstance(listenerState);
+        }
+
+        if (channelFactory is not null)
+        {
+            builder.RegisterInstance(channelFactory);
+        }
+
+        return builder.Build();
     }
 
     private static async Task<bool> CanConnect(AddressFamily addressFamily, int port)
@@ -421,9 +524,9 @@ public class RlpxHostIntegrationTests
 
     private static void AssertChannelsClosed(IReadOnlyList<IChannel> channels)
     {
-        using (Assert.EnterMultipleScope())
+        foreach (IChannel channel in channels)
         {
-            foreach (IChannel channel in channels)
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(channel.Open, Is.False);
                 Assert.That(channel.CloseCompletion.IsCompletedSuccessfully, Is.True);

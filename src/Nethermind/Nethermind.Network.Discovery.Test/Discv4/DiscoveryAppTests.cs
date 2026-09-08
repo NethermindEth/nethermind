@@ -1,23 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Enr;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -37,9 +40,9 @@ public class DiscoveryAppTests
             LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
             IPAddress.Any);
 
+        Assert.That(bootNodes, Has.Count.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bootNodes, Has.Count.EqualTo(1));
             Assert.That(bootNodes[0].Port, Is.EqualTo(30303));
             Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
             Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
@@ -151,9 +154,9 @@ public class DiscoveryAppTests
             LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
             IPAddress.Any);
 
+        Assert.That(bootNodes, Has.Count.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bootNodes, Has.Count.EqualTo(1));
             Assert.That(bootNodes[0].Id, Is.EqualTo(TestItem.PrivateKeyA.PublicKey));
             Assert.That(bootNodes[0].Port, Is.Zero);
             Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
@@ -245,8 +248,11 @@ public class DiscoveryAppTests
         IProcessExitSource processExitSource = new ProcessExitSource(CancellationToken.None);
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
 
-        using MemDb discoveryDb = new();
+        InitConfig initConfig = new() { DiscoveryEnabled = true, DiagnosticMode = DiagnosticMode.MemDb };
         ContainerBuilder builder = new();
+        builder.RegisterModule(new DiscoveryModule(initConfig, networkConfig));
+        builder.RegisterInstance(initConfig).As<IInitConfig>();
+        builder.RegisterInstance(new ChainSpec());
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
         builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
@@ -258,20 +264,10 @@ public class DiscoveryAppTests
         builder.RegisterInstance(Substitute.For<IForkInfo>());
         builder.RegisterInstance(Substitute.For<INodeRecordProvider>());
         builder.RegisterInstance(Substitute.For<INodeStatsManager>());
-        builder.RegisterInstance(new NetworkStorage(discoveryDb, LimboLogs.Instance))
-            .Keyed<INetworkStorage>(DbNames.DiscoveryNodes);
-        using IContainer container = builder.Build();
-        IEnode enode = new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303);
-        await using DiscoveryApp app = new(
-            container,
-            enode,
-            networkConfig,
-            discoveryConfig,
-            ipResolver,
-            processExitSource,
-            LimboLogs.Instance,
-            listenerState,
-            services => services.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        builder.RegisterInstance(new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303)).As<IEnode>();
+        await using IContainer container = builder.Build();
+        await using DiscoveryApp app = container.Resolve<DiscoveryApp>(TypedParameter.From<Action<ContainerBuilder>>(
+            services => services.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>()));
         listenerState.SetDiscoveryAddress(IPAddress.Any);
 
         await app.StartAsync();

@@ -590,8 +590,11 @@ public class NodeRecordProviderTests
     private static void AssertResolvedEndpoint(bool found, IPEndPoint? endpoint, string? expectedIp, bool expectedPort)
     {
         bool expected = expectedIp is not null && expectedPort;
-        Assert.That(found, Is.EqualTo(expected));
-        Assert.That(endpoint, Is.EqualTo(expected ? new IPEndPoint(IPAddress.Parse(expectedIp!), 30303) : null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(expected));
+            Assert.That(endpoint, Is.EqualTo(expected ? new IPEndPoint(IPAddress.Parse(expectedIp!), 30303) : null));
+        }
     }
 
     private static ILogManager CreateLogManager(
