@@ -34,6 +34,7 @@ public static class Wait
                 Task<T> resolved = await Task.WhenAny<T>(taskSet);
                 T result = await resolved;
 
+                // Kept in the set until forwarded, so a throwing `cond` still discards this result.
                 if (cond(result) || taskSet.Count == 1)
                 {
                     taskSet.Remove(resolved);
