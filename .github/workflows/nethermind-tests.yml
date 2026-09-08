@@ -108,18 +108,12 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # These projects are chunked on the listed runners (see include block) — their unchunked variants hit the 15-min wall.
+        exclude: # Synchronization.Test is chunked on every runner (see include block) — its unchunked variant hits the 15-min wall.
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
           - runner: ubuntu-latest
             project: Nethermind.Synchronization.Test
-            chunk: ''
-          - runner: ubuntu-24.04-arm
-            project: Nethermind.Merge.Plugin.Test
-            chunk: ''
-          - runner: ubuntu-24.04-arm
-            project: Nethermind.Merge.AuRa.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
@@ -143,14 +137,6 @@ jobs:
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
           - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
@@ -429,13 +415,15 @@ jobs:
           retention-days: 3
 
   # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
-  # through the reusable nethtest workflow under the flat layout.
+  # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
+  # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
+  # layout runs from nethermind-tests-flat.yml.
   nethtest:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
-      setup_group: flat
+      setup_group: sequential
 
   matrix-guard:
     name: Check test project matrix is exhaustive
