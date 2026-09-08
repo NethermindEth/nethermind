@@ -26,6 +26,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
+    private readonly SnapshotRetention _retention;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -65,12 +66,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        bool enableDetailedMetrics)
+        bool enableDetailedMetrics,
+        SnapshotRetention retention)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
+        _retention = retention;
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
@@ -128,12 +131,26 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        // We do this async because of the lock
-        _snapshotRepository.AddStateId(stateId);
-
-        if (_snapshotCompactor.DoCompactSnapshot(stateId))
+        using (_retention.Sync.EnterScope())
         {
-            ClearReadOnlyBundleCache();
+            if (!_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot)) return;
+            using (snapshot)
+            {
+                _snapshotRepository.AddStateId(stateId);
+                _retention.Register(stateId);
+            }
+        }
+
+        try
+        {
+            if (_snapshotCompactor.DoCompactSnapshot(stateId))
+            {
+                ClearReadOnlyBundleCache();
+            }
+        }
+        finally
+        {
+            _retention.Release(stateId);
         }
 
         // Trigger persistence job.
@@ -254,13 +271,28 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
         }
 
+        if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
+
+        _retention.Register(baseBlock);
+        try
+        {
+            ReadOnlySnapshotBundle result = AssembleReadOnlySnapshotBundle(baseBlock);
+            result.Retain(_retention, baseBlock);
+            return result;
+        }
+        catch
+        {
+            _retention.Release(baseBlock);
+            throw;
+        }
+    }
+
+    private ReadOnlySnapshotBundle AssembleReadOnlySnapshotBundle(in StateId baseBlock)
+    {
         long sw = 0;
         int attempt = 0;
         while (true)
         {
-            // Fastpath: Share a recently created ReadOnlySnapshotBundle
-            if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
-
             if (attempt == 1) sw = Stopwatch.GetTimestamp();
             if (attempt != 0)
             {
@@ -356,16 +388,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
+        using (_retention.Sync.EnterScope())
         {
-            if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
-            transientResource.ReleaseLease();
-            snapshot.Dispose();
-            return;
-        }
+            if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
+            {
+                if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
+                transientResource.ReleaseLease();
+                snapshot.Dispose();
+                return;
+            }
 
-        // The latest block the main processing scope committed; used as the head for forced persists.
-        _snapshotRepository.SetLastCommittedStateId(endBlock);
+            // Publish the head with the snapshot so pruning cannot observe an unprotected insertion.
+            _snapshotRepository.SetLastCommittedStateId(endBlock);
+        }
 
         if (_inlineCompaction)
         {

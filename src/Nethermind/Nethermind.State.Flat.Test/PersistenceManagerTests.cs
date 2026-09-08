@@ -33,11 +33,13 @@ public class PersistenceManagerTests
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
     private ResourcePool _resourcePool = null!;
+    private bool _containerOwnsPersistenceManager;
     private StateId Block0 = new(0, Keccak.EmptyTreeHash);
 
     [SetUp]
     public void SetUp()
     {
+        _containerOwnsPersistenceManager = false;
         _config = new FlatDbConfig
         {
             CompactSize = 16,
@@ -80,7 +82,7 @@ public class PersistenceManagerTests
     [TearDown]
     public async Task TearDown()
     {
-        _persistenceManager.Dispose();
+        if (!_containerOwnsPersistenceManager) _persistenceManager.Dispose();
         await _persistedSnapshotCompactor.DisposeAsync();
         _tier.Dispose();
     }
@@ -1341,23 +1343,76 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public async Task AddToPersistence_OverBudget_PrunesOnlyCompetingStatesAbovePersistence([Values] bool siblings, [Values] bool preGenesis)
+    {
+        FlatDbConfig config = new() { EnableLongFinality = false, MaxInMemoryBaseSnapshotCount = 2 };
+        StateId persisted = preGenesis ? StateId.PreGenesis : Block0;
+        StateId first = CreateStateId(1);
+        StateId second = CreateStateId(siblings ? 1UL : 2UL, 1);
+        StateId latest = CreateStateId(3);
+        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+        repository.SnapshotCount.Returns(3);
+        repository.GetLastCommittedStateId().Returns(latest);
+        repository.GetStatesUpToBlock(long.MaxValue).Returns(_ => new ArrayPoolList<StateId>(3) { first, second, latest });
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persisted);
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+        using FlatTestContainer container = new(config, configure: builder => builder
+            .AddSingleton<ISnapshotRepository>(repository)
+            .AddSingleton<IPersistence>(persistence)
+            .AddSingleton<IFinalizedStateProvider>(_finalizedStateProvider)
+            .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance));
+
+        await container.Resolve<IPersistenceManager>().AddToPersistence(latest);
+
+        repository.Received(siblings ? 1 : 0).RemoveOrphanedStates(latest, latest, preGenesis ? 0UL : 1UL);
+        repository.DidNotReceiveWithAnyArgs().CollectCommittedAncestry(default, default!);
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_Conversion_CollectsAncestryOnceForAllCandidates()
+    {
+        FlatDbConfig config = new() { EnableLongFinality = true, MaxInMemoryBaseSnapshotCount = 1 };
+        StateId first = CreateStateId(1);
+        StateId second = CreateStateId(1, 1);
+        using Snapshot orphan = _resourcePool.CreateSnapshot(Block0, first, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        using Snapshot retained = _resourcePool.CreateSnapshot(Block0, second, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+        repository.SnapshotCount.Returns(2);
+        repository.GetLastCommittedStateId().Returns(second);
+        repository.GetStatesUpToBlock(long.MaxValue).Returns(_ => new ArrayPoolList<StateId>(2) { first, second });
+        repository.When(repo => repo.CollectCommittedAncestry(second, Arg.Any<ISet<StateId>>()))
+            .Do(call => call.Arg<ISet<StateId>>().Add(second));
+        repository.TryLeaseInMemoryState(Arg.Any<StateId>(), SnapshotTier.InMemoryBase, out Arg.Any<Snapshot?>())
+            .Returns(call =>
+            {
+                Snapshot snapshot = call.Arg<StateId>() == first ? orphan : retained;
+                snapshot.TryAcquire();
+                call[2] = snapshot;
+                return true;
+            });
+        using FlatTestContainer container = new(config, configure: builder => builder
+            .AddSingleton<ISnapshotRepository>(repository)
+            .AddSingleton<IPersistence>(_persistence)
+            .AddSingleton<IFinalizedStateProvider>(_finalizedStateProvider)
+            .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance));
+
+        (_, _, PersistenceManager.ConversionCandidate? candidate) =
+            ((PersistenceManager)container.Resolve<IPersistenceManager>()).DetermineSnapshotAction(second);
+        using Snapshot? converted = candidate?.Base;
+
+        Assert.That(converted, Is.SameAs(retained));
+        repository.Received(1).CollectCommittedAncestry(second, Arg.Any<ISet<StateId>>());
+    }
+
+    [Test]
     public async Task AddToPersistence_PinnedHeadSiblings_PrunesOrphansAboveInMemoryBudget()
     {
         // Finality stays at genesis and every new block is a sibling of the last, so neither the finalized
         // trigger nor the backstop ever fires; with long finality off nothing converts to the persisted tier either.
         _config.EnableLongFinality = false;
-        _persistenceManager.Dispose();
-        _persistenceManager = new PersistenceManager(
-            _config,
-            _tier.Resolve<ICompactionSchedule>(),
-            _finalizedStateProvider,
-            _persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+        ResetPersistenceManager();
 
         StateId pinned = CreateStateId(1);
         CreateSnapshot(Block0, pinned);
@@ -1391,23 +1446,12 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public async Task AddToPersistence_PinnedHeadSiblings_WithLongFinality_BoundsInMemorySnapshots()
+    public async Task AddToPersistence_PinnedHeadSiblings_WithLongFinality_BoundsInMemorySnapshots([Values(0, 8)] int budget)
     {
         // Production shape: long finality and the real persisted tier are on, the canonical chain alone exceeds the
         // in-memory budget, and no sibling has a parent on disk until conversion has climbed that chain.
-        _config.MaxInMemoryBaseSnapshotCount = 8;
-        _persistenceManager.Dispose();
-        _persistenceManager = new PersistenceManager(
-            _config,
-            _tier.Resolve<ICompactionSchedule>(),
-            _finalizedStateProvider,
-            _persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _tier.Compactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+        _config.MaxInMemoryBaseSnapshotCount = budget;
+        ResetPersistenceManager(useRealCompactor: true);
 
         StateId parent = Block0;
         for (ulong block = 1; block <= 40; block++)
@@ -1492,6 +1536,23 @@ public class PersistenceManagerTests
         }
 
         Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(1 + 2 * pairs), "below the budget no sibling is pruned");
+    }
+
+    private void ResetPersistenceManager(bool useRealCompactor = false)
+    {
+        if (!_containerOwnsPersistenceManager) _persistenceManager.Dispose();
+        _tier.Dispose();
+        _tier = new FlatTestContainer(_config, configure: builder =>
+        {
+            builder
+                .AddSingleton<IPersistence>(_persistence)
+                .AddSingleton<IFinalizedStateProvider>(_finalizedStateProvider)
+                .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance);
+            if (!useRealCompactor) builder.AddSingleton<IPersistedSnapshotCompactor>(_persistedSnapshotCompactor);
+        });
+        _snapshotRepository = _tier.Repository;
+        _persistenceManager = (PersistenceManager)_tier.Resolve<IPersistenceManager>();
+        _containerOwnsPersistenceManager = true;
     }
 
     private void InvokeConvertCompactedRange(Snapshot compacted)

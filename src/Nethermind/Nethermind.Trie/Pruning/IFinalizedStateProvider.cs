@@ -16,5 +16,5 @@ public interface IFinalizedStateProvider
     /// Distinct from the last block executed: an engine client can execute payloads it never selects, so
     /// state bounding that keys off execution history alone would drop the state the head still serves.
     /// </remarks>
-    BlockHeader? Head { get; }
+    BlockHeader? Head => null;
 }

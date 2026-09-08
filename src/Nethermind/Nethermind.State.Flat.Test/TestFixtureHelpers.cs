@@ -44,28 +44,6 @@ internal static class TestFixtureHelpers
     }
 
     /// <summary>
-    /// Read the <c>ref_ids</c> list from the metadata inside <paramref name="reservation"/>
-    /// and acquire a lease per id on <paramref name="blobs"/>. Mirrors what
-    /// <c>SnapshotRepository</c> does at load time — the resulting
-    /// <see cref="PersistedSnapshot"/>'s <c>CleanUp</c> drops one lease per id, keeping
-    /// refcounts balanced. No-op when there are no ref_ids (raw test bytes that aren't
-    /// a real sorted table).
-    /// </summary>
-    public static void LeaseBlobIds(ArenaReservation reservation, BlobArenaManager blobs)
-    {
-        using WholeReadSession session = reservation.BeginWholeReadSession();
-        WholeReadSessionReader reader = session.CreateReader();
-        ushort[]? ids = ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
-        if (ids is null) return;
-        foreach (ushort id in ids)
-        {
-            if (!blobs.TryLeaseFile(id, out _))
-                throw new System.InvalidOperationException(
-                    $"Test fixture's BlobArenaManager has no slot for id {id}; did Build() use a different manager?");
-        }
-    }
-
-    /// <summary>
     /// Read the snapshot's referenced blob-arena ids (the ref-id records in column
     /// <see cref="PersistedSnapshotKey.RefIdColumn"/>) as a <c>ushort[]</c>, or <c>null</c> when
     /// there are none (e.g. raw test bytes that aren't a real table). Test-only convenience for
@@ -120,22 +98,19 @@ internal static class TestFixtureHelpers
     }
 
     /// <summary>
-    /// Write <paramref name="data"/> into a fresh reservation on <paramref name="arena"/>,
-    /// lease the blob ids referenced by its metadata (skipped when
-    /// <paramref name="leaseBlobIds"/> is false) and wrap the result in a
-    /// <see cref="PersistedSnapshot"/> over <paramref name="blobs"/>.
+    /// Write <paramref name="data"/> into a fresh reservation on <paramref name="arena"/>
+    /// and wrap the result in a <see cref="PersistedSnapshot"/> over <paramref name="blobs"/>.
     /// </summary>
     public static PersistedSnapshot CreatePersistedSnapshot(
-        IArenaManager arena, BlobArenaManager blobs, StateId from, StateId to, byte[] data,
-        bool leaseBlobIds = true)
+        IArenaManager arena, BlobArenaManager blobs, StateId from, StateId to, byte[] data)
     {
         using ArenaWriter writer = arena.CreateWriter(data.Length);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        if (leaseBlobIds) LeaseBlobIds(reservation, blobs);
-        return new PersistedSnapshot(from, to, reservation, blobs, SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
+        using (reservation)
+            return new PersistedSnapshot(from, to, reservation, blobs, SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
     }
 
     /// <summary>

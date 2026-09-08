@@ -39,6 +39,14 @@ public sealed class ReadOnlySnapshotBundle(
     /// </summary>
     public bool IsHistorical { get; } = isHistorical;
     private bool _isDisposed;
+    private SnapshotRetention? _retention;
+    private StateId _retainedHead;
+
+    internal void Retain(SnapshotRetention retention, in StateId head)
+    {
+        _retention = retention;
+        _retainedHead = head;
+    }
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
@@ -228,10 +236,17 @@ public sealed class ReadOnlySnapshotBundle(
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
 
-        snapshots.Dispose();
-        persistedSnapshots.Dispose();
+        try
+        {
+            snapshots.Dispose();
+            persistedSnapshots.Dispose();
 
-        // Null them in case unexpected mutation from trie warmer
-        persistenceReader.Dispose();
+            // Null them in case unexpected mutation from trie warmer
+            persistenceReader.Dispose();
+        }
+        finally
+        {
+            _retention?.Release(_retainedHead);
+        }
     }
 }

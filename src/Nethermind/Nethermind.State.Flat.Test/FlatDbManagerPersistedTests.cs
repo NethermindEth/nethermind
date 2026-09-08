@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
@@ -85,7 +86,8 @@ public class FlatDbManagerPersistedTests
             _config,
             new BlocksConfig(),
             LimboLogs.Instance,
-            enableDetailedMetrics: false);
+            enableDetailedMetrics: false,
+            tier.Resolve<SnapshotRetention>());
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 
@@ -93,6 +95,125 @@ public class FlatDbManagerPersistedTests
         Assert.That(result, Is.EqualTo(nodeRlp));
 
         bundle.Dispose();
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_RetainsHeadUntilCacheAndReadersRelease([Values] bool persisted)
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("retained"));
+        using FlatTestContainer tier = CreateRetentionContainer(s0);
+        await using FlatDbManager manager = (FlatDbManager)tier.Resolve<IFlatDbManager>();
+        SnapshotRetention retention = tier.Resolve<SnapshotRetention>();
+        Snapshot snapshot = tier.ResourcePool.CreateSnapshot(s0, s1, ResourcePool.Usage.MainBlockProcessing);
+        if (persisted)
+        {
+            using (snapshot) tier.ConvertToPersistedBase(snapshot).Dispose();
+        }
+        else
+        {
+            Assert.That(tier.Repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
+            tier.Repository.AddStateId(s1);
+        }
+
+        using (ReadOnlySnapshotBundle first = manager.GatherReadOnlySnapshotBundle(s1))
+        {
+            using (ReadOnlySnapshotBundle second = manager.GatherReadOnlySnapshotBundle(s1))
+                Assert.That(second, Is.SameAs(first));
+            AssertRetained(retention, s1, true);
+
+            manager.FlushCache(CancellationToken.None);
+            AssertRetained(retention, s1, true);
+        }
+        AssertRetained(retention, s1, false);
+    }
+
+    [Test]
+    public async Task RemoveOrphanedStates_ActiveCompactedBundle_PreservesUnleasedBaseAncestry()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId canonical = new(3, Keccak.Compute("canonical"));
+        StateId first = new(1, Keccak.Compute("orphan1"));
+        StateId second = new(2, Keccak.Compute("orphan2"));
+        StateId head = new(3, Keccak.Compute("orphan3"));
+        StateId unused = new(2, Keccak.Compute("unused"));
+        using FlatTestContainer tier = CreateRetentionContainer(s0);
+        await using FlatDbManager manager = (FlatDbManager)tier.Resolve<IFlatDbManager>();
+        SnapshotRepository repository = tier.Repository;
+        AddEmptySnapshot(tier, s0, canonical);
+        AddEmptySnapshot(tier, s0, first);
+        AddEmptySnapshot(tier, first, second);
+        AddEmptySnapshot(tier, second, head);
+        AddEmptySnapshot(tier, s0, head, compacted: true);
+        AddEmptySnapshot(tier, s0, unused);
+        repository.SetLastCommittedStateId(canonical);
+
+        using (ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(head))
+        {
+            Assert.That(bundle.SnapshotCount, Is.EqualTo(1), "The compacted edge bypasses the base snapshots.");
+            manager.FlushCache(CancellationToken.None);
+
+            Assert.That(repository.RemoveOrphanedStates(canonical, canonical), Is.EqualTo(1));
+            using AssembledSnapshotResult ancestry = repository.AssembleSnapshots(second, s0, 2);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(repository.HasState(unused), Is.False);
+                Assert.That(repository.HasState(first), Is.True);
+                Assert.That(repository.HasState(second), Is.True);
+                Assert.That(ancestry.SnapshotCount, Is.EqualTo(2));
+            }
+        }
+
+        Assert.That(repository.RemoveOrphanedStates(canonical, canonical), Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.HasState(first), Is.False);
+            Assert.That(repository.HasState(second), Is.False);
+            Assert.That(repository.HasState(head), Is.False);
+            Assert.That(repository.HasState(canonical), Is.True);
+        }
+    }
+
+    private static void AddEmptySnapshot(FlatTestContainer tier, StateId from, StateId to, bool compacted = false)
+    {
+        Snapshot snapshot = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
+        Assert.That(tier.Repository.TryAdd(snapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase), Is.True);
+        if (!compacted) tier.Repository.AddStateId(to);
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_UnavailableState_ReleasesRetention()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId missing = new(1, Keccak.Compute("missing"));
+        using FlatTestContainer tier = CreateRetentionContainer(s0);
+        await using FlatDbManager manager = (FlatDbManager)tier.Resolve<IFlatDbManager>();
+
+        Assert.That(() => manager.GatherReadOnlySnapshotBundle(missing), Throws.TypeOf<StateUnavailableException>());
+        AssertRetained(tier.Resolve<SnapshotRetention>(), missing, false);
+    }
+
+    private static FlatTestContainer CreateRetentionContainer(StateId persistedState)
+    {
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persistedState);
+        persistenceManager.LeaseReader().Returns(reader);
+        persistenceManager.GetCurrentPersistedStateId().Returns(persistedState);
+        persistenceManager.FlushToPersistence(Arg.Any<CancellationToken>()).Returns(persistedState);
+        return new FlatTestContainer(
+            new FlatDbConfig { TrieCacheMemoryBudget = 0 },
+            arenaFileSizeBytes: 4096,
+            configure: builder => builder
+                .AddSingleton<IPersistenceManager>(persistenceManager)
+                .AddSingleton<IBlocksConfig>(new BlocksConfig())
+                .AddSingleton<IMetricsConfig>(new MetricsConfig()));
+    }
+
+    private static void AssertRetained(SnapshotRetention retention, StateId head, bool expected)
+    {
+        using Lock.Scope scope = retention.Sync.EnterScope();
+        Assert.That(retention.ActiveHeads.Contains(head), Is.EqualTo(expected));
     }
 
     [Test]
@@ -118,7 +239,8 @@ public class FlatDbManagerPersistedTests
             _config,
             new BlocksConfig(),
             LimboLogs.Instance,
-            enableDetailedMetrics: false);
+            enableDetailedMetrics: false,
+            tier.Resolve<SnapshotRetention>());
 
         // WaitAsync bounds only the wait, not the drain. A wedged worker-channel drain
         // causes a fast TimeoutException here instead of a stalled test host.

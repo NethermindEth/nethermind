@@ -156,17 +156,18 @@ public interface ISnapshotRepository
     /// Persistence reclaims snapshots only when the chain advances past the persisted state. A head that stays put
     /// while sibling blocks keep arriving (an engine client replaying payloads against one parent) never advances
     /// it, so without this every sibling's snapshot lives for the life of the process, in memory or converted on
-    /// disk. A payload extending a removed block re-executes the branch down to the nearest state; a fork choice
-    /// that selects a removed block itself serves no state until such a payload arrives.
+    /// disk. New-payload and fork-choice handlers can re-execute removed branches from available state.
+    /// Active state views and their ancestry are retained. Persisted history below the in-memory and recent-commit
+    /// window is never removed. Persisted deletion candidates are enumerated only after in-memory removal or a persisted fork is found.
     /// </remarks>
     /// <param name="committedHead">The last state the main processing scope committed.</param>
     /// <param name="forkChoiceHead">The state the chain currently follows; equal to <paramref name="committedHead"/> when unknown.</param>
-    int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead);
+    /// <param name="minBlockNumber">The first eligible height; callers must exclude the current persisted state and older history.</param>
+    int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber = 0) => 0;
 
-    /// <summary>
-    /// True when <paramref name="stateId"/> is on the ancestry of the last committed state, of
-    /// <paramref name="forkChoiceHead"/>, or of a recently committed state; also true while nothing has been
-    /// committed or the committed state has no snapshot, so callers cannot mistake an unknown chain for an orphan.
-    /// </summary>
-    bool IsOnCommittedAncestry(in StateId stateId, in StateId forkChoiceHead);
+    /// <summary>Collects the committed, fork-choice, recent-commit, and active-view ancestry in memory.</summary>
+    /// <remarks>An empty set means ancestry is unknown and candidates must not be rejected.</remarks>
+    /// <param name="forkChoiceHead">The state currently selected by fork choice.</param>
+    /// <param name="retained">An initially empty set populated once for a conversion pass.</param>
+    void CollectCommittedAncestry(in StateId forkChoiceHead, ISet<StateId> retained) { }
 }

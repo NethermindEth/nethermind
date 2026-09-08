@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Collections.Pooled;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -106,8 +107,8 @@ public class PersistenceManager(
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
-    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>, and converts only states on the committed
-    /// ancestry; orphans are left for <see cref="PruneOrphansAboveBudget"/>.
+    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>, and selects conversion candidates from retained
+    /// ancestry; older orphans are left for <see cref="PruneOrphansAboveBudget"/>.
     /// </remarks>
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
@@ -197,17 +198,17 @@ public class PersistenceManager(
         // real block height, so this returns every in-memory state, ascending.
         using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
         StateId forkChoiceHead = ForkChoiceHead(snapshotRepository.GetLastCommittedStateId() ?? currentPersistedState);
+        using PooledSet<StateId> retained = new();
+        snapshotRepository.CollectCommittedAncestry(forkChoiceHead, retained);
 
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
-        // Orphans are never converted: a sibling the chain did not follow would only fill the persisted tier
-        // until the next persist prunes it, and PruneOrphansAboveBudget drops it once it ages out.
         foreach (StateId X in ordered)
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryCompacted, out Snapshot? compacted)) continue;
 
             if (compacted!.To.BlockNumber - compacted.From.BlockNumber == _compactSize
                 && IsOnDisk(compacted.From, currentPersistedState)
-                && snapshotRepository.IsOnCommittedAncestry(X, forkChoiceHead))
+                && (retained.Count == 0 || retained.Contains(X)))
             {
                 return new ConversionCandidate(compacted, Base: null);
             }
@@ -219,7 +220,7 @@ public class PersistenceManager(
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
-            if (IsOnDisk(baseSnap!.From, currentPersistedState) && snapshotRepository.IsOnCommittedAncestry(X, forkChoiceHead))
+            if (IsOnDisk(baseSnap!.From, currentPersistedState) && (retained.Count == 0 || retained.Contains(X)))
             {
                 return new ConversionCandidate(Compacted: null, baseSnap);
             }
@@ -299,7 +300,17 @@ public class PersistenceManager(
         StateId? committedHead = snapshotRepository.GetLastCommittedStateId();
         if (committedHead is null) return;
 
-        int pruned = snapshotRepository.RemoveOrphanedStates(committedHead.Value, ForkChoiceHead(committedHead.Value));
+        // A linear chain routinely exceeds the budget before conversion; only competing states need orphan pruning.
+        using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
+        // With a zero budget, every earlier sibling may already be on disk.
+        bool hasCompetingStates = _maxInMemoryBaseSnapshotCount == 0;
+        for (int i = 1; i < ordered.Count && !hasCompetingStates; i++)
+            hasCompetingStates = ordered[i - 1].BlockNumber == ordered[i].BlockNumber;
+        if (!hasCompetingStates) return;
+
+        StateId persisted = GetCurrentPersistedStateId();
+        ulong minBlockNumber = persisted == StateId.PreGenesis ? 0 : persisted.BlockNumber + 1;
+        int pruned = snapshotRepository.RemoveOrphanedStates(committedHead.Value, ForkChoiceHead(committedHead.Value), minBlockNumber);
         if (pruned > 0 && _logger.IsDebug)
             _logger.Debug($"Pruned {pruned} orphaned snapshot(s) below committed head {committedHead.Value}; {snapshotRepository.SnapshotCount} base snapshot(s) remain.");
     }

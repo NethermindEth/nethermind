@@ -36,9 +36,6 @@ public abstract class SmallRefCountingDisposable(int initialCount = RefCountingL
 
     protected bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
-    /// <summary>The current lease count, for holders that must know whether anyone else is reading.</summary>
-    protected long CurrentLeases => Volatile.Read(ref _leases);
-
     /// <summary>
     /// Disposes it once, decreasing the lease count by 1.
     /// </summary>

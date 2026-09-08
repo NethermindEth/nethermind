@@ -273,10 +273,20 @@ public class ForkchoiceUpdatedHandler(
             return result;
         }
 
-        if (!stateReader.HasStateForBlock(newHeadHeader) && !await TryRestoreState(newHeadHeader))
+        // Canonical historical FCUs remain valid without state; orphan eviction only removes side branches.
+        if (!_blockTree.IsMainChain(newHeadHeader) && !stateReader.HasStateForBlock(newHeadHeader))
         {
-            if (_logger.IsInfo) _logger.Info($"Syncing, state of the processed head {newHeadHeader.ToString(BlockHeader.Format.Short)} is gone and could not be rebuilt. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Syncing;
+            bool? restored = await TryRestoreState(newHeadHeader);
+            if (restored is not true)
+            {
+                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
+                if (restored is false)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Syncing, state of the processed head {newHeadHeader.ToString(BlockHeader.Format.Short)} is gone and could not be rebuilt. Request: {requestStr}.");
+                    StartNewBeaconHeaderSync(forkchoiceState, newHeadHeader, requestStr);
+                }
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
         }
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
@@ -301,22 +311,24 @@ public class ForkchoiceUpdatedHandler(
     }
 
     /// <summary>
-    /// Re-executes a processed head whose state was pruned, from the nearest ancestor with state, so the fork
-    /// choice can be served instead of answered with SYNCING. Waits for the processing queue as newPayload does.
+    /// Restores a processed head's pruned state, returning null while more processing is needed.
     /// </summary>
-    private async Task<bool> TryRestoreState(BlockHeader newHeadHeader)
+    /// <remarks>A selected fork can exceed the newPayload lookback window. Rebuild at most eight blocks per call,
+    /// so retries make progress without monopolizing the processing queue with the entire fork.</remarks>
+    private async Task<bool?> TryRestoreState(BlockHeader newHeadHeader)
     {
-        if (!PrunedStateRecovery.HasAncestorWithState(_blockTree, stateReader, newHeadHeader)) return false;
+        BlockHeader? recoveryHead = PrunedStateRecovery.FindRecoveryHead(_blockTree, stateReader, newHeadHeader);
+        if (recoveryHead is null) return false;
 
-        Block? block = _blockTree.FindBlock(newHeadHeader.Hash!, BlockTreeLookupOptions.None);
+        Block? block = _blockTree.FindBlock(recoveryHead.Hash!, BlockTreeLookupOptions.None);
         if (block is null) return false;
 
-        if (_logger.IsInfo) _logger.Info($"Re-executing {newHeadHeader.ToString(BlockHeader.Format.Short)}: it was processed but its state has been pruned.");
+        if (_logger.IsInfo) _logger.Info($"Re-executing through {recoveryHead.ToString(BlockHeader.Format.Short)} toward {newHeadHeader.ToString(BlockHeader.Format.Short)}: its state has been pruned.");
 
         TaskCompletionSource<ProcessingResult> processed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
         {
-            if (e.BlockHash == newHeadHeader.Hash) processed.TrySetResult(e.ProcessingResult);
+            if (e.BlockHash == recoveryHead.Hash) processed.TrySetResult(e.ProcessingResult);
         }
 
         processingQueue.BlockRemoved += OnBlockRemoved;
@@ -324,11 +336,12 @@ public class ForkchoiceUpdatedHandler(
         {
             await processingQueue.Enqueue(block, _reExecutionOptions);
             using CancellationTokenSource timeout = new(_reExecutionTimeout);
-            return await processed.Task.WaitAsync(timeout.Token) == ProcessingResult.Success;
+            if (await processed.Task.WaitAsync(timeout.Token) != ProcessingResult.Success) return false;
+            return stateReader.HasStateForBlock(newHeadHeader) ? true : null;
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return null;
         }
         finally
         {

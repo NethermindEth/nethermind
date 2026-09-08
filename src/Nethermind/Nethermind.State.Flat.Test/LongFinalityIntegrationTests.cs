@@ -233,14 +233,14 @@ public class LongFinalityIntegrationTests
         Hash256 storageAddr = Keccak.Compute("addr");
         TreePath storagePath = new(Keccak.Compute("stor_path"), 6);
 
-        Snapshot snap1 = CreateSnapshot(s0, s1, c =>
+        using Snapshot snap1 = CreateSnapshot(s0, s1, c =>
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC0]);
             c.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Branch, [0xC1, 0x80]);
         });
 
-        Snapshot snap2 = CreateSnapshot(s1, s2, c =>
+        using Snapshot snap2 = CreateSnapshot(s1, s2, c =>
         {
             c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]); // Override
@@ -250,10 +250,10 @@ public class LongFinalityIntegrationTests
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _helperBlobs);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, data1);
         PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, data2);
-        PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
+        using PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
         byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
 
-        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
+        using PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
 
         // State node should have newer value
         Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
@@ -319,7 +319,8 @@ public class LongFinalityIntegrationTests
             _config,
             new BlocksConfig(),
             LimboLogs.Instance,
-            enableDetailedMetrics: false);
+            enableDetailedMetrics: false,
+            tier.Resolve<SnapshotRetention>());
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 

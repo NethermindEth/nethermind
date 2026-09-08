@@ -50,19 +50,23 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly Lock _lastCommittedLock = new();
     private StateId _lastCommittedStateId;
     private bool _hasLastCommitted;
+    private readonly SnapshotRetention _retention;
     // Competing tip blocks flip within a few slots; re-executing one costs a whole block, so the last
     // few committed states and their ancestry are exempt from orphan pruning.
     private const int RecentlyCommittedRetention = 16;
     private readonly StateId[] _recentlyCommitted = new StateId[RecentlyCommittedRetention];
     private int _recentlyCommittedCount;
+    private int _recentlyCommittedNext;
 
     public SnapshotRepository(
         IArenaManager arenaManager,
         BlobArenaManager blobArenaManager,
         ISnapshotCatalog catalog,
         IFlatDbConfig config,
-        ILogManager logManager)
+        ILogManager logManager,
+        SnapshotRetention retention)
     {
+        _retention = retention;
         _catalog = catalog;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
         _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase, _logger);
@@ -278,8 +282,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using Lock.Scope _ = _lastCommittedLock.EnterScope();
         _lastCommittedStateId = stateId;
         _hasLastCommitted = true;
-        _recentlyCommitted[_recentlyCommittedCount % RecentlyCommittedRetention] = stateId;
-        _recentlyCommittedCount++;
+        _recentlyCommitted[_recentlyCommittedNext] = stateId;
+        _recentlyCommittedNext = (_recentlyCommittedNext + 1) % RecentlyCommittedRetention;
+        _recentlyCommittedCount = Math.Min(_recentlyCommittedCount + 1, RecentlyCommittedRetention);
     }
 
     public StateId? GetLastCommittedStateId()
@@ -436,115 +441,89 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
     }
 
-    public int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead)
+    public int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber = 0)
     {
-        // Candidates are listed before the ancestry is collected: a block committed in between is then either
-        // absent from the candidates or, having been committed, present in the retained set. The reverse order
-        // could list a just-committed sibling that the already collected ancestry does not know. No height bound:
-        // a fork is dropped whole, or a surviving tip would report a state its broken chain cannot assemble.
-        using ArrayPoolList<StateId> inMemory = GetStatesUpToBlock(long.MaxValue);
-        // A sibling converted while it was the committed head is an orphan on disk once the chain moves on.
-        using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(0, long.MaxValue);
+        using Lock.Scope scope = _retention.Sync.EnterScope();
+        using ArrayPoolListRef<StateId> inMemory = GetStatesInRange(minBlockNumber, long.MaxValue);
+        if (inMemory.Count == 0) return 0;
 
-        using PooledSet<StateId> retained = CollectRetainedAncestry(committedHead, forkChoiceHead, includePersisted: true);
+        // Include recently converted commits in the active window. Older persisted history remains
+        // available for deep reorgs even when compaction has removed intermediate ancestry edges.
+        ulong activeStart = inMemory[0].BlockNumber;
+        using (_lastCommittedLock.EnterScope())
+        {
+            for (int i = 0; i < _recentlyCommittedCount; i++)
+            {
+                ulong height = _recentlyCommitted[i].BlockNumber;
+                if (height >= minBlockNumber) activeStart = Math.Min(activeStart, height);
+            }
+        }
+        minBlockNumber = Math.Max(minBlockNumber, activeStart);
+        using PooledSet<StateId> retained = [];
+        CollectRetainedAncestry(retained, committedHead, forkChoiceHead, includePersisted: true, minBlockNumber);
         if (retained.Count == 0) return 0;
 
         int pruned = 0;
         foreach (StateId stateId in inMemory)
         {
             if (retained.Contains(stateId)) continue;
-            pruned += RemoveOrphanUnlessRead(stateId, SnapshotTier.InMemoryCompacted);
-            pruned += RemoveOrphanUnlessRead(stateId, SnapshotTier.InMemoryBase);
+            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted)) pruned++;
+            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase)) pruned++;
         }
+        // A small memory budget can convert siblings before they become eligible for in-memory pruning.
+        if (pruned == 0 && !HasPersistedForkAt(committedHead) && !HasPersistedForkAt(forkChoiceHead)) return 0;
 
+        // A sibling may have been converted before it aged out of recent-commit retention.
+        using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(minBlockNumber, long.MaxValue);
         foreach (StateId stateId in persisted)
         {
-            if (retained.Contains(stateId) || IsPersistedStateRead(stateId)) continue;
-            if (RemovePersistedStateExact(stateId)) pruned++;
+            if (!retained.Contains(stateId) && RemovePersistedStateExact(stateId)) pruned++;
         }
-
         return pruned;
     }
 
-    /// <summary>
-    /// A snapshot some scope is reading is the parent of a block being executed, which will commit with its
-    /// <c>From</c> pointing here; dropping it now would leave that block without an ancestry.
-    /// </summary>
-    private int RemoveOrphanUnlessRead(in StateId stateId, SnapshotTier tier)
+    public void CollectCommittedAncestry(in StateId forkChoiceHead, ISet<StateId> retained)
     {
-        if (TryLeaseInMemoryState(stateId, tier, out Snapshot? snapshot))
-        {
-            bool read = snapshot.HasOtherReaders;
-            snapshot.Dispose();
-            if (read) return 0;
-        }
-
-        return RemoveAndReleaseInMemoryKnownState(stateId, tier) ? 1 : 0;
-    }
-
-    private bool IsPersistedStateRead(in StateId stateId)
-    {
-        ReadOnlySpan<SnapshotTier> persistedTiers = [SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized];
-        foreach (SnapshotTier tier in persistedTiers)
-        {
-            if (!TryLeasePersistedState(stateId, tier, out PersistedSnapshot? snapshot)) continue;
-            bool read = snapshot.HasOtherReaders;
-            snapshot.Dispose();
-            if (read) return true;
-        }
-
-        return false;
-    }
-
-    public bool IsOnCommittedAncestry(in StateId stateId, in StateId forkChoiceHead)
-    {
+        using Lock.Scope scope = _retention.Sync.EnterScope();
         StateId? committedHead = GetLastCommittedStateId();
-        if (committedHead is null) return true;
-
-        // Callers ask about in-memory states, and nothing in memory hangs below a persisted edge, so the walk
-        // can stop at the persisted tier instead of descending to the database state.
-        using PooledSet<StateId> retained = CollectRetainedAncestry(committedHead.Value, forkChoiceHead, includePersisted: false);
-        return retained.Count == 0 || retained.Contains(stateId);
+        if (committedHead is not null)
+            CollectRetainedAncestry(retained, committedHead.Value, forkChoiceHead, includePersisted: false, 0);
     }
 
-    /// <summary>
-    /// Every state on the ancestry of <paramref name="committedHead"/>, of <paramref name="forkChoiceHead"/>, or of
-    /// a recently committed state, in memory and, when <paramref name="includePersisted"/> is set, in the persisted
-    /// tier. Empty when <paramref name="committedHead"/> has no snapshot in any tier, so a stale head prunes nothing.
-    /// </summary>
+    /// <summary>Collects protected ancestry, stopping at the lower bound or the persisted tier.</summary>
     /// <remarks>
-    /// Every followed tier contributes edges: a compacted edge skips the bases it spans, and those bases are
-    /// ancestors too. The walk ends where <c>From</c> has no snapshot left, which is the state persisted to the database.
+    /// Every followed tier contributes edges so compacted jumps also retain the bases they span.
+    /// An unknown head or a gap above the pruning boundary leaves the set empty: incomplete ancestry
+    /// cannot establish that another state is an orphan. The caller holds the retention gate.
     /// </remarks>
-    private PooledSet<StateId> CollectRetainedAncestry(in StateId committedHead, in StateId forkChoiceHead, bool includePersisted)
+    private void CollectRetainedAncestry(ISet<StateId> retained, in StateId committedHead,
+        in StateId forkChoiceHead, bool includePersisted, ulong minBlockNumber)
     {
-        PooledSet<StateId> retained = [];
-        if (!HasState(committedHead) && !_compactedSnapshots.ContainsKey(committedHead)) return retained;
+        if (!HasState(committedHead) && !_compactedSnapshots.ContainsKey(committedHead)) return;
 
         using PooledStack<StateId> pending = new();
-        retained.Add(committedHead);
-        pending.Push(committedHead);
-        if (retained.Add(forkChoiceHead)) pending.Push(forkChoiceHead);
+        AddHead(committedHead);
+        AddHead(forkChoiceHead);
         using (_lastCommittedLock.EnterScope())
         {
-            int recent = Math.Min(_recentlyCommittedCount, RecentlyCommittedRetention);
-            for (int i = 0; i < recent; i++)
-            {
-                if (retained.Add(_recentlyCommitted[i])) pending.Push(_recentlyCommitted[i]);
-            }
+            for (int i = 0; i < _recentlyCommittedCount; i++) AddHead(_recentlyCommitted[i]);
         }
+        foreach (StateId head in _retention.ActiveHeads) AddHead(head);
 
         ReadOnlySpan<SnapshotTier> inMemoryTiers = [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
         ReadOnlySpan<SnapshotTier> persistedTiers = [SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized];
         while (pending.Count > 0)
         {
             StateId current = pending.Pop();
+            if (Height(current) < (long)minBlockNumber) continue;
+            bool found = false;
             foreach (SnapshotTier tier in inMemoryTiers)
             {
                 if (!TryLeaseInMemoryState(current, tier, out Snapshot? snapshot)) continue;
                 StateId from = snapshot.From;
                 snapshot.Dispose();
-                if (retained.Add(from)) pending.Push(from);
+                found = true;
+                AddHead(from);
             }
             if (!includePersisted) continue;
             foreach (SnapshotTier tier in persistedTiers)
@@ -552,11 +531,20 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 if (!TryLeasePersistedState(current, tier, out PersistedSnapshot? snapshot)) continue;
                 StateId from = snapshot.From;
                 snapshot.Dispose();
-                if (retained.Add(from)) pending.Push(from);
+                found = true;
+                AddHead(from);
+            }
+            if (!found)
+            {
+                retained.Clear();
+                return;
             }
         }
 
-        return retained;
+        void AddHead(in StateId head)
+        {
+            if (retained.Add(head)) pending.Push(head);
+        }
     }
 
     /// <summary>True when the persisted tier holds a non-canonical state at

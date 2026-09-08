@@ -152,7 +152,8 @@ public class HistoricalTraceReExecutionTests
         new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, HistoryEnabled = true },
         _blocksConfig,
         LimboLogs.Instance,
-        enableDetailedMetrics: false);
+        enableDetailedMetrics: false,
+        new SnapshotRetention());
 
     private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager) => new(
         new MemDb(),

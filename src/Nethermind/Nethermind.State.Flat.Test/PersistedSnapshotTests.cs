@@ -664,10 +664,7 @@ public class PersistedSnapshotTests
         long afterBuild = Metrics.BlobAllocatedBytes;
         Assert.That(afterBuild, Is.GreaterThan(baselineBytes), "Building a snapshot with trie nodes should grow blob-allocated bytes");
 
-        // Skip LeaseBlobIds: it acquires an extra lease per blob id that other
-        // tests rely on but that this test must not leave dangling, otherwise the
-        // orphan-reset would correctly refuse to fire.
-        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data, leaseBlobIds: false)
+        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data)
             .Dispose();
 
         // After the last external lease drops, the manager's TryResetOrphanedFrontier

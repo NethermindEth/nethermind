@@ -34,6 +34,7 @@ public class FlatDbManagerTests
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
+    private SnapshotRetention _retention = null!;
 
     private const long HistoryBarrier = 100;
     private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");
@@ -50,6 +51,7 @@ public class FlatDbManagerTests
     {
         _resourcePool = Substitute.For<IResourcePool>();
         _cts = new CancellationTokenSource();
+        _retention = new SnapshotRetention();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
         _trieNodeCache = Substitute.For<ITrieNodeCache>();
@@ -91,7 +93,8 @@ public class FlatDbManagerTests
         _config,
         _blocksConfig,
         LimboLogs.Instance,
-        enableDetailedMetrics: false);
+        enableDetailedMetrics: false,
+        _retention);
 
     private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
@@ -101,7 +104,7 @@ public class FlatDbManagerTests
     }
 
     private (FlatDbManager Manager, StateId SnapshotTo) CreateManagerWithQueuedSnapshot(
-        bool processExitAlreadyCancelled = false)
+        bool processExitAlreadyCancelled = false, bool snapshotAvailable = true)
     {
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = false };
         StateId snapshotFrom = CreateStateId(10);
@@ -115,6 +118,11 @@ public class FlatDbManagerTests
         ResourcePool realResourcePool = new(_config);
         Snapshot snapshot = realResourcePool.CreateSnapshot(
             snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        _snapshotRepository.TryLeaseInMemoryState(snapshotTo, SnapshotTier.InMemoryBase, out Arg.Any<Snapshot?>()).Returns(call =>
+        {
+            call[2] = snapshotAvailable ? snapshot : null;
+            return snapshotAvailable && snapshot.TryAcquire();
+        });
         TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
 
         FlatDbManager manager = CreateManager();
@@ -191,6 +199,46 @@ public class FlatDbManagerTests
             _ = _persistenceManager.AddToPersistence(snapshotTo);
             _persistenceManager.FlushToPersistence(CancellationToken.None);
         });
+    }
+
+    [Test]
+    public async Task AddSnapshot_RemovedBeforeQueuedCompaction_DoesNotReindexOrCompact()
+    {
+        (FlatDbManager manager, StateId snapshotTo) = CreateManagerWithQueuedSnapshot(snapshotAvailable: false);
+        await manager.DisposeAsync();
+
+        _snapshotRepository.DidNotReceive().AddStateId(snapshotTo);
+        _snapshotCompactor.DidNotReceive().DoCompactSnapshot(snapshotTo);
+        await _persistenceManager.DidNotReceive().AddToPersistence(snapshotTo);
+    }
+
+    [Test]
+    public async Task AddSnapshot_QueuedCompaction_RetainsHeadUntilOutputPublication()
+    {
+        TaskCompletionSource compactStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCompact = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _snapshotCompactor.DoCompactSnapshot(Arg.Any<StateId>()).Returns(_ =>
+        {
+            compactStarted.TrySetResult();
+            releaseCompact.Task.GetAwaiter().GetResult();
+            return false;
+        });
+
+        (FlatDbManager manager, StateId snapshotTo) = CreateManagerWithQueuedSnapshot();
+        try
+        {
+            await compactStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            using Lock.Scope scope = _retention.Sync.EnterScope();
+            Assert.That(_retention.ActiveHeads.Contains(snapshotTo), Is.True);
+        }
+        finally
+        {
+            releaseCompact.TrySetResult();
+            await manager.DisposeAsync();
+        }
+
+        using (_retention.Sync.EnterScope())
+            Assert.That(_retention.ActiveHeads, Is.Empty);
     }
 
     [Test]

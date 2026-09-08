@@ -67,7 +67,7 @@ public class ReadOnlySnapshotBundleBenchmark
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
         SnapshotCompactor compactor = new(
             config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
-            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, NullLogManager.Instance),
+            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, NullLogManager.Instance, new SnapshotRetention()),
             NullLogManager.Instance);
         List<FlatSnapshot> allSnapshots = new(SnapshotCount);
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);

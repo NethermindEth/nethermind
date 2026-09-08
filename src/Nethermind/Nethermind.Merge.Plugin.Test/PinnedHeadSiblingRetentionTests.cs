@@ -73,11 +73,9 @@ public class PinnedHeadSiblingRetentionTests : BaseEngineModuleTests
             maxBases = Math.Max(maxBases, snapshots.SnapshotCount);
         }
 
-        // Persistence runs on a background task; give the last jobs a moment to drain before sampling.
-        await Task.Delay(TimeSpan.FromSeconds(1));
+        Assert.That(() => snapshots.SnapshotCount, Is.LessThan(budget).After(10000, 10), "orphaned sibling snapshots must be pruned");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshots.SnapshotCount, Is.LessThan(budget), "orphaned sibling snapshots must be pruned");
             Assert.That(maxBases, Is.LessThan(2 * budget), "the in-memory tier must never run far past the budget");
             Assert.That(snapshots.HasState(new StateId(pinned)), Is.True, "the pinned parent stays readable");
         }
@@ -122,12 +120,24 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
     }
 
     [Test]
-    public async Task Fork_choice_selecting_a_pruned_sibling_re_executes_it_instead_of_syncing()
+    public async Task Fork_choice_selecting_a_pruned_sibling_re_executes_it_instead_of_syncing([Values(1, 9)] int forkLength)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ISnapshotRepository snapshots = chain.Container.Resolve<ISnapshotRepository>();
-        (BlockHeader forkHeader, _, Hash256 finalized) = await ExecuteForkThenPruneIt(chain, rpc, snapshots);
+        (BlockHeader forkHeader, _, Hash256 finalized) = await ExecuteForkThenPruneIt(chain, rpc, snapshots, forkLength);
+
+        if (forkLength > 8)
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> partial = await rpc.engine_forkchoiceUpdatedV4(new(forkHeader.Hash!, finalized, finalized));
+            BlockHeader parent = chain.BlockTree.FindHeader(forkHeader.ParentHash!, BlockTreeLookupOptions.None)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(partial.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+                Assert.That(snapshots.HasState(new StateId(parent)), Is.True, "the first replay segment restored eight blocks");
+                Assert.That(snapshots.HasState(new StateId(forkHeader)), Is.False, "the last block remains for the next request");
+            }
+        }
 
         await SiblingPayloads.ForkchoiceUpdated(chain, rpc, forkHeader.Hash!, finalized);
 
@@ -145,7 +155,7 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
     /// exists, then runs enough unselected siblings for orphan pruning to drop the fork's state.
     /// </summary>
     private static async Task<(BlockHeader Fork, GetPayloadV6Result Child, Hash256 Finalized)> ExecuteForkThenPruneIt(
-        MergeTestBlockchain chain, IEngineRpcModule rpc, ISnapshotRepository snapshots)
+        MergeTestBlockchain chain, IEngineRpcModule rpc, ISnapshotRepository snapshots, int forkLength = 1)
     {
         PrivateKey[] forkSenders = SiblingPayloads.CreateAccounts("fork");
         PrivateKey[] siblingSenders = SiblingPayloads.CreateAccounts("sibling");
@@ -154,6 +164,10 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
 
         SiblingPayloads.SubmitTransfers(chain, forkSenders, childSenders, pinned, 0);
         (_, BlockHeader forkHeader) = await SiblingPayloads.ProduceAndSubmit(chain, rpc, pinned, Keccak.Compute("fork"), SiblingPayloads.TxsPerBlock);
+        for (int i = 1; i < forkLength; i++)
+        {
+            (_, forkHeader) = await SiblingPayloads.ProduceAndSubmit(chain, rpc, forkHeader, Keccak.Compute("fork" + i), 0);
+        }
         StateId forkState = new(forkHeader);
         Assert.That(snapshots.HasState(forkState), Is.True, "precondition: the fork block has state right after execution");
         SiblingPayloads.SubmitTransfers(chain, childSenders, siblingSenders, pinned, 0);
@@ -167,8 +181,7 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
             await SiblingPayloads.ForkchoiceUpdated(chain, rpc, sibling.BlockHash, finalized);
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        Assert.That(snapshots.HasState(forkState), Is.False, "precondition: the unselected fork block was pruned");
+        Assert.That(() => snapshots.HasState(forkState), Is.False.After(10000, 10), "precondition: the unselected fork block was pruned");
         return (forkHeader, child, finalized);
     }
 }

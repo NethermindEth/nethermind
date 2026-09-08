@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -21,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -34,6 +36,43 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    [Test]
+    public async Task forkChoiceUpdatedV1_pruned_state_preserves_canonical_replays_and_starts_sync_for_missing_forks([Values] bool canonical)
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
+            .UpdateSingleton<IForkchoiceUpdatedHandler>(innerBuilder => innerBuilder.AddSingleton(stateReader)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        if (canonical)
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> selected = await rpc.engine_forkchoiceUpdatedV1(new(branch[1].BlockHash, Keccak.Zero, Keccak.Zero));
+            Assert.That(selected.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
+
+        Hash256 previousHead = chain.BlockTree.HeadHash!;
+        Hash256 target = branch[0].BlockHash;
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(false);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(new(target, target, target));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(canonical ? PayloadStatus.Valid : PayloadStatus.Syncing));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(target));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(target));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(canonical ? target : previousHead));
+            if (!canonical)
+            {
+                IBlockCacheService cache = chain.Container.Resolve<IBlockCacheService>();
+                Assert.That(cache.HeadBlockHash, Is.EqualTo(target));
+                Assert.That(cache.FinalizedHash, Is.EqualTo(target));
+                Assert.That(chain.BeaconPivot!.ProcessDestination?.Hash, Is.EqualTo(target));
+                Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.True);
+            }
+        }
+    }
+
     [Test]
     public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing()
     {

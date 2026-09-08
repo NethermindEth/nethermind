@@ -121,9 +121,6 @@ public class Snapshot : RefCountingDisposable
     }
 
     public bool TryAcquire() => TryAcquireLease();
-
-    /// <summary>True while a reader other than the caller holds a lease; the caller must hold exactly one lease.</summary>
-    internal bool HasOtherReaders => Volatile.Read(ref _leases.Value) > 2 * RefCountingLease.Single;
 }
 
 public sealed class SnapshotContent : IDisposable, IResettable

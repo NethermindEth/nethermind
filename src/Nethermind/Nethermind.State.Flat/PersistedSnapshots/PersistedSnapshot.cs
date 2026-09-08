@@ -73,10 +73,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     private ArenaByteReader CreateReader() => _reservation.CreateReader();
 
     /// <summary>
-    /// Construct a snapshot over a pre-leased metadata reservation. The caller MUST have already
-    /// acquired one lease per blob arena id referenced by the snapshot's <c>ref_ids</c> metadata,
-    /// and is responsible for rolling those leases back on construction failure. This ctor bumps the
-    /// metadata reservation lease and stashes the manager ref for later id → file resolution.
+    /// Constructs a snapshot retaining its own leases on the metadata reservation and referenced blob arenas.
     /// </summary>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
         BlobArenaManager blobManager, SnapshotTier tier, RefCountedBloomFilter bloom)
@@ -336,9 +333,6 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     }
 
     public bool TryAcquire() => TryAcquireLease();
-
-    /// <summary>True while a reader other than the caller holds a lease; the caller must hold exactly one lease.</summary>
-    internal bool HasOtherReaders => CurrentLeases > 2 * RefCountingLease.Single;
 
     /// <summary>
     /// Advise this snapshot's mmap range cold and clear the per-arena page-tracker entries that

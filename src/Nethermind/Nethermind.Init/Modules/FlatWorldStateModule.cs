@@ -55,7 +55,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
+                ctx.Resolve<SnapshotRetention>()))
+            .AddSingleton<SnapshotRetention>()
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
