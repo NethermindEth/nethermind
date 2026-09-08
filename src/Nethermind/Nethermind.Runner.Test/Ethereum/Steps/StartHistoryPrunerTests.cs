@@ -13,13 +13,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps;
 [TestFixture]
 public class StartHistoryPrunerTests
 {
-    [Test]
-    public async Task Execute_SchedulesPruningPass()
+    [TestCase(PruningModes.Disabled, 0)]
+    [TestCase(PruningModes.Rolling, 1)]
+    [TestCase(PruningModes.UseAncientBarriers, 1)]
+    public async Task Execute_SchedulesPruningPassOnlyWhenEnabled(PruningModes pruning, int expectedPasses)
     {
         IHistoryPruner historyPruner = Substitute.For<IHistoryPruner>();
+        HistoryConfig historyConfig = new() { Pruning = pruning };
 
-        await new StartHistoryPruner(historyPruner).Execute(CancellationToken.None);
+        await new StartHistoryPruner(historyPruner, historyConfig).Execute(CancellationToken.None);
 
-        historyPruner.Received(1).SchedulePruneHistory();
+        historyPruner.Received(expectedPasses).SchedulePruneHistory();
     }
 }

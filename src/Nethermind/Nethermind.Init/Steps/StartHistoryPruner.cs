@@ -13,12 +13,12 @@ namespace Nethermind.Init.Steps;
 /// The pruner otherwise runs only on <c>ProcessingQueueEmpty</c>, whose one startup signal fires before the pruner is
 /// created by the network step, so a node that receives no blocks would never prune its backlog.
 /// </remarks>
-[RunnerStepDependencies(dependencies: [typeof(InitializeNetwork)])]
-public class StartHistoryPruner(IHistoryPruner historyPruner) : IStep
+[RunnerStepDependencies(dependencies: [typeof(InitializeNetwork), typeof(ReviewBlockTree)])]
+public class StartHistoryPruner(IHistoryPruner historyPruner, IHistoryConfig historyConfig) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        historyPruner.SchedulePruneHistory();
+        if (historyConfig.Enabled()) historyPruner.SchedulePruneHistory();
         return Task.CompletedTask;
     }
 }
