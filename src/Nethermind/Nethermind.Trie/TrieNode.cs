@@ -1454,7 +1454,9 @@ namespace Nethermind.Trie
                                 Hash256 keccak = rlpReader.DecodeKeccak();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                data = childOrRef = child;
+                                // A warmer miss must not bypass a later live reader's snapshot lookup.
+                                data = child.IsWarmerOwned ? keccak : child;
+                                childOrRef = child;
 
                                 break;
                             }
@@ -1634,7 +1636,9 @@ namespace Nethermind.Trie
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    data = childOrRef = child;
+                                    // A warmer miss must not bypass a later live reader's snapshot lookup.
+                                    data = child.IsWarmerOwned ? keccak : child;
+                                    childOrRef = child;
 
                                     break;
                                 }
