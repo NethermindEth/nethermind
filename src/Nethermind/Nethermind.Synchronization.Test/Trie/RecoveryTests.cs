@@ -6,7 +6,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core.Test.Modules;
+using Nethermind.History;
 using Nethermind.Core.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -45,9 +50,10 @@ public class RecoveryTests
     private PeerInfo _peerEth67_2 = null!;
     private ISnapSyncPeer _snapSyncPeer = null!;
     private ISyncPeerPool _syncPeerPool = null!;
+    private IContainer _container = null!;
     private SnapRangeRecovery _snapRecovery = null!;
     private NodeDataRecovery _nodeDataDataRecovery = null!;
-    private CodeRecovery _codeRecovery = null!;
+    private ICodeRecovery _codeRecovery = null!;
 
     [SetUp]
     public void SetUp()
@@ -95,14 +101,30 @@ public class RecoveryTests
         _peerEth67_2 = new(MakeEth67Peer());
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        // Production hand-builds these two inside the IPathRecovery factory, so there is no
+        // registration to resolve them from; ICodeRecovery is registered and comes from the container.
         _snapRecovery = new SnapRangeRecovery(_syncPeerPool, LimboLogs.Instance);
         _nodeDataDataRecovery = new NodeDataRecovery(_syncPeerPool, new NodeStorage(new MemDb()), LimboLogs.Instance);
-        _codeRecovery = new CodeRecovery(_syncPeerPool, LimboLogs.Instance);
+
+        ConfigProvider configProvider = new();
+        // Code healing rides the patricia store's recovery wiring; the flat layout has no equivalent.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+        configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton(_syncPeerPool)
+            .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
+            .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
+            .Build();
+        _codeRecovery = _container.Resolve<ICodeRecovery>();
     }
 
     [TearDown]
-    public void TearDown() =>
+    public void TearDown()
+    {
+        _container?.Dispose();
         _syncPeerPool?.DisposeAsync();
+    }
 
     [Test]
     public async Task can_recover_eth66()
@@ -147,7 +169,7 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task can_recover_eth67([Values(1, 2)] int peerCount)
+    public async Task can_recover_eth67([Range(1, 2)] int peerCount)
     {
         using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, Eth67Peers(peerCount));
         AssertRecoveredNode(response);
@@ -161,7 +183,7 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task can_recover_code_eth67([Values(1, 2)] int peerCount)
+    public async Task can_recover_code_eth67([Range(1, 2)] int peerCount)
     {
         byte[]? response = await RecoverCode(Eth67Peers(peerCount));
         Assert.That(response, Is.EqualTo(_nodeRlp));
