@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -12,7 +13,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch>
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager, TimeSpan? stallWarningThreshold = null) : ISimpleSyncFeed<SnapSyncBatch>
     {
         private readonly Lock _syncLock = new();
 
@@ -26,6 +27,25 @@ namespace Nethermind.Synchronization.SnapSync
         // a peer that drops and comes back between two streaks would otherwise start over as a first offender.
         private PublicKey? _stalePivotUpdateTrigger;
 
+        // A snap request that produced nothing usable is otherwise recorded only at Trace (a timeout) or in a
+        // detailed-only metric (a bad range), while ProgressTracker keeps reporting the same percentage - so a
+        // node whose every request fails looks exactly like one that is working slowly. These three make the
+        // stall itself sayable: how many requests it covers, and how long it has run. All under _syncLock.
+        private int _consecutiveUnproductiveResponses;
+        private string _lastUnproductiveReason = "none recorded";
+        private long _lastProductiveTimestamp;
+        private long _lastStallWarningTimestamp;
+
+        /// <summary>How long snap sync may go without storing a usable range before it is called a stall.</summary>
+        /// <remarks>
+        /// Also the interval between repeats. A healthy snap sync stores ranges continuously, so this only has to
+        /// clear the pauses the recovery mechanisms themselves cause - punishing a peer, or a pivot update
+        /// invalidating the in-flight requests. Overridable so tests do not have to wait it out.
+        /// </remarks>
+        private static readonly TimeSpan DefaultStallWarningThreshold = TimeSpan.FromMinutes(5);
+
+        private readonly TimeSpan _stallWarningThreshold = stallWarningThreshold ?? DefaultStallWarningThreshold;
+
         private const SnapSyncBatch EmptyBatch = null;
 
         private readonly ISnapProvider _snapProvider = snapProvider;
@@ -38,6 +58,8 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 try
                 {
+                    WarnIfStalled();
+
                     bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
 
                     if (request is not null)
@@ -106,6 +128,8 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     _logger.Trace($"SNAP - timeout {peer}");
+                    Metrics.SnapRequestTimeouts++;
+                    OnUnproductiveResponse("no response");
                     return SyncResponseHandlingResult.LesserQuality;
                 }
 
@@ -159,6 +183,10 @@ namespace Nethermind.Synchronization.SnapSync
                     lock (_syncLock)
                     {
                         _stalePivotUpdateTrigger = null;
+                        _consecutiveUnproductiveResponses = 0;
+                        _lastUnproductiveReason = "none recorded";
+                        _lastProductiveTimestamp = Stopwatch.GetTimestamp();
+                        Metrics.SnapConsecutiveUnproductiveResponses = 0;
                     }
                 }
 
@@ -166,6 +194,8 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
+                OnUnproductiveResponse(result.ToString());
+
                 int allLastSuccess = 0;
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
@@ -257,6 +287,68 @@ namespace Nethermind.Synchronization.SnapSync
                 }
 
                 return SyncResponseHandlingResult.OK;
+            }
+        }
+
+        /// <summary>Records a snap request that yielded no usable range.</summary>
+        /// <param name="reason">Why the response was unusable - an <see cref="AddRangeResult"/> name, or that none arrived.</param>
+        private void OnUnproductiveResponse(string reason)
+        {
+            lock (_syncLock)
+            {
+                Metrics.SnapConsecutiveUnproductiveResponses = ++_consecutiveUnproductiveResponses;
+                _lastUnproductiveReason = reason;
+            }
+        }
+
+        /// <summary>
+        /// Warns, rate-limited, once snap sync has gone <see cref="DefaultStallWarningThreshold"/> without storing a
+        /// usable range.
+        /// </summary>
+        /// <remarks>
+        /// Driven from the request side rather than the response side on purpose. A stalled snap sync does not
+        /// necessarily produce responses to count: the shape measured on OP mainnet is a single request that stays
+        /// in flight and is neither answered nor timed out, which leaves every response-driven counter frozen -
+        /// two unproductive responses and no further movement, while the progress line keeps printing 0.00 %.
+        /// Elapsed time since the last usable range is the one signal that covers that as well as the
+        /// every-request-fails shape.
+        /// <para>
+        /// The clock starts at the first call rather than at construction, so the wait before snap sync is first
+        /// driven is not counted against it.
+        /// </para>
+        /// </remarks>
+        private void WarnIfStalled()
+        {
+            int streak;
+            string reason;
+            TimeSpan stalledFor;
+            lock (_syncLock)
+            {
+                long now = Stopwatch.GetTimestamp();
+                if (_lastProductiveTimestamp == 0)
+                {
+                    _lastProductiveTimestamp = now;
+                    return;
+                }
+
+                stalledFor = Stopwatch.GetElapsedTime(_lastProductiveTimestamp, now);
+                if (stalledFor < _stallWarningThreshold) return;
+                if (_lastStallWarningTimestamp != 0
+                    && Stopwatch.GetElapsedTime(_lastStallWarningTimestamp, now) < _stallWarningThreshold)
+                {
+                    return;
+                }
+
+                _lastStallWarningTimestamp = now;
+                streak = _consecutiveUnproductiveResponses;
+                reason = _lastUnproductiveReason;
+            }
+
+            if (_logger.IsWarn)
+            {
+                _logger.Warn($"Snap sync has not stored a usable range for {stalledFor.TotalMinutes:N1} min " +
+                             $"({streak} unproductive responses, most recent: {reason}). The state percentage " +
+                             "will not move until a peer answers with a range at the current pivot.");
             }
         }
     }

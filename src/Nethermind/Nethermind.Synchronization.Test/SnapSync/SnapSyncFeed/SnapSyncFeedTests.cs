@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using System.IO;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Test;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
@@ -56,4 +61,127 @@ public class SnapSyncFeedTests
 
         snapProvider.Received(1).ReleaseRequest(batch, responseHandled: false);
     }
+
+    // A snap request that yields nothing usable is recorded only at Trace (a timeout) or in a detailed-only
+    // metric (a bad range), while the progress report keeps printing the same percentage - so a node whose every
+    // request fails is indistinguishable from one working slowly. Observed on an OP mainnet node: 23 h in
+    // StateNodes, 24 peers at head, 0 accounts, and nothing above Trace to say so.
+    // The dispatcher hands back a batch with no response of any kind on timeout, and ProgressTracker keeps
+    // printing the same percentage regardless, so a snap sync that never stores a range is silent at default
+    // level. These tests use a short threshold; production uses five minutes.
+    private static readonly TimeSpan ShortThreshold = TimeSpan.FromMilliseconds(100);
+
+    // The shape measured on OP mainnet: one request in flight, never answered and never timed out, so no
+    // response-driven counter ever moves. Only elapsed time can see it, which is why the check runs on the
+    // request side.
+    [Test]
+    public async Task A_wedged_request_that_never_answers_is_still_reported()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(ShortThreshold);
+
+        await Drive(feed, 500);
+
+        Assert.That(StallWarnings(logger), Is.Not.Empty);
+        Assert.That(StallWarnings(logger)[0], Does.Contain("none recorded"));
+    }
+
+    [Test]
+    public async Task No_stall_warning_while_the_threshold_has_not_elapsed()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(TimeSpan.FromHours(1));
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+
+        TimeOutOneRequest(feed, peer);
+        await Drive(feed, 300);
+
+        Assert.That(StallWarnings(logger), Is.Empty, "a brief gap is normal - a punished peer or a pivot update");
+    }
+
+    [Test]
+    public async Task A_stall_warning_names_the_last_unproductive_reason()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(ShortThreshold);
+
+        TimeOutOneRequest(feed, new PeerInfo(Substitute.For<ISyncPeer>()));
+        await Drive(feed, 500);
+
+        Assert.That(StallWarnings(logger), Is.Not.Empty);
+        Assert.That(StallWarnings(logger)[0], Does.Contain("no response"));
+    }
+
+    [Test]
+    public async Task An_unusable_range_counts_towards_the_stall_and_names_itself()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(ShortThreshold);
+
+        // A fresh peer each time so the per-peer budget never trips and only the stall check can fire.
+        feed.AnalyzeResponsePerPeer(AddRangeResult.InvalidProof, new PeerInfo(Substitute.For<ISyncPeer>()));
+        await Drive(feed, 500);
+
+        Assert.That(StallWarnings(logger), Is.Not.Empty);
+        Assert.That(StallWarnings(logger)[0], Does.Contain(nameof(AddRangeResult.InvalidProof)));
+    }
+
+    [Test]
+    public async Task A_useful_range_clears_the_unproductive_streak()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(ShortThreshold);
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+
+        TimeOutOneRequest(feed, peer);
+        feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer);
+        await Drive(feed, 500);
+
+        Assert.That(StallWarnings(logger), Is.Not.Empty, "the clock restarts, it does not stop");
+        Assert.That(StallWarnings(logger)[0], Does.Contain("0 unproductive responses"));
+        Assert.That(StallWarnings(logger)[0], Does.Contain("none recorded"));
+    }
+
+    // The dispatcher can retire hundreds of failed requests a minute; one line per failure would bury the log
+    // it is meant to explain.
+    [Test]
+    public async Task A_continuing_stall_does_not_repeat_within_the_threshold()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(TimeSpan.FromMilliseconds(400));
+
+        await Drive(feed, 600);
+
+        Assert.That(StallWarnings(logger), Has.Count.EqualTo(1));
+    }
+
+    private static (Synchronization.SnapSync.SnapSyncFeed, TestLogger) CreateFeed(TimeSpan? stallWarningThreshold = null)
+    {
+        TestLogger logger = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<Synchronization.SnapSync.SnapSyncFeed>().Returns(new ILogger(logger));
+        return (new Synchronization.SnapSync.SnapSyncFeed(Substitute.For<ISnapProvider>(), logManager, stallWarningThreshold), logger);
+    }
+
+    /// <summary>
+    /// Runs the request loop for <paramref name="milliseconds"/>. A substituted provider offers no batch and
+    /// never reports finished, so the loop idles - which is exactly when a stalled node is sitting there.
+    /// </summary>
+    private static async Task Drive(Synchronization.SnapSync.SnapSyncFeed feed, int milliseconds)
+    {
+        using CancellationTokenSource cts = new(milliseconds);
+        try
+        {
+            // PrepareRequest awaits its idle delay outside its own try, so cancelling the loop surfaces here.
+            // That is how SimpleDispatcher.Run ends too.
+            await feed.PrepareRequest(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>A batch with a request but no response of any kind is what the dispatcher hands back on timeout.</summary>
+    private static void TimeOutOneRequest(Synchronization.SnapSync.SnapSyncFeed feed, PeerInfo peer)
+    {
+        using SnapSyncBatch batch = new() { AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.Zero) };
+        feed.HandleResponse(batch, peer);
+    }
+
+    private static List<string> StallWarnings(TestLogger logger) =>
+        logger.LogList.FindAll(static line => line.Contains("Snap sync has not stored a usable range"));
 }
