@@ -1028,6 +1028,34 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void With_both_pruning_knobs_set_the_reclaimer_drops_to_the_retained_floor_and_demotes_to_the_fine_floor()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 2;
+        _fineEpochs = 1;
+        for (ulong number = Blocks + 1; number <= 4 * EpochPolicy.EpochBlocks; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(5000 + current)));
+        }
+
+        _chain.PublishWatermark();
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.PruneBelow(_chain.Head);
+        using CancellationTokenSource stuck = new(TimeSpan.FromSeconds(20));
+
+        _reclaimer!.ReclaimNow(stuck.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.GreaterThan(0ul), "precondition: at least one epoch is dropped, so the dropped floor stands above the stored demote cursor");
+            Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.LessThan(retrofit.Metadata.FineFromEpoch), "precondition: the two floors differ, so the demote branch runs on epochs the drop never reaches");
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.EqualTo(retrofit.Metadata.RetainedFromEpoch));
+            Assert.That(retrofit.Metadata.DemotedThroughEpoch, Is.EqualTo(retrofit.Metadata.FineFromEpoch), "the demote cursor starts below the dropped floor, so the pass must compare against the stored cursor and write the derived target, or it never advances");
+        }
+    }
+
+    [Test]
     public void The_reclaimer_warns_about_nodes_it_could_not_carry()
     {
         _recentEpochs = 1;

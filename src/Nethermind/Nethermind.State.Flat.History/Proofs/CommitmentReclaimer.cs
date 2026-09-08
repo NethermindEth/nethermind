@@ -129,6 +129,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     private bool RunOnePass(CancellationToken token, bool yieldBetweenChunks)
     {
+        token.ThrowIfCancellationRequested();
         ulong dropped = metadata.DroppedThroughEpoch;
         ulong demoted = Math.Max(metadata.DemotedThroughEpoch, dropped);
         bool dropPending = dropped < metadata.RetainedFromEpoch;
@@ -138,7 +139,8 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         bool reclaimed = metadata.TryReclaimOutsideWalk(() =>
         {
             dropped = metadata.DroppedThroughEpoch;
-            demoted = Math.Max(metadata.DemotedThroughEpoch, dropped);
+            ulong storedDemoted = metadata.DemotedThroughEpoch;
+            demoted = Math.Max(storedDemoted, dropped);
             dropPending = dropped < metadata.RetainedFromEpoch;
             if (!dropPending && demoted >= metadata.FineFromEpoch) return;
 
@@ -163,7 +165,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
             _accounts.RemoveEpoch(demoted, CommitmentKeyLayout.FineTier);
             _storages.RemoveEpoch(demoted, CommitmentKeyLayout.FineTier);
-            metadata.TryAdvanceDemotedThroughEpoch(demoted, demoted + 1);
+            metadata.TryAdvanceDemotedThroughEpoch(storedDemoted, demoted + 1);
         });
 
         if (!reclaimed && !_deferralLogged)
