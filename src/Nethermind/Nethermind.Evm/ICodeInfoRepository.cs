@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
@@ -46,6 +47,7 @@ public static class CodeInfoRepositoryExtensions
     /// <summary>
     /// Returns the <see cref="CodeInfo"/> at <paramref name="codeSource"/> without resolving any EIP-7702 delegation.
     /// </summary>
+    [SkipLocalsInit]
     public static CodeInfo GetCachedCodeInfoNoDelegation(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, false, vmSpec, out _);
 }

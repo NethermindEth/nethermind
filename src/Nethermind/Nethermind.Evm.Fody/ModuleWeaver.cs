@@ -1,0 +1,176 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Fody;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
+
+namespace Nethermind.Evm.Fody;
+
+/// <summary>Gives opcode specializations distinct profiler-visible entry points.</summary>
+public sealed class ModuleWeaver : BaseModuleWeaver
+{
+    private readonly Dictionary<(MethodDefinition Template, string Opcode), MethodDefinition> _factories = [];
+    private readonly Dictionary<string, MethodDefinition> _handlers = [];
+
+    /// <inheritdoc />
+    public override IEnumerable<string> GetAssembliesForScanning() => Array.Empty<string>();
+
+    /// <inheritdoc />
+    public override void Execute()
+    {
+        TypeDefinition vm = ModuleDefinition.Types.Single(t => t.FullName == "Nethermind.Evm.VirtualMachine`1");
+        MethodDefinition handler = vm.Methods.Single(m => m.Name == "ExecuteOpcode");
+        if (!handler.Body.Instructions.Any(i => i.OpCode == OpCodes.Tail))
+            throw new WeavingException("Opcode naming must run after InlineIL and preserve the dispatch tail call.");
+
+        foreach (MethodDefinition method in vm.Methods.ToArray())
+        {
+            // CALL/CREATE carry an opcode type through several fork-selection factories.
+            // Clone that chain from its concrete entry point before redirecting its leaf.
+            if (!method.HasBody || IsFactory(method.Name)) continue;
+            foreach (Instruction instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is not GenericInstanceMethod call || !IsFactory(call.Name)
+                    || call.DeclaringType.Resolve() != vm) continue;
+                string name = call.Name switch
+                {
+                    "JumpIfOpcodeHandler" => "JumpI",
+                    "GetCallHandler" or "GetCreateHandler" => GetOperationName(call.GenericArguments[0]),
+                    _ => GetOpcodeName(call.GenericArguments[0])
+                };
+                instruction.Operand = Retarget(call, CloneFactory(call.Resolve(), name));
+            }
+        }
+
+        HashSet<string> names = new(_handlers.Keys, StringComparer.OrdinalIgnoreCase);
+        TypeDefinition instructionType = ModuleDefinition.Types.Single(t => t.FullName == "Nethermind.Evm.Instruction");
+        foreach (FieldDefinition opcode in instructionType.Fields)
+            if (opcode.HasConstant && !names.Remove(opcode.Name))
+                throw new WeavingException($"No named handler for opcode {opcode.Name}.");
+        if (!names.SetEquals(new[] { "BadInstruction" }))
+            throw new WeavingException("Named handlers do not match the instruction enum.");
+        VerifyTableHandlers(vm);
+        WriteInfo($"Named {_handlers.Count} opcode handlers without adding runtime calls.");
+    }
+
+    private void VerifyTableHandlers(TypeDefinition vm)
+    {
+        Stack<MethodDefinition> pending = [];
+        HashSet<MethodDefinition> visited = [];
+        HashSet<MethodDefinition> expected = [.. _handlers.Values];
+        HashSet<MethodDefinition> actual = [];
+        pending.Push(vm.Methods.Single(m => m.Name == "GenerateOpcodeHandlers"));
+        while (pending.Count != 0)
+        {
+            MethodDefinition method = pending.Pop();
+            if (!visited.Add(method) || !method.HasBody) continue;
+            foreach (Instruction instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is not MethodReference reference || reference.DeclaringType.Resolve() != vm) continue;
+                MethodDefinition target = reference.Resolve();
+                if (instruction.OpCode == OpCodes.Ldftn)
+                {
+                    if (!expected.Contains(target))
+                        throw new WeavingException($"Opcode table still references unnamed handler {target.Name}.");
+                    actual.Add(target);
+                }
+                else
+                {
+                    pending.Push(target);
+                }
+            }
+        }
+        if (!actual.SetEquals(expected))
+            throw new WeavingException("Named opcode handlers are not all reachable from the opcode table factories.");
+    }
+
+    private static bool IsFactory(string name) => name is
+        "OpcodeHandler" or "TerminatingOpcodeHandler" or "JumpIfOpcodeHandler" or "GetCallHandler" or "GetCreateHandler";
+
+    private MethodDefinition CloneFactory(MethodDefinition source, string opcode)
+    {
+        if (_factories.TryGetValue((source, opcode), out MethodDefinition? existing)) return existing;
+        MethodDefinition factory = new MethodCloner(source).Clone(source.Name + "_" + opcode);
+        _factories.Add((source, opcode), factory);
+        source.DeclaringType.Methods.Add(factory);
+        bool redirected = false;
+        foreach (Instruction instruction in factory.Body.Instructions)
+        {
+            if (instruction.Operand is not GenericInstanceMethod target || target.DeclaringType.Resolve() != source.DeclaringType)
+                continue;
+            if (IsFactory(target.Name))
+            {
+                instruction.Operand = Retarget(target, CloneFactory(target.Resolve(), opcode));
+                redirected = true;
+            }
+            else if (instruction.OpCode == OpCodes.Ldftn && target.Name is "ExecuteOpcode" or "ExecuteJumpIfOpcode")
+            {
+                if (!_handlers.TryGetValue(opcode, out MethodDefinition? handler))
+                {
+                    // Retain the generic parameters: only the metadata name and table target change.
+                    handler = new MethodCloner(target.Resolve()).Clone("Op" + opcode);
+                    source.DeclaringType.Methods.Add(handler);
+                    _handlers.Add(opcode, handler);
+                }
+                instruction.Operand = Retarget(target, handler);
+                redirected = true;
+            }
+        }
+        if (!redirected) throw new WeavingException($"Opcode factory {source.FullName} no longer selects a dispatch handler.");
+        return factory;
+    }
+
+    private static string GetOperationName(TypeReference type)
+    {
+        string name = type.Name.Split('`')[0];
+        if (type is GenericParameter || !name.StartsWith("Op", StringComparison.Ordinal))
+            throw new WeavingException($"Expected a concrete opcode operation, found {type.FullName}.");
+        return name.Substring(2);
+    }
+
+    private static string GetOpcodeName(TypeReference type)
+    {
+        string name = type.Name.Split('`')[0];
+        if (!name.EndsWith("Opcode", StringComparison.Ordinal))
+            throw new WeavingException($"Unknown opcode body {type.FullName}.");
+        name = name.Substring(0, name.Length - "Opcode".Length);
+        if (name is "Math1" or "Math2" or "Math3" or "Bitwise" or "Shift"
+            or "EnvAddress" or "Env32Bytes" or "EnvUInt256" or "EnvUInt32" or "EnvUInt64"
+            or "BlkAddress" or "BlkUInt256" or "BlkUInt64" or "Push" or "Dup" or "Swap" or "Log")
+        {
+            // These bodies are nested in VirtualMachine<TGasPolicy>; argument zero is the enclosing gas policy.
+            string operation = GetOperationName(((GenericInstanceType)type).GenericArguments[1]);
+            if (name is "Push" or "Dup" or "Swap" or "Log") return name + operation;
+            return operation.StartsWith("Bitwise", StringComparison.Ordinal) ? operation.Substring("Bitwise".Length) : operation;
+        }
+        return name switch
+        {
+            "CountLeadingZeros" => "Clz",
+            "ProgramCounter" => "Pc",
+            "Keccak" => "Keccak256",
+            "SStoreMetered" or "SStoreUnmetered" => "SStore",
+            _ => name
+        };
+    }
+
+    private static GenericInstanceMethod Retarget(GenericInstanceMethod original, MethodDefinition target)
+    {
+        MethodReference reference = new(target.Name, original.ElementMethod.ReturnType, original.DeclaringType)
+        {
+            HasThis = original.HasThis,
+            ExplicitThis = original.ExplicitThis,
+            CallingConvention = original.ElementMethod.CallingConvention
+        };
+        foreach (GenericParameter parameter in target.GenericParameters)
+            reference.GenericParameters.Add(new GenericParameter(parameter.Name, reference));
+        foreach (ParameterDefinition parameter in original.ElementMethod.Parameters)
+            reference.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+        GenericInstanceMethod result = new(reference);
+        foreach (TypeReference argument in original.GenericArguments) result.GenericArguments.Add(argument);
+        return result;
+    }
+}
