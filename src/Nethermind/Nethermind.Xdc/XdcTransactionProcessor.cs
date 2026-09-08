@@ -43,6 +43,7 @@ internal class XdcTransactionProcessor(
         in TransactionSubstate substate,
         ulong spentGas,
         in UInt256 premiumPerGas,
+        in UInt256 effectiveGasPrice,
         in UInt256 blobBaseFee,
         int statusCode)
     {
@@ -52,7 +53,7 @@ internal class XdcTransactionProcessor(
 
         if (!xdcSpec.IsTipTrc21FeeEnabled)
         {
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
             return;
         }
 
@@ -61,8 +62,8 @@ internal class XdcTransactionProcessor(
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
-        UInt256 fee = effectiveGasPrice * spentGas;
+        UInt256 feeEffectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = feeEffectiveGasPrice * spentGas;
 
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 

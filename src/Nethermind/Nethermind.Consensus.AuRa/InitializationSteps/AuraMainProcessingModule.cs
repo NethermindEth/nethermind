@@ -51,6 +51,8 @@ public class AuraMainProcessingModule(
                 chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, api.BlockTree.Head?.Header);
 
+        api.AuraStatefulComponents.MainProcessingReportingValidator = validator.GetReportingValidator();
+
         if (validator is IDisposable disposableValidator)
         {
             api.DisposeStack.Push(disposableValidator);

@@ -53,6 +53,21 @@ public class BlobGasCalculatorTests
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
     }
 
+    [Test]
+    public void Blob_base_fee_requires_excess_blob_gas()
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, Eip4844Constants.DefaultBlobGasPriceUpdateFraction, out UInt256 blobBaseFee);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        }
+    }
+
     private static IEnumerable<TestCaseData> GenerateTestCases()
     {
         (IReleaseSpec Instance, bool)[] specs =

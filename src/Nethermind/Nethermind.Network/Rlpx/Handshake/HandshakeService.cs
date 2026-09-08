@@ -122,7 +122,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             AuthMessageBase authMessage;
             bool preEip8Format = false;
-            byte[] plainText = null;
+            byte[]? plainText = null;
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
@@ -133,7 +133,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
             }
 
-            if (preEip8Format)
+            if (preEip8Format && plainText is not null)
             {
                 authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
             }
@@ -141,7 +141,12 @@ namespace Nethermind.Network.Rlpx.Handshake
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
                 byte[] sizeData = auth.Data.Slice(0, 2);
-                (_, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+                (bool success, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+                if (!success || plainText is null)
+                {
+                    throw new NetworkingException("Failed to decrypt AUTH message.", NetworkExceptionType.Validation);
+                }
+
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
             }
 
@@ -209,7 +214,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.AckPacket = ack;
 
             bool preEip8Format = false;
-            byte[] plainText = null;
+            byte[]? plainText = null;
             try
             {
                 (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
@@ -219,7 +224,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
             }
 
-            if (preEip8Format)
+            if (preEip8Format && plainText is not null)
             {
                 AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plainText);
                 if (_logger.IsTrace) _logger.Trace("Received ACK old");
@@ -230,7 +235,11 @@ namespace Nethermind.Network.Rlpx.Handshake
             else
             {
                 byte[] sizeData = ack.Data.Slice(0, 2);
-                (_, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
+                (bool success, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
+                if (!success || plainText is null)
+                {
+                    throw new NetworkingException("Failed to decrypt ACK message.", NetworkExceptionType.Validation);
+                }
 
                 AckEip8Message ackEip8Message = _messageSerializationService.Deserialize<AckEip8Message>(plainText);
                 if (_logger.IsTrace) _logger.Trace($"Received ACK v{ackEip8Message.Version}");

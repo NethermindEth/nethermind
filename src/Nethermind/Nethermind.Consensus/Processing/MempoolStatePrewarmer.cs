@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -10,9 +11,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
@@ -113,27 +112,27 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ulong timestamp = Math.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
-        BlockHeader header = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.GasBeneficiary ?? Address.Zero,
-            UInt256.Zero,
-            number,
-            parent.GasLimit,
-            timestamp,
-            [])
-        {
-            MixHash = parent.MixHash,
-            BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec),
-            ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot,
-        };
+        return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
+    }
 
-        return new NextBlockContext(header, spec);
+    /// <summary>
+    /// Builds the synthetic "next block" header for warming.
+    /// </summary>
+    private static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
+    {
+        BlockHeader header = parent.CreateSimulatedChild(timestamp);
+        // Resolve the actual coinbase: on Clique, Beneficiary is a vote target, not the sealer.
+        header.Beneficiary = parent.GasBeneficiary ?? Address.Zero;
+        header.MixHash = parent.MixHash;
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
+
+        return header;
     }
 
     private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)
     {
-        Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header.GasLimit), warmedPerSender);
+        Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender);
         return delta.Length == 0 ? null : new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
     }
 
@@ -149,21 +148,18 @@ public sealed class MempoolStatePrewarmer : IDisposable
         foreach (Transaction tx in orderedTxs)
         {
             if (tx.SenderAddress is not Address sender) continue;
-            if (!bySender.TryGetValue(sender, out List<Transaction>? group))
-            {
-                group = new(4);
-                bySender[sender] = group;
-            }
-            group.Add(tx);
+            ref List<Transaction>? group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out _);
+            (group ??= new(4)).Add(tx);
             total++;
         }
 
         using ArrayPoolListRef<Transaction> delta = new(total);
         foreach (KeyValuePair<AddressAsKey, List<Transaction>> senderGroup in bySender)
         {
-            if (senderGroup.Value.Count <= warmedPerSender.GetValueOrDefault(senderGroup.Key)) continue;
+            ref int warmed = ref CollectionsMarshal.GetValueRefOrAddDefault(warmedPerSender, senderGroup.Key, out _);
+            if (senderGroup.Value.Count <= warmed) continue;
             delta.AddRange(senderGroup.Value);
-            warmedPerSender[senderGroup.Key] = senderGroup.Value.Count;
+            warmed = senderGroup.Value.Count;
         }
 
         return delta.ToArray();

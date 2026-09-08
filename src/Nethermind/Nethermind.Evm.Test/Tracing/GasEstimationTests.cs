@@ -256,10 +256,8 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(ulong.MaxValue)]
-        [TestCase(10000UL)]
-        [TestCase(10001UL)]
-        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(ulong errorMargin)
+        [Test]
+        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException([Values(ulong.MaxValue, 10000UL, 10001UL)] ulong errorMargin)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;
@@ -355,7 +353,7 @@ namespace Nethermind.Evm.Test.Tracing
             const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
             GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -380,7 +378,7 @@ namespace Nethermind.Evm.Test.Tracing
             const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
             GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,

@@ -52,6 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonConverter(typeof(ParityTraceActionFromReplayJsonConverter))]
         public virtual ParityTraceAction? Action { get; set; }
 
+        [JsonPropertyName("stateDiff")]
         public virtual Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
     }
 

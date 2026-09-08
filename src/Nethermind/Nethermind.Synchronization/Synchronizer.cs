@@ -57,6 +57,8 @@ namespace Nethermind.Synchronization
 
         private CancellationTokenSource? _syncCancellation = new();
 
+        private bool _disposed;
+
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
@@ -267,6 +269,13 @@ namespace Nethermind.Synchronization
 
         public async ValueTask DisposeAsync()
         {
+            // Container teardown can dispose this more than once, and a repeat run would wait on
+            // the feed tasks again - the full termination timeout when any feed failed to finish.
+            if (Interlocked.CompareExchange(ref _disposed, true, false))
+            {
+                return;
+            }
+
             _syncCancellation?.Cancel();
 
             using CancellationTokenSource timeoutCts = new();
@@ -495,6 +504,8 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>()
+            .AddSingleton<BalFetcher>()
+            .AddSingleton<StateHealingStrategy>()
             .AddSingleton<IStateSyncRunner, StateSyncRunner>();
 
         serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch>(

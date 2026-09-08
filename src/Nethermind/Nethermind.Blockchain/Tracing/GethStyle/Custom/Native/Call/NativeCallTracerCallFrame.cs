@@ -26,6 +26,9 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public ulong GasUsed { get; set; }
 
+    // EIP-8037 two-dimensional gas; set on the top frame for Amsterdam+, null (omitted) otherwise.
+    public TwoDimensionalGas? Eip8037Gas { get; set; }
+
     public Address? To { get; set; }
 
     public ArrayPoolList<byte>? Input { get; set; }

@@ -71,6 +71,9 @@ public static class TxErrorMessages
     public const string InvalidBlobProofs =
         "InvalidBlobProof: Proofs do not match the blobs.";
 
+    public const string IncompleteBlobData =
+        "IncompleteBlobData: Blob transaction sidecar data is incomplete.";
+
     public const string InvalidProofVersion =
         "InvalidTxProofVersion: Version of network wrapper is not supported.";
 
@@ -88,8 +91,8 @@ public static class TxErrorMessages
     public static string TxGasLimitCapExceeded(ulong gasLimit, ulong gasLimitCap)
         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
 
-    public static string TxIntrinsicGasExceedsCap(ulong intrinsicRegularGas, ulong intrinsicFloorGas, ulong gasLimitCap)
-        => $"{IntrinsicGasTooLow}: Intrinsic gas (regular {intrinsicRegularGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
+    public static string TxIntrinsicGasExceedsCap(ulong intrinsicExecutionGas, ulong intrinsicFloorGas, ulong gasLimitCap)
+        => $"{IntrinsicGasTooLow}: Intrinsic gas (execution {intrinsicExecutionGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 

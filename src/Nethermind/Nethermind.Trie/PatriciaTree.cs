@@ -206,7 +206,7 @@ namespace Nethermind.Trie
                     path.AppendMut(0);
                     for (int i = 0; i < 16; i++)
                     {
-                        if (node.TryGetDirtyChild(i, out TrieNode childNode))
+                        if (node.TryGetDirtyChild(i, out TrieNode? childNode))
                         {
                             path.SetLast(i);
                             if (i < 15 && committer.TryRequestConcurrentQuota())
@@ -291,7 +291,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, ref TreePath path, int i)
             {
-                TrieNode child = node.GetChildWithChildPath(TrieStore, ref path, i);
+                TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, i);
                 if (child is not null)
                 {
                     _logger.Trace($"Skipping commit of {child}");
@@ -360,7 +360,7 @@ namespace Nethermind.Trie
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
                 TreePath emptyPath = TreePath.Empty;
-                TrieNode root = RootRef;
+                TrieNode? root = RootRef;
 
                 if (rootHash is not null)
                 {
@@ -398,7 +398,7 @@ namespace Nethermind.Trie
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
                 TreePath emptyPath = TreePath.Empty;
-                TrieNode root = RootRef;
+                TrieNode? root = RootRef;
 
                 DoWarmUpPath(nibbles, ref emptyPath, root);
             }
@@ -419,7 +419,7 @@ namespace Nethermind.Trie
             try
             {
                 TreePath emptyPath = TreePath.Empty;
-                TrieNode root = RootRef;
+                TrieNode? root = RootRef;
                 if (rootHash is not null)
                 {
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
@@ -436,7 +436,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public byte[]? GetNodeByKey(Span<byte> rawKey, Hash256? rootHash = null)
+        public byte[] GetNodeByKey(Span<byte> rawKey, Hash256? rootHash = null)
         {
             byte[]? array = null;
             try
@@ -449,7 +449,7 @@ namespace Nethermind.Trie
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
                 TreePath emptyPath = TreePath.Empty;
-                TrieNode root = RootRef;
+                TrieNode? root = RootRef;
                 if (rootHash is not null)
                 {
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
@@ -589,7 +589,7 @@ namespace Nethermind.Trie
 
                 if (node.IsLeaf || node.IsExtension)
                 {
-                    int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
                         if (node.IsExtension)
@@ -715,7 +715,7 @@ namespace Nethermind.Trie
                         if (child.IsExtension || child.IsLeaf)
                         {
                             // Merge current node with child
-                            node = child.CloneWithChangedKey(HexPrefix.ConcatNibbles(node.Key, child.Key));
+                            node = child.CloneWithChangedKey(HexPrefix.ConcatNibbles(node.Key!, child.Key!));
                         }
                         else
                         {
@@ -761,7 +761,7 @@ namespace Nethermind.Trie
             if (!ReferenceEquals(oldChild, newChild)) return true;
             // So that recalculate root knows to recalculate the parent root.
             // Parent's hash can also be null depending on nesting level - still need to update child, otherwise combine will remain original value
-            return newChild.Keccak is null;
+            return newChild!.Keccak is null;
         }
 
         /// <summary>
@@ -770,8 +770,10 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
-        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
+        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode node, TrieNode? originalNode)
         {
+            Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");
+
             int onlyChildIdx = -1;
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
@@ -830,7 +832,7 @@ namespace Nethermind.Trie
 
             // 35%
             // Replace the only child with something with extra key.
-            byte[] newKey = HexPrefix.PrependNibble((byte)onlyChildIdx, onlyChildNode.Key);
+            byte[] newKey = HexPrefix.PrependNibble((byte)onlyChildIdx, onlyChildNode.Key!);
             if (originalNode is not null) // Only bulkset provide original node
             {
                 if (originalNode.IsExtension && onlyChildNode.IsExtension)
@@ -934,7 +936,7 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -955,6 +957,11 @@ namespace Nethermind.Trie
                         }
 
                         // No node match
+                        return default;
+                    }
+
+                    if (remainingKey.Length == 0)
+                    {
                         return default;
                     }
 
@@ -989,11 +996,12 @@ namespace Nethermind.Trie
 
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
+                    if (!node.TryResolveNode(TrieStore, ref path)) return;
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)
                         {
                             if (node.IsLeaf)
@@ -1123,7 +1131,7 @@ namespace Nethermind.Trie
             if (!visitor.IsFullDbScan)
             {
                 visitor.VisitTree(default, rootHash);
-                if (TryGetRootRef(out TrieNode rootRef))
+                if (TryGetRootRef(out TrieNode? rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
                     rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
@@ -1136,7 +1144,7 @@ namespace Nethermind.Trie
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
-            else if (TryGetRootRef(out TrieNode rootRef))
+            else if (TryGetRootRef(out TrieNode? rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
                 visitor.VisitTree(default, rootHash);

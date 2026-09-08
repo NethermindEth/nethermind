@@ -107,7 +107,7 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
         }
         catch (Exception ex)
         {
-            return new EthereumTestResult(test.Name, test.ForkName, ex.Message);
+            return new EthereumTestResult(test.Name, test.ForkName, ex.ToString());
         }
     }
 

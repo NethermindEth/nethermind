@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
@@ -102,6 +104,30 @@ namespace Nethermind.Evm.Test
 
             byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
             Assert.That(returnData, Is.EqualTo(deployed.Bytes.ToArray()), "address returned");
+        }
+
+        [Test(Description = "Runtime code of a CREATE undone by an ancestor REVERT must not reach the code database")]
+        public void Code_deposited_by_ancestor_reverted_create_is_not_persisted()
+        {
+            byte[] deployedCode = [1, 2, 3];
+            ValueHash256 deployedCodeHash = ValueKeccak.Compute(deployedCode);
+
+            byte[] createAndRevertCode = Prepare.EvmCode
+                .Create(Prepare.EvmCode.ForInitOf(deployedCode).Done, 0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, createAndRevertCode, Spec);
+
+            // The reverting frame is a child call, so the transaction itself succeeds and commits.
+            Execute(Activation, 1_000_000UL, Prepare.EvmCode.Call(TestItem.AddressC, 500_000).Done);
+            TestState.Commit(Spec);
+
+            Assert.That(TestState.AccountExists(ContractAddress.From(TestItem.AddressC, 0)), Is.False);
+            Assert.That(() => TestState.GetCode(deployedCodeHash), Throws.InstanceOf<InvalidOperationException>());
         }
     }
 }

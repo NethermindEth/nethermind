@@ -122,9 +122,8 @@ namespace Nethermind.Runner.Test
             Assert.That(_dbConfig.StateDbRowCacheSize, Is.GreaterThan(0));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Big_value_at_memory_hint(bool shouldSetMallocOpts)
+        [Test]
+        public void Big_value_at_memory_hint([Values] bool shouldSetMallocOpts)
         {
             _initConfig.DisableMallocOpts = !shouldSetMallocOpts;
             SetMemoryAllowances(1);

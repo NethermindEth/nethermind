@@ -23,7 +23,8 @@ public class ShutterValidatorsInfo
     public void Load(string fp)
     {
         FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.Read);
-        Dictionary<ulong, byte[]> indexToPubKeyBytes = new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
+        Dictionary<ulong, byte[]> indexToPubKeyBytes = new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream)
+            ?? throw new ShutterValidatorsInfoException("Validator info file is empty or invalid.");
         AddPublicKeys(indexToPubKeyBytes);
     }
 

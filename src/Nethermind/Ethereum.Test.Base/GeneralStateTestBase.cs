@@ -78,7 +78,12 @@ namespace Ethereum.Test.Base
             IConfigProvider configProvider = new ConfigProvider();
             // Patricia by default (the production default); opt into the flat state layout with
             // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+            // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
+            // run, and a fire-and-forget background convert from one test can race another test's files. Long
+            // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+            flatDbConfig.EnableLongFinality = false;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
@@ -223,7 +228,8 @@ namespace Ethereum.Test.Base
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
             }
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+            // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
+            stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
         }

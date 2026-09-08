@@ -20,15 +20,8 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly
-#if ZK_EVM
-        ZkEvmQueue<VmState<TGasPolicy>>
-#else
-        System.Collections.Concurrent.ConcurrentQueue<VmState<TGasPolicy>>
-#endif
-        _statePool = new();
-
-    private static readonly StackPool _stackPool = new();
+    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new(
+        maxShared: VirtualMachineStatics.MaxCallDepth * 2);
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
@@ -47,6 +40,7 @@ public class VmState<TGasPolicy> : IDisposable
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
+    public bool IsCreateStateGasCharged { get; private set; } // TODO: move to CallEnv
 
     /// <summary>
     /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
@@ -57,9 +51,11 @@ public class VmState<TGasPolicy> : IDisposable
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
+    private readonly EvmFrameMemory _inlineMemory = new();
     private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
+    public VmState() => _memory = new(_inlineMemory, isFresh: true);
 
     /// <summary>
     /// Rent a top level <see cref="VmState{TGasPolicy}"/>.
@@ -80,6 +76,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
+            isCreateStateGasCharged: false,
             newAccountCharged: false,
             env: env,
             stateForAccessLists: accessedItems,
@@ -101,7 +98,8 @@ public class VmState<TGasPolicy> : IDisposable
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
         bool isTopLevel = false,
-        bool newAccountCharged = false)
+        bool newAccountCharged = false,
+        bool isCreateStateGasCharged = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -112,6 +110,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            isCreateStateGasCharged: isCreateStateGasCharged,
             newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
@@ -134,6 +133,7 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        bool isCreateStateGasCharged,
         bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
@@ -146,7 +146,7 @@ public class VmState<TGasPolicy> : IDisposable
         // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
         // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
         // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
-        _memory = default;
+        _memory = new(_inlineMemory);
 #endif
         if (executionType.IsAnyCreate())
         {
@@ -168,6 +168,7 @@ public class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        IsCreateStateGasCharged = isCreateStateGasCharged;
         NewAccountCharged = newAccountCharged;
 
         if (!_isDisposed)
@@ -210,7 +211,7 @@ public class VmState<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            _stackPool.ReturnStacks(DataStack);
+            StackPool.ReturnStacks(DataStack);
             DataStack = null;
         }
 
@@ -220,7 +221,6 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        _memory = default;
         _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
@@ -242,7 +242,7 @@ public class VmState<TGasPolicy> : IDisposable
     {
         if (!_isDisposed)
         {
-            Console.Error.WriteLine($"Warning: {nameof(VmState<TGasPolicy>)} was not disposed. Created at: {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(VmState<>)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif
@@ -250,29 +250,40 @@ public class VmState<TGasPolicy> : IDisposable
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        byte[] dataStack = DataStack;
+        byte[]? dataStack = DataStack;
         if (dataStack is null)
         {
             DataStack = dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan);
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
     }
 
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        byte[] dataStack = DataStack;
+        byte[]? dataStack = DataStack;
         if (dataStack is null)
         {
             DataStack = dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
+    }
+
+    internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        Debug.Assert(IsContinuation && !_isDisposed && DataStack is not null,
+            "A resumed frame retains its initialized stack until disposal.");
+        ref byte dataStack = ref As32AlignedRef(DataStack);
+        stack = TTracingInst.IsActive
+            ? new(DataStackHead, txTracer, ref dataStack, codeSpan, Env.CodeInfo)
+            : new(DataStackHead, ref dataStack, codeSpan, Env.CodeInfo);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[] AllocateStacks() => _stackPool.RentStacks();
+    private static byte[] AllocateStacks() => StackPool.RentStacks();
 
     private static ref byte As32AlignedRef(byte[] array)
     {
@@ -283,7 +294,7 @@ public class VmState<TGasPolicy> : IDisposable
     public Memory<byte> MemoryStacks(int count)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        byte[] dataStack = DataStack;
+        byte[]? dataStack = DataStack;
         if (dataStack is null)
         {
             DataStack = dataStack = AllocateStacks();

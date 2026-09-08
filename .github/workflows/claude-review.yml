@@ -135,6 +135,7 @@ jobs:
             - Security implications
             - Performance (this is a hot-path Ethereum execution client)
             - Adherence to repo rules in CONTRIBUTING.md and .agents/rules/
+            - Comment quality (Low severity): flag *added* comments that merely restate the adjacent code, tautological XML docs, or generation residue ("AI generated", "as requested", "not sure how to handle this"). Per AGENTS.md, comments that restate the code are noise. Only flag clear cases — a comment that explains *why*, cites a spec/EIP, states an invariant, or warns the caller is good and must NOT be flagged.
 
             Categorize each finding by severity:
             - **Critical**: blocks merge, likely production impact

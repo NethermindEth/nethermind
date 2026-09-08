@@ -79,7 +79,7 @@ internal class XdcBlockProcessorTests
     {
         XdcBlockHeader suggestedHeader = Build.A.XdcBlockHeader().TestObject;
         XdcBlockHeader processedHeader = suggestedHeader.CreateHeaderForProcessing();
-        BlockReward[] rewards = [new(Address.FromNumber(1), (UInt256)42)];
+        XdcProcessedRewards rewards = new([new BlockReward(Address.FromNumber(1), (UInt256)42)], new XdcEpochRewards());
         processedHeader.ProcessedRewards = rewards;
         Block suggestedBlock = Build.A.Block.WithHeader(suggestedHeader).TestObject;
         Block processedBlock = suggestedBlock.WithReplacedHeader(processedHeader);

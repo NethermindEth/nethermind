@@ -34,6 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
         private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
+        private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handlePooledTransactionsSlow;
 
         protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
 
@@ -53,11 +54,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
             _handleSlow = HandleSlow;
+            _handlePooledTransactionsSlow = HandlePooledTransactionsSlow;
 
             EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
+
+        private protected bool IsTransactionGossipAllowed() => _floodController.IsAllowed();
+
+        private protected void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes) =>
+            _floodController.ReportPooledTransactionRequest(hashes);
+
+        internal long RequestedPooledTransactionHashes => _floodController.RequestedPooledTransactionHashes;
+
+        private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
@@ -136,7 +147,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.Transactions:
                     if (CanReceiveTransactions)
                     {
-                        if (_floodController.IsAllowed())
+                        if (IsTransactionGossipAllowed())
                         {
                             TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
                             ReportIn(txMsg, size);
@@ -233,16 +244,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         }
 
         protected void Handle(TransactionsMessage msg)
+            => TryScheduleTransactions(msg, _handleSlow);
+
+        private protected void HandlePooledTransactions(TransactionsMessage msg)
+        {
+            if (!TryScheduleTransactions(msg, _handlePooledTransactionsSlow))
+            {
+                IgnorePooledTransactionResponse();
+            }
+        }
+
+        private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
             {
                 foreach (Transaction tx in iList)
                 {
                     tx.ClearPreHash();
                 }
                 iList.Dispose();
+                return false;
             }
+
+            return true;
+        }
+
+        private ValueTask HandlePooledTransactionsSlow(TransactionsRequest request, CancellationToken cancellationToken)
+        {
+            _floodController.ReportPooledTransactionsReturned(request.Transactions.AsSpan());
+            return HandleSlow(request, cancellationToken);
         }
 
         protected virtual ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
@@ -266,7 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             return ValueTask.CompletedTask;
                         }
 
-                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow, "Transactions"))
+                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow))
                         {
                             isTransferred = true;
                         }
@@ -294,7 +325,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
-        private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+        protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
@@ -308,6 +339,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
+
+        protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {

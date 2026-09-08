@@ -266,6 +266,20 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public void Completion_marker_clears_when_the_barrier_drops_after_a_finished_download()
+    {
+        _historyPruner.CutoffBlockNumber.Returns((ulong?)60);
+        _syncPointers.LowestInsertedBodyNumber = 60;
+        _feed.InitializeFeed();
+        Assert.That(_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete), Is.True);
+
+        _historyPruner.CutoffBlockNumber.Returns((ulong?)null);
+        _feed.InitializeFeed();
+
+        Assert.That(_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete), Is.False);
+    }
+
+    [Test]
     public async Task ShouldLimitBatchSizeToPeerEstimate()
     {
         _feed.InitializeFeed();

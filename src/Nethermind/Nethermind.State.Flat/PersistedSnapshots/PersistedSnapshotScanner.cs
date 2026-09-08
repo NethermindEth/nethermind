@@ -23,8 +23,7 @@ public static class PersistedSnapshotScanner
     /// caller owns the session lifetime — it must outlive the returned scanner and any enumerator
     /// derived from it.
     /// </summary>
-    public static PersistedSnapshotScanner<WholeReadSession, WholeReadSessionReader, NoOpPin> ForWholeRead(
-        WholeReadSession session, PersistedSnapshot snapshot) =>
+    public static WholeReadScanner ForWholeRead(WholeReadSession session, PersistedSnapshot snapshot) =>
         new(session, snapshot);
 }
 

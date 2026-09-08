@@ -1,11 +1,13 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
@@ -15,12 +17,11 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase(ILogManager? logManager)
+    internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
-        protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
-        private readonly List<Change> _keptInCache = [];
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -82,6 +83,12 @@ namespace Nethermind.State
             {
                 int position = currentPosition - i;
                 ref readonly Change change = ref changes[position];
+                if (change.ChangeType == StorageChangeType.StorageClear)
+                {
+                    RestoreStorageClear(change.PrevIdx);
+                    continue;
+                }
+
                 ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
                 if (Unsafe.IsNullRef(ref head))
                 {
@@ -98,28 +105,13 @@ namespace Nethermind.State
                     ref readonly Change previous = ref changes[change.PrevIdx];
                     head = new HeadChange(previous.Value, change.PrevIdx, previous.OriginalIdx);
                 }
-                else if (change.ChangeType == ChangeType.JustCache)
-                {
-                    // Keep the read-only entry; its head is stale until re-appended below.
-                    _keptInCache.Add(change);
-                }
                 else
                 {
                     _intraBlockCache.Remove(change.StorageCell);
                 }
             }
 
-            ReadOnlySpan<Change> keptInCache = CollectionsMarshal.AsSpan(_keptInCache);
             CollectionsMarshal.SetCount(_changes, snapshot + 1);
-            currentPosition = _changes.Count - 1;
-            foreach (ref readonly Change kept in keptInCache)
-            {
-                currentPosition++;
-                _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell] = new HeadChange(kept.Value, currentPosition, kept.OriginalIdx);
-            }
-
-            _keptInCache.Clear();
 
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
@@ -161,7 +153,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.Clear();
+            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -171,7 +163,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, [NotNullWhen(true)] out byte[]? bytes)
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.
@@ -211,8 +203,17 @@ namespace Nethermind.State
             int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
 
             head = new HeadChange(value, _changes.Count, originalIdx);
-            _changes.Add(new Change(in cell, value, ChangeType.Update, prevIdx, originalIdx));
+            _changes.Add(new Change(in cell, value, StorageChangeType.Update, prevIdx, originalIdx));
         }
+
+        protected void PushStorageClear(int journalIndex)
+        {
+            StorageCell marker = default;
+            _changes.Add(new Change(in marker, StorageTree.ZeroBytes, StorageChangeType.StorageClear, journalIndex, -1));
+        }
+
+        protected virtual void RestoreStorageClear(int journalIndex) =>
+            throw new InvalidOperationException($"{GetType().Name} cannot restore storage clear journal entry {journalIndex}");
 
         /// <summary>
         /// Clear all storage at specified address
@@ -235,13 +236,16 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType, int prevIdx, int originalIdx)
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
         {
             public readonly StorageCell StorageCell = storageCell;
             public readonly byte[] Value = value;
-            public readonly ChangeType ChangeType = changeType;
+            public readonly StorageChangeType ChangeType = changeType;
 
-            /// <summary>Index into <c>_changes</c> of the previous change for the same cell, or -1 if none.</summary>
+            /// <summary>
+            /// Index into <c>_changes</c> of the previous change for the same cell, or the derived
+            /// provider's clear journal for <see cref="StorageChangeType.StorageClear"/>.
+            /// </summary>
             public readonly int PrevIdx = prevIdx;
 
             /// <summary>
@@ -251,7 +255,14 @@ namespace Nethermind.State
             /// </summary>
             public readonly int OriginalIdx = originalIdx;
 
-            public bool IsNull => ChangeType == ChangeType.Null;
+            public bool IsNull => ChangeType == StorageChangeType.Null;
+        }
+
+        protected enum StorageChangeType
+        {
+            Null,
+            Update,
+            StorageClear,
         }
 
         /// <summary>
@@ -263,16 +274,6 @@ namespace Nethermind.State
             public readonly byte[] Value = value;
             public readonly int CurrentIdx = currentIdx;
             public readonly int OriginalIdx = originalIdx;
-        }
-
-        /// <summary>
-        /// Type of change to track
-        /// </summary>
-        protected enum ChangeType
-        {
-            Null = 0,
-            JustCache,
-            Update,
         }
     }
 }

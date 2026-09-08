@@ -28,7 +28,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Consensus.Processing.CensorshipDetector;
 
 namespace Nethermind.Api
 {
@@ -82,10 +81,8 @@ namespace Nethermind.Api
         public INonceManager? NonceManager => Context.Resolve<INonceManager>();
         public ITxPool? TxPool { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
-        public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
 
         public IBackgroundTaskScheduler BackgroundTaskScheduler => Context.Resolve<IBackgroundTaskScheduler>();
-        public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet Wallet => Context.Resolve<IWallet>();
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 

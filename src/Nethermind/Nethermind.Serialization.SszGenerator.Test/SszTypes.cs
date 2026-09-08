@@ -8,6 +8,7 @@ using Nethermind.Serialization.Ssz;
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.SszGenerator.Test
@@ -101,6 +102,46 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(4)]
         public ulong[]? Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial class ByteListClassItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial class StaticClassCollectionItem
+    {
+        public ulong Value { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct NonNullableStaticClassContainer
+    {
+        public StaticClassCollectionItem Child { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListListItself
+    {
+        [SszList(3)]
+        public List<byte> Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteVectorItself
+    {
+        [SszVector(3)]
+        public byte[]? Bytes { get; set; }
     }
 
     [SszContainer]
@@ -275,6 +316,32 @@ namespace Nethermind.Serialization.SszGenerator.Test
     public partial struct NullableLongConverterVectorContainer
     {
         [SszVector(2)]
+        public TestBytes48[]? Items { get; set; }
+    }
+
+    /// <summary>
+    /// A list of fixed-size byte vectors modelled the verbose way: one wrapper container per item,
+    /// each holding its own <c>byte[]</c>. Paired with <see cref="ConverterItemListContainer"/> to
+    /// pin that switching such a list to a converter-backed item type is encoding-neutral.
+    /// </summary>
+    [SszContainer]
+    public partial struct WrappedItemListContainer
+    {
+        [SszList(4)]
+        public WrappedByteVectorItem[]? Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct WrappedByteVectorItem
+    {
+        [SszVector(TestBytes48SszVectorTypeConverter.Length)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ConverterItemListContainer
+    {
+        [SszList(4)]
         public TestBytes48[]? Items { get; set; }
     }
 

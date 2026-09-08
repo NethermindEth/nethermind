@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 

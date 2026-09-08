@@ -60,6 +60,7 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? PragueTime { get => GetTime(); set => SetTime(value); }
     public ulong? OsakaTime { get => GetTime(); set => SetTime(value); }
     public ulong? AmsterdamTime { get => GetTime(); set => SetTime(value); }
+    public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }

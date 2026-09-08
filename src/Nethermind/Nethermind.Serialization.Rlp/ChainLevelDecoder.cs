@@ -20,9 +20,12 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            if (item.BlockInfos.AsSpan().Contains(null))
+            foreach (BlockInfo? blockInfo in item.BlockInfos)
             {
-                ThrowHasNull();
+                if (blockInfo is null)
+                {
+                    ThrowHasNull();
+                }
             }
 
             int contentLength = GetContentLength(item, rlpBehaviors);

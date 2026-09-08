@@ -23,7 +23,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
@@ -31,11 +30,11 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.P2P.Messages;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
-using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -46,8 +45,11 @@ public class XdcModule : Module
         base.Load(builder);
 
         builder
+            .AddModule(new XdcHeaderModule())
             .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
-            .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
+            .AddProtocolHandler<P2P.XdcProtocolHandler>() // One factory per version; each intercepts the ETH protocol at its own version number
+            .AddProtocolHandler<P2P.Xdc164ProtocolHandler>()
+            .AddProtocolHandler<P2P.Xdc165ProtocolHandler>()
             .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(CreateChainSpecLoader().ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
@@ -120,12 +122,13 @@ public class XdcModule : Module
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
-            .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
-            .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
+            .AddSingleton<IForkInfo, XdcForkInfo>()
+            .AddSingleton<XdcConsensusMessageHandler.Factory>()
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
+            .AddMessageSerializer<XdcGetPooledTransactionsMessage, XdcGetPooledTransactionsMessageSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()
@@ -138,7 +141,9 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
-            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
+            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
+            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>();
 
         RegisterRewardCalculatorSource(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();

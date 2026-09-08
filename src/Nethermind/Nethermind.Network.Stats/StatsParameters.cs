@@ -35,6 +35,7 @@ namespace Nethermind.Stats
             { DisconnectReason.UnexpectedIdentity, (TimeSpan.FromMinutes(15), -10000) },
             { DisconnectReason.IncompatibleP2PVersion, (TimeSpan.FromMinutes(15), -10000) },
             { DisconnectReason.UselessPeer, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.TxFlooding, (TimeSpan.FromMinutes(15), -10000) },
             { DisconnectReason.BreachOfProtocol, (TimeSpan.FromMinutes(15), -10000) },
             { DisconnectReason.MessageLimitsBreached, (TimeSpan.FromMinutes(15), -10000) }
         };

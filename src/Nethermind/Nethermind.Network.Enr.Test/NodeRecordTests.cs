@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -85,6 +86,53 @@ public class NodeRecordTests
                 Assert.That(nodeRecord.Ip, Is.EqualTo(IPAddress.Parse(expectedIp)));
                 Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(expectedPort));
             }
+        }
+    }
+
+    [Test]
+    public void Can_select_endpoints_by_address_family()
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+        nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+        nodeRecord.SetEntry(new TcpEntry(30303));
+        nodeRecord.SetEntry(new UdpEntry(30304));
+        nodeRecord.SetEntry(new Tcp6Entry(30305));
+        nodeRecord.SetEntry(new Udp6Entry(30306));
+
+        bool hasIpV4Udp = nodeRecord.TryGetDiscoveryEndpoint(AddressFamily.InterNetwork, out IPEndPoint? ipV4Udp);
+        bool hasIpV4Tcp = nodeRecord.TryGetTcpEndpoint(AddressFamily.InterNetwork, out IPEndPoint? ipV4Tcp);
+        bool hasIpV6Udp = nodeRecord.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? ipV6Udp);
+        bool hasIpV6Tcp = nodeRecord.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? ipV6Tcp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasIpV4Udp, Is.True);
+            Assert.That(ipV4Udp, Is.EqualTo(IPEndPoint.Parse("192.0.2.1:30304")));
+            Assert.That(hasIpV4Tcp, Is.True);
+            Assert.That(ipV4Tcp, Is.EqualTo(IPEndPoint.Parse("192.0.2.1:30303")));
+            Assert.That(hasIpV6Udp, Is.True);
+            Assert.That(ipV6Udp, Is.EqualTo(IPEndPoint.Parse("[2001:db8::1]:30306")));
+            Assert.That(hasIpV6Tcp, Is.True);
+            Assert.That(ipV6Tcp, Is.EqualTo(IPEndPoint.Parse("[2001:db8::1]:30305")));
+            Assert.That(nodeRecord.TryGetDiscoveryEndpoint(AddressFamily.Unspecified, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Cannot_select_ipv4_mapped_address_from_ip6_entry()
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse("::ffff:192.0.2.1")));
+        nodeRecord.SetEntry(new Tcp6Entry(30303));
+        nodeRecord.SetEntry(new Udp6Entry(30304));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out _), Is.False);
+            Assert.That(nodeRecord.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out _), Is.False);
+            Assert.That(nodeRecord.TryGetDiscoveryEndpoint(out _), Is.False);
+            Assert.That(nodeRecord.TryGetTcpEndpoint(out _), Is.False);
         }
     }
 

@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -77,16 +78,25 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ex = inner;
         }
 
-        (int errorCode, string errorText) = ex switch
+        (int errorCode, string errorText, bool suppressWarning) = ex switch
         {
-            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests"),
-            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout"),
-            _ => (ErrorCodes.InternalError, "Internal error"),
+            // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
+            // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
+            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests", true),
+            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout", true),
+            _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
-        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), in rpcRequest.IdRef);
+        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(rpcRequest, ex)}", ex);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
+
+    // Formatting the request parses and stringifies its params, which for engine_newPayload is a
+    // multi-megabyte payload. When the heap is already exhausted that would just throw again.
+    private static string DescribeForErrorLog(JsonRpcRequest request, Exception ex) =>
+        ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
+            ? $"Id:{request.Id}, {request.Method}(params omitted)"
+            : request.ToString();
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
@@ -109,8 +119,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             contextAwareModule.Context = context;
         }
+        void ReturnRental() => _rpcModuleProvider.Return(method, rpcModule);
         bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
+        Action? returnAction = returnImmediately ? null : ReturnRental;
         IResultWrapper? resultWrapper = null;
         try
         {
@@ -134,6 +145,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 default:
                     break;
             }
+
+            // A streamed result executes while the response is written, after this method has returned, on state the
+            // module owns (its overridable world state env). Returning the module now would let the next rental run on
+            // that same env concurrently, so the rental has to last until the response is disposed.
+            if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
+            {
+                returnImmediately = false;
+                returnAction = ReturnRental;
+            }
         }
         catch (Exception ex)
         {
@@ -143,7 +163,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                _rpcModuleProvider.Return(method, rpcModule);
+                ReturnRental();
             }
         }
 
@@ -297,6 +317,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             providedParametersUtf8,
             out int providedParametersLength,
             out int missingParamsCount,
+            out int missingRequiredParameterIndex,
             out ExceptionDispatchInfo? parameterDeserializationException,
             out returnParametersToPool);
 
@@ -305,6 +326,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             methodName,
             in requestId,
             providedParametersLength,
+            missingRequiredParameterIndex,
             ref missingParamsCount);
         if (validationError is not null)
         {
@@ -336,13 +358,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         returnParametersToPool = false;
 
         int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
-        int missingParamsCount = CountMissingJsonElementParameters(expectedParameters, providedParameters, providedParametersLength);
+        int missingParamsCount = CountMissingJsonElementParameters(expectedParameters, providedParameters, providedParametersLength, out int missingRequiredParameterIndex);
 
         JsonRpcErrorResponse? validationError = ValidateMissingParameters(
             expectedParameters,
             methodName,
             in requestId,
             providedParametersLength,
+            missingRequiredParameterIndex,
             ref missingParamsCount);
         if (validationError is not null)
         {
@@ -363,16 +386,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private static int CountMissingJsonElementParameters(
         ExpectedParameter[] expectedParameters,
         JsonElement providedParameters,
-        int providedParametersLength)
+        int providedParametersLength,
+        out int missingRequiredParameterIndex)
     {
         int missingParamsCount = expectedParameters.Length - providedParametersLength;
         int initialMissingParamsCount = missingParamsCount;
+        missingRequiredParameterIndex = -1;
 
         if (providedParametersLength > 0)
         {
+            int index = 0;
             foreach (JsonElement item in providedParameters.EnumerateArray())
             {
-                UpdateMissingParamsCount(item, ref missingParamsCount, initialMissingParamsCount);
+                bool isMissing = IsMissingParameterMarker(item);
+                missingParamsCount = isMissing ? missingParamsCount + 1 : initialMissingParamsCount;
+                if (isMissing)
+                {
+                    TrackMissingRequiredParameter(expectedParameters, index, ref missingRequiredParameterIndex);
+                }
+
+                index++;
             }
         }
 
@@ -428,44 +461,39 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         string methodName,
         in JsonRpcId requestId,
         int providedParametersLength,
+        int missingRequiredParameterIndex,
         ref int missingParamsCount)
     {
+        // The JSON element deserializer walks every provided element against expectedParameters, so an
+        // over-long request has to be rejected here rather than indexing past the end.
+        if (providedParametersLength > expectedParameters.Length || missingParamsCount < 0)
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in requestId);
+        }
+
+        if (missingRequiredParameterIndex >= 0)
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams,
+                $"missing value for required argument {missingRequiredParameterIndex}", null, in requestId);
+        }
+
         int explicitNullableParamsCount = 0;
 
-        if (missingParamsCount != 0)
+        for (int i = 0; i < missingParamsCount; i++)
         {
-            bool hasIncorrectParameters = true;
-            int firstMissingRequiredIndex = -1;
-            if (missingParamsCount > 0)
+            int parameterIndex = expectedParameters.Length - missingParamsCount + i;
+
+            // Preserve compatibility for calls that pass trailing nullable defaults as null or "".
+            bool isExplicit = providedParametersLength >= parameterIndex + 1;
+            if (expectedParameters[parameterIndex].IsNullable && isExplicit)
             {
-                hasIncorrectParameters = false;
-                for (int i = 0; i < missingParamsCount; i++)
-                {
-                    int parameterIndex = expectedParameters.Length - missingParamsCount + i;
-                    bool nullable = expectedParameters[parameterIndex].IsNullable;
-
-                    // Preserve compatibility for calls that pass trailing nullable defaults as null or "".
-                    bool isExplicit = providedParametersLength >= parameterIndex + 1;
-                    if (nullable && isExplicit)
-                    {
-                        explicitNullableParamsCount += 1;
-                    }
-
-                    if (!expectedParameters[parameterIndex].IsOptional && !nullable)
-                    {
-                        hasIncorrectParameters = true;
-                        firstMissingRequiredIndex = parameterIndex;
-                        break;
-                    }
-                }
+                explicitNullableParamsCount += 1;
             }
 
-            if (hasIncorrectParameters)
+            if (RequiresExplicitValue(in expectedParameters[parameterIndex]))
             {
-                string message = firstMissingRequiredIndex >= 0
-                    ? $"missing value for required argument {firstMissingRequiredIndex}"
-                    : "Invalid params";
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in requestId);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams,
+                    $"missing value for required argument {parameterIndex}", null, in requestId);
             }
         }
 
@@ -495,15 +523,24 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         reader.TokenType == JsonTokenType.Null
         || (reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(ReadOnlySpan<byte>.Empty));
 
-    private static void UpdateMissingParamsCount(JsonElement item, ref int missingParamsCount, int initialMissingParamsCount)
+    private static bool IsMissingParameterMarker(JsonElement item) =>
+        item.ValueKind == JsonValueKind.Null
+        || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty));
+
+    private static bool RequiresExplicitValue(in ExpectedParameter parameter) =>
+        !parameter.IsOptional && !parameter.IsNullable;
+
+    /// <summary>
+    /// Records <paramref name="index"/> as the first argument where a missing-argument marker landed on a
+    /// parameter that requires an explicit value, leaving an already recorded index untouched.
+    /// </summary>
+    private static void TrackMissingRequiredParameter(ExpectedParameter[] expectedParameters, int index, ref int missingRequiredParameterIndex)
     {
-        if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
+        if (missingRequiredParameterIndex < 0
+            && index < expectedParameters.Length
+            && RequiresExplicitValue(in expectedParameters[index]))
         {
-            missingParamsCount++;
-        }
-        else
-        {
-            missingParamsCount = initialMissingParamsCount;
+            missingRequiredParameterIndex = index;
         }
     }
 
@@ -511,6 +548,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         return ex switch
         {
+            // Must precede the ArgumentException arm: ResourceNotFoundException derives from it, and answering
+            // "invalid params" (or a generic internal error) for history the node does not hold reads as a
+            // retry-forever signal to indexers. EIP-4444 defines the accurate code.
+            ResourceNotFoundException or TargetInvocationException { InnerException: ResourceNotFoundException } =>
+                GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
+                    ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction),
+
             TargetParameterCountException or ArgumentException =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), in request.IdRef, returnAction),
 
@@ -521,10 +565,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
 
+            // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
+            // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
-                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), in request.IdRef, returnAction),
@@ -546,7 +592,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
-            if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(request, ex)}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), in request.IdRef, returnAction);
         }
 
@@ -711,7 +757,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (reader.TokenType == JsonTokenType.String && expectedParameter.ReparseString)
         {
-            return JsonSerializer.Deserialize(reader.GetString(), expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
+            return DeserializeReparsedString(reader.GetString(), expectedParameter);
         }
 
         return DeserializeTypedParameter(ref reader, expectedParameter);
@@ -722,7 +768,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Type paramType = expectedParameter.ParameterType;
         if (providedParameter.ValueKind == JsonValueKind.String && expectedParameter.ReparseString)
         {
-            return JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonRpcRequestOptions);
+            return DeserializeReparsedString(providedParameter.GetString(), expectedParameter);
         }
 
         JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
@@ -752,16 +798,31 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : JsonSerializer.Deserialize(ref reader, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
     }
 
+    private static object? DeserializeReparsedString(string? json, ExpectedParameter expectedParameter)
+    {
+        if (json is null)
+        {
+            return null;
+        }
+
+        JsonTypeInfo? typeInfo = expectedParameter.HasParameterConverter ? expectedParameter.TypeInfo : null;
+        return typeInfo is not null
+            ? JsonSerializer.Deserialize(json, typeInfo)
+            : JsonSerializer.Deserialize(json, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
+    }
+
     private static object?[] DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         out int providedParametersLength,
         out int missingParamsCount,
+        out int missingRequiredParameterIndex,
         out ExceptionDispatchInfo? parameterDeserializationException,
         out bool returnParametersToPool)
     {
         providedParametersLength = 0;
         missingParamsCount = 0;
+        missingRequiredParameterIndex = -1;
         parameterDeserializationException = null;
         returnParametersToPool = false;
 
@@ -790,6 +851,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             bool isMissing = IsMissingParameterMarker(in reader);
             trailingMissingParamsCount = isMissing ? trailingMissingParamsCount + 1 : 0;
+            if (isMissing)
+            {
+                TrackMissingRequiredParameter(expectedParameters, providedParametersLength, ref missingRequiredParameterIndex);
+            }
+
             Utf8JsonReader parameterReader = reader;
             try
             {
@@ -907,6 +973,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool suppressWarning = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
+        // Counted here, at the funnel every error response passes through: concurrency-cap
+        // rejections reach this point along two distinct paths (module rental before invocation,
+        // and the override-environment cap during invocation), and their warnings are suppressed
+        // by design — without a counter operators cannot see that callers are being shed.
+        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
+        // response-body caps also produce LimitExceeded but keep their warnings.
+        if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        {
+            Metrics.IncrementJsonRpcOverloadRejections();
+        }
         JsonRpcErrorResponse response = new(in id, disposableAction)
         {
             Error = new Error

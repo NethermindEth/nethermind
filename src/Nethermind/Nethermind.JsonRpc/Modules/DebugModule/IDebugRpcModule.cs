@@ -75,7 +75,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
 
-    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true, ResultCanBeNull = true)]
     ResultWrapper<object> debug_getConfigValue(string category, string name);
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
@@ -102,7 +102,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get Raw Header format.")]
     ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "Get Raw Transaction format.")]
+    [JsonRpcMethod(Description = "Get Raw Transaction format.", ResultCanBeNull = true)]
     ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]
@@ -119,7 +119,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
-    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
+    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",
+        IsSharable = true)]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 

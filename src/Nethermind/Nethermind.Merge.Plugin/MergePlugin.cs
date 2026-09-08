@@ -17,6 +17,7 @@ using Nethermind.Core.Container;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -99,9 +100,9 @@ public class MergePluginModule : Module
             .AddDecorator<ISealer, MergeSealer>()
 
             .AddSingleton<ManualTimestamper>()
-            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(
-                (specProvider, sealEngine, timestamper, blocksConfig, logManager) =>
-                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
+            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager, IInclusionListTxSource>(
+                (specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource) =>
+                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource: inclusionListTxSource))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
@@ -146,7 +147,8 @@ public class BaseMergePluginModule : Module
             .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
-            .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
+            .AddSingleton<IMainProcessingModule, IRpcCapabilitiesProvider>(static capabilitiesProvider =>
+                new WitnessCapturingMainProcessingModule(IsWitnessCaptureEnabled(capabilitiesProvider)))
             .AddSingleton<WitnessRendezvous>()
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
@@ -165,9 +167,8 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
 
-            .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
-
             // Engine rpc related
+            .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
                 .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
                     .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)
@@ -190,7 +191,15 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
-                .AddSingleton<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+                .AddSingleton<NewPayloadWithWitnessHandler>()
+                .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+                .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+                .Bind<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+
+                .AddSingleton<InclusionListTxSource>()
+                .Bind<IInclusionListTxSource, InclusionListTxSource>()
+                .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
+                .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>
@@ -209,6 +218,11 @@ public class BaseMergePluginModule : Module
             // Testing rpc
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
+
+    private static bool IsWitnessCaptureEnabled(IRpcCapabilitiesProvider capabilitiesProvider) =>
+        capabilitiesProvider.GetEngineCapabilities().TryGetValue(
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4), out RpcCapabilityOptions options)
+        && options.IsEnabled();
 
     IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IComponentContext ctx)
     {

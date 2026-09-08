@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -578,6 +579,26 @@ public class SessionTests
         session.DeliverMessage(message);
         _packetSender.DidNotReceive().Enqueue(Arg.Any<TestMessage>());
         Assert.That(message.WasDisposed, Is.True);
+    }
+
+    [Test]
+    public void Initiated_disconnect_is_not_logged_at_debug()
+    {
+        TestLogger logger = new() { IsTrace = false };
+        Session session = new(
+            30312,
+            new Node(TestItem.PublicKeyA, "127.0.0.1", 8545),
+            _channel,
+            NullDisconnectsAnalyzer.Instance,
+            new OneLoggerLogManager(new ILogger(logger)));
+        session.Disconnected += static (_, _) => { };
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        logger.LogList.Clear();
+
+        session.InitiateDisconnect(DisconnectReason.BreachOfProtocol);
+
+        Assert.That(logger.LogList, Has.None.Contains("initiating disconnect"));
     }
 
     [Test]

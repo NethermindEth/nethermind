@@ -24,7 +24,7 @@ internal static class PersistedSnapshotUtils
             Address address = kv.Key;
             accounts[address.Bytes.ToHexString(false)] = kv.Value is null
                 ? ""
-                : AccountDecoder.Slim.Encode(kv.Value).Bytes.ToHexString(false);
+                : AccountDecoder.Slim.EncodeAsBytes(kv.Value).ToHexString(false);
         }
         dump["accounts"] = accounts;
 

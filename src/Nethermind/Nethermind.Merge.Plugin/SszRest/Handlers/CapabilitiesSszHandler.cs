@@ -14,7 +14,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v2/capabilities</c>, the HTTP/REST equivalent of
+/// Handles <c>GET /engine/v1/capabilities</c>, the HTTP/REST equivalent of
 /// <c>engine_exchangeCapabilities</c>.
 /// </summary>
 /// <remarks>

@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
@@ -18,19 +21,23 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
-public sealed class KademliaAdapter(
+public class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency
+    IRoutingTable<Node, ValueHash256> routingTable,
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     INodeRecordProvider nodeRecordProvider,
+    IIPResolver ipResolver,
     INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
+    IEcdsa ecdsa,
     ILogManager logManager
-) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
+) : KademliaAdapterBase("discv4", ipResolver, logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
+    private const int PeerCandidateChannelCapacity = 64;
 
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
@@ -40,10 +47,22 @@ public sealed class KademliaAdapter(
 
     private readonly RateLimiter _outboundRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
     private readonly RateLimiter _responseRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
-    public IMsgSender? MsgSender { get; set; }
-
+    private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa);
+    private readonly RecentNodeFilter<Hash256> _recentPeerCandidates = new(
+        RecentNodeFilter.GetLimit(kademliaConfig.KSize, ValueHash256KademliaDistance.Instance.MaxDistance, PeerCandidateChannelCapacity));
+    private readonly Channel<Node> _peerCandidates = Channel.CreateBounded<Node>(new BoundedChannelOptions(PeerCandidateChannelCapacity)
+    {
+        SingleReader = true,
+        SingleWriter = false
+    });
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
+
+    public IMsgSender? MsgSender { get; set; }
+
+    /// <inheritdoc/>
+    public IAsyncEnumerable<Node> ReadPeerCandidates(CancellationToken token)
+        => _peerCandidates.Reader.ReadAllAsync(token);
 
     public NodeSession GetSession(Node node) => _sessions.SetOrGet(
         node.IdHash.ValueHash256,
@@ -195,6 +214,19 @@ public sealed class KademliaAdapter(
     public async Task<bool> Ping(Node receiver, CancellationToken token)
     {
         NodeSession session = GetSession(receiver);
+        PongMsg? pong = await TryBond(receiver, session, token);
+        if (pong is null)
+        {
+            return false;
+        }
+
+        await RefreshRemoteRecordIfNewer(receiver, pong.EnrSequence, token);
+        PublishNode(receiver, session, signedPing: null, pong.EnrSequence);
+        return true;
+    }
+
+    private async Task<PongMsg?> TryBond(Node receiver, NodeSession session, CancellationToken token)
+    {
         IPEndPoint endpoint = receiver.DiscoveryAddress;
 
         PingMsg msg = new(endpoint, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.DiscoveryAddress, kademliaConfig.CurrentNodeId.Port, 0)
@@ -205,14 +237,13 @@ public sealed class KademliaAdapter(
         try
         {
             DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
-            if (!response.HasResponse) return false;
-            if (response.Value.FarAddress is not { } pongEndpoint) return false;
+            if (!response.HasResponse) return null;
+            if (response.Value.FarAddress is not { } pongEndpoint) return null;
 
             session.OnPongReceived(pongEndpoint);
-            if (!session.HasEndpointBond(endpoint)) return false;
+            if (!session.HasEndpointBond(endpoint)) return null;
 
-            await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
-            return true;
+            return response.Value;
         }
         finally
         {
@@ -227,13 +258,13 @@ public sealed class KademliaAdapter(
         {
             FindNodeMsg msg = new(receiver.DiscoveryAddress, CalculateExpirationTime(), target.Bytes);
 
-            return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, _findNeighbourTimeout, token);
+            return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize, LocalIp), receiver, session, msg, _findNeighbourTimeout, token);
         }, token);
 
         return response.HasResponse ? response.Value : null;
     }
 
-    private Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
+    protected virtual Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
         => advertisedSequence is { } sequence
             ? base.RefreshRemoteRecordIfNewer(node, sequence, token)
             : Task.CompletedTask;
@@ -245,10 +276,18 @@ public sealed class KademliaAdapter(
     }
 
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
-        => HasExpectedNodeId(record, node.Id);
+        => HasExpectedNodeId(record, node.Id.Hash.ValueHash256);
 
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
+
+    private void MergeKnownEnrState(Node node)
+    {
+        if (routingTable.TryGet(node.Id.Hash.ValueHash256, out Node? knownNode))
+        {
+            node.MergeEnrStateFrom(knownNode);
+        }
+    }
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
@@ -270,13 +309,13 @@ public sealed class KademliaAdapter(
 
         if (!session.HasEndpointBond(endpoint))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded endpoint {endpoint} for peer {node.Id}");
+            if (Logger.IsTrace) TraceUnbondedEnrRequest(endpoint, node);
             return false;
         }
 
         if (msg.Hash is not { } requestHash)
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request without packet hash from {node}");
+            if (Logger.IsTrace) TraceEnrRequestWithoutHash(node);
             return false;
         }
 
@@ -291,7 +330,7 @@ public sealed class KademliaAdapter(
 
         if (!session.HasEndpointBond(endpoint))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded endpoint {endpoint} for peer {node.Id}");
+            if (Logger.IsTrace) TraceUnbondedFindNodeRequest(endpoint, node);
             return false;
         }
 
@@ -325,7 +364,7 @@ public sealed class KademliaAdapter(
         if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting ping without packet hash from {node}");
+            if (Logger.IsTrace) TracePingWithoutHash(node);
             return;
         }
 
@@ -333,18 +372,107 @@ public sealed class KademliaAdapter(
         IPEndPoint endpoint = node.DiscoveryAddress;
         session.OnPingReceived(endpoint);
         await SendMessage(session, msg, token, isResponse: true);
-        if (session.HasEndpointBond(endpoint))
-        {
-            await RefreshRemoteRecordIfNewer(node, ping.EnrSequence, token);
-        }
-
+        PongMsg? bondingPong = null;
         if (!session.HasEndpointBond(endpoint))
         {
-            // If this endpoint has no recent pong, it is not bonded and we should not respond to auth requests.
-            // Send a ping to bond the peer.
-            _ = await Ping(node, token);
+            bondingPong = await TryBond(node, session, token);
+            if (bondingPong is null)
+            {
+                return;
+            }
+        }
+
+        ulong? advertisedSequence = HighestSequence(ping.EnrSequence, bondingPong?.EnrSequence);
+        await RefreshRemoteRecordIfNewer(node, advertisedSequence, token);
+        PublishNode(node, session, ping, advertisedSequence);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceUnbondedEnrRequest(IPEndPoint endpoint, Node node) =>
+        Logger.Trace($"Rejecting enr request from unbonded endpoint {endpoint} for peer {node.Id}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceEnrRequestWithoutHash(Node node) =>
+        Logger.Trace($"Rejecting enr request without packet hash from {node}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceUnbondedFindNodeRequest(IPEndPoint endpoint, Node node) =>
+        Logger.Trace($"Rejecting findNode request from unbonded endpoint {endpoint} for peer {node.Id}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TracePingWithoutHash(Node node) =>
+        Logger.Trace($"Rejecting ping without packet hash from {node}");
+
+    private void PublishNode(Node node, NodeSession session, PingMsg? signedPing, ulong? advertisedEnrSequence)
+    {
+        IPEndPoint discoveryEndpoint = node.DiscoveryAddress;
+        if (!session.HasEndpointBond(discoveryEndpoint))
+        {
+            return;
+        }
+
+        Node? enrNode = null;
+        NodeRecord? record = node.Enr;
+        if (record is { Signature: not null } &&
+            record.EnrSequence >= node.HighestObservedEnrSequence &&
+            (advertisedEnrSequence is null || record.EnrSequence >= advertisedEnrSequence) &&
+            _nodeRecordSigner.Verify(record) &&
+            Node.TryFromEnr(
+                record,
+                DiscoveryAddressSupport.GetFamily(discoveryEndpoint.Address),
+                out Node? candidate) &&
+            candidate.Id.Equals(node.Id) &&
+            candidate.HasDiscoveryEndpoint &&
+            candidate.DiscoveryAddress.Equals(discoveryEndpoint))
+        {
+            candidate.SetVerifiedEnr(record);
+            enrNode = candidate;
+        }
+
+        bool useSignedPing = signedPing is
+        {
+            Mdc: not null,
+            FarPublicKey: not null,
+            FarAddress: not null,
+            SourceTcpPort: > 0
+        } ping &&
+            ping.FarPublicKey.Equals(node.Id) &&
+            ping.FarAddress.Equals(discoveryEndpoint) &&
+            enrNode is null;
+        Node peerCandidate;
+        if (useSignedPing)
+        {
+            peerCandidate = new Node(node.Id, node.Address, node.DiscoveryPort);
+            peerCandidate.ObserveEnrSequence(node.HighestObservedEnrSequence);
+        }
+        else if (enrNode is not null)
+        {
+            peerCandidate = enrNode;
+        }
+        else
+        {
+            return;
+        }
+
+        PublishPeerCandidate(peerCandidate);
+    }
+
+    private void PublishPeerCandidate(Node node)
+    {
+        Hash256 nodeId = node.IdHash;
+        if (!_recentPeerCandidates.TryReserve(nodeId))
+        {
+            return;
+        }
+
+        if (!_peerCandidates.Writer.TryWrite(node))
+        {
+            _recentPeerCandidates.Release(nodeId);
         }
     }
+
+    private static ulong? HighestSequence(ulong? first, ulong? second)
+        => first is null ? second : second is null ? first : Math.Max(first.Value, second.Value);
 
     public async Task OnIncomingMsg(DiscoveryMsg msg)
     {
@@ -352,7 +480,14 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
+            if (msg.FarPublicKey is null || msg.FarAddress is null)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg}");
+                return;
+            }
+
             Node node = CreateNode(msg);
+            MergeKnownEnrState(node);
 
             if (IsResponse(msgType))
             {
@@ -406,9 +541,16 @@ public sealed class KademliaAdapter(
     private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
     private static Node CreateNode(DiscoveryMsg msg)
-        => msg is PingMsg { SourceTcpPort: > 0 } ping
-            ? new Node(ping.FarPublicKey!, new IPEndPoint(ping.FarAddress!.Address, ping.SourceTcpPort), ping.FarAddress.Port)
-            : Node.FromDiscoveryEndpoint(msg.FarPublicKey, msg.FarAddress);
+    {
+        PublicKey farPublicKey = msg.FarPublicKey
+            ?? throw new ArgumentException("Discovery message is missing a remote public key.", nameof(msg));
+        IPEndPoint farAddress = msg.FarAddress
+            ?? throw new ArgumentException("Discovery message is missing a remote endpoint.", nameof(msg));
+
+        return msg is PingMsg { SourceTcpPort: > 0 } ping
+            ? new Node(farPublicKey, new IPEndPoint(farAddress.Address, ping.SourceTcpPort), farAddress.Port)
+            : Node.FromDiscoveryEndpoint(farPublicKey, farAddress);
+    }
 
     private bool ValidatePingAddress(PingMsg msg)
     {
@@ -437,8 +579,9 @@ public sealed class KademliaAdapter(
         return false;
     }
 
-    private static bool HasExpectedNodeId(NodeRecord record, PublicKey expectedNodeId)
-        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(expectedNodeId) == true;
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _peerCandidates.Writer.TryComplete();
+        return ValueTask.CompletedTask;
+    }
 }

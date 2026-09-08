@@ -65,7 +65,7 @@ public class NullTxTracer : TxTracer
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => ThrowInvalidOperationException();
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         => ThrowInvalidOperationException();
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -87,6 +87,9 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
 
     public override void ReportActionError(EvmExceptionType exceptionType)
+        => ThrowInvalidOperationException();
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
         => ThrowInvalidOperationException();
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
