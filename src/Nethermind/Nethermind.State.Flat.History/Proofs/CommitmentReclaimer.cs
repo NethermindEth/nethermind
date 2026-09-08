@@ -137,6 +137,11 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
         bool reclaimed = metadata.TryReclaimOutsideWalk(() =>
         {
+            dropped = metadata.DroppedThroughEpoch;
+            demoted = Math.Max(metadata.DemotedThroughEpoch, dropped);
+            dropPending = dropped < metadata.RetainedFromEpoch;
+            if (!dropPending && demoted >= metadata.FineFromEpoch) return;
+
             if (dropPending)
             {
                 long startedAt = Stopwatch.GetTimestamp();

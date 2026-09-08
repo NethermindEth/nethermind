@@ -31,7 +31,7 @@ internal sealed class BorrowedWork(WalkSlots slots)
         Task started;
         try
         {
-            started = Task.Run(() =>
+            started = Task.Factory.StartNew(() =>
             {
                 try
                 {
@@ -46,7 +46,7 @@ internal sealed class BorrowedWork(WalkSlots slots)
                 {
                     slots.Return();
                 }
-            });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
         catch
         {
