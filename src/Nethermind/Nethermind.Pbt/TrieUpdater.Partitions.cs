@@ -54,6 +54,8 @@ public static partial class TrieUpdater
         using ArrayPoolListRef<GroupMutationFrame?> sharedGroups = new(16, 16);
         using ArrayPoolListRef<ArrayPoolList<Subtree>?> zoneBoundaries = new(16, 16);
         using ArrayPoolListRef<Subtree> rootBoundaries = new(16, 16);
+        Span<int> touchedZoneMasks = stackalloc int[16];
+        touchedZoneMasks.Clear();
         try
         {
             AddWorker<PbtFullKey, PbtNodePath>(changes.Account, Eip8297KeyDerivation.AccountZone);
@@ -63,9 +65,13 @@ public static partial class TrieUpdater
 
             using GroupMutationFrame rootGroup = new(store, RootPath, metrics, memoryProvider);
             int touchedRootMask = 0;
-            foreach (PartitionFold worker in workers) touchedRootMask |= 1 << (worker.Zone >> 4);
+            foreach (PartitionFold worker in workers)
+            {
+                touchedRootMask |= 1 << (worker.Zone >> 4);
+                touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
+            }
             Subtree root = rootGroup.Take(RootPath, allowAbsent: true);
-            try { Decompose(rootGroup, ref root, 0, rootBoundaries.AsSpan(), touchedRootMask); }
+            try { Decompose(rootGroup, ref root, 0, rootBoundaries.AsSpan()); }
             finally { root.Dispose(); }
             foreach (PartitionFold worker in workers)
             {
@@ -76,10 +82,7 @@ public static partial class TrieUpdater
                     sharedGroups[slot] = sharedGroup;
                     zoneBoundaries[slot] = new(16, 16);
                     rootGroup.Resolve(ref rootBoundaries.AsSpan()[slot]);
-                    int touchedZoneMask = 0;
-                    foreach (PartitionFold zoneWorker in workers)
-                        if ((zoneWorker.Zone >> 4) == slot) touchedZoneMask |= 1 << (zoneWorker.Zone & 15);
-                    Decompose(sharedGroup, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan(), touchedZoneMask);
+                    Decompose(sharedGroup, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan());
                 }
                 sharedGroup.Resolve(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
                 worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
@@ -95,10 +98,10 @@ public static partial class TrieUpdater
             for (int slot = 0; slot < sharedGroups.Count; slot++)
             {
                 if (sharedGroups[slot] is not { } sharedGroup) continue;
-                rootBoundaries[slot] = Compose(sharedGroup, zoneBoundaries[slot]!.AsSpan());
+                rootBoundaries[slot] = Compose(sharedGroup, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
                 sharedGroup.Flush();
             }
-            Subtree result = Compose(rootGroup, rootBoundaries.AsSpan());
+            Subtree result = Compose(rootGroup, rootBoundaries.AsSpan(), touchedRootMask);
             try
             {
                 ValueHash256 hash = rootGroup.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);

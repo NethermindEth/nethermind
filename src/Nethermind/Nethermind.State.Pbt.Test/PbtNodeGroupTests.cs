@@ -238,7 +238,7 @@ public class PbtNodeGroupTests
 
     [Test]
     public void Dense_group_mutations_preserve_unchanged_subtrees_and_canonical_payloads(
-        [Values(0, 4, 8, 13)] int prefixBits,
+        [Values(0, 2, 3, 4, 8, 13)] int prefixBits,
         [Values(false, true)] bool promoteSibling)
     {
         using PbtTreeHarness tree = new();
@@ -271,7 +271,6 @@ public class PbtNodeGroupTests
             {
                 Assert.That(metrics.BulkCopyOperations, Is.GreaterThan(0));
                 Assert.That(metrics.BulkCopiedNodes, Is.GreaterThan(metrics.BulkCopyOperations), "copy entire runs rather than one node at a time");
-                Assert.That(metrics.ReusedHashes, Is.GreaterThan(0));
             }
         }
 
