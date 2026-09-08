@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -16,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -93,6 +95,18 @@ public class JsonRpcServiceTests
             "unknown block parameter type",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Malformed typed argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Empty string for non-trailing required argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """[null,false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Null for non-trailing required argument");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_feeHistory),
             """[{},"latest"]""",
@@ -549,6 +563,63 @@ public class JsonRpcServiceTests
         AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
     }
 
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "EmptyStringNonTrailing")]
+    [TestCase("eth_getBlockByNumber", new object?[] { null, false }, "missing value for required argument 0", TestName = "NullNonTrailing")]
+    public void MissingRequiredArgument_NonTrailingMarker_ReturnsInvalidParams(string method, object?[] parameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
+        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+    }
+
+    // #13156: a parameter the caller got wrong is answered with -32602; it must not also cost the operator a WARN line
+    // (with a stack trace) per request. The detail stays available at Debug.
+    [Test]
+    public void Invalid_params_are_not_logged_at_warn()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        const string rawParameters = """["0x1234","latest"]""";
+
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        _logManager = new OneLoggerLogManager(new(warnLogger));
+        AssertJsonRpcError(TestRawRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), rawParameters), ErrorCodes.InvalidParams);
+
+        TestLogger debugLogger = new();
+        _logManager = new OneLoggerLogManager(new(debugLogger));
+        AssertJsonRpcError(TestRawRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), rawParameters), ErrorCodes.InvalidParams);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warnLogger.LogList, Is.Empty, $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+            Assert.That(debugLogger.LogList.Where(l => l.Contains("Incorrect JSON RPC parameters when calling eth_getBalance")), Is.Not.Empty);
+            ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+        }
+    }
+
+    // The counterpart to the test above: the catch around parameter binding is broad, so it also swallows faults
+    // the params cannot cause. Those are a condition of the node and must stay visible - at this site, and at the
+    // processor, which would otherwise demote every -32602 from an unauthenticated caller to Debug.
+    [Test]
+    public void Node_faults_during_binding_stay_visible_and_omit_the_params()
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        const string rawParameters = """[{"secret":"0x1234"}]""";
+
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        _logManager = new OneLoggerLogManager(new(logger));
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRawRequest(module, "test_node_fault", rawParameters),
+            ErrorCodes.InvalidParams);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.OperatorActionable, Is.True, "the processor must not demote a node fault");
+            Assert.That(logger.LogList.Where(static l => l.Contains("Failed to bind JSON RPC parameters for test_node_fault")), Is.Not.Empty);
+            Assert.That(logger.LogList.Where(static l => l.Contains("secret")), Is.Empty, "the params must not be formatted on a fault that may be an exhausted heap");
+            module.DidNotReceive().test_node_fault(Arg.Any<NodeFaultPayload>());
+        }
+    }
+
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
     public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(
         string method,
@@ -678,7 +749,43 @@ public class JsonRpcServiceTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
-        AssertJsonRpcError(response, ErrorCodes.InternalError);
+        JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InternalError);
+        // Covers the second error.data producer, JsonRpcService.ReturnErrorResponse, which the module-invocation
+        // path in Error_data_does_not_leak_stack_trace_or_build_paths never reaches.
+        AssertErrorDataWithoutStackTrace(errorResponse);
+    }
+
+    // error.data reaches unauthenticated callers, so it must not carry the stack trace: our release builds
+    // render frames with the build machine's absolute source paths and expose the internal call graph.
+    [TestCase(ErrorCodes.InternalError, TestName = "InternalErrorArm")]
+    [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParamsArm")]
+    public void Error_data_does_not_leak_stack_trace_or_build_paths(int expectedCode)
+    {
+        Exception thrown = expectedCode == ErrorCodes.InternalError
+            ? new InvalidOperationException("Stack empty.")
+            : new ArgumentException("bad argument");
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode);
+
+        AssertErrorDataWithoutStackTrace(response, thrown.GetType(), thrown.Message);
+    }
+
+    private static void AssertErrorDataWithoutStackTrace(JsonRpcErrorResponse response, Type? expectedType = null, string? expectedMessage = null)
+    {
+        string data = response.Error!.Data?.ToString() ?? string.Empty;
+        Assert.Multiple(() =>
+        {
+            // Still actionable: the caller learns what went wrong.
+            if (expectedType is not null) Assert.That(data, Does.Contain(expectedType.FullName!), data);
+            if (expectedMessage is not null) Assert.That(data, Does.Contain(expectedMessage), data);
+            // But nothing about where our source lives or how the call got there.
+            Assert.That(data, Does.Not.Contain("   at "), data);
+            Assert.That(data, Does.Not.Contain(".cs:line"), data);
+            Assert.That(data, Does.Not.Contain("Nethermind.JsonRpc.JsonRpcService"), data);
+        });
     }
 
     private static IEnumerable<TestCaseData> OutOfMemoryPools()
@@ -713,6 +820,32 @@ public class JsonRpcServiceTests
 
         TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException or { InnerException: OutOfMemoryException });
         Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
+    }
+
+    // #13156 follow-up: -32600 is overloaded. It is returned both for a request the caller got wrong ("Method is
+    // required") and for a namespace this node has disabled, whose message is a remediation instruction for the
+    // operator. Only the first may be demoted out of WARN, so the disabled cases carry OperatorActionable.
+    [TestCase(ModuleResolution.Disabled, true)]
+    [TestCase(ModuleResolution.EndpointDisabled, true)]
+    [TestCase(ModuleResolution.NotAuthenticated, false)]
+    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable)
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = "Debug";
+                callInfo[3] = null;
+                return resolution;
+            });
+
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
+        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
+
+        Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
+        Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
     }
 
     [Test]
@@ -812,6 +945,22 @@ public class JsonRpcServiceTests
 
         [JsonRpcMethod(Description = "Test method used to verify JSON-RPC array parameter metadata handling.")]
         ResultWrapper<int> test_byte_arrays(byte[][] value);
+
+        [JsonRpcMethod(Description = "Test method used to verify JSON-RPC parameter binding faults.")]
+        ResultWrapper<string> test_node_fault(NodeFaultPayload value);
+    }
+
+    [JsonConverter(typeof(NodeFaultPayloadConverter))]
+    public sealed class NodeFaultPayload;
+
+    /// <summary>Stands in for a fault the caller's params cannot cause, arriving from inside parameter binding.</summary>
+    private sealed class NodeFaultPayloadConverter : JsonConverter<NodeFaultPayload>
+    {
+        public override NodeFaultPayload Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new ObjectDisposedException(nameof(NodeFaultPayloadConverter));
+
+        public override void Write(Utf8JsonWriter writer, NodeFaultPayload value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
     }
 
     private sealed class DisposableProbe : IDisposable
