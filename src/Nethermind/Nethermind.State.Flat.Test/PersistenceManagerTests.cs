@@ -1340,6 +1340,132 @@ public class PersistenceManagerTests
         return (PersistenceManager.ConversionCandidate?)method.Invoke(_persistenceManager, [currentPersistedState]);
     }
 
+    [Test]
+    public async Task AddToPersistence_PinnedHeadSiblings_PrunesOrphansAboveInMemoryBudget()
+    {
+        // Finality stays at genesis and every new block is a sibling of the last, so neither the finalized
+        // trigger nor the backstop ever fires; with long finality off nothing converts to the persisted tier either.
+        _config.EnableLongFinality = false;
+        _persistenceManager.Dispose();
+        _persistenceManager = new PersistenceManager(
+            _config,
+            _tier.Resolve<ICompactionSchedule>(),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        StateId pinned = CreateStateId(1);
+        CreateSnapshot(Block0, pinned);
+        _snapshotRepository.SetLastCommittedStateId(pinned);
+
+        StateId firstOrphan = default;
+        StateId latest = default;
+        for (int i = 1; i <= _config.MaxInMemoryBaseSnapshotCount; i++)
+        {
+            StateId first = CreateStateId(2, (byte)i);
+            StateId second = CreateStateId(3, (byte)i);
+            if (i == 1) firstOrphan = first;
+            latest = second;
+
+            CreateSnapshot(pinned, first);
+            _snapshotRepository.SetLastCommittedStateId(first);
+            await _persistenceManager.AddToPersistence(first);
+
+            CreateSnapshot(first, second);
+            _snapshotRepository.SetLastCommittedStateId(second);
+            await _persistenceManager.AddToPersistence(second);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.SnapshotCount, Is.LessThan(_config.MaxInMemoryBaseSnapshotCount), "orphaned siblings must be pruned");
+            Assert.That(_snapshotRepository.HasState(pinned), Is.True, "the pinned parent stays");
+            Assert.That(_snapshotRepository.HasState(latest), Is.True, "the committed head stays");
+            Assert.That(_snapshotRepository.HasState(firstOrphan), Is.False, "the oldest sibling is gone");
+        }
+    }
+
+    [Test]
+    public async Task AddToPersistence_PinnedHeadSiblings_WithLongFinality_BoundsInMemorySnapshots()
+    {
+        // Production shape: long finality and the real persisted tier are on, the canonical chain alone exceeds the
+        // in-memory budget, and no sibling has a parent on disk until conversion has climbed that chain.
+        _config.MaxInMemoryBaseSnapshotCount = 8;
+        _persistenceManager.Dispose();
+        _persistenceManager = new PersistenceManager(
+            _config,
+            _tier.Resolve<ICompactionSchedule>(),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _tier.Compactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        StateId parent = Block0;
+        for (ulong block = 1; block <= 40; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(parent, next);
+            parent = next;
+        }
+        StateId pinned = parent;
+        _snapshotRepository.SetLastCommittedStateId(pinned);
+
+        const int Iterations = 120;
+        StateId firstOrphan = CreateStateId(41, 1);
+        int maxBases = 0;
+        for (int i = 1; i <= Iterations; i++)
+        {
+            StateId first = CreateStateId(41, (byte)i);
+            StateId second = CreateStateId(42, (byte)i);
+            CreateSnapshot(pinned, first);
+            _snapshotRepository.SetLastCommittedStateId(first);
+            await _persistenceManager.AddToPersistence(first);
+            CreateSnapshot(first, second);
+            _snapshotRepository.SetLastCommittedStateId(second);
+            await _persistenceManager.AddToPersistence(second);
+            maxBases = Math.Max(maxBases, _snapshotRepository.SnapshotCount);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(maxBases, Is.LessThan(2 * Iterations / 4), "in-memory bases must stay far below the number of siblings seen");
+            Assert.That(_snapshotRepository.HasState(pinned), Is.True, "the pinned parent stays readable");
+            Assert.That(_snapshotRepository.HasState(firstOrphan), Is.False, "an old sibling is gone from both tiers");
+            Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.InRange(40, 40 + 2 * Iterations / 4), "the canonical chain converts; siblings do not accumulate on disk");
+        }
+    }
+    [Test]
+    public async Task AddToPersistence_SiblingsWithinInMemoryBudget_AreKept()
+    {
+        StateId pinned = CreateStateId(1);
+        CreateSnapshot(Block0, pinned);
+        _snapshotRepository.SetLastCommittedStateId(pinned);
+
+        int pairs = _config.MaxInMemoryBaseSnapshotCount / 4;
+        for (int i = 1; i <= pairs; i++)
+        {
+            StateId first = CreateStateId(2, (byte)i);
+            StateId second = CreateStateId(3, (byte)i);
+            CreateSnapshot(pinned, first);
+            _snapshotRepository.SetLastCommittedStateId(first);
+            await _persistenceManager.AddToPersistence(first);
+            CreateSnapshot(first, second);
+            _snapshotRepository.SetLastCommittedStateId(second);
+            await _persistenceManager.AddToPersistence(second);
+        }
+
+        Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(1 + 2 * pairs), "below the budget no sibling is pruned");
+    }
+
     private void InvokeConvertCompactedRange(Snapshot compacted)
     {
         // ConvertCompactedRange is private; reach it via reflection to unit-test the in-memory

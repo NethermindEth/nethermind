@@ -497,5 +497,118 @@ public class SnapshotRepositoryTests
         Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.True);
     }
 
+    [Test]
+    public void RemoveOrphanedStates_PinnedParent_DropsSiblingsOffTheCommittedAncestry()
+    {
+        // Canonical 0..3, then three sibling pairs (4, 5) under block 3; only the last pair was committed.
+        BuildSnapshotChain(0, 3);
+        for (byte fork = 1; fork <= 3; fork++)
+        {
+            AddSnapshotToRepository(CreateStateId(3), CreateStateId(4, fork));
+            AddSnapshotToRepository(CreateStateId(4, fork), CreateStateId(5, fork));
+        }
+        _repository.SetLastCommittedStateId(CreateStateId(5, rootByte: 3));
+
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(5, rootByte: 3));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(4));
+            Assert.That(_repository.HasState(CreateStateId(4, rootByte: 1)), Is.False);
+            Assert.That(_repository.HasState(CreateStateId(5, rootByte: 2)), Is.False);
+            Assert.That(_repository.HasState(CreateStateId(4, rootByte: 3)), Is.True, "the committed pair stays");
+            Assert.That(_repository.HasState(CreateStateId(5, rootByte: 3)), Is.True);
+            Assert.That(_repository.HasState(CreateStateId(1)), Is.True, "canonical ancestry stays");
+            Assert.That(_repository.HasState(CreateStateId(3)), Is.True);
+        }
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_RecentlyCommittedSibling_KeepsItsAncestry()
+    {
+        BuildSnapshotChain(0, 3);
+        for (byte fork = 1; fork <= 2; fork++)
+        {
+            AddSnapshotToRepository(CreateStateId(3), CreateStateId(4, fork));
+            AddSnapshotToRepository(CreateStateId(4, fork), CreateStateId(5, fork));
+            _repository.SetLastCommittedStateId(CreateStateId(5, fork));
+        }
+
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(5, rootByte: 2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.Zero);
+            Assert.That(_repository.HasState(CreateStateId(4, rootByte: 1)), Is.True, "the parent of a recently committed state stays readable");
+            Assert.That(_repository.HasState(CreateStateId(5, rootByte: 1)), Is.True);
+        }
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_CompactedEdge_KeepsTheBasesItSpans()
+    {
+        BuildSnapshotChain(0, 4);
+        AddSnapshotToRepository(CreateStateId(0), CreateStateId(3), compacted: true);
+        AddSnapshotToRepository(CreateStateId(1), CreateStateId(2, rootByte: 1));
+        _repository.SetLastCommittedStateId(CreateStateId(4));
+
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(4));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(1));
+            Assert.That(_repository.HasState(CreateStateId(2, rootByte: 1)), Is.False);
+            Assert.That(_repository.HasState(CreateStateId(1)), Is.True);
+            Assert.That(_repository.HasState(CreateStateId(2)), Is.True);
+            Assert.That(TryLease(CreateStateId(3), compacted: true, out Snapshot? compacted), Is.True);
+            compacted?.Dispose();
+        }
+    }
+
+    [Test]
+    public void IsOnCommittedAncestry_DistinguishesTheCommittedChainFromOrphans()
+    {
+        BuildSnapshotChain(0, 4);
+        AddSnapshotToRepository(CreateStateId(2), CreateStateId(3, rootByte: 1));
+
+        Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(3, rootByte: 1)), Is.True, "nothing committed yet: nothing can be called an orphan");
+
+        _repository.SetLastCommittedStateId(CreateStateId(4));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(2)), Is.True);
+            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(4)), Is.True);
+            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(3, rootByte: 1)), Is.False);
+        }
+    }
+    [Test]
+    public void RemoveOrphanedStates_ConvertedSibling_IsDroppedFromThePersistedTier()
+    {
+        BuildSnapshotChain(0, 3);
+        Snapshot orphan = CreateSnapshot(CreateStateId(2), CreateStateId(3, rootByte: 1), withData: true);
+        _tier.ConvertToPersistedBase(orphan).Dispose();
+        _repository.SetLastCommittedStateId(CreateStateId(3));
+        Assert.That(_repository.HasState(CreateStateId(3, rootByte: 1)), Is.True, "precondition: the sibling lives in the persisted tier");
+
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(3));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(1));
+            Assert.That(_repository.HasState(CreateStateId(3, rootByte: 1)), Is.False);
+            Assert.That(_repository.HasState(CreateStateId(3)), Is.True);
+        }
+    }
+    [Test]
+    public void RemoveOrphanedStates_HeadWithoutInMemorySnapshot_PrunesNothing()
+    {
+        BuildSnapshotChain(0, 3);
+        AddSnapshotToRepository(CreateStateId(1), CreateStateId(2, rootByte: 1));
+
+        Assert.That(_repository.RemoveOrphanedStates(CreateStateId(9)), Is.Zero);
+        Assert.That(_repository.HasState(CreateStateId(2, rootByte: 1)), Is.True);
+    }
+
     #endregion
 }

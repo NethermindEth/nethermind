@@ -197,12 +197,15 @@ public class PersistenceManager(
         using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
 
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
+        // Orphans are never converted: a sibling the chain did not follow would only fill the persisted tier
+        // until the next persist prunes it, and PruneOrphansAboveBudget drops it once it ages out.
         foreach (StateId X in ordered)
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryCompacted, out Snapshot? compacted)) continue;
 
             if (compacted!.To.BlockNumber - compacted.From.BlockNumber == _compactSize
-                && IsOnDisk(compacted.From, currentPersistedState))
+                && IsOnDisk(compacted.From, currentPersistedState)
+                && snapshotRepository.IsOnCommittedAncestry(X))
             {
                 return new ConversionCandidate(compacted, Base: null);
             }
@@ -214,7 +217,7 @@ public class PersistenceManager(
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
-            if (IsOnDisk(baseSnap!.From, currentPersistedState))
+            if (IsOnDisk(baseSnap!.From, currentPersistedState) && snapshotRepository.IsOnCommittedAncestry(X))
             {
                 return new ConversionCandidate(Compacted: null, baseSnap);
             }
@@ -234,6 +237,8 @@ public class PersistenceManager(
         await _persistenceLock.WaitAsync();
         try
         {
+            PruneOrphansAboveBudget();
+
             // Bound the drain per invocation so a deep backlog (e.g. early catch-up sync) does
             // not block the processing thread for an unbounded time. The caller re-enters on
             // every block, so the remaining backlog is consumed across subsequent invocations.
@@ -279,6 +284,22 @@ public class PersistenceManager(
         {
             _persistenceLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Bounds the snapshot tiers when neither persistence nor conversion can: both need the chain to climb past
+    /// the persisted state, which a pinned head fed a stream of sibling blocks never does.
+    /// </summary>
+    private void PruneOrphansAboveBudget()
+    {
+        if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return;
+
+        StateId? committedHead = snapshotRepository.GetLastCommittedStateId();
+        if (committedHead is null) return;
+
+        int pruned = snapshotRepository.RemoveOrphanedStates(committedHead.Value);
+        if (pruned > 0 && _logger.IsDebug)
+            _logger.Debug($"Pruned {pruned} orphaned snapshot(s) below committed head {committedHead.Value}; {snapshotRepository.SnapshotCount} base snapshot(s) remain.");
     }
 
     // Runs before the persist and the prune: the flat head must never advance past durable history, or a crash in

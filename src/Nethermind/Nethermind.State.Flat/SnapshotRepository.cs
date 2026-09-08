@@ -50,6 +50,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly Lock _lastCommittedLock = new();
     private StateId _lastCommittedStateId;
     private bool _hasLastCommitted;
+    // Competing tip blocks flip within a few slots; re-executing one costs a whole block, so the last
+    // few committed states and their ancestry are exempt from orphan pruning.
+    private const int RecentlyCommittedRetention = 16;
+    private readonly StateId[] _recentlyCommitted = new StateId[RecentlyCommittedRetention];
+    private int _recentlyCommittedCount;
 
     public SnapshotRepository(
         IArenaManager arenaManager,
@@ -273,6 +278,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using Lock.Scope _ = _lastCommittedLock.EnterScope();
         _lastCommittedStateId = stateId;
         _hasLastCommitted = true;
+        _recentlyCommitted[_recentlyCommittedCount % RecentlyCommittedRetention] = stateId;
+        _recentlyCommittedCount++;
     }
 
     public StateId? GetLastCommittedStateId()
@@ -427,6 +434,94 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         {
             _logger.Info($"Pruned {totalPruned} orphaned non-canonical snapshot(s) above persisted state {canonicalStateId}.");
         }
+    }
+
+    public int RemoveOrphanedStates(in StateId committedHead)
+    {
+        using PooledSet<StateId> retained = CollectRetainedAncestry(committedHead);
+        if (retained.Count == 0) return 0;
+
+        int pruned = 0;
+        using (ArrayPoolList<StateId> inMemory = GetStatesUpToBlock(committedHead.BlockNumber))
+        {
+            foreach (StateId stateId in inMemory)
+            {
+                if (retained.Contains(stateId)) continue;
+                if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted)) pruned++;
+                if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase)) pruned++;
+            }
+        }
+
+        // A sibling converted while it was the committed head is an orphan on disk once the chain moves on.
+        using (ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(0, committedHead.BlockNumber))
+        {
+            foreach (StateId stateId in persisted)
+            {
+                if (!retained.Contains(stateId) && RemovePersistedStateExact(stateId)) pruned++;
+            }
+        }
+
+        if (pruned > 0 && _logger.IsDebug)
+            _logger.Debug($"Pruned {pruned} orphaned snapshot(s) below committed head {committedHead}.");
+        return pruned;
+    }
+
+    public bool IsOnCommittedAncestry(in StateId stateId)
+    {
+        StateId? committedHead = GetLastCommittedStateId();
+        if (committedHead is null) return true;
+
+        using PooledSet<StateId> retained = CollectRetainedAncestry(committedHead.Value);
+        return retained.Count == 0 || retained.Contains(stateId);
+    }
+
+    /// <summary>
+    /// Every state, in either tier, on the ancestry of <paramref name="committedHead"/> or of a recently committed
+    /// state. Empty when <paramref name="committedHead"/> has no in-memory snapshot, so a stale head prunes nothing.
+    /// </summary>
+    /// <remarks>
+    /// Every tier is followed: a compacted edge skips the bases it spans, and those bases are ancestors too. The
+    /// walk ends where <c>From</c> has no snapshot left, which is the state persisted to the database.
+    /// </remarks>
+    private PooledSet<StateId> CollectRetainedAncestry(in StateId committedHead)
+    {
+        PooledSet<StateId> retained = [];
+        if (!_snapshots.ContainsKey(committedHead) && !_compactedSnapshots.ContainsKey(committedHead)) return retained;
+
+        using PooledStack<StateId> pending = new();
+        retained.Add(committedHead);
+        pending.Push(committedHead);
+        using (_lastCommittedLock.EnterScope())
+        {
+            int recent = Math.Min(_recentlyCommittedCount, RecentlyCommittedRetention);
+            for (int i = 0; i < recent; i++)
+            {
+                if (retained.Add(_recentlyCommitted[i])) pending.Push(_recentlyCommitted[i]);
+            }
+        }
+
+        ReadOnlySpan<SnapshotTier> inMemoryTiers = [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
+        ReadOnlySpan<SnapshotTier> persistedTiers = [SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized];
+        while (pending.Count > 0)
+        {
+            StateId current = pending.Pop();
+            foreach (SnapshotTier tier in inMemoryTiers)
+            {
+                if (!TryLeaseInMemoryState(current, tier, out Snapshot? snapshot)) continue;
+                StateId from = snapshot.From;
+                snapshot.Dispose();
+                if (retained.Add(from)) pending.Push(from);
+            }
+            foreach (SnapshotTier tier in persistedTiers)
+            {
+                if (!TryLeasePersistedState(current, tier, out PersistedSnapshot? snapshot)) continue;
+                StateId from = snapshot.From;
+                snapshot.Dispose();
+                if (retained.Add(from)) pending.Push(from);
+            }
+        }
+
+        return retained;
     }
 
     /// <summary>True when the persisted tier holds a non-canonical state at

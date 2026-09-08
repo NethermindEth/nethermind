@@ -147,4 +147,25 @@ public interface ISnapshotRepository
     /// </remarks>
     /// <param name="canonicalStateId">The canonical state being persisted.</param>
     void RemoveSiblingAndDescendents(in StateId canonicalStateId);
+
+    /// <summary>
+    /// Removes snapshots in both tiers at or below <paramref name="committedHead"/>'s block that are neither on its
+    /// ancestry nor on the ancestry of a recently committed state, and returns how many were removed.
+    /// </summary>
+    /// <remarks>
+    /// Persistence reclaims snapshots only when the chain advances past the persisted state. A head that stays put
+    /// while sibling blocks keep arriving (an engine client replaying payloads against one parent) never advances
+    /// it, so without this every sibling's snapshot lives for the life of the process, in memory or converted on
+    /// disk. A later reorg to a removed state re-executes its block from the parent, which <see cref="HasState"/>
+    /// reporting false triggers.
+    /// </remarks>
+    /// <param name="committedHead">The last state the main processing scope committed.</param>
+    int RemoveOrphanedStates(in StateId committedHead);
+
+    /// <summary>
+    /// True when <paramref name="stateId"/> is on the ancestry of the last committed state or of a recently
+    /// committed one; also true while nothing has been committed or the committed state is not in memory,
+    /// so callers cannot mistake an unknown chain for an orphan.
+    /// </summary>
+    bool IsOnCommittedAncestry(in StateId stateId);
 }
