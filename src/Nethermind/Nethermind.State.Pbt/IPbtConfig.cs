@@ -29,7 +29,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
     bool ImportFromPreimageFlat { get; set; }
 
-    [ConfigItem(Description = "Number of parallel workers copying the source into the PBT flat columns during the preimage-flat import, each claiming account key ranges in turn. 0 uses the processor count. Only parallelizes that copy; the leaf derivation and the tree fold stay single-threaded.", DefaultValue = "0")]
+    [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer.", DefaultValue = "0")]
     int ImportStorageReadConcurrency { get; set; }
 
     [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat import before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "0")]

@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Steps;
@@ -64,7 +65,7 @@ public class ImportPbtFromPreimageFlat(
 
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
 
-    /// <summary>Logical entries per phase-two channel chunk.</summary>
+    /// <summary>Leaves per phase-two channel chunk and records per scan page.</summary>
     internal int EntryChunkSize { get; init; } = ChunkSize;
 
     /// <summary>Keys deleted per view and write batch when clearing an interrupted import.</summary>
@@ -110,7 +111,7 @@ public class ImportPbtFromPreimageFlat(
             await CopyFlatColumns(workerCount, cancellationToken);
 
             // State is addressed by the source block header's root; the fold records its tree root beside it.
-            await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), cancellationToken);
+            await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), workerCount, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -352,67 +353,162 @@ public class ImportPbtFromPreimageFlat(
         return (start, end);
     }
 
-    /// <summary>Derives ordered tree leaves from PBT flat columns and folds them.</summary>
-    private async Task DeriveAndFold(StateId targetState, CancellationToken cancellationToken)
+    /// <summary>Derives tree leaves in parallel and commits bounded fold windows.</summary>
+    private async Task DeriveAndFold(StateId targetState, int workerCount, CancellationToken cancellationToken)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(EntryChunkSize);
+        ArgumentOutOfRangeException.ThrowIfNegative(config.ImportWindowSize);
         Channel<ArrayPoolList<RebuildEntry>> entries = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(new BoundedChannelOptions(EntryChunkCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
-            SingleWriter = true,
+            SingleWriter = false,
         });
 
-        // Unblocks a producer waiting on a full channel if rebuilding fails.
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Task producer = Task.Run(() => ProduceEntries(entries.Writer, cts.Token), cts.Token);
-
+        ExceptionDispatchInfo? producerFailure = null;
+        Task producer = ProduceEntries();
+        ExceptionDispatchInfo? consumerFailure = null;
         try
         {
-            await rebuilder.Rebuild(entries.Reader, targetState, cancellationToken);
+            await rebuilder.Rebuild(entries.Reader, targetState, cts.Token, config.ImportWindowSize);
+        }
+        catch (Exception exception)
+        {
+            consumerFailure = ExceptionDispatchInfo.Capture(exception);
         }
         finally
         {
             await cts.CancelAsync();
-            try { await producer; }
-            catch { /* the failure already surfaced through the consumer above */ }
+            await producer;
             while (entries.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose();
         }
-    }
-    /// <summary>Streams staged logical entries to the rebuilder without rehashing account keys.</summary>
-    private async Task ProduceEntries(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, CancellationToken cancellationToken)
-    {
-        using EntrySink sink = new(entries, EntryChunkSize, cancellationToken);
-        try
+
+        producerFailure?.Throw();
+        consumerFailure?.Throw();
+
+        async Task ProduceEntries()
         {
-            using IPbtPersistence.IReader reader = pbtPersistence.CreateReader();
-            HashSet<ValueHash256> emittedCode = [];
-            foreach ((ValueHash256 addressHash, Account account) in reader.EnumerateAccounts())
+            int partitionCount = (int)Math.Min((long)workerCount * PartitionsPerWorker, PartitionPrefixSpace);
+            int nextPartition = -1;
+            Task[] workers = new Task[workerCount];
+            for (int worker = 0; worker < workers.Length; worker++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await sink.Add(RebuildEntry.FromAccount(addressHash, account));
-                if (account.HasCode && emittedCode.Add(account.CodeHash.ValueHash256))
+                workers[worker] = Task.Run(async () =>
                 {
-                    CodeInfo code = reader.GetCode(account.CodeHash.ValueHash256)
+                    try
+                    {
+                        using EntrySink sink = new(entries.Writer, EntryChunkSize, cts.Token);
+                        int partition;
+                        while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount * 3)
+                        {
+                            int zone = partition / partitionCount;
+                            (byte[] start, byte[] end) = ScanBounds(partition % partitionCount, partitionCount, zone);
+                            if (zone == 0) await EmitAccounts(start, end, sink, cts.Token);
+                            else await EmitStorage(start, end, sink, cts.Token);
+                        }
+                        await sink.Complete();
+                    }
+                    catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                    {
+                        // The caller or another pipeline task already stopped the import.
+                    }
+                    catch (Exception exception)
+                    {
+                        Interlocked.CompareExchange(ref producerFailure, ExceptionDispatchInfo.Capture(exception), null);
+                        await cts.CancelAsync();
+                    }
+                }, CancellationToken.None);
+            }
+            await Task.WhenAll(workers);
+            entries.Writer.TryComplete(producerFailure?.SourceException);
+        }
+    }
+
+    private static (byte[] Start, byte[] End) ScanBounds(int partition, int partitionCount, int zone)
+    {
+        int prefixOffset = zone == 0 ? 0 : 1;
+        byte[] start = new byte[prefixOffset + sizeof(ushort)];
+        if (zone != 0) start[0] = zone == 1 ? Eip8297KeyDerivation.AccountZone : Eip8297KeyDerivation.StorageZone;
+        BinaryPrimitives.WriteUInt16BigEndian(start.AsSpan(prefixOffset), (ushort)((long)partition * PartitionPrefixSpace / partitionCount));
+        if (partition == partitionCount - 1)
+            return (start, zone == 1 ? [Eip8297KeyDerivation.CodeZone] : PastEveryKey());
+
+        byte[] end = (byte[])start.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(end.AsSpan(prefixOffset), (ushort)((long)(partition + 1) * PartitionPrefixSpace / partitionCount));
+        return (start, end);
+    }
+
+    private async Task EmitAccounts(byte[] cursor, byte[] end, EntrySink sink, CancellationToken cancellationToken)
+    {
+        ISortedKeyValueStore accounts = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Accounts);
+        IDb codes = pbtDb.GetColumnDb(PbtColumns.Codes);
+        using ArrayPoolList<KeyValuePair<ValueHash256, Account>> buffered = new(EntryChunkSize);
+        while (true)
+        {
+            byte[]? resumeFrom = null;
+            using (ISortedView view = accounts.GetViewBetween(cursor, end))
+            {
+                while (buffered.Count < EntryChunkSize && view.MoveNext())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    RlpReader accountReader = new(view.CurrentValue);
+                    Account account = AccountDecoder.Instance.Decode(ref accountReader)
+                        ?? throw new InvalidDataException("Invalid staged PBT account.");
+                    buffered.Add(new(new ValueHash256(view.CurrentKey), account));
+                }
+                if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
+            }
+
+            for (int index = 0; index < buffered.Count; index++)
+            {
+                (ValueHash256 addressHash, Account account) = buffered[index];
+                cancellationToken.ThrowIfCancellationRequested();
+                CodeInfo? code = null;
+                if (account.HasCode)
+                {
+                    byte[] bytes = codes.Get(account.CodeHash.Bytes)
                         ?? throw new InvalidDataException($"Missing staged bytecode for account {addressHash}.");
-                    await sink.Add(RebuildEntry.FromCode(account.CodeHash.ValueHash256, code));
+                    code = new CodeInfo(bytes);
+                }
+                foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await sink.Add(new RebuildEntry((PbtStorageFullKey)key, value));
                 }
             }
-            foreach ((PbtStorageFullKey key, EvmWord value) in reader.EnumerateStorage())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await sink.Add(RebuildEntry.FromSlot(key, value));
-            }
-
-            await sink.Complete();
-            entries.TryComplete();
-        }
-        catch (Exception e)
-        {
-            entries.TryComplete(e);
+            buffered.Clear();
+            if (resumeFrom is null) return;
+            cursor = resumeFrom;
         }
     }
 
-    /// <summary>Buffers logical entries into pooled chunks and hands each full chunk to the rebuilder.</summary>
+    private async Task EmitStorage(byte[] cursor, byte[] end, EntrySink sink, CancellationToken cancellationToken)
+    {
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Storages);
+        using ArrayPoolList<RebuildEntry> buffered = new(EntryChunkSize);
+        while (true)
+        {
+            byte[]? resumeFrom = null;
+            using (ISortedView view = storage.GetViewBetween(cursor, end))
+            {
+                while (buffered.Count < EntryChunkSize && view.MoveNext())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (view.CurrentValue.Length != ValueHash256.MemorySize)
+                        throw new InvalidDataException("Invalid staged PBT storage value length.");
+                    buffered.Add(new(new PbtStorageFullKey(view.CurrentKey), new ValueHash256(view.CurrentValue)));
+                }
+                if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
+            }
+            for (int index = 0; index < buffered.Count; index++) await sink.Add(buffered[index]);
+            buffered.Clear();
+            if (resumeFrom is null) return;
+            cursor = resumeFrom;
+        }
+    }
+
+    /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
     private sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
     {
         private ArrayPoolList<RebuildEntry> _chunk = new(chunkSize);

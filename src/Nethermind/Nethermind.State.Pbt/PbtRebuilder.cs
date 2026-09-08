@@ -1,90 +1,122 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>Rebuilds and atomically persists a canonical EIP-8297 tree from logical flat-state entries.</summary>
+/// <summary>Rebuilds a canonical EIP-8297 tree in bounded staging windows, then publishes its state.</summary>
 public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logManager)
 {
+    private const int DefaultWindowSize = 2_000_000;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
+    /// <summary>Folds leaf records into staged tree groups and publishes the completed root.</summary>
+    /// <param name="source">Owned leaf chunks; account code-hash leaves must occur once per account.</param>
+    /// <param name="targetState">The source state identity to publish on success.</param>
+    /// <param name="cancellationToken">Cancels consumption and tree updates before publication.</param>
+    /// <param name="windowSize">Maximum received records per update; zero uses 2,000,000 records.</param>
+    /// <returns>The completed canonical tree root.</returns>
     public async Task<ValueHash256> Rebuild(
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int windowSize = 0)
     {
-        Dictionary<ValueHash256, Account?> accounts = [];
-        Dictionary<PbtStorageFullKey, EvmWord> storages = [];
-        Dictionary<ValueHash256, CodeInfo> codes = [];
+        ArgumentOutOfRangeException.ThrowIfNegative(windowSize);
+        if (windowSize == 0) windowSize = DefaultWindowSize;
+
+        using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
+        Dictionary<ValueHash256, ulong> codeReferences = [];
+        ValueHash256 root = default;
+        int windowCount = 0;
+        long receivedCount = 0;
+        long committedWindows = 0;
+        Stopwatch progress = Stopwatch.StartNew();
+
         await foreach (ArrayPoolList<RebuildEntry> chunk in source.ReadAllAsync(cancellationToken))
         {
             using (chunk)
             {
                 foreach (RebuildEntry entry in chunk.AsSpan())
                 {
-                    switch (entry.Kind)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (entry.Key.Length == Eip8297KeyDerivation.AccountKeyLength &&
+                        entry.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone &&
+                        entry.Key.Bytes[^1] == PbtKeyDerivation.CodeHashLeafKey &&
+                        entry.Leaf != Keccak.OfAnEmptyString.ValueHash256)
                     {
-                        case RebuildEntry.EntryKind.Account: accounts[entry.Hash] = entry.Account; break;
-                        case RebuildEntry.EntryKind.Storage: storages[entry.Key] = entry.Slot; break;
-                        case RebuildEntry.EntryKind.Code: codes[entry.Hash] = entry.Code!; break;
+                        codeReferences.TryGetValue(entry.Leaf, out ulong count);
+                        codeReferences[entry.Leaf] = checked(count + 1);
                     }
+                    changes.Set(entry.Key, entry.Leaf);
+                    receivedCount++;
+                    if (++windowCount == windowSize) CommitWindow();
                 }
             }
         }
 
-        SortedDictionary<PbtStorageFullKey, ValueHash256> leaves = [];
-        Dictionary<ValueHash256, ulong> codeReferences = [];
-        foreach ((ValueHash256 addressHash, Account? account) in accounts)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (account is null) continue;
-            CodeInfo? code = null;
-            if (account.HasCode)
-            {
-                ValueHash256 codeHash = account.CodeHash.ValueHash256;
-                if (!codes.TryGetValue(codeHash, out code))
-                    throw new InvalidDataException($"Missing bytecode for account {addressHash} (code hash {codeHash}).");
-                codeReferences.TryGetValue(codeHash, out ulong count);
-                codeReferences[codeHash] = checked(count + 1);
-            }
-            foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code, !account.HasCode || codeReferences[account.CodeHash.ValueHash256] == 1))
-                if (value != default) leaves[(PbtStorageFullKey)key] = value;
-        }
-        foreach ((PbtStorageFullKey key, EvmWord slot) in storages)
-        {
-            ValueHash256 value = new(EvmWordSlot.AsReadOnlySpan(slot));
-            if (value != default) leaves[key] = value;
-        }
-
-        using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
-        foreach ((PbtStorageFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
-        using PbtNodeGroupStore nodeStore = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes.Build());
-
+        if (windowCount != 0) CommitWindow();
+        cancellationToken.ThrowIfCancellationRequested();
+        target.Flush();
+        cancellationToken.ThrowIfCancellationRequested();
         using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
-        foreach ((ValueHash256 hash, Account? account) in accounts) batch.SetAccount(hash, account);
-        foreach ((PbtStorageFullKey key, EvmWord slot) in storages) batch.SetSlot(key, slot);
-        foreach ((ValueHash256 hash, CodeInfo code) in codes) batch.SetCode(hash, code);
-        foreach (IPbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
+        batch.Commit();
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");
+        return root;
+
+        void CommitWindow()
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);
+            using (IPbtPersistence.IReader reader = target.CreateReader())
+            using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL))
+            using (PbtWriteBatch<PbtStorageFullKey> prepared = changes.Build())
+            {
+                root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared);
+                foreach ((ValueHash256 codeHash, ulong count) in codeReferences)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    stagingBatch.SetCodeReference(codeHash, checked(reader.GetCodeReference(codeHash) + count));
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                stagingBatch.Commit();
+            }
+            changes.Reset();
+            codeReferences.Clear();
+            windowCount = 0;
+            committedWindows++;
+            if (progress.Elapsed >= TimeSpan.FromSeconds(10))
+            {
+                if (_logger.IsInfo) _logger.Info($"PBT rebuild: {receivedCount} received leaves folded in {committedWindows} windows");
+                progress.Restart();
+            }
+        }
+    }
+
+    private sealed class WindowStore(
+        IPbtPersistence.IReader reader,
+        IPbtPersistence.IWriteBatch batch,
+        CancellationToken cancellationToken) : IPbtStore
+    {
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return reader.GetNodeGroup(groupKey);
+        }
+
+        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             batch.SetNodeGroup(groupKey, payload);
         }
-        foreach ((ValueHash256 codeHash, ulong count) in codeReferences) batch.SetCodeReference(codeHash, count);
-        batch.Commit();
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {leaves.Count} leaves, tree root {root}");
-        return root;
     }
 }
