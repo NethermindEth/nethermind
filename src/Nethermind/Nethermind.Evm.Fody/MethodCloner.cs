@@ -27,7 +27,8 @@ internal sealed class MethodCloner(MethodDefinition source)
         _target.ReturnType = MapType(source.ReturnType);
         foreach (ParameterDefinition parameter in source.Parameters)
             _target.Parameters.Add(new ParameterDefinition(parameter.Name, parameter.Attributes, MapType(parameter.ParameterType)));
-        foreach (CustomAttribute attribute in source.CustomAttributes) _target.CustomAttributes.Add(attribute);
+        foreach (CustomAttribute attribute in source.CustomAttributes)
+            _target.CustomAttributes.Add(new CustomAttribute(attribute.Constructor, attribute.GetBlob()));
 
         MethodBody body = _target.Body;
         body.InitLocals = source.Body.InitLocals;

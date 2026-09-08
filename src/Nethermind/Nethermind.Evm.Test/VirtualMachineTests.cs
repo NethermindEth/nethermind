@@ -119,6 +119,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(handler.GetMethodBody()!.GetILAsByteArray()!.Length, Is.EqualTo(template.GetMethodBody()!.GetILAsByteArray()!.Length),
                 "the named entry point must contain the dispatch body rather than a forwarding wrapper");
             Assert.That(handler.GetMethodImplementationFlags(), Is.EqualTo(template.GetMethodImplementationFlags()));
+            Assert.That(handler.GetCustomAttributesData().Select(a => a.AttributeType), Is.EquivalentTo(template.GetCustomAttributesData().Select(a => a.AttributeType)));
         }
     }
 
