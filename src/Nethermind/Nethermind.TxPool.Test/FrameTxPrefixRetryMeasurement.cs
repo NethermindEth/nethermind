@@ -65,6 +65,14 @@ public class FrameTxPrefixRetryMeasurement
         _stateProvider.CreateAccount(TestItem.AddressA, UInt256.MaxValue);
     }
 
+    // Each case times its own pool, so the previous one's head, revalidation and retry work has to stop
+    // before the next one starts.
+    [TearDown]
+    public async Task TearDown()
+    {
+        if (_txPool is not null) await _txPool.DisposeAsync();
+    }
+
     /// <summary>Positive control: without it the retention case below cannot tell "the pool keeps it" from
     /// "the harness never advanced the head".</summary>
     [Test]

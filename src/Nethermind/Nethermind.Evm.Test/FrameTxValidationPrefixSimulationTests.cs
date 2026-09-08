@@ -554,8 +554,9 @@ public class FrameTxValidationPrefixSimulationTests
             : Is.Null);
     }
 
-    // Nothing journals the code cache, so a deposit outlives the rollback that discards the prefix. Over the
-    // process-wide instance that lets a peer fill the cache block processing reads from, for code never deployed.
+    // Nothing journals the code cache, so a deposit outlives the rollback that discards the prefix. That the
+    // node's own wiring keeps this off the main processing cache is covered by
+    // FrameTxPrefixSimulatorCodeCacheTests, which can resolve the production simulator.
     [TestCase(false, TestName = "an accepted prefix deposits into the cache")]
     [TestCase(true, TestName = "a prefix rejected after the create deposits too")]
     public void Simulate_DeployFrameDeposit_EscapesTheRollbackIntoTheCodeCache(bool violates)
@@ -572,7 +573,6 @@ public class FrameTxValidationPrefixSimulationTests
         ValueHash256 depositedHash = Keccak.Compute(deployedCode).ValueHash256;
 
         StaticCodeCache given = new(MemoryAllowance.CodeCacheSize);
-        StaticCodeCache other = new(MemoryAllowance.CodeCacheSize);
 
         FrameTxValidationTracer tracer = RunUnder(given, DeployTx(deployed));
 
@@ -583,11 +583,7 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(tracer.ViolationReason, violates
                 ? Does.Contain("banned opcode SELFBALANCE")
                 : Is.Null);
-            // Contained rather than suppressed: the prefix keeps its read memoization, and the deposit is
-            // confined to the env's own instance — which is what wiring the simulator away from the
-            // process-wide one buys, since nothing journals either.
             Assert.That(given.Get(in depositedHash), Is.Not.Null, "a deposit lands in the cache the env was given");
-            Assert.That(other.Get(in depositedHash), Is.Null, "and in no other, which is what the isolation rests on");
         }
     }
 

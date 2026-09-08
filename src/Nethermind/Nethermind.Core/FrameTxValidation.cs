@@ -290,9 +290,15 @@ public static class FrameTxValidation
     /// an ARBITRARY entry contributes only its cheap structural-check cost, its witness being verified by frame code.
     /// </summary>
     public static ulong SignatureVerificationWorkGas(Transaction transaction)
+        => SignatureVerificationWorkGas(transaction.FrameSignatures);
+
+    /// <inheritdoc cref="SignatureVerificationWorkGas(Transaction)"/>
+    /// <remarks>Takes the entries directly, for a caller that holds them before a transaction exists —
+    /// the shape <see cref="TotalGasLimit"/> already has for frames.</remarks>
+    public static ulong SignatureVerificationWorkGas(TxFrameSignature[]? signatures)
     {
         ulong total = 0;
-        foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
+        foreach (TxFrameSignature signature in signatures ?? [])
         {
             total = Saturating(total, SignatureVerificationGas(signature.Scheme));
         }

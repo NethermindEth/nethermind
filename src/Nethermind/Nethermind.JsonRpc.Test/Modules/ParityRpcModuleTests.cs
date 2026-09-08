@@ -32,6 +32,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Text.Json;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -257,8 +258,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             return peer;
         }
 
-        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null) => new ParityRpcModule(_ethereumEcdsa,
-                _txPool,
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null, ITxPool? txPool = null) => new ParityRpcModule(_ethereumEcdsa,
+                txPool ?? _txPool,
                 _blockTree,
                 _receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
@@ -292,6 +293,42 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_pendingTransactions", "0x0000000000000000000000000000000000000005");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        /// <remarks>
+        /// An EIP-8141 frame transaction is accepted with no envelope signature, and every pending transaction
+        /// is mapped through the same constructor, so one of them in the pool used to throw the whole request.
+        /// </remarks>
+        [Test]
+        public async Task parity_pendingTransactions_maps_a_pool_holding_a_frame_transaction()
+        {
+            Transaction ordinary = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+                .WithSenderAddress(TestItem.AddressD).TestObject;
+            ordinary.Signature!.V = 37;
+
+            Transaction frameTx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify());
+            frameTx.ChainId = MainnetSpecProvider.Instance.ChainId;
+            frameTx.To = null;
+
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.GetPendingTransactions().Returns([ordinary, frameTx]);
+
+            string serialized = await RpcTest.TestSerializedRequest(CreateParityRpcModule(txPool: txPool), "parity_pendingTransactions");
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            JsonElement frame = document.RootElement.GetProperty("result")[1];
+            Assert.Multiple(() =>
+            {
+                // The explicit chain id of the signed payload, which is the only place it survives.
+                Assert.That(frame.GetProperty("chainId").GetString(), Is.EqualTo("0x1"));
+                // Absent rather than a fabricated zero-value signature.
+                Assert.That(frame.GetProperty("r").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(frame.GetProperty("s").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(frame.GetProperty("v").GetString(), Is.EqualTo("0x0"));
+                Assert.That(frame.GetProperty("standardV").GetString(), Is.EqualTo("0x0"));
+                Assert.That(frame.TryGetProperty("publicKey", out _), Is.False, "no envelope key to recover");
+                Assert.That(frame.GetProperty("creates").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            });
         }
 
         [Test]
