@@ -295,7 +295,8 @@ public class PersistenceManager(
     /// </summary>
     private void PruneOrphansAboveBudget()
     {
-        if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return;
+        int snapshotCount = snapshotRepository.SnapshotCount;
+        if (snapshotCount <= _maxInMemoryBaseSnapshotCount) return;
 
         StateId? committedHead = snapshotRepository.GetLastCommittedStateId();
         if (committedHead is null) return;
@@ -304,15 +305,21 @@ public class PersistenceManager(
         using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
         // With a zero budget, every earlier sibling may already be on disk.
         bool hasCompetingStates = _maxInMemoryBaseSnapshotCount == 0;
+        // The index is sorted by height and deduplicated by StateId, so adjacent equal heights imply distinct roots.
         for (int i = 1; i < ordered.Count && !hasCompetingStates; i++)
             hasCompetingStates = ordered[i - 1].BlockNumber == ordered[i].BlockNumber;
-        if (!hasCompetingStates) return;
+        if (!hasCompetingStates)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"Skipped orphan pruning: {snapshotCount} in-memory base snapshots exceed budget {_maxInMemoryBaseSnapshotCount}, but indexed states have no competing roots at the same height.");
+            return;
+        }
 
         StateId persisted = GetCurrentPersistedStateId();
         ulong minBlockNumber = persisted == StateId.PreGenesis ? 0 : persisted.BlockNumber + 1;
         int pruned = snapshotRepository.RemoveOrphanedStates(committedHead.Value, ForkChoiceHead(committedHead.Value), minBlockNumber);
         if (pruned > 0 && _logger.IsDebug)
-            _logger.Debug($"Pruned {pruned} orphaned snapshot(s) below committed head {committedHead.Value}; {snapshotRepository.SnapshotCount} base snapshot(s) remain.");
+            _logger.Debug($"Pruned {pruned} orphaned snapshot entries across in-memory and persisted tiers with committed head {committedHead.Value}; {snapshotRepository.SnapshotCount} in-memory base snapshots remain.");
     }
 
     /// <summary>The state the chain follows, which the last executed payload need not be; falls back to the committed head.</summary>

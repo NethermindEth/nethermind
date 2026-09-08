@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Init;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -61,6 +62,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly bool _recoverPrunedState;
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
@@ -85,7 +87,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager)
+        ILogManager logManager,
+        FlatStateActivationPolicy? flatStateActivationPolicy = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -98,6 +101,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _recoverPrunedState = flatStateActivationPolicy?.ShouldTurnOnFlatDb() is true;
         _specProvider = specProvider;
         _txValidator = txValidator;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
@@ -443,7 +447,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // A processed parent whose state was since pruned (flat state bounding drops orphaned siblings under a head
         // that never advances) is recovered the same way, re-executing the branch from the nearest ancestor that
         // still has state. Without such an ancestor the node is behind, and syncing stays the answer.
-        bool parentStateEvicted = !parentProcessed
+        bool parentStateEvicted = _recoverPrunedState && !parentProcessed
                                   && parentBlockInfo is { WasProcessed: true }
                                   && weHaveOnlyFewBlocksToProcess
                                   && PrunedStateRecovery.HasAncestorWithState(_blockTree, _stateReader, parent);

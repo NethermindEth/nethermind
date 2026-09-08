@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat;
 using Nethermind.TxPool;
@@ -129,13 +130,24 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
 
         if (forkLength > 8)
         {
+            Hash256? previousFinalized = chain.BlockTree.FinalizedHash;
+            Hash256? previousSafe = chain.BlockTree.SafeHash;
+            int forkchoiceEvents = 0;
+            chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkchoiceEvents++;
+            finalized = forkHeader.ParentHash!;
             ResultWrapper<ForkchoiceUpdatedV1Result> partial = await rpc.engine_forkchoiceUpdatedV4(new(forkHeader.Hash!, finalized, finalized));
             BlockHeader parent = chain.BlockTree.FindHeader(forkHeader.ParentHash!, BlockTreeLookupOptions.None)!;
+            IBlockCacheService cache = chain.Container.Resolve<IBlockCacheService>();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(partial.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
                 Assert.That(snapshots.HasState(new StateId(parent)), Is.True, "the first replay segment restored eight blocks");
                 Assert.That(snapshots.HasState(new StateId(forkHeader)), Is.False, "the last block remains for the next request");
+                Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(previousFinalized));
+                Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(previousSafe));
+                Assert.That(forkchoiceEvents, Is.Zero);
+                Assert.That(cache.HeadBlockHash, Is.EqualTo(forkHeader.Hash));
+                Assert.That(cache.FinalizedHash, Is.EqualTo(finalized));
             }
         }
 
@@ -144,6 +156,8 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(forkHeader.Hash), "the fork block is the head");
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(finalized));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(finalized));
             Assert.That(snapshots.HasState(new StateId(forkHeader)), Is.True, "the head serves state again");
             chain.StateReader.TryGetAccount(forkHeader, TestItem.AddressB, out AccountStruct funder);
             Assert.That(funder.Nonce, Is.GreaterThan(0UL), "state at the head is readable");

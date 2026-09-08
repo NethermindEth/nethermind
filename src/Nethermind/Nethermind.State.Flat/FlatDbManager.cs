@@ -131,26 +131,33 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
+        bool canCompact;
         using (_retention.Sync.EnterScope())
         {
-            if (!_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot)) return;
-            using (snapshot)
+            canCompact = _snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot);
+            if (canCompact)
             {
-                _snapshotRepository.AddStateId(stateId);
-                _retention.Register(stateId);
+                using (snapshot)
+                {
+                    _snapshotRepository.AddStateId(stateId);
+                    _retention.Register(stateId);
+                }
             }
         }
 
-        try
+        if (canCompact)
         {
-            if (_snapshotCompactor.DoCompactSnapshot(stateId))
+            try
             {
-                ClearReadOnlyBundleCache();
+                if (_snapshotCompactor.DoCompactSnapshot(stateId))
+                {
+                    ClearReadOnlyBundleCache();
+                }
             }
-        }
-        finally
-        {
-            _retention.Release(stateId);
+            finally
+            {
+                _retention.Release(stateId);
+            }
         }
 
         // Trigger persistence job.
@@ -276,9 +283,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _retention.Register(baseBlock);
         try
         {
-            ReadOnlySnapshotBundle result = AssembleReadOnlySnapshotBundle(baseBlock);
-            result.Retain(_retention, baseBlock);
-            return result;
+            return AssembleReadOnlySnapshotBundle(baseBlock);
         }
         catch
         {
@@ -341,7 +346,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             ReportBundleMetrics(assembled);
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics), _retention, baseBlock);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

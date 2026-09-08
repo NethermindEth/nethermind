@@ -158,7 +158,11 @@ public interface ISnapshotRepository
     /// it, so without this every sibling's snapshot lives for the life of the process, in memory or converted on
     /// disk. New-payload and fork-choice handlers can re-execute removed branches from available state.
     /// Active state views and their ancestry are retained. Persisted history below the in-memory and recent-commit
-    /// window is never removed. Persisted deletion candidates are enumerated only after in-memory removal or a persisted fork is found.
+    /// window is never removed. Within that window, skipped persisted heights remain available unless every
+    /// parent is already orphaned; compacted edges can otherwise hide canonical history even when another
+    /// protected branch identifies a root at that height. Persisted deletion candidates are enumerated only
+    /// after in-memory candidates or a persisted fork are found. Snapshot cleanup
+    /// runs after releasing the reader/commit retention gate.
     /// </remarks>
     /// <param name="committedHead">The last state the main processing scope committed.</param>
     /// <param name="forkChoiceHead">The state the chain currently follows; equal to <paramref name="committedHead"/> when unknown.</param>

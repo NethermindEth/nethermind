@@ -202,14 +202,14 @@ public class FlatDbManagerTests
     }
 
     [Test]
-    public async Task AddSnapshot_RemovedBeforeQueuedCompaction_DoesNotReindexOrCompact()
+    public async Task AddSnapshot_RemovedBeforeQueuedCompaction_StillTriggersPersistenceWithoutReindexing()
     {
         (FlatDbManager manager, StateId snapshotTo) = CreateManagerWithQueuedSnapshot(snapshotAvailable: false);
         await manager.DisposeAsync();
 
         _snapshotRepository.DidNotReceive().AddStateId(snapshotTo);
         _snapshotCompactor.DidNotReceive().DoCompactSnapshot(snapshotTo);
-        await _persistenceManager.DidNotReceive().AddToPersistence(snapshotTo);
+        await _persistenceManager.Received(1).AddToPersistence(snapshotTo);
     }
 
     [Test]

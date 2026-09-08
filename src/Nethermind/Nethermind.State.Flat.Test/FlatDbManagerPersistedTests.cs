@@ -132,6 +132,8 @@ public class FlatDbManagerPersistedTests
     public async Task RemoveOrphanedStates_ActiveCompactedBundle_PreservesUnleasedBaseAncestry()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId canonicalFirst = new(1, Keccak.Compute("canonical1"));
+        StateId canonicalSecond = new(2, Keccak.Compute("canonical2"));
         StateId canonical = new(3, Keccak.Compute("canonical"));
         StateId first = new(1, Keccak.Compute("orphan1"));
         StateId second = new(2, Keccak.Compute("orphan2"));
@@ -140,7 +142,9 @@ public class FlatDbManagerPersistedTests
         using FlatTestContainer tier = CreateRetentionContainer(s0);
         await using FlatDbManager manager = (FlatDbManager)tier.Resolve<IFlatDbManager>();
         SnapshotRepository repository = tier.Repository;
-        AddEmptySnapshot(tier, s0, canonical);
+        AddEmptySnapshot(tier, s0, canonicalFirst);
+        AddEmptySnapshot(tier, canonicalFirst, canonicalSecond);
+        AddEmptySnapshot(tier, canonicalSecond, canonical);
         AddEmptySnapshot(tier, s0, first);
         AddEmptySnapshot(tier, first, second);
         AddEmptySnapshot(tier, second, head);

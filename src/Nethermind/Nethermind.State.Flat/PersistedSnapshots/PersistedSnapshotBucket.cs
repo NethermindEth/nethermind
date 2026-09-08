@@ -120,10 +120,10 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
 
     /// <summary>Remove the entry at <paramref name="to"/> (catalog + index + leases) under this
     /// bucket's lock. Returns <c>true</c> when an entry was present.</summary>
-    public bool RemoveExact(in StateId to)
+    public bool RemoveExact(in StateId to, ArrayPoolList<IDisposable>? deferred = null)
     {
         using Lock.Scope scope = _lock.EnterScope();
-        return RemoveLocked(to);
+        return RemoveLocked(to, deferred);
     }
 
     /// <summary>
@@ -184,10 +184,11 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     /// Remove <paramref name="to"/> from the index + catalog, dispose its leases, and roll back
     /// the bucket and global totals (bumping the prune metric). This bucket's lock must be held.
     /// </summary>
-    private bool RemoveLocked(in StateId to)
+    private bool RemoveLocked(in StateId to, ArrayPoolList<IDisposable>? deferred = null)
     {
         _ordered.Remove(to);
         if (!_byTo.TryRemove(to, out PersistedSnapshot? snapshot)) return false;
+        deferred?.Add(snapshot);
         // Capture depth before Dispose — From/To stay valid on the still-alive object, but the
         // underlying reservation/file leases are released by Dispose. The catalog key scopes the
         // removal to this bucket's entry (the other buckets' entries at the same To carry a
@@ -199,9 +200,10 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
         Metrics.PersistedSnapshotMemory.AddBy(label, -snapshot.Size);
         Metrics.PersistedSnapshotCount.AddBy(label, -1);
         Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
+        // Catalog removal stays with detachment so it cannot erase a subsequently re-registered key.
         catalog.Remove(to, depth);
         if (logger.IsDebug) logger.Debug($"Released persisted snapshot {_tierName} {snapshot.From.BlockNumber}->{to.BlockNumber}");
-        snapshot.Dispose();
+        if (deferred is null) snapshot.Dispose();
         return true;
     }
 }

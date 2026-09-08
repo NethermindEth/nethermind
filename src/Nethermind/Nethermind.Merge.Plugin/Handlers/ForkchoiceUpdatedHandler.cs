@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Init;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -49,19 +50,26 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    IReceiptConfig receiptConfig,
-    IStateReader stateReader,
-    ILogManager logManager) : IForkchoiceUpdatedHandler
+    ILogManager logManager,
+    IReceiptConfig? receiptConfig = null,
+    IStateReader? stateReader = null,
+    FlatStateActivationPolicy? flatStateActivationPolicy = null,
+    ITimestamper? timestamper = null) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    private readonly bool _recoverPrunedState = flatStateActivationPolicy?.ShouldTurnOnFlatDb() is true && stateReader is not null;
+    private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
     // Re-executing a pruned head walks the branch down to the nearest state, so the parent-on-main-chain shortcut is off.
     private readonly ProcessingOptions _reExecutionOptions =
-        (receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge)
+        (receiptConfig?.StoreReceipts is true ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge)
         & ~ProcessingOptions.IgnoreParentNotOnMainChain;
     private readonly TimeSpan _reExecutionTimeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+    private RecoveryFailure? _lastRecoveryFailure;
+
+    private sealed record RecoveryFailure(Hash256 Target, Hash256? Head, DateTime Timestamp);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -274,12 +282,13 @@ public class ForkchoiceUpdatedHandler(
         }
 
         // Canonical historical FCUs remain valid without state; orphan eviction only removes side branches.
-        if (!_blockTree.IsMainChain(newHeadHeader) && !stateReader.HasStateForBlock(newHeadHeader))
+        if (_recoverPrunedState && !_blockTree.IsMainChain(newHeadHeader) && !stateReader!.HasStateForBlock(newHeadHeader))
         {
             bool? restored = await TryRestoreState(newHeadHeader);
             if (restored is not true)
             {
-                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
+                blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
                 if (restored is false)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Syncing, state of the processed head {newHeadHeader.ToString(BlockHeader.Format.Short)} is gone and could not be rebuilt. Request: {requestStr}.");
@@ -317,8 +326,20 @@ public class ForkchoiceUpdatedHandler(
     /// so retries make progress without monopolizing the processing queue with the entire fork.</remarks>
     private async Task<bool?> TryRestoreState(BlockHeader newHeadHeader)
     {
-        BlockHeader? recoveryHead = PrunedStateRecovery.FindRecoveryHead(_blockTree, stateReader, newHeadHeader);
-        if (recoveryHead is null) return false;
+        RecoveryFailure? lastFailure = Volatile.Read(ref _lastRecoveryFailure);
+        if (lastFailure is not null && lastFailure.Target == newHeadHeader.Hash && lastFailure.Head == _blockTree.HeadHash)
+        {
+            TimeSpan elapsed = _timestamper.UtcNow - lastFailure.Timestamp;
+            if (elapsed >= TimeSpan.Zero && elapsed < TimeSpan.FromSeconds(1)) return false;
+        }
+
+        BlockHeader? recoveryHead = PrunedStateRecovery.FindRecoveryHead(_blockTree, stateReader!, newHeadHeader);
+        if (recoveryHead is null)
+        {
+            // State can arrive without a head change, so a failed search is cached only briefly.
+            Volatile.Write(ref _lastRecoveryFailure, new(newHeadHeader.Hash!, _blockTree.HeadHash, _timestamper.UtcNow));
+            return false;
+        }
 
         Block? block = _blockTree.FindBlock(recoveryHead.Hash!, BlockTreeLookupOptions.None);
         if (block is null) return false;
@@ -337,7 +358,7 @@ public class ForkchoiceUpdatedHandler(
             await processingQueue.Enqueue(block, _reExecutionOptions);
             using CancellationTokenSource timeout = new(_reExecutionTimeout);
             if (await processed.Task.WaitAsync(timeout.Token) != ProcessingResult.Success) return false;
-            return stateReader.HasStateForBlock(newHeadHeader) ? true : null;
+            return stateReader!.HasStateForBlock(newHeadHeader) ? true : null;
         }
         catch (OperationCanceledException)
         {

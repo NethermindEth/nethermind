@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -610,7 +615,7 @@ public class SnapshotRepositoryTests
         }
     }
     [Test]
-    public void RemoveOrphanedStates_PreservesHistoryBelowTheInMemoryWindow()
+    public void RemoveOrphanedStates_PreservesHistorySkippedByCompaction([Values] bool insideWindow)
     {
         using Snapshot oldBase = CreateSnapshot(CreateStateId(0), CreateStateId(1), withData: true);
         using Snapshot compacted = CreateSnapshot(CreateStateId(0), CreateStateId(2), withData: true);
@@ -618,6 +623,7 @@ public class SnapshotRepositoryTests
         _tier.ConvertToPersistedBase(compacted).Dispose();
         AddSnapshotToRepository(CreateStateId(2), CreateStateId(3));
         AddSnapshotToRepository(CreateStateId(2), CreateStateId(3, rootByte: 1));
+        if (insideWindow) AddSnapshotToRepository(CreateStateId(0), CreateStateId(1, rootByte: 1));
         _repository.SetLastCommittedStateId(CreateStateId(3));
 
         int pruned = _repository.RemoveOrphanedStates(CreateStateId(3), CreateStateId(3));
@@ -626,8 +632,152 @@ public class SnapshotRepositoryTests
         {
             Assert.That(pruned, Is.EqualTo(1));
             Assert.That(_repository.HasState(CreateStateId(3, rootByte: 1)), Is.False);
-            Assert.That(_repository.HasState(CreateStateId(1)), Is.True, "older reorg history need not be on the compacted ancestry walk");
+            Assert.That(_repository.HasState(CreateStateId(1)), Is.True, "compacted ancestry cannot classify skipped history as orphaned");
             Assert.That(_repository.HasState(CreateStateId(2)), Is.True);
+            if (insideWindow) Assert.That(_repository.HasState(CreateStateId(1, rootByte: 1)), Is.True);
+        }
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_AnotherProtectedBranchDoesNotClassifySkippedCanonicalHistory()
+    {
+        StateId start = CreateStateId(0);
+        StateId canonicalInterior = CreateStateId(5);
+        StateId compactedTip = CreateStateId(10);
+        StateId otherBranch = CreateStateId(5, 1);
+        StateId head = CreateStateId(11);
+        using Snapshot interior = CreateSnapshot(start, canonicalInterior, withData: true);
+        using Snapshot compacted = CreateSnapshot(start, compactedTip, withData: true);
+        using Snapshot competing = CreateSnapshot(start, otherBranch, withData: true);
+        _tier.ConvertToPersistedBase(interior).Dispose();
+        _tier.ConvertToPersistedBase(compacted).Dispose();
+        _tier.ConvertToPersistedBase(competing).Dispose();
+        AddSnapshotToRepository(compactedTip, head);
+        AddSnapshotToRepository(compactedTip, CreateStateId(11, 1));
+        _repository.SetLastCommittedStateId(otherBranch);
+        _repository.SetLastCommittedStateId(head);
+
+        int pruned = _repository.RemoveOrphanedStates(head, head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(1));
+            Assert.That(_repository.HasState(canonicalInterior), Is.True);
+            Assert.That(_repository.HasState(otherBranch), Is.True);
+            Assert.That(_repository.HasState(CreateStateId(11, 1)), Is.False);
+        }
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_RemovesDescendantsWithoutAnAlternativeParent([Values] bool alternativeParent, [Values] bool childInMemory)
+    {
+        StateId start = CreateStateId(4);
+        StateId parent = CreateStateId(5);
+        StateId head = CreateStateId(8);
+        StateId orphanParent = CreateStateId(5, 1);
+        StateId orphanChild = CreateStateId(6, 1);
+        StateId orphanGrandchild = CreateStateId(7, 1);
+        using Snapshot canonicalParent = CreateSnapshot(start, parent, withData: true);
+        using Snapshot canonicalInterior = CreateSnapshot(parent, CreateStateId(6), withData: true);
+        using Snapshot competingParent = CreateSnapshot(start, orphanParent, withData: true);
+        using Snapshot competingChild = CreateSnapshot(orphanParent, orphanChild, withData: true);
+        using Snapshot competingGrandchild = CreateSnapshot(orphanChild, orphanGrandchild, withData: true);
+        _tier.ConvertToPersistedBase(canonicalParent).Dispose();
+        _tier.ConvertToPersistedBase(canonicalInterior).Dispose();
+        _tier.ConvertToPersistedBase(competingParent).Dispose();
+        using PersistedSnapshot child = _tier.ConvertToPersistedBase(competingChild);
+        _tier.ConvertToPersistedBase(competingGrandchild).Dispose();
+        if (childInMemory)
+        {
+            _repository.RemovePersistedStateExact(orphanChild);
+            AddSnapshotToRepository(orphanParent, orphanChild);
+        }
+        if (alternativeParent)
+        {
+            using PersistedSnapshot alternative = new(parent, orphanChild, child.Reservation, _tier.Blobs,
+                SnapshotTier.PersistedSmallCompacted, RefCountedBloomFilter.AlwaysTrue());
+            _repository.AddPersistedSnapshot(alternative, SnapshotTier.PersistedSmallCompacted);
+        }
+        AddSnapshotToRepository(parent, head);
+        AddSnapshotToRepository(start, CreateStateId(5, 2));
+        _repository.SetLastCommittedStateId(head);
+
+        int pruned = _repository.RemoveOrphanedStates(head, head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(alternativeParent ? 2 : 4));
+            Assert.That(_repository.HasState(orphanParent), Is.False);
+            Assert.That(_repository.HasState(orphanChild), Is.EqualTo(alternativeParent));
+            Assert.That(_repository.HasState(orphanGrandchild), Is.EqualTo(alternativeParent));
+            Assert.That(_repository.HasState(CreateStateId(6)), Is.True);
+        }
+        if (alternativeParent)
+        {
+            using AssembledSnapshotResult assembled = _repository.AssembleSnapshots(orphanChild, start, 2);
+            Assert.That(assembled.SnapshotCount, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task RemoveOrphanedStates_CleanupDoesNotBlockRegistrationOrCommit([Values] bool cleanupThrows)
+    {
+        StateId head = CreateStateId(1);
+        StateId orphan = CreateStateId(1, 1);
+        StateId anotherOrphan = CreateStateId(1, 2);
+        AddSnapshotToRepository(CreateStateId(0), head);
+        _repository.SetLastCommittedStateId(head);
+        TaskCompletionSource cleanupStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool otherCleaned = false;
+        Snapshot blocked = new CleanupSnapshot(CreateStateId(0), orphan, _resourcePool, () =>
+        {
+            cleanupStarted.TrySetResult();
+            releaseCleanup.Task.GetAwaiter().GetResult();
+            if (cleanupThrows) throw new InvalidOperationException("Cleanup failed");
+        });
+        Snapshot other = new CleanupSnapshot(CreateStateId(0), anotherOrphan, _resourcePool, () => otherCleaned = true);
+        Assert.That(_repository.TryAdd(blocked, SnapshotTier.InMemoryBase), Is.True);
+        _repository.AddStateId(orphan);
+        Assert.That(_repository.TryAdd(other, SnapshotTier.InMemoryBase), Is.True);
+        _repository.AddStateId(anotherOrphan);
+
+        Task<int> pruning = Task.Run(() => _repository.RemoveOrphanedStates(head, head));
+        try
+        {
+            await cleanupStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Task publish = Task.Run(() =>
+            {
+                SnapshotRetention retention = _tier.Resolve<SnapshotRetention>();
+                using Lock.Scope scope = retention.Sync.EnterScope();
+                retention.Register(head);
+                try
+                {
+                    Assert.That(_repository.HasState(orphan), Is.False);
+                    _repository.SetLastCommittedStateId(head);
+                }
+                finally { retention.Release(head); }
+            });
+            await publish.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            releaseCleanup.TrySetResult();
+            if (cleanupThrows)
+                await Assert.ThatAsync(async () => await pruning, Throws.TypeOf<AggregateException>());
+            else
+                Assert.That(await pruning, Is.EqualTo(2));
+        }
+        Assert.That(otherCleaned, Is.True, "all detached leases must be released even when one cleanup throws");
+    }
+
+    private sealed class CleanupSnapshot(StateId from, StateId to, IResourcePool pool, Action cleanup)
+        : Snapshot(from, to, new SnapshotContent(), pool, ResourcePool.Usage.ReadOnlyProcessingEnv)
+    {
+        protected override void CleanUp()
+        {
+            try { cleanup(); }
+            finally { base.CleanUp(); }
         }
     }
 

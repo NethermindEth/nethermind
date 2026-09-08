@@ -294,12 +294,16 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     public bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier)
+        => RemoveAndReleaseInMemoryKnownState(stateId, tier, null);
+
+    private bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier, ArrayPoolList<IDisposable>? deferred)
     {
         tier.EnsureInMemory();
         if (tier == SnapshotTier.InMemoryCompacted)
         {
             if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
             {
+                deferred?.Add(existingState);
                 Interlocked.Decrement(ref _compactedSnapshotCount);
                 Metrics.CompactedSnapshotCount--;
 
@@ -307,7 +311,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Metrics.CompactedSnapshotMemory -= compactedBytes;
                 Metrics.TotalSnapshotMemory -= compactedBytes;
 
-                existingState.Dispose();
+                if (deferred is null) existingState.Dispose();
 
                 return true;
             }
@@ -317,6 +321,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         if (_snapshots.TryRemove(stateId, out Snapshot? existing))
         {
+            deferred?.Add(existing);
             Interlocked.Decrement(ref _snapshotCount);
             Metrics.SnapshotCount--;
 
@@ -327,7 +332,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
 
-            existing.Dispose();
+            if (deferred is null) existing.Dispose();
 
             return true;
         }
@@ -443,7 +448,28 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber = 0)
     {
-        using Lock.Scope scope = _retention.Sync.EnterScope();
+        using ArrayPoolList<IDisposable> deferred = new(0);
+        try
+        {
+            using Lock.Scope scope = _retention.Sync.EnterScope();
+            return RemoveOrphanedStates(committedHead, forkChoiceHead, minBlockNumber, deferred);
+        }
+        finally
+        {
+            // Detached repository leases now belong to this list. Final pool returns and file cleanup
+            // must not hold the gate used to register readers and publish commits.
+            List<Exception>? failures = null;
+            foreach (IDisposable snapshot in deferred)
+            {
+                try { snapshot.Dispose(); }
+                catch (Exception exception) { (failures ??= []).Add(exception); }
+            }
+            if (failures is not null) throw new AggregateException(failures);
+        }
+    }
+
+    private int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber, ArrayPoolList<IDisposable> deferred)
+    {
         using ArrayPoolListRef<StateId> inMemory = GetStatesInRange(minBlockNumber, long.MaxValue);
         if (inMemory.Count == 0) return 0;
 
@@ -460,26 +486,99 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
         minBlockNumber = Math.Max(minBlockNumber, activeStart);
         using PooledSet<StateId> retained = [];
-        CollectRetainedAncestry(retained, committedHead, forkChoiceHead, includePersisted: true, minBlockNumber);
+        using ArrayPoolList<(long First, long Last)> gaps = new(0);
+        CollectRetainedAncestry(retained, committedHead, forkChoiceHead, includePersisted: true, minBlockNumber, gaps);
         if (retained.Count == 0) return 0;
+        ReadOnlySpan<(long First, long Last)> ambiguousHeights = MergeGaps(gaps.AsSpan());
+
+        int gapIndex = 0;
+        using PooledSet<StateId> orphans = [];
+        foreach (StateId stateId in inMemory)
+        {
+            if (retained.Contains(stateId)) continue;
+            if (IsAmbiguousHeight(Height(stateId), ambiguousHeights, ref gapIndex) && !HasOnlyOrphanedParents(stateId, orphans)) continue;
+            orphans.Add(stateId);
+        }
+        // With no in-memory orphan, head-height probes cover recently converted payload siblings;
+        // other persisted fork heights are left to normal persistence pruning.
+        if (orphans.Count == 0 && !HasPersistedForkAt(committedHead) && !HasPersistedForkAt(forkChoiceHead)) return 0;
+
+        // A sibling may have been converted before it aged out of recent-commit retention.
+        using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(minBlockNumber, long.MaxValue);
+        using PooledSet<ulong> retainedHeights = [];
+        foreach (StateId stateId in retained) retainedHeights.Add(stateId.BlockNumber);
+        // Compacted edges can bypass canonical history. Only known competing heights establish an
+        // orphan; ascending traversal then propagates that decision through its descendants.
+        persisted.AsSpan().Sort();
+        gapIndex = 0;
+        int memoryIndex = 0;
+        int persistedIndex = 0;
+        while (memoryIndex < inMemory.Count || persistedIndex < persisted.Count)
+        {
+            bool fromMemory = memoryIndex < inMemory.Count
+                && (persistedIndex == persisted.Count || inMemory[memoryIndex].CompareTo(persisted[persistedIndex]) <= 0);
+            StateId stateId = fromMemory ? inMemory[memoryIndex++] : persisted[persistedIndex++];
+            if (retained.Contains(stateId)) continue;
+            bool competingHeight = (fromMemory || retainedHeights.Contains(stateId.BlockNumber))
+                && !IsAmbiguousHeight(Height(stateId), ambiguousHeights, ref gapIndex);
+            if (!orphans.Contains(stateId) && !competingHeight && !HasOnlyOrphanedParents(stateId, orphans)) continue;
+            orphans.Add(stateId);
+        }
 
         int pruned = 0;
         foreach (StateId stateId in inMemory)
         {
-            if (retained.Contains(stateId)) continue;
-            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted)) pruned++;
-            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase)) pruned++;
+            if (!orphans.Contains(stateId)) continue;
+            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted, deferred)) pruned++;
+            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase, deferred)) pruned++;
         }
-        // A small memory budget can convert siblings before they become eligible for in-memory pruning.
-        if (pruned == 0 && !HasPersistedForkAt(committedHead) && !HasPersistedForkAt(forkChoiceHead)) return 0;
-
-        // A sibling may have been converted before it aged out of recent-commit retention.
-        using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(minBlockNumber, long.MaxValue);
         foreach (StateId stateId in persisted)
-        {
-            if (!retained.Contains(stateId) && RemovePersistedStateExact(stateId)) pruned++;
-        }
+            if (orphans.Contains(stateId) && RemovePersistedStateExact(stateId, deferred)) pruned++;
         return pruned;
+    }
+
+    private static ReadOnlySpan<(long First, long Last)> MergeGaps(Span<(long First, long Last)> gaps)
+    {
+        gaps.Sort();
+        int count = 0;
+        foreach ((long first, long last) in gaps)
+        {
+            if (count > 0 && first <= gaps[count - 1].Last)
+                gaps[count - 1].Last = Math.Max(gaps[count - 1].Last, last);
+            else
+                gaps[count++] = (first, last);
+        }
+        return gaps[..count];
+    }
+
+    private static bool IsAmbiguousHeight(long height, ReadOnlySpan<(long First, long Last)> gaps, ref int index)
+    {
+        while (index < gaps.Length && gaps[index].Last < height) index++;
+        return index < gaps.Length && gaps[index].First <= height;
+    }
+
+    private bool HasOnlyOrphanedParents(in StateId stateId, ISet<StateId> orphans)
+    {
+        ReadOnlySpan<SnapshotTier> tiers = [SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized];
+        bool found = false;
+        if (_snapshots.TryGetValue(stateId, out Snapshot? inMemory))
+        {
+            if (!orphans.Contains(inMemory.From)) return false;
+            found = true;
+        }
+        if (_compactedSnapshots.TryGetValue(stateId, out Snapshot? compacted))
+        {
+            if (!orphans.Contains(compacted.From)) return false;
+            found = true;
+        }
+        foreach (SnapshotTier tier in tiers)
+        {
+            // From is immutable and does not access the snapshot's disposable storage.
+            if (!BucketFor(tier).TryGet(stateId, out PersistedSnapshot? snapshot)) continue;
+            if (!orphans.Contains(snapshot.From)) return false;
+            found = true;
+        }
+        return found;
     }
 
     public void CollectCommittedAncestry(in StateId forkChoiceHead, ISet<StateId> retained)
@@ -497,9 +596,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// cannot establish that another state is an orphan. The caller holds the retention gate.
     /// </remarks>
     private void CollectRetainedAncestry(ISet<StateId> retained, in StateId committedHead,
-        in StateId forkChoiceHead, bool includePersisted, ulong minBlockNumber)
+        in StateId forkChoiceHead, bool includePersisted, ulong minBlockNumber, ArrayPoolList<(long First, long Last)>? gaps = null)
     {
-        if (!HasState(committedHead) && !_compactedSnapshots.ContainsKey(committedHead)) return;
+        if (!HasState(committedHead) && !_compactedSnapshots.ContainsKey(committedHead))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Cannot determine retained snapshot ancestry: committed head {committedHead} is unavailable.");
+            return;
+        }
 
         using PooledStack<StateId> pending = new();
         AddHead(committedHead);
@@ -517,28 +620,36 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             StateId current = pending.Pop();
             if (Height(current) < (long)minBlockNumber) continue;
             bool found = false;
+            long nearestParent = long.MinValue;
             foreach (SnapshotTier tier in inMemoryTiers)
             {
-                if (!TryLeaseInMemoryState(current, tier, out Snapshot? snapshot)) continue;
-                StateId from = snapshot.From;
-                snapshot.Dispose();
+                ConcurrentDictionary<StateId, Snapshot> snapshots = tier == SnapshotTier.InMemoryBase ? _snapshots : _compactedSnapshots;
+                if (!snapshots.TryGetValue(current, out Snapshot? snapshot)) continue;
                 found = true;
-                AddHead(from);
+                nearestParent = Math.Max(nearestParent, Height(snapshot.From));
+                AddHead(snapshot.From);
             }
             if (!includePersisted) continue;
             foreach (SnapshotTier tier in persistedTiers)
             {
-                if (!TryLeasePersistedState(current, tier, out PersistedSnapshot? snapshot)) continue;
-                StateId from = snapshot.From;
-                snapshot.Dispose();
+                // Immutable parent metadata survives disposal; probe leases could finalize a replaced
+                // snapshot under the retention gate when the probe releases its last reference.
+                if (!BucketFor(tier).TryGet(current, out PersistedSnapshot? snapshot)) continue;
                 found = true;
-                AddHead(from);
+                nearestParent = Math.Max(nearestParent, Height(snapshot.From));
+                AddHead(snapshot.From);
             }
             if (!found)
             {
+                if (_logger.IsDebug) _logger.Debug($"Cannot determine retained snapshot ancestry: state {current} is unavailable above pruning boundary {minBlockNumber}.");
                 retained.Clear();
                 return;
             }
+            // Only the narrowest available edge establishes a gap; a wider compacted edge must not
+            // hide roots still identified by a base chain. Other protected branches cannot fill this gap.
+            long firstUnknown = Math.Max((long)minBlockNumber, nearestParent + 1);
+            long lastUnknown = Height(current) - 1;
+            if (firstUnknown <= lastUnknown) gaps?.Add((firstUnknown, lastUnknown));
         }
 
         void AddHead(in StateId head)
@@ -785,6 +896,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // `|` (not `||`): every bucket must be attempted — a `To` can appear in more than one.
     public bool RemovePersistedStateExact(in StateId toState) =>
         _base.RemoveExact(toState) | _smallCompacted.RemoveExact(toState) | _largeCompacted.RemoveExact(toState) | _compactSized.RemoveExact(toState);
+
+    private bool RemovePersistedStateExact(in StateId toState, ArrayPoolList<IDisposable> deferred) =>
+        _base.RemoveExact(toState, deferred) | _smallCompacted.RemoveExact(toState, deferred) | _largeCompacted.RemoveExact(toState, deferred) | _compactSized.RemoveExact(toState, deferred);
 
     public bool HasBasePersistedSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 

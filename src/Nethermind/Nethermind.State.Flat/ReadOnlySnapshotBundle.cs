@@ -39,10 +39,12 @@ public sealed class ReadOnlySnapshotBundle(
     /// </summary>
     public bool IsHistorical { get; } = isHistorical;
     private bool _isDisposed;
-    private SnapshotRetention? _retention;
-    private StateId _retainedHead;
+    private readonly SnapshotRetention? _retention;
+    private readonly StateId _retainedHead;
 
-    internal void Retain(SnapshotRetention retention, in StateId head)
+    internal ReadOnlySnapshotBundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader persistenceReader,
+        bool recordDetailedMetrics, PersistedSnapshotStack persistedSnapshots, SnapshotRetention retention, in StateId head)
+        : this(snapshots, persistenceReader, recordDetailedMetrics, persistedSnapshots)
     {
         _retention = retention;
         _retainedHead = head;
