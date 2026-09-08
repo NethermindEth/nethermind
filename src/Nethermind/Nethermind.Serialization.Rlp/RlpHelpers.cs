@@ -180,6 +180,7 @@ internal static partial class RlpHelpers
     /// <summary>
     /// Counts the number of top-level RLP items in the given data range.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CountItems(ReadOnlySpan<byte> data, int position, int end, int maxSearch)
     {
         int numberOfItems = 0;

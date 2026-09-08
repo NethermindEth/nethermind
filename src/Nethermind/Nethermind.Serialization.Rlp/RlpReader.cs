@@ -51,6 +51,7 @@ public ref struct RlpReader
         _flags = Flags.NotNull | Flags.MemoryBacked;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public RlpReader(CappedArray<byte> data)
     {
         Data = data.AsSpan();
@@ -73,9 +74,11 @@ public ref struct RlpReader
 
     public readonly bool IsSequenceNext() => RlpHelpers.IsSequenceNext(Data, Position);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipLength() => Position = RlpHelpers.SkipLength(Data, Position);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -111,6 +114,7 @@ public ref struct RlpReader
         return length;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public byte ReadByte() => Data[Position++];
 
     public ReadOnlySpan<byte> Read(int length)
@@ -172,6 +176,7 @@ public ref struct RlpReader
         return keccak;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryDecodeValueKeccak(out ValueHash256 keccak)
     {
         Position = RlpHelpers.TryDecodeValueKeccak(Data, Position, out keccak, out bool hasValue);

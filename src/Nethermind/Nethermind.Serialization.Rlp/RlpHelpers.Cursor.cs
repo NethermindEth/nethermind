@@ -646,7 +646,7 @@ internal static partial class RlpHelpers
             return position;
         }
 
-        keccak = InternValueKeccak(data.Slice(position, Hash256.Size));
+        keccak = new ValueHash256(data.Slice(position, Hash256.Size));
         return position + Hash256.Size;
     }
 
@@ -861,7 +861,7 @@ internal static partial class RlpHelpers
             ThrowKeccakDecode(prefix, position, data.Length);
         }
 
-        keccak = InternValueKeccak(data.Slice(position, Hash256.Size));
+        keccak = new ValueHash256(data.Slice(position, Hash256.Size));
         return position + Hash256.Size;
     }
 
@@ -879,22 +879,6 @@ internal static partial class RlpHelpers
         }
 
         return new Hash256(span);
-    }
-
-    /// <inheritdoc cref="InternKeccak"/>
-    public static ValueHash256 InternValueKeccak(ReadOnlySpan<byte> span)
-    {
-        ulong first = FirstWord(span);
-        if (first == FirstWord(Keccak.OfAnEmptyString.Bytes))
-        {
-            if (span.SequenceEqual(Keccak.OfAnEmptyString.Bytes)) return Keccak.OfAnEmptyString.ValueHash256;
-        }
-        else if (first == FirstWord(Keccak.EmptyTreeHash.Bytes))
-        {
-            if (span.SequenceEqual(Keccak.EmptyTreeHash.Bytes)) return Keccak.EmptyTreeHash.ValueHash256;
-        }
-
-        return new ValueHash256(span);
     }
 
     /// <summary>Reads the leading 8 bytes of a hash as one word.</summary>
