@@ -756,8 +756,7 @@ namespace Nethermind.Trie
 
             ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
             int position = SeekChildPosition(nodeRlp, i);
-            (_, int length) = RlpHelpers.PeekPrefixAndContentLength(nodeRlp, position);
-            if (length != 32)
+            if (!IsChildHashNext(nodeRlp, position))
             {
                 return null;
             }
@@ -765,6 +764,16 @@ namespace Nethermind.Trie
             RlpHelpers.DecodeKeccak(nodeRlp, position, out Hash256 keccak);
             return keccak;
         }
+
+        /// <summary>Tells whether the child at <paramref name="position"/> is stored as its hash.</summary>
+        /// <remarks>
+        /// One prefix test rather than a prefix decode: a 32-byte content length is reachable only for the
+        /// hash prefix and for a 33-byte sequence, and the trie embeds a child only below 32 bytes, so no
+        /// well-formed node carries the latter. Malformed input reads as "not a hash" instead of throwing.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsChildHashNext(ReadOnlySpan<byte> nodeRlp, int position)
+            => nodeRlp[position] == RlpHelpers.KeccakRlpPrefix;
 
         public byte[]? GetInlineNodeRlp(int i)
         {
@@ -796,14 +805,13 @@ namespace Nethermind.Trie
 
             ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
             int position = SeekChildPosition(nodeRlp, i);
-            (_, int length) = RlpHelpers.PeekPrefixAndContentLength(nodeRlp, position);
-            if (length != 32)
+            if (!IsChildHashNext(nodeRlp, position))
             {
                 return false;
             }
 
-            RlpHelpers.TryDecodeValueKeccak(nodeRlp, position, out keccak, out bool hasValue);
-            return hasValue;
+            RlpHelpers.DecodeValueKeccakNonNull(nodeRlp, position, out keccak);
+            return true;
         }
 
         public bool IsChildNull(int i)
@@ -813,12 +821,15 @@ namespace Nethermind.Trie
                 ThrowNotABranch();
             }
 
-            CappedArray<byte> rlp = ReadRlp();
             ref object? data = ref _nodeData![i];
-            if (rlp.IsNotNull && data is null)
+            if (data is null)
             {
-                ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
-                return RlpHelpers.PeekNextRlpLength(nodeRlp, SeekChildPosition(nodeRlp, i)) == 1;
+                CappedArray<byte> rlp = ReadRlp();
+                if (rlp.IsNotNull)
+                {
+                    ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
+                    return RlpHelpers.PeekNextRlpLength(nodeRlp, SeekChildPosition(nodeRlp, i)) == 1;
+                }
             }
 
             return data is null || ReferenceEquals(data, _nullNode);
@@ -1379,8 +1390,10 @@ namespace Nethermind.Trie
         }
 
         /// <summary>Returns the offset of child <paramref name="index"/> within this node's RLP.</summary>
+        /// <param name="nodeRlp">This node's RLP; every caller has already established that it is present.</param>
         private int SeekChildPosition(ReadOnlySpan<byte> nodeRlp, int index)
         {
+            Debug.Assert(!nodeRlp.IsEmpty, "Seeking a child of a node with no RLP");
             if (index == 0 && IsExtension)
             {
                 // Corner case, index is zero, but we are an extension
@@ -1404,17 +1417,13 @@ namespace Nethermind.Trie
 
         private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
         {
-            object? childOrRef;
-            CappedArray<byte> rlp = ReadRlp();
+            // A resolved child needs no RLP, so the seqlock read stays behind that check.
             ref object? data = ref _nodeData![i];
-            if (rlp.IsNull)
+            object? childOrRef = data;
+            if (childOrRef is null)
             {
-                childOrRef = data;
-            }
-            else
-            {
-                childOrRef = data;
-                if (childOrRef is null)
+                CappedArray<byte> rlp = ReadRlp();
+                if (rlp.IsNotNull)
                 {
                     // Allows to load children in parallel
                     ReadOnlySpan<byte> nodeRlp = rlp.AsSpan();
@@ -1550,32 +1559,33 @@ namespace Nethermind.Trie
         // Allow faster forward child iteration by not re-skipping items on each child seek
         public ref struct ChildIterator(TrieNode node)
         {
+            /// <summary>Sentinel for <see cref="_currentStreamIndex"/> before the first seek.</summary>
+            private const int NoCursor = -1;
+
             private ReadOnlySpan<byte> _nodeRlp;
             private int _position;
-            private int? _currentStreamIndex;
+
+            /// <summary>Index of the child <see cref="_position"/> sits at, or <see cref="NoCursor"/>.</summary>
+            private int _currentStreamIndex = NoCursor;
 
             private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
             {
-                object? childOrRef;
-                CappedArray<byte> rlp = node.ReadRlp();
+                // A resolved child needs no RLP, so the seqlock read stays behind that check.
                 ref object? data = ref node._nodeData![i];
-                if (rlp.IsNull)
+                object? childOrRef = data;
+                if (childOrRef is null)
                 {
-                    childOrRef = data;
-                }
-                else
-                {
-                    childOrRef = data;
-                    if (childOrRef is null)
+                    CappedArray<byte> rlp = node.ReadRlp();
+                    if (rlp.IsNotNull)
                     {
                         // The cursor is only meaningful against the buffer it was measured on, and
                         // ReadRlp() can hand back a different one once WriteRlp swaps the node's array.
                         ReadOnlySpan<byte> nodeRlp;
                         int position;
-                        if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
+                        if ((uint)_currentStreamIndex <= (uint)i)
                         {
                             nodeRlp = _nodeRlp;
-                            int toSkip = i - _currentStreamIndex.Value;
+                            int toSkip = i - _currentStreamIndex;
                             position = RlpHelpers.SkipItems(nodeRlp, _position, toSkip);
                             _currentStreamIndex += toSkip;
                         }
@@ -1585,7 +1595,7 @@ namespace Nethermind.Trie
                             position = RlpHelpers.SkipLength(nodeRlp, 0);
                             if (node.IsExtension)
                             {
-                                position += RlpHelpers.PeekNextRlpLength(nodeRlp, position);
+                                position = RlpHelpers.SkipItem(nodeRlp, position);
                                 i--;
                             }
                             else
