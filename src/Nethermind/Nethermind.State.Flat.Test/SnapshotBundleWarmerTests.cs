@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -506,7 +507,8 @@ public class SnapshotBundleWarmerTests
         TrieNode sharedParent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
         sharedParent.ResolveNode(NullTrieNodeResolver.Instance, rootPath);
 
-        (byte[] oldRlp, _) = EncodedLeaf();
+        (byte[] oldRlp, Hash256 oldHash) = EncodedLeaf();
+        Assert.That(oldHash, Is.Not.EqualTo(child.Keccak));
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(oldRlp);
         reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(oldRlp);
@@ -522,13 +524,12 @@ public class SnapshotBundleWarmerTests
 
         ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
         TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
-        TrieNode.ChildIterator children = warmedParent.CreateChildIterator();
         TrieNode warmedChild = (iterator
-            ? children.GetChildWithChildPath(warmer, ref childPath, 0)
+            ? warmedParent.CreateChildIterator().GetChildWithChildPath(warmer, ref childPath, 0)
             : warmedParent.GetChildWithChildPath(warmer, ref childPath, 0))!;
         Assert.That(warmedChild.TryResolveNode(warmer, ref childPath), Is.False);
 
-        StateTrieStoreAdapter state = new(bundle, new Nethermind.Core.Threading.ConcurrencyController(1));
+        StateTrieStoreAdapter state = new(bundle, new ConcurrencyController(1));
         ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
         Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
         TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);

@@ -1455,7 +1455,7 @@ namespace Nethermind.Trie
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 // A warmer miss must not bypass a later live reader's snapshot lookup.
-                                data = child.IsWarmerOwned ? keccak : child;
+                                data = child.IsWarmerOwned && !child.IsWarmerResolved ? keccak : child;
                                 childOrRef = child;
 
                                 break;
@@ -1637,7 +1637,7 @@ namespace Nethermind.Trie
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                     // A warmer miss must not bypass a later live reader's snapshot lookup.
-                                    data = child.IsWarmerOwned ? keccak : child;
+                                    data = child.IsWarmerOwned && !child.IsWarmerResolved ? keccak : child;
                                     childOrRef = child;
 
                                     break;
