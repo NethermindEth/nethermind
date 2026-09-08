@@ -1,0 +1,159 @@
+name: EXPB Fusaka Account Index CV Sweep
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/rocksdb-account-cv-fusaka
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocksdb-account-cv-fusaka-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ACCOUNT_IMAGE: nethermindeth/nethermind:rocksdb-auto-base-d66cfd50e0@sha256:381e9176ba81ec40fa3e55aa77157b8d1364f74012e55041d939860e3279a745
+  EXPB_REVISION: 9609a1b66aba5b67c6accc1930cb3e50748ca72f
+  EXPB_DATA_DIR: /mnt/sda/expb-data
+  EXPB_CONFIG_SOURCE: /mnt/sda/expb-data/github-action-mainnet-fusaka-flat.yaml
+  HELPER_CPUSET: 2-7,10-15
+  HELPER_MEMORY: 64g
+
+jobs:
+  build-account-helper:
+    name: Build Account helper
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run harness contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --disable-pip-version-check PyYAML
+          python3 -m unittest discover -s scripts/expb-account-cv -p 'test_*.py'
+
+      - name: Publish helper directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="${RUNNER_TEMP}/account-index-prepare"
+          rm -rf -- "${output}"
+          dotnet publish tools/AccountIndexPrepare/AccountIndexPrepare.csproj \
+            --configuration Release \
+            --runtime linux-x64 \
+            --self-contained true \
+            --output "${output}" \
+            -p:PublishSingleFile=false
+          test -x "${output}/AccountIndexPrepare"
+          "${output}/AccountIndexPrepare" --self-test
+
+      - name: Upload helper directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-index-prepare-linux-x64
+          path: ${{ runner.temp }}/account-index-prepare
+          include-hidden-files: true
+          retention-days: 3
+
+  run-account-cv:
+    name: Run sequential Fusaka Account CV arms
+    needs: build-account-helper
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 210
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download complete helper directory
+        uses: actions/download-artifact@v4
+        with:
+          name: account-index-prepare-linux-x64
+          path: ${{ runner.temp }}/account-index-prepare
+
+      - name: Prepare runner and install pinned EXPB
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v docker >/dev/null
+          docker version
+          if ! command -v uv >/dev/null 2>&1; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
+          fi
+          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@${EXPB_REVISION}" expb
+          expb_bin="$(uv tool dir --bin)/expb"
+          expb_script="$(readlink -f -- "${expb_bin}")"
+          expb_python="$(sed -n '1s/^#!//p' "${expb_script}")"
+          test -x "${expb_python}"
+          "${expb_python}" -c 'from expb import app; print("pinned expb console entrypoint: expb:app")'
+          echo "EXPB_PYTHON=${expb_python}" >> "${GITHUB_ENV}"
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Render exact five-arm config
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_config="${EXPB_CONFIG_SOURCE}"
+          test -f "${source_config}"
+          run_root="${EXPB_DATA_DIR}/account-cv-fusaka/${GITHUB_RUN_ID}"
+          mkdir -p "${run_root}/work" "${run_root}/results" "${run_root}/samples" "${run_root}/outputs"
+          "${EXPB_PYTHON}" scripts/expb-account-cv/render_config.py \
+            "${source_config}" "${run_root}/config.yaml" \
+            --work-root "${run_root}/work" \
+            --output-root "${run_root}/outputs" \
+            --image "${ACCOUNT_IMAGE}" \
+            --expected-snapshot-source /mnt/sda/nethermind-flat-25490000 \
+            --expected-cpuset "${HELPER_CPUSET}" \
+            --expected-memory "${HELPER_MEMORY}"
+          {
+            echo "EXPB_RUN_ROOT=${run_root}"
+            echo "EXPB_CONFIG=${run_root}/config.yaml"
+            echo "EXPB_RESULTS_ROOT=${run_root}/results"
+            echo "EXPB_SAMPLES_ROOT=${run_root}/samples"
+            echo "EXPB_ACCOUNT_IMAGE=${ACCOUNT_IMAGE}"
+            echo "EXPB_ACCOUNT_HELPER_CPUSET=${HELPER_CPUSET}"
+            echo "EXPB_ACCOUNT_HELPER_MEMORY=${HELPER_MEMORY}"
+          } >> "${GITHUB_ENV}"
+          helper="$(find "${RUNNER_TEMP}/account-index-prepare" -type f -name AccountIndexPrepare -print -quit)"
+          test -n "${helper}"
+          chmod +x "${helper}"
+          echo "EXPB_ACCOUNT_HELPER_PATH=${helper}" >> "${GITHUB_ENV}"
+          printf '%s\n' \
+            '{"image":"'"${ACCOUNT_IMAGE}"'","source_revision":"d66cfd50e0b6f492d8bc5d6b99be22e1821a55e4","expb_revision":"'"${EXPB_REVISION}"'","runner":"reproducible-benchmarks","layout":"flat","payload_set":"fusaka","amount":1000}' \
+            > "${run_root}/provenance.json"
+
+      - name: Run fixed sequential five-arm sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/expb-account-cv/run_sweep.sh
+
+      - name: Upload complete sweep artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocksdb-account-cv-fusaka-${{ github.run_id }}
+          path: |
+            /mnt/sda/expb-data/account-cv-fusaka/${{ github.run_id }}/aggregate.json
+            /mnt/sda/expb-data/account-cv-fusaka/${{ github.run_id }}/provenance.json
+            /mnt/sda/expb-data/account-cv-fusaka/${{ github.run_id }}/resource-sampler.log
+            /mnt/sda/expb-data/account-cv-fusaka/${{ github.run_id }}/results
+            /mnt/sda/expb-data/account-cv-fusaka/${{ github.run_id }}/samples
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: warn
