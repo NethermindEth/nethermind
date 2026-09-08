@@ -71,7 +71,9 @@ public class FrameTxMempoolDosMeasurement
 
     /// <summary>soispoke's real declared frame budget (320,000 + 2,800 signature) - the shielded
     /// pool's actual floor, distinct from the 236,285 point derived from a single-public-input
-    /// circuit.</summary>
+    /// circuit. The <c>groth16-soispoke</c> sweep stays at 300,000 because its artifact burns
+    /// 248,437 and a higher declared ceiling would exceed <see cref="Eip8141Constants.MaxVerifyGas"/>
+    /// and skip the arm.</summary>
     private const ulong Ceiling322800 = 322_800;
 
     /// <summary>Small frame budget reserved by the signature-stuffing shape.</summary>

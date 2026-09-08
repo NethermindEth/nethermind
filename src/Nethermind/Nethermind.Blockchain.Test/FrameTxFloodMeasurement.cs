@@ -108,9 +108,13 @@ public class FrameTxFloodMeasurement
         }
     }
 
+    /// <summary>Swept verification ceilings; 322,800 is soispoke's real declared budget (320,000 + 2,800
+    /// signature), distinct from the 236,285 single-public-input point.</summary>
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+
     private static IEnumerable<TestCaseData> ProductionDelayCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling, 0);
             yield return new TestCaseData(ceiling, 100);
@@ -119,7 +123,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingRateCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -141,7 +145,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling);
         }
@@ -203,40 +207,6 @@ public class FrameTxFloodMeasurement
             TestContext.Out.WriteLine($"DEBUG CPU affinity could not be read: {e.GetType().Name}: {e.Message}");
             return "unknown";
         }
-    }
-
-    /// <summary>Parses <see cref="ObservedCpuSet"/>'s Linux list/range syntax or Windows mask into a count.
-    /// Falls back to 1 when the set can't be read, so a projection against it is a safe no-op rather than
-    /// a crash.</summary>
-    private static int CpuCount()
-    {
-        string set = ObservedCpuSet();
-
-        if (set.StartsWith("mask:", StringComparison.Ordinal))
-        {
-            return ulong.TryParse(set["mask:".Length..], NumberStyles.HexNumber, CultureInfo.InvariantCulture,
-                       out ulong mask) && mask != 0
-                ? BitOperations.PopCount(mask)
-                : 1;
-        }
-
-        if (set.Length == 0 || set == "unknown") return 1;
-
-        int count = 0;
-        foreach (string part in set.Split(','))
-        {
-            int dash = part.IndexOf('-');
-            if (dash < 0)
-            {
-                count += 1;
-            }
-            else if (int.TryParse(part[..dash], out int first) && int.TryParse(part[(dash + 1)..], out int last))
-            {
-                count += Math.Max(1, last - first + 1);
-            }
-        }
-
-        return Math.Max(count, 1);
     }
 
     private static bool IsSingleCore()
@@ -566,13 +536,20 @@ public class FrameTxFloodMeasurement
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
         double shedPct = ShedPct(flooded);
 
-        // sig-secp256k1 clears the signature filter before the simulator's lock, so unlike execution
-        // shapes it scales with cores rather than self-limiting near 1/t_reject; the projection below
-        // assumes that scaling is linear, which only a real multi-core run can confirm or falsify.
-        string coreNormalizedField = shape == "signature-stuffed"
-            ? $"delta_p50_us_core_normalized={(w - w0) * CpuCount():F1} "
-              + "delta_p50_us_core_normalized_basis=analytic_projection "
-            : "";
+        // sig-secp256k1 (the "signature-stuffed" shape here) scales with cores rather than self-limiting
+        // near 1/t_reject, since it clears the signature filter before the simulator's lock. Projecting
+        // onto FRAME_FLOOD_PROJECT_CORES assumes linear scaling, which only a real multi-core run can
+        // confirm; a delta measured on more than one core is already uncontended, so it isn't a valid
+        // multiplicand.
+        string coreNormalizedField = "";
+        if (shape == "signature-stuffed" && IsSingleCore()
+            && int.TryParse(Environment.GetEnvironmentVariable("FRAME_FLOOD_PROJECT_CORES"), out int targetCores)
+            && targetCores > 0)
+        {
+            coreNormalizedField = $"delta_p50_us_core_normalized={(w - w0) * targetCores:F1} "
+                                  + $"delta_p50_us_core_normalized_cores={targetCores} "
+                                  + "delta_p50_us_core_normalized_basis=analytic_projection ";
+        }
 
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
