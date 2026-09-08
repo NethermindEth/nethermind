@@ -105,7 +105,7 @@ public class ArchiveProofTests
         retrofit.Prepare();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
         HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
-        CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
 
         using CancellationTokenSource interrupt = new();
         int checkpoints = 0;
@@ -132,7 +132,7 @@ public class ArchiveProofTests
     public void A_verify_only_run_interrupted_inside_a_subtree_resumes_from_its_checkpoint_without_false_mismatches()
     {
         HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
-        CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
 
         using CancellationTokenSource interrupt = new();
         Assert.That(

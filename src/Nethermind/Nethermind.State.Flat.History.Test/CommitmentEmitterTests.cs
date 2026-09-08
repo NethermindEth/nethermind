@@ -32,7 +32,11 @@ public class CommitmentEmitterTests
     }
 
     [TearDown]
-    public void TearDown() => _historyColumns.Dispose();
+    public void TearDown()
+    {
+        _metadata.Dispose();
+        _historyColumns.Dispose();
+    }
 
     [TestCase(true, TestName = "ExistingRowNewer")]
     [TestCase(false, TestName = "MergedStateNewer")]
