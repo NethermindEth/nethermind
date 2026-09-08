@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Fody;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -22,12 +21,18 @@ public sealed class ModuleWeaver : BaseModuleWeaver
     /// <inheritdoc />
     public override void Execute()
     {
-        TypeDefinition vm = ModuleDefinition.Types.Single(t => t.FullName == "Nethermind.Evm.VirtualMachine`1");
-        MethodDefinition handler = vm.Methods.Single(m => m.Name == "ExecuteOpcode");
-        if (!handler.Body.Instructions.Any(i => i.OpCode == OpCodes.Tail))
+        TypeDefinition vm = ModuleDefinition.GetType("Nethermind.Evm.VirtualMachine`1")
+            ?? throw new WeavingException("VirtualMachine type was not found.");
+        MethodDefinition handler = GetMethod(vm, "ExecuteOpcode");
+        bool hasTailCall = false;
+        foreach (Instruction instruction in handler.Body.Instructions)
+            if (instruction.OpCode == OpCodes.Tail) { hasTailCall = true; break; }
+        if (!hasTailCall)
             throw new WeavingException("Opcode naming must run after InlineIL and preserve the dispatch tail call.");
 
-        foreach (MethodDefinition method in vm.Methods.ToArray())
+        MethodDefinition[] methods = new MethodDefinition[vm.Methods.Count];
+        vm.Methods.CopyTo(methods, 0);
+        foreach (MethodDefinition method in methods)
         {
             // CALL/CREATE carry an opcode type through several fork-selection factories.
             // Clone that chain from its concrete entry point before redirecting its leaf.
@@ -47,7 +52,8 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         }
 
         HashSet<string> names = new(_handlers.Keys, StringComparer.OrdinalIgnoreCase);
-        TypeDefinition instructionType = ModuleDefinition.Types.Single(t => t.FullName == "Nethermind.Evm.Instruction");
+        TypeDefinition instructionType = ModuleDefinition.GetType("Nethermind.Evm.Instruction")
+            ?? throw new WeavingException("Instruction enum was not found.");
         foreach (FieldDefinition opcode in instructionType.Fields)
             if (opcode.HasConstant && !names.Remove(opcode.Name))
                 throw new WeavingException($"No named handler for opcode {opcode.Name}.");
@@ -63,7 +69,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         HashSet<MethodDefinition> visited = [];
         HashSet<MethodDefinition> expected = [.. _handlers.Values];
         HashSet<MethodDefinition> actual = [];
-        pending.Push(vm.Methods.Single(m => m.Name == "GenerateOpcodeHandlers"));
+        pending.Push(GetMethod(vm, "GenerateOpcodeHandlers"));
         while (pending.Count != 0)
         {
             MethodDefinition method = pending.Pop();
@@ -86,6 +92,18 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         }
         if (!actual.SetEquals(expected))
             throw new WeavingException("Named opcode handlers are not all reachable from the opcode table factories.");
+    }
+
+    private static MethodDefinition GetMethod(TypeDefinition type, string name)
+    {
+        MethodDefinition? result = null;
+        foreach (MethodDefinition method in type.Methods)
+        {
+            if (method.Name != name) continue;
+            if (result is not null) throw new WeavingException($"Multiple methods named {name} in {type.FullName}.");
+            result = method;
+        }
+        return result ?? throw new WeavingException($"Method {name} was not found in {type.FullName}.");
     }
 
     private static bool IsFactory(string name) => name is
