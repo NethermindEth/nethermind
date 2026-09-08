@@ -48,8 +48,8 @@ internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availabl
         if (_prefetched == 0 || block < _firstPrefetched || block >= _firstPrefetched + (ulong)_prefetched)
         {
             _firstPrefetched = block;
-            _prefetched = (int)Math.Min((ulong)PrefetchedBlocks, ulong.MaxValue - block);
-            headers.FillStateRoots(block, _roots.AsSpan(0, _prefetched));
+            _prefetched = block > ulong.MaxValue - PrefetchedBlocks ? (int)(ulong.MaxValue - block) + 1 : PrefetchedBlocks;
+            for (int i = 0; i < _prefetched; i++) _roots[i] = headers.TryGetStateRoot(block + (ulong)i);
         }
 
         return _roots[block - _firstPrefetched];

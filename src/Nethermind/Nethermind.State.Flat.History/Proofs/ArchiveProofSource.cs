@@ -29,12 +29,14 @@ public sealed class ArchiveProofSource(
     private readonly CommitmentStore _accountCommitments = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
     private readonly CommitmentStore _storageCommitments = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly StorageClearStore _clears = new(history.GetColumnDb(FlatHistoryColumns.StorageClears));
-    private readonly ArchiveProofNodeCache _nodeCache = new(NodeCacheCapacity);
-    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
-        db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArchiveProofSource>());
+    private readonly Lazy<ArchiveProofNodeCache> _nodeCache = new(() => new ArchiveProofNodeCache(NodeCacheCapacity));
+    private readonly Lazy<bool> _rlpWrapSlots = new(() => BasePersistence.ResolveSlotEncoding(
+        db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArchiveProofSource>()));
     private readonly int _fanOut = config.ArchiveProofFanOut > 0 ? config.ArchiveProofFanOut : Environment.ProcessorCount;
 
     public bool Enabled => settings.ServeEnabled;
+
+    internal bool ServingResourcesCreated => _nodeCache.IsValueCreated || _rlpWrapSlots.IsValueCreated;
 
     public bool CanServe(in StateId stateId) =>
         Enabled
@@ -60,7 +62,7 @@ public sealed class ArchiveProofSource(
         AccountProofCollector? collector = visitor as AccountProofCollector;
         ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows, collector?.CancellationToken ?? default);
         ulong minEpoch = metadata.DroppedThroughEpoch;
-        ArchiveProofTrieStore store = collector is not null && !_nodeCache.TryGet(stateId.StateRoot, out _)
+        ArchiveProofTrieStore store = collector is not null && !_nodeCache.Value.TryGet(stateId.StateRoot, out _)
             ? CreatePrefetchedStore(collector, stateId.BlockNumber, budget, minEpoch)
             : CreateAccountStore(stateId.BlockNumber, budget, minEpoch);
         PatriciaTree tree = new(store, logManager);
@@ -100,12 +102,12 @@ public sealed class ArchiveProofSource(
     }
 
     private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget, ulong minEpoch) =>
-        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy) { MinEpoch = minEpoch, MinEpochSource = DroppedThrough, FineMinEpochSource = DemotedThrough }, block, budget, _fanOut, _nodeCache);
+        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy) { MinEpoch = minEpoch, MinEpochSource = DroppedThrough, FineMinEpochSource = DemotedThrough }, block, budget, _fanOut, _nodeCache.Value);
 
     private HistoricalTrieNodeBuilder CreateStorageBuilder(in ValueHash256 accountPath, ulong block, ResolutionBudget budget, ulong minEpoch) =>
         new(
-            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots) { MinEpoch = minEpoch, MinEpochSource = DroppedThrough, FineMinEpochSource = DemotedThrough },
-            block, budget, _fanOut, _nodeCache);
+            new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, metadata, policy, _clears, accountPath, _rlpWrapSlots.Value) { MinEpoch = minEpoch, MinEpochSource = DroppedThrough, FineMinEpochSource = DemotedThrough },
+            block, budget, _fanOut, _nodeCache.Value);
 
     private ulong DroppedThrough() => metadata.DroppedThroughEpoch;
 

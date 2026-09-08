@@ -46,9 +46,9 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         if (!Enabled) return;
 
         ulong headEpoch = policy.Epoch(headBlock);
-        if (settings.FineEpochs > 0 && TryFloor(headEpoch, settings.FineEpochs, out ulong fineFrom) && metadata.TryRaiseFineFromEpoch(fineFrom) && _logger.IsInfo)
+        if (settings.FineEpochs > 0 && TryFloor(headEpoch, settings.FineEpochs, out ulong fineFrom) && metadata.TryRaiseFineFromEpoch(fineFrom))
         {
-            _logger.Info(
+            if (_logger.IsInfo) _logger.Info(
                 $"Archive proof commitments below epoch {fineFrom} (block {policy.EpochStart(fineFrom)}) are losing their per-block rows; proofs there are still served, rebuilt from the checkpoint rows, which costs a second or so instead of a hundred milliseconds.");
         }
 
@@ -140,13 +140,18 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
             if (dropPending)
             {
                 long startedAt = Stopwatch.GetTimestamp();
-                CarryForward(_accounts, FlatHistoryColumns.AccountCommitments, dropped, token, yieldBetweenChunks);
-                CarryForward(_storages, FlatHistoryColumns.StorageCommitments, dropped, token, yieldBetweenChunks);
+                if (!metadata.IsCarried(dropped))
+                {
+                    CarryForward(_accounts, FlatHistoryColumns.AccountCommitments, dropped, token, yieldBetweenChunks);
+                    CarryForward(_storages, FlatHistoryColumns.StorageCommitments, dropped, token, yieldBetweenChunks);
+                    metadata.MarkCarried(dropped);
+                }
+
                 _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
                 _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
                 _storages.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
                 _storages.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
-                metadata.TryRaiseDroppedThroughEpoch(dropped + 1);
+                metadata.TryCompleteDrop(dropped);
                 if (_logger.IsInfo) _logger.Info($"Archive proof commitment epoch {dropped} reclaimed in {Stopwatch.GetElapsedTime(startedAt)}: every node still live was carried into epoch {dropped + 1} first, then the epoch's files were unlinked.");
                 return;
             }

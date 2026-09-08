@@ -32,7 +32,7 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
     public ulong Head { get; private set; }
 
     public ValueHash256? TryGetStateRoot(ulong block) =>
-        _rootsByBlock.TryGetValue(block, out ValueHash256 root) ? root : null;
+        _rootsByBlock.TryGetValue(block, out ValueHash256 root) ? root : (ValueHash256?)null;
 
     public StateId StateIdAt(ulong block) => new(block, _rootsByBlock[block]);
 

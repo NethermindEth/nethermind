@@ -28,11 +28,11 @@ internal sealed class StorageHistoryScope(
 
     private readonly byte[] _identity = accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].ToArray();
     private readonly int _trieDepth = metadata.StorageTrieDepth(accountPath);
-    private ulong? _rootEpoch;
+    private long _rootEpoch = -1;
 
-    protected override ulong? ProbeStartEpoch => _rootEpoch;
+    protected override ulong? ProbeStartEpoch => Volatile.Read(ref _rootEpoch) is long epoch and >= 0 ? (ulong)epoch : null;
 
-    public override void NoteRootLastBlock(ulong block) => _rootEpoch = Policy.Epoch(block);
+    public override void NoteRootLastBlock(ulong block) => Volatile.Write(ref _rootEpoch, (long)Policy.Epoch(block));
 
     public override bool HasCommitmentRows(int depth) => Policy.StorageTrieHasRows(_trieDepth) && depth <= Policy.StorageCheckpointDepth;
 
@@ -90,7 +90,7 @@ internal sealed class StorageHistoryScope(
             RlpReader reader = new(storedValue);
             return reader.DecodeByteArraySpan().WithoutLeadingZeros().IsEmpty ? null : storedValue.ToArray();
         }
-        catch (RlpException e)
+        catch (Exception e) when (e is RlpException or InvalidDataException)
         {
             throw new StateUnavailableException(e.Message);
         }

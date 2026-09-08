@@ -115,8 +115,12 @@ internal sealed class CommitmentStore
         ulong epoch = EpochOf(prefix, suffix);
         if (startEpoch is { } hint && hint < epoch)
         {
-            epoch = Math.Max(hint, minEpoch);
-            suffix = ulong.MaxValue;
+            ulong from = Math.Max(hint, minEpoch);
+            if (from < epoch)
+            {
+                epoch = from;
+                suffix = ulong.MaxValue;
+            }
         }
 
         return new RowChain(_sorted, prefix, TierOf(prefix), suffix, budget, epoch, bounded ? epoch : Math.Min(minEpoch, epoch));

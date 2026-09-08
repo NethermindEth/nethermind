@@ -30,9 +30,18 @@ public sealed class CommitmentDepthPolicy
 
     public static readonly CommitmentDepthPolicy Default = new(DefaultIntervalLog2);
 
-    public static CommitmentDepthPolicy FromConfig(IFlatDbConfig config)
+    public static CommitmentDepthPolicy FromConfig(IFlatDbConfig config) =>
+        IntervalLog2From(config) == DefaultIntervalLog2 && EpochLog2From(config) == DefaultEpochLog2 ? Default : new CommitmentDepthPolicy(config);
+
+    public CommitmentDepthPolicy(IFlatDbConfig config)
+        : this(IntervalLog2From(config), DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth, DefaultStorageRowsSignalDepth, DefaultAccountComposedDepths, EpochLog2From(config))
     {
-        int intervalLog2 = config.ArchiveProofCheckpointIntervalLog2 <= 0 ? DefaultIntervalLog2 : config.ArchiveProofCheckpointIntervalLog2;
+    }
+
+    private static int IntervalLog2From(IFlatDbConfig config) => config.ArchiveProofCheckpointIntervalLog2 <= 0 ? DefaultIntervalLog2 : config.ArchiveProofCheckpointIntervalLog2;
+
+    private static int EpochLog2From(IFlatDbConfig config)
+    {
         int epochLog2 = config.ArchiveProofEpochLog2 <= 0 ? DefaultEpochLog2 : config.ArchiveProofEpochLog2;
         if (epochLog2 <= MaxEpochLog2 && epochLog2 < MinEpochLog2ForConfig)
         {
@@ -41,9 +50,7 @@ public sealed class CommitmentDepthPolicy
                 $"{CommitmentKeyLayout.MaxEpoch << epochLog2}, because the epoch number is a two-byte key prefix. Use {MinEpochLog2ForConfig} or more.", -1);
         }
 
-        return intervalLog2 == DefaultIntervalLog2 && epochLog2 == DefaultEpochLog2
-            ? Default
-            : new CommitmentDepthPolicy(intervalLog2, DefaultAccountExactDepth, DefaultAccountCheckpointDepth, DefaultStorageExactDepth, DefaultStorageCheckpointDepth, DefaultLargeTrieSignalDepth, DefaultStorageRowsSignalDepth, DefaultAccountComposedDepths, epochLog2);
+        return epochLog2;
     }
 
     public CommitmentDepthPolicy(int intervalLog2)

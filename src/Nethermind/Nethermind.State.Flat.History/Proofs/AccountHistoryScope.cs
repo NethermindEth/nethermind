@@ -46,7 +46,7 @@ internal sealed class AccountHistoryScope(
         {
             return AccountRowRlp.Encode(storedValue);
         }
-        catch (InvalidDataException e)
+        catch (Exception e) when (e is RlpException or InvalidDataException)
         {
             throw new StateUnavailableException(e.Message);
         }

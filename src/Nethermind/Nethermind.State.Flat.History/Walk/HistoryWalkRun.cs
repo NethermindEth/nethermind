@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
@@ -17,7 +16,7 @@ namespace Nethermind.State.Flat.History.Walk;
 internal sealed class HistoryWalkRun
 {
     private const int AccountPartitionDepth = 2;
-    private const int AccountPartitions = 1 << (4 * AccountPartitionDepth);
+    public const int AccountPartitions = 1 << (4 * AccountPartitionDepth);
     private const int StorageRanges = 256;
     public const int WorkItems = AccountPartitions + StorageRanges;
     public const long DefaultMinRowsToBorrowASlot = 1 << 12;
@@ -237,7 +236,15 @@ internal sealed class HistoryWalkRun
         }
         catch (AggregateException e)
         {
-            Exception first = e.InnerExceptions.FirstOrDefault(static inner => inner is not OperationCanceledException) ?? e.InnerExceptions[0];
+            Exception first = e.InnerExceptions[0];
+            foreach (Exception inner in e.InnerExceptions)
+            {
+                if (inner is OperationCanceledException) continue;
+
+                first = inner;
+                break;
+            }
+
             ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
@@ -248,7 +255,7 @@ internal sealed class HistoryWalkRun
         StoragePresenceProbe probe = new(_storageHistory);
         while (true)
         {
-            List<HistoryWalkMismatch> scanned = [];
+            MismatchSink scanned = new(MismatchSink.MaxRecordedPerItem);
             ScanOutcome outcome = _scanner.ScanAccounts(prefix, _from, _to, _maxRowsPerPartition, rows, new StorageRootMoveCheck(probe, scanned), _token);
             if (outcome == ScanOutcome.SinglePathOverflow) continue;
 
@@ -273,7 +280,7 @@ internal sealed class HistoryWalkRun
                 found.Decode(persisted);
             }
 
-            List<HistoryWalkMismatch> replayed = [];
+            MismatchSink replayed = new(MismatchSink.MaxRecordedPerItem);
             Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block, found, replayed) : null;
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
@@ -342,7 +349,7 @@ internal sealed class HistoryWalkRun
                 {
                     if (!owned) group.Rows.Dispose();
                 }
-            }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
+            }, position => _progress.ScanningKeySpace(item, position, HistoryRowScanner.StorageScanSpan), _token);
         }
         catch (Exception e)
         {
@@ -369,7 +376,7 @@ internal sealed class HistoryWalkRun
 
     private WalkReplayContext Context(CommitmentEmitter? emitter, SeriesWriter series, int item) => new(_from, _to, emitter, series, _progress, item, _token);
 
-    private void Checkpoint(int item, ulong progress, MismatchSink found, List<HistoryWalkMismatch>? pending)
+    private void Checkpoint(int item, ulong progress, MismatchSink found, MismatchSink? pending)
     {
         _metadata.MarkWalkItemProgress(item, progress, found.Encode(pending));
         _onCheckpoint?.Invoke(item, progress);

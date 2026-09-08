@@ -18,6 +18,8 @@ using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Core.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -937,14 +939,18 @@ public class ArchiveProofTests
     [Test]
     public void Pruning_does_not_need_the_walk()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1, ArchiveProofFineEpochs = 1 };
-        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+
+        retrofit.PruneBelow(_chain.Head);
+        _reclaimer!.ReclaimNow(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(settings.RecentEpochs, Is.EqualTo(1), "a node building from the tip alone keeps every retained epoch complete by carrying rows forward on the drop, so it needs no epoch snapshot from a walk");
-            Assert.That(settings.FineEpochs, Is.EqualTo(1));
+            Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.GreaterThan(0ul), "precondition: the head is past the first epoch");
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.EqualTo(retrofit.Metadata.RetainedFromEpoch), "with no walk ever run, the reclaimer still carries and drops every epoch below the floor: pruning is driven by the tip capture alone");
+            Assert.That(retrofit.Metadata.TryGetWalkInProgress(out _, out _), Is.False);
         }
     }
 
@@ -952,9 +958,119 @@ public class ArchiveProofTests
     public void Floors_only_ever_rise()
     {
         CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
-        Assert.That(metadata.TryRaiseRetainedFromEpoch(3), Is.True);
-        Assert.That(metadata.TryRaiseRetainedFromEpoch(2), Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
-        Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.TryRaiseRetainedFromEpoch(3), Is.True);
+            Assert.That(metadata.TryRaiseRetainedFromEpoch(2), Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
+            Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
+            Assert.That(metadata.TryRaiseDroppedThroughEpoch(2), Is.False, "the physical floors go through the mirrored path and are just as monotone");
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
+            Assert.That(metadata.TryRaiseDemotedThroughEpoch(3), Is.True);
+            Assert.That(metadata.TryRaiseDemotedThroughEpoch(3), Is.False);
+            Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(3ul));
+        }
+    }
+
+    [Test]
+    public void A_drop_records_its_carry_so_a_retry_deletes_without_carrying_again_and_completes_in_one_write()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+
+        metadata.MarkCarried(4);
+        bool carriedBefore = metadata.IsCarried(4);
+        bool completed = metadata.TryCompleteDrop(4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(carriedBefore, Is.True, "a crash between the carry and the deletes must not rerun the carry over an epoch whose files are already partly gone");
+            Assert.That(completed, Is.True);
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(5ul));
+            Assert.That(metadata.IsCarried(4), Is.False, "the mark and the floor move in one batch, so no state has the floor raised with the mark still set or the reverse");
+            Assert.That(metadata.TryCompleteDrop(3), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_start_epoch_hint_never_seeks_above_the_queried_block()
+    {
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), EpochPolicy, identityLength: 0);
+        byte[] prefixBuffer = new byte[CommitmentKeyLayout.MaxKeyLength];
+        ReadOnlySpan<byte> prefix = prefixBuffer.AsSpan(0, CommitmentKeyLayout.WritePathPrefix(prefixBuffer, TreePath.FromHexString("ab"), exact: true));
+        ulong laterBlock = EpochPolicy.EpochStart(3) + 3;
+        ulong queried = EpochPolicy.EpochStart(2) + 5;
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            byte[] row = new byte[64];
+            store.Write(prefix, laterBlock, row.AsSpan(0, ParentRowCodec.EncodeEmpty(laterBlock, row)), batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments));
+        }
+
+        using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix, queried, budget: null, minEpoch: 3, startEpoch: 0);
+
+        Assert.That(!chain.MoveNext() || chain.CurrentSuffix <= queried, Is.True, "a demoted floor above the query's epoch may lower where the seek starts, never raise it: a row from a later epoch is not the state at the queried block");
+    }
+
+    [Test]
+    public void Serving_disabled_creates_no_cache_and_resolves_nothing()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofServeEnabled = false };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        ArchiveProofSource source = new(_flatDb, _historyColumns, new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance), rowFormat, _policy, new CommitmentMetadata(_historyColumns, _policy), settings, config, LimboLogs.Instance);
+
+        bool served = source.TryRunTreeVisitor(new AccountProofCollector(_accounts[0], Array.Empty<UInt256>()), _chain.StateIdAt(1), null, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.False);
+            Assert.That(source.ServingResourcesCreated, Is.False, "a node that only builds pays nothing for the serving side: no node cache, no slot-encoding probe");
+        }
+    }
+
+    [Test]
+    public void The_reclaimer_warns_about_nodes_it_could_not_carry()
+    {
+        _recentEpochs = 1;
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), EpochPolicy, identityLength: 0);
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            store.Write(0, [0x02, 0xab], 5, [0x01, 0xC0], batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments));
+        }
+
+        TestLogger log = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<CommitmentReclaimer>().Returns(new ILogger(log));
+        using CommitmentReclaimer reclaimer = new(_historyColumns, EpochPolicy, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), logManager);
+        reclaimer.PruneBelow(EpochPolicy.EpochStart(2));
+
+        reclaimer.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.LogList, Has.Some.Contains("could not be carried"), "an operator learns that a proof crossing that node in a retained epoch will rebuild from history rows");
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(metadata.RetainedFromEpoch), "an uncarriable node does not stop the epoch from being reclaimed");
+        }
+    }
+
+    [Test]
+    public void Tier_boundaries_are_where_the_policy_says()
+    {
+        CommitmentDepthPolicy policy = CommitmentDepthPolicy.Default;
+        int large = policy.LargeTrieSignalDepth + 1;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.AccountTier(policy.AccountExactDepth), Is.EqualTo(CommitmentTier.PerChange));
+            Assert.That(policy.AccountTier(policy.AccountExactDepth + 1), Is.EqualTo(CommitmentTier.Checkpoint), "the first depth below the exact tier keeps window rows only");
+            Assert.That(policy.AccountTier(policy.AccountCheckpointDepth), Is.EqualTo(CommitmentTier.Checkpoint));
+            Assert.That(policy.AccountTier(policy.AccountCheckpointDepth + 1), Is.EqualTo(CommitmentTier.Recomputed), "the first depth below the checkpoint tier has no row of its own");
+            Assert.That(policy.StorageTier(policy.StorageExactDepth, large), Is.EqualTo(CommitmentTier.PerChange));
+            Assert.That(policy.StorageTier(policy.StorageExactDepth + 1, large), Is.EqualTo(CommitmentTier.Checkpoint));
+            Assert.That(policy.StorageTier(policy.StorageCheckpointDepth, large), Is.EqualTo(CommitmentTier.Checkpoint));
+            Assert.That(policy.StorageTier(policy.StorageCheckpointDepth + 1, large), Is.EqualTo(CommitmentTier.Recomputed));
+        }
     }
 
     [Test]

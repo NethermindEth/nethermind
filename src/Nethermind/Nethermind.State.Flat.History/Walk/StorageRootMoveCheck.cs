@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class StorageRootMoveCheck(StoragePresenceProbe probe, List<HistoryWalkMismatch> mismatches)
+internal sealed class StorageRootMoveCheck(StoragePresenceProbe probe, MismatchSink mismatches)
 {
     public void OnMoved(in ValueHash256 accountPath, ulong block, in ValueHash256 previous, in ValueHash256 current)
     {

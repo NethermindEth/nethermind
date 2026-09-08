@@ -102,10 +102,14 @@ internal sealed class HistoricalTrieNodeBuilder
         if (_scope.MayHaveExactRows(path.Length))
         {
             using CommitmentStore.RowChain exact = _scope.OpenRows(path, exact: true, _block, _budget, bounded: !allowRebuild && path.Length > 0);
-            if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue))
+            if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue) && exact.CurrentSuffix <= _block)
             {
                 if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(exact.CurrentValue));
-                if ((DemotionCannotHideNewerRows(exact.CurrentSuffix) || !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue))) && Materialize(exact) is { } fromExact) return fromExact;
+                if (DemotionCannotHideNewerRows(exact.CurrentSuffix) || !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)))
+                {
+                    if (ParentRowCodec.IsEmptyRow(exact.CurrentValue)) return null;
+                    if (Materialize(exact) is { } fromExact) return fromExact;
+                }
             }
         }
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -197,7 +196,7 @@ internal sealed class HistoryRowCursor : IDisposable
     private int WriteRowKey(Span<byte> destination, ulong block)
     {
         _flatKey.CopyTo(destination);
-        BinaryPrimitives.WriteUInt64BigEndian(destination[_flatKey.Length..], ~block);
+        _rowFormat.EncodeSuffixBlock(destination[_flatKey.Length..], block);
         return _flatKey.Length + sizeof(ulong);
     }
 }
