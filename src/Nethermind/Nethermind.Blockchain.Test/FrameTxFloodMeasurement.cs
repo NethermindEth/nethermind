@@ -238,6 +238,11 @@ public class FrameTxFloodMeasurement
 
     private const double BrokenBaselineDriftPercent = 25.0;
 
+    // p99 is a near-max order statistic over a few hundred samples, so it is inherently noisier than
+    // the median: one scheduling hiccup can double it without the two baselines describing different
+    // machines. The median keeps the tight bound that actually detects a different machine.
+    private const double BrokenBaselineTailDriftPercent = 100.0;
+
     private const double MaxSustainedLagPeriods = 5.0;
 
     private const double RateHeldFloor = 0.95;
@@ -252,7 +257,11 @@ public class FrameTxFloodMeasurement
         double MaxLagUs,
         int PendingPoolGrowth,
         int Shed,
-        List<double> ProcessMicros);
+        List<double> ProcessMicros)
+    {
+        /// <summary>The rate that actually reached the simulator, excluding shed submissions.</summary>
+        public double AdmittedRate => Submitted > 0 ? AchievedRate * (Submitted - Shed) / Submitted : 0;
+    }
 
     /// <summary>Single source of truth for shed percentage, so rate-ramp and flood-delay rows agree.</summary>
     private static double ShedPct(FloodOutcome outcome) =>
@@ -499,9 +508,9 @@ public class FrameTxFloodMeasurement
              + $"lag_bounded={(lagBounded ? "yes" : "no")} "
              + $"pending_pool_growth={flooded.PendingPoolGrowth} "
              + $"saturated={(saturated ? "yes" : "no")} "
-             + $"delta_per_achieved_tx_per_s_us={(flooded.AchievedRate > 0 ? (w - w0) / flooded.AchievedRate : 0):F2} "
-             + $"delta_per_admitted_tx_us={(flooded.AchievedRate > 0 && w > 0 ? (w - w0) * 1_000_000 / (flooded.AchievedRate * w) : 0):F1} "
-             + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
+             + $"delta_per_achieved_tx_per_s_us={(flooded.AdmittedRate > 0 ? (w - w0) / flooded.AdmittedRate : 0):F2} "
+             + $"delta_per_admitted_tx_us={(flooded.AdmittedRate > 0 && w > 0 ? (w - w0) * 1_000_000 / (flooded.AdmittedRate * w) : 0):F1} "
+             + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} baseline_count={baseline.Count} "
              + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} "
              + $"W_p50_us={w:F1} W_p95_us={wp95:F1} "
              + $"W0_p99_us={w0p99:F1} W_p99_us={wp99:F1} "
@@ -510,12 +519,17 @@ public class FrameTxFloodMeasurement
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(worstDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
-                $"the two idle baselines disagree by up to {worstDriftPct:F1}% (p50 {baselineDriftPct:F1}%, "
-                + $"p99 {baselineTailDriftPct:F1}%), so they describe different machine "
-                + "states and no delta can be recovered from them. Re-run on a quieter machine. Rows between "
-                + $"{MaxBaselineDriftPercent}% and {BrokenBaselineDriftPercent}% are emitted with valid=no "
-                + "instead of failing.");
+            Assert.That(baselineDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
+                $"the two idle baselines' medians disagree by {baselineDriftPct:F1}%, so they describe "
+                + "different machine states and no delta can be recovered from them. Re-run on a quieter "
+                + $"machine. Rows between {MaxBaselineDriftPercent}% and {BrokenBaselineDriftPercent}% are "
+                + "emitted with valid=no instead of failing.");
+            Assert.That(baselineTailDriftPct, Is.LessThan(BrokenBaselineTailDriftPercent),
+                $"the two idle baselines' p99s disagree by {baselineTailDriftPct:F1}%, past the looser tail "
+                + $"bound of {BrokenBaselineTailDriftPercent}% (p99 on a few hundred samples is a noisy, "
+                + "near-max statistic, so it tolerates more drift than the median before the run is "
+                + "unusable). Tail drift between the median and tail thresholds still counts against "
+                + "valid= above without hard-failing.");
             Assert.That(flooded.Rejected + flooded.Shed, Is.EqualTo(flooded.Submitted).Within(1),
                 "flood transactions went missing: they were neither simulated nor shed, so this measures an "
                 + "idle pool for a reason this harness cannot name");
