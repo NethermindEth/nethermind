@@ -19,6 +19,13 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Trie;
 
+/// <summary>
+/// Fetches missing bytecode over the snap <c>GetByteCodes</c> protocol.
+/// </summary>
+/// <remarks>
+/// Races a few peers against each other and takes the first response that hashes to the requested code hash,
+/// so a peer that serves nothing or serves the wrong bytes only loses its own attempt.
+/// </remarks>
 public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICodeRecovery
 {
     // Pick by reduced latency instead of throughput
@@ -34,6 +41,7 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
     private const int ConcurrentAttempt = 3;
     private readonly ILogger _logger = logManager.GetClassLogger<CodeRecovery>();
 
+    /// <inheritdoc/>
     public async Task<byte[]?> Recover(ValueHash256 codeHash, CancellationToken cancellationToken = default)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource(RecoveryTimeout);
