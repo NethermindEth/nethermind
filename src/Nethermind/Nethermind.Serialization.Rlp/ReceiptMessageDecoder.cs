@@ -37,16 +37,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (txReceipt.TxType == TxType.FrameTx)
             {
-                FrameReceiptRlp.DecodePayload(ref ctx, txReceipt);
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-                {
-                    ctx.Check(receiptEnd);
-                }
-                else
-                {
-                    ctx.Position = receiptEnd;
-                }
-
+                FrameReceiptRlp.DecodePayload(ref ctx, txReceipt, receiptEnd, rlpBehaviors);
                 return txReceipt;
             }
 

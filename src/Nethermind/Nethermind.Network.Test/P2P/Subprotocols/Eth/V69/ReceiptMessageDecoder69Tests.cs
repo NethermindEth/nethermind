@@ -161,6 +161,58 @@ public class ReceiptMessageDecoder69Tests
             Is.EqualTo(ReceiptTrie.CalculateRoot(spec, [receipt], consensusDecoder)));
     }
 
+    // The frame count only requires a frame to start before the declared end, so an under-declared frames
+    // header consumes the same bytes as the canonical one and the enclosing receipt checkpoint still holds.
+    [TestCase(false, TestName = "Decode_CanonicalFramesHeader_IsAccepted")]
+    [TestCase(true, TestName = "Decode_UnderDeclaredFramesHeader_Throws")]
+    public void Decode_FramesHeaderMustMatchItsContent(bool underDeclare)
+    {
+        TxFrameReceipt[] frameReceipts = [new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, 0, [])];
+        TxReceipt receipt = new()
+        {
+            TxType = TxType.FrameTx,
+            GasUsedTotal = 21_000,
+            Payer = TestItem.AddressA,
+            FrameReceipts = frameReceipts,
+            StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts),
+            Logs = TxFrameReceipt.ConcatLogs(frameReceipts),
+        };
+
+        ReceiptMessageDecoder69 decoder = new();
+        byte[] encoded = Encode(decoder, receipt);
+        int headerIndex = FramesHeaderIndex(encoded);
+
+        if (underDeclare)
+        {
+            encoded[headerIndex]--;
+            Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(Decode(decoder, encoded).FrameReceipts, Has.Length.EqualTo(1));
+        }
+    }
+
+    /// <summary>Locates the header of the frames list, and asserts that the list runs to the payload end.</summary>
+    /// <remarks>Walking the payload fields places the header exactly, where a byte scan could hit an unrelated
+    /// field and make the under-declared case throw for the wrong reason.</remarks>
+    private static int FramesHeaderIndex(byte[] encoded)
+    {
+        RlpReader locator = new(encoded);
+        int payloadEnd = locator.ReadSequenceLength() + locator.Position;
+        locator.DecodeByte();
+        locator.DecodeULong();
+        locator.DecodeAddress();
+
+        int headerIndex = locator.Position;
+        int framesContentLength = locator.ReadSequenceLength();
+        Assert.That(locator.Position + framesContentLength, Is.EqualTo(payloadEnd),
+            "the frames list is not the last item of the payload");
+        Assert.That(encoded[headerIndex], Is.EqualTo((byte)(ShortSequenceHeaderBase + framesContentLength)),
+            "the frames list header is not a single byte");
+        return headerIndex;
+    }
+
     private static byte[] Encode(ReceiptMessageDecoder69 decoder, TxReceipt receipt)
     {
         byte[] encoded = new byte[decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts)];

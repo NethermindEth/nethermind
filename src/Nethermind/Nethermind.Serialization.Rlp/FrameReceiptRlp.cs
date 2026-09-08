@@ -27,7 +27,7 @@ public static class FrameReceiptRlp
     private static readonly RlpLimit FrameReceiptsRlpLimit = RlpLimit.For<TxReceipt>(Eip8141Constants.MaxFrames, nameof(TxReceipt.FrameReceipts));
 
     /// <summary>The content length of the frames list, its own header excluded.</summary>
-    public static int GetFramesLength(TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder)
+    internal static int GetFramesLength(TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder)
     {
         int framesLength = 0;
         for (int i = 0; i < frameReceipts.Length; i++)
@@ -39,13 +39,13 @@ public static class FrameReceiptRlp
     }
 
     /// <summary>Writes the frames list, its header included.</summary>
-    public static void EncodeFrames<TWriter>(ref TWriter writer, TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder)
+    internal static void EncodeFrames<TWriter>(ref TWriter writer, TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
         => EncodeFrames(ref writer, frameReceipts, logDecoder, GetFramesLength(frameReceipts, logDecoder));
 
     /// <summary>Decodes the frames list of a stored receipt's <c>[payer, [frame_receipt, ...]]</c> extension.</summary>
     /// <remarks>Lenient by design: the data is locally written, and it may predate the 2D <c>gas_used</c>.</remarks>
-    public static TxFrameReceipt[] DecodeStoredFrames(ref RlpReader reader, IRlpDecoder<LogEntry?> logDecoder)
+    internal static TxFrameReceipt[] DecodeStoredFrames(ref RlpReader reader, IRlpDecoder<LogEntry?> logDecoder)
     {
         int framesEnd = reader.ReadSequenceLength() + reader.Position;
         using ArrayPoolListRef<TxFrameReceipt> frameReceipts = new(Eip8141Constants.MaxFrames);
@@ -91,11 +91,12 @@ public static class FrameReceiptRlp
     }
 
     /// <summary>Decodes the payload fields into <paramref name="receipt"/>, deriving its status and logs from
-    /// the frames; the caller owns the sequence enclosing them.</summary>
+    /// the frames, and closes the enclosing sequence at <paramref name="receiptEnd"/>.</summary>
     /// <remarks>The payload carries neither a transaction-level status nor a bloom, so a value taken from
     /// anywhere but the frames would not agree with a receipts-only node.</remarks>
+    /// <param name="receiptEnd">The position the sequence enclosing the payload ends at.</param>
     /// <exception cref="RlpException">The payload holds no frames, or a frame is malformed.</exception>
-    public static void DecodePayload(ref RlpReader reader, TxReceipt receipt)
+    public static void DecodePayload(ref RlpReader reader, TxReceipt receipt, int receiptEnd, RlpBehaviors rlpBehaviors)
     {
         receipt.GasUsedTotal = reader.DecodeULong();
         receipt.Payer = reader.DecodeAddress();
@@ -151,9 +152,22 @@ public static class FrameReceiptRlp
             reader.Check(frameEnd);
         }
 
+        // The item count only requires a frame to start before the declared end, so an under-declared
+        // frames header is only caught here; the enclosing checkpoint can land on it by coincidence.
+        reader.Check(framesEnd);
+
         receipt.FrameReceipts = frameReceipts;
         receipt.StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts);
         receipt.Logs = TxFrameReceipt.ConcatLogs(frameReceipts);
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0)
+        {
+            reader.Position = receiptEnd;
+        }
+        else
+        {
+            reader.Check(receiptEnd);
+        }
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowEmptyFrameReceipts()

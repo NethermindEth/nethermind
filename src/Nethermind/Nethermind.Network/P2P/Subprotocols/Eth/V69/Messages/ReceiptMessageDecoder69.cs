@@ -32,16 +32,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         if (txReceipt.TxType == TxType.FrameTx)
         {
-            FrameReceiptRlp.DecodePayload(ref ctx, txReceipt);
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0)
-            {
-                ctx.Position = receiptEnd;
-            }
-            else
-            {
-                ctx.Check(receiptEnd);
-            }
-
+            FrameReceiptRlp.DecodePayload(ref ctx, txReceipt, receiptEnd, rlpBehaviors);
             return txReceipt;
         }
 
@@ -63,7 +54,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
+        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, LogsRlpLimit.Limit + 1);
         ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
