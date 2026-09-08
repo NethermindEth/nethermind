@@ -42,6 +42,10 @@ namespace Nethermind.Synchronization.StateSync
             {
                 anyProtocolAttempted = true;
                 if (await TryDispatchViaSnap(peer, snapHandler, batch, cancellationToken)) return;
+
+                // A cancelled request was caught as a failure above, and the fallback would only spend
+                // a second request on a token that is already gone.
+                if (cancellationToken.IsCancellationRequested) return;
             }
 
             if (ProtocolSupportsNodeData(peer))
@@ -60,12 +64,14 @@ namespace Nethermind.Synchronization.StateSync
 
         private async Task<bool> TryDispatchViaSnap(ISyncPeer peer, ISnapSyncPeer snapHandler, StateSyncBatch batch, CancellationToken cancellationToken)
         {
+            // Built before the try: it reorders `batch.RequestedNodes` in place, so swallowing a throw
+            // from it would hand the fallback a request whose items have been dropped.
+            GetTrieNodesRequest? getTrieNodesRequest = batch.NodeDataType == NodeDataType.Code ? null : GetGroupedRequest(batch);
             HashList? hashList = null;
-            GetTrieNodesRequest? getTrieNodesRequest = null;
             try
             {
                 Task<IByteArrayList> task;
-                if (batch.NodeDataType == NodeDataType.Code)
+                if (getTrieNodesRequest is null)
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested ByteCodes via SnapProtocol from peer {peer}");
                     hashList = HashList.Rent(batch.RequestedNodes);
@@ -74,7 +80,6 @@ namespace Nethermind.Synchronization.StateSync
                 else
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
-                    getTrieNodesRequest = GetGroupedRequest(batch);
                     task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
 
@@ -112,11 +117,19 @@ namespace Nethermind.Synchronization.StateSync
         }
 
         /// <returns><see langword="true"/> if the response carried any node, in which case it is kept on the batch.</returns>
+        /// <remarks>
+        /// An empty answer is still an answer, so it leaves an empty list behind rather than <see langword="null"/>:
+        /// <see cref="FastSync.TreeSync"/> reads a null <see cref="StateSyncBatch.Responses"/> as a peer that never
+        /// replied and stops accumulating the emptish-response hints that reset a stale pivot. The shared empty
+        /// singleton stands in for the response so ownership of the real list does not leave this method.
+        /// A batch on which every attempt threw keeps its null, since it never reaches here.
+        /// </remarks>
         private static bool TryKeepResponses(StateSyncBatch batch, IByteArrayList? responses)
         {
             if (responses is null || responses.Count == 0)
             {
                 responses?.Dispose();
+                batch.Responses = EmptyByteArrayList.Instance;
                 return false;
             }
 

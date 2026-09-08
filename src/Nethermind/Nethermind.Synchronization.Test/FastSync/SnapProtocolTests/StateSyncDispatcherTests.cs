@@ -157,10 +157,51 @@ public class StateSyncDispatcherTests
         await peer.DidNotReceiveWithAnyArgs().GetNodeData(default!, default);
     }
 
+    [Test]
+    public async Task SnapPeer_KeepsAnEmptyResponse_WhenThereIsNoFallback()
+    {
+        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance));
+        ISyncPeer peer = AddPeer(EthVersions.Eth67, snapPeer);
+
+        using StateSyncBatch batch = StateBatch(new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State));
+
+        await _dispatcher.ExecuteDispatch(batch, 1);
+
+        await peer.DidNotReceiveWithAnyArgs().GetNodeData(default!, default);
+        // A peer that answered emptily has to leave an empty list rather than null, or TreeSync scores
+        // the batch as one no peer replied to and stops hinting that the pivot is stale.
+        Assert.That(batch.Responses, Is.Not.Null);
+        Assert.That(batch.Responses!.Count, Is.Zero);
+    }
+
+    [Test]
+    public void Dispatch_throws_when_the_peer_can_serve_neither_protocol()
+    {
+        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+        snapPeer.SnapProtocolVersion.Returns(SnapVersions.Snap2);
+        ISyncPeer peer = CreatePeer(EthVersions.Eth67, snapPeer);
+
+        using StateSyncBatch batch = StateBatch(new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State));
+
+        // The allocation strategy filters such a peer out, so the downloader is driven directly here:
+        // the guard exists for a caller that reaches it anyway.
+        Assert.That(() => new StateSyncDownloader(_logManager).Dispatch(new PeerInfo(peer), batch, CancellationToken.None),
+            Throws.InstanceOf<InvalidOperationException>());
+    }
+
     private static StateSyncBatch StateBatch(params StateSyncItem[] items) =>
         new(Keccak.OfAnEmptyString, NodeDataType.State, items);
 
     private ISyncPeer AddPeer(byte protocolVersion, ISnapSyncPeer? snapPeer = null)
+    {
+        ISyncPeer peer = CreatePeer(protocolVersion, snapPeer);
+        _pool.AddPeer(peer);
+        return peer;
+    }
+
+    private ISyncPeer CreatePeer(byte protocolVersion, ISnapSyncPeer? snapPeer = null)
     {
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
@@ -178,7 +219,6 @@ public class StateSyncDispatcherTests
             });
         }
 
-        _pool.AddPeer(peer);
         return peer;
     }
 }
