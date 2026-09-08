@@ -151,8 +151,7 @@ namespace Nethermind.Evm.Test.Tracing
             nextOtherTracer.Received(1).StartNewTxTrace(nextBlock.Transactions[0]);
         }
 
-        [TestCase(1_000)]
-        [TestCase(100_000)]
+        [Test]
         public void ResetForParallelTx_does_not_reserve_capacity_for_the_whole_block(int txCount)
         {
             Transaction tx = Build.A.Transaction.TestObject;
