@@ -460,6 +460,29 @@ public class LightTxDecoderTests
         }
     }
 
+    // A zero price is what the decoder hands back as absent, so it cannot be a record's only claim on the group:
+    // one written for it costs the header and three slots for nothing, and forfeits the flat list.
+    [Test]
+    public void A_zero_price_alone_keeps_the_flat_list()
+    {
+        UInt256[] keys = [1, 2];
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        // What admission records for a zero-cost transaction no payer resolved for.
+        tx.PayerExposure = UInt256.Zero;
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+
+        byte[] encoded = LightTxDecoder.Encode(tx);
+        LightTransaction decoded = LightTxDecoder.Decode(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+            Assert.That(decoded.PayerExposure, Is.Null);
+            Assert.That(LightTxDecoder.Encode(decoded), Is.EqualTo(encoded), "a group the decoder discards leaves the round trip without a fixed point");
+        }
+    }
+
     // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
     // pool becomes unreadable at once; a payer costs exactly the group and nothing more.
     [Test]

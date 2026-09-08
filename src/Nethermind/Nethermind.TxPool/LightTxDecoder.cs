@@ -52,10 +52,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// <summary>Content length of the grouped form, or zero for a record that needs none of its slots.</summary>
     /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
     /// disagree and over- or under-fill the buffer. The exposure is a slot in its own right: a payer-less frame
-    /// transaction reserves nothing but is still summed at the price admission recorded.</remarks>
+    /// transaction reserves nothing but is still summed at the price admission recorded. A zero price is absent
+    /// on the read side, so it cannot open the group alone, or the record would pay for a slot decoding discards.
+    /// </remarks>
     private static int TrailingContentLength(Transaction tx, Address? paymaster)
     {
-        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null) return 0;
+        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true }) return 0;
 
         // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
         // nonce_keys list a groupless record still writes, whose first element is a scalar.
