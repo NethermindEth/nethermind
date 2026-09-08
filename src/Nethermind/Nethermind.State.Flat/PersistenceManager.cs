@@ -250,7 +250,7 @@ public class PersistenceManager(
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
-                    CurrentPersistedStateId = toPersist.To;
+                    MarkPersisted(toPersist.To);
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
                 }
                 else if (persistedToPersist is not null)
@@ -259,7 +259,7 @@ public class PersistenceManager(
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
-                    CurrentPersistedStateId = persistedToPersist.To;
+                    MarkPersisted(persistedToPersist.To);
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
                 }
                 else if (toConvert?.Compacted is not null)
@@ -434,7 +434,7 @@ public class PersistenceManager(
                 snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
                 CaptureHistory(persisted.To, cancellationToken);
                 PersistPersistedSnapshot(persisted);
-                CurrentPersistedStateId = persisted.To;
+                MarkPersisted(persisted.To);
                 currentPersistedState = CurrentPersistedStateId;
                 snapshotRepository.RemoveStatesUntil(persisted.To.BlockNumber);
                 continue;
@@ -447,7 +447,7 @@ public class PersistenceManager(
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
             CaptureHistory(snapshotToPersist.To, cancellationToken);
             PersistSnapshot(snapshotToPersist);
-            CurrentPersistedStateId = snapshotToPersist.To;
+            MarkPersisted(snapshotToPersist.To);
             currentPersistedState = CurrentPersistedStateId;
             snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
         }
@@ -514,10 +514,10 @@ public class PersistenceManager(
         }
     }
 
-    public void ResetPersistedStateId()
+    private void MarkPersisted(in StateId to)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        CurrentPersistedStateId = reader.CurrentState;
+        CurrentPersistedStateId = to;
+        _stateSyncWriting = false;
     }
 
     public void Dispose()

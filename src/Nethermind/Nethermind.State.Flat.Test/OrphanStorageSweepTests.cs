@@ -300,7 +300,7 @@ public class OrphanStorageSweepTests
     }
 
     [Test]
-    public void A_maintenance_batch_refused_because_a_state_sync_is_writing_stops_the_sweep_and_keeps_its_cursor()
+    public void A_maintenance_batch_refused_while_a_state_sync_writes_is_retried_once_the_sync_has_ended()
     {
         ValueHash256 slot = TestItem.KeccakB.ValueHash256;
         ValueHash256 orphan = PathWithPrefix(0x10000000, tail: 0x01);
@@ -309,19 +309,42 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
         }
 
-        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(stateSyncWriting: () => true), new SweepPacer(), LimboLogs.Instance);
+        int refusals = 0;
+        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(stateSyncWriting: () => ++refusals <= 2), new SweepPacer(), LimboLogs.Instance);
 
-        Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
-            "a state sync writing to the base owns it; the sweep stops instead of judging half-written data");
+        OrphanStorageReport report = sweep.RunToCompletion(repair: true, CancellationToken.None);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         SlotValue value = default;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted while another writer is assembling the base");
-            Assert.That(sweep.AlreadyHandled, Is.False, "the base still holds a real state, so the pass is owed and resumes on the next start");
-            Assert.That(_db.GetColumnDb(FlatDbColumns.Metadata).Get(ProgressKey), Is.Not.Null, "the cursor written before the deletes stays, so the resume covers the slice that was never deleted");
+            Assert.That(refusals, Is.GreaterThanOrEqualTo(3), "the sweep keeps asking while a sync owns the base and deletes as soon as it is handed back");
+            Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.False);
+            Assert.That(report.OrphanSlots, Is.EqualTo(1));
+            Assert.That(sweep.AlreadyHandled, Is.True);
         }
+    }
+
+    [Test]
+    public void A_check_that_saw_the_base_cleared_stays_inconclusive_after_the_sync_finishes()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(PathWithPrefix(0x10000000, tail: 0x01), slot, EncodedValue);
+            batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
+        }
+
+        _sweep.RunOnePass(repair: false, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
+        _persistence.Clear();
+        _sweep.RunOnePass(repair: false, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
+        using (_persistence.CreateWriteBatch(StateId.PreGenesis, Persisted))
+        {
+        }
+
+        _sweep.RunToCompletion(repair: false, CancellationToken.None);
+
+        Assert.That(_sweep.CheckInconclusive, Is.True, "counts gathered while a sync rebuilt the base are not a verdict, however the base looks when the check ends");
     }
 
     [Test]

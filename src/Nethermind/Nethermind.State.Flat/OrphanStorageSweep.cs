@@ -27,6 +27,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     private const int SlotOffset = BasePersistence.StoragePrefixPortion;
     private const int SuffixOffset = SlotOffset + Hash256.Size;
     private static readonly TimeSpan DeleteBudget = TimeSpan.FromMilliseconds(500);
+    private bool _waitingLogged;
 
     public OrphanStorageReport Report => new(Tally[SlotsScanned], Tally[OrphanSlots], Tally[OrphanAccounts], Tally[MissingAccounts], Tally[EmptyRootAccounts]);
 
@@ -146,7 +147,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
             bool applied = persistenceManager.RunMaintenance(batch =>
             {
                 long startedAt = Stopwatch.GetTimestamp();
-                while (next < orphans.Count && Stopwatch.GetElapsedTime(startedAt) < DeleteBudget)
+                while (next < orphans.Count && !token.IsCancellationRequested && Stopwatch.GetElapsedTime(startedAt) < DeleteBudget)
                 {
                     ValueHash256 identity = orphans[next++];
                     if (!IsOrphan(accounts, identity, out _)) continue;
@@ -156,20 +157,26 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
                 }
             }, token);
 
-            if (!applied) StopForStateSync();
+            if (!applied) WaitForStateSync(token);
         }
     }
 
-    private void StopForStateSync()
+    private void WaitForStateSync(CancellationToken token)
     {
         if (!Drained(0))
         {
             StampSwept();
             if (Logger.IsWarn) Logger.Warn("Flat orphan storage sweep stopped: the flat database was cleared under it and a state sync is rebuilding it from scratch. Everything that sync writes is written by this version and cannot be orphaned, so the database is recorded as swept.");
+            throw new OperationCanceledException();
         }
-        else if (Logger.IsWarn) Logger.Warn("Flat orphan storage sweep stopped: a state sync is writing to the flat database, and nothing in it may be judged until that sync has finished. The sweep resumes from its cursor on the next start.");
 
-        throw new OperationCanceledException();
+        if (!_waitingLogged)
+        {
+            _waitingLogged = true;
+            if (Logger.IsInfo) Logger.Info("Flat orphan storage sweep is waiting: a state sync is writing to the flat database, and nothing in it may be judged until that sync has finished.");
+        }
+
+        if (token.WaitHandle.WaitOne(RetryPoll)) throw new OperationCanceledException(token);
     }
 
     private static ValueHash256 IdentityOf(ReadOnlySpan<byte> storageKey)

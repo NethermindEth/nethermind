@@ -27,7 +27,11 @@ public class FlatSnapTrieFactory(IPersistence persistence, IPersistenceManager p
         persistenceManager.ClearForStateSync();
     }
 
-    public void FinalizeSync() => persistence.Flush();
+    public void FinalizeSync()
+    {
+        persistence.Flush();
+        persistenceManager.EndStateSync();
+    }
 
     public ISnapTree<PathWithAccount> CreateStateTree()
     {

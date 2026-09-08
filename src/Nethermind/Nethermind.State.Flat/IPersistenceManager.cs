@@ -11,7 +11,6 @@ public interface IPersistenceManager
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence(CancellationToken cancellationToken);
-    void ResetPersistedStateId();
     bool RunMaintenance(Action<IPersistence.IWriteBatch> work, CancellationToken cancellationToken);
     void BeginStateSync();
     void ClearForStateSync();
