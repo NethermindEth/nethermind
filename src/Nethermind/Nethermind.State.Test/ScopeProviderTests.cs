@@ -1136,7 +1136,14 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         bool openDuringBaseDispose = false;
-        baseScope.When(s => s.Dispose()).Do(_ => openDuringBaseDispose = caches.ConsumerScopeOpen);
+        bool cacheLockHeldDuringBaseDispose = true;
+        IWorldStateScopeProvider.IScope mainScopeDuringBaseDispose = baseScope;
+        baseScope.When(s => s.Dispose()).Do(_ =>
+        {
+            openDuringBaseDispose = caches.ConsumerScopeOpen;
+            cacheLockHeldDuringBaseDispose = Monitor.IsEntered(caches);
+            mainScopeDuringBaseDispose = caches.MainScope;
+        });
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
         baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
@@ -1149,6 +1156,8 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(openDuringBaseDispose, Is.True, "the underlying scope drains its background readers on dispose, so sessions stay excluded until then");
+            Assert.That(cacheLockHeldDuringBaseDispose, Is.False, "draining readers must not hold the session factory lock");
+            Assert.That(mainScopeDuringBaseDispose, Is.Null);
             Assert.That(caches.ConsumerScopeOpen, Is.False);
         }
     }
@@ -1204,6 +1213,50 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         Assert.That(caches.MainScope, Is.Null, "scope must be unregistered when disposed");
+    }
+
+    [Test]
+    public void Test_MainScope_Disposal_WaitsForWarmupSessionFactory()
+    {
+        PreBlockCaches caches = NewCaches();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IScope populatorBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession warmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope, populatorBaseScope);
+        PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+        PrewarmerScopeProvider populator = new(baseProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        IWorldStateScopeProvider.IScope consumerScope = consumer.BeginScope(null);
+        Thread disposeThread = new(consumerScope.Dispose) { IsBackground = true };
+        baseScope.CreateTrieWarmupSession().Returns(_ =>
+        {
+            disposeThread.Start();
+            Assert.That(SpinWait.SpinUntil(() =>
+                (disposeThread.ThreadState & (ThreadState.WaitSleepJoin | ThreadState.Stopped)) != 0,
+                TimeSpan.FromSeconds(10)), Is.True, "disposal must reach the factory lock");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(caches.MainScope, Is.SameAs(baseScope), "the factory must finish before unregistering its scope");
+                baseScope.DidNotReceive().Dispose();
+            }
+            return warmupSession;
+        });
+
+        try
+        {
+            using IWorldStateScopeProvider.IScope populatorScope = populator.BeginScope(null);
+        }
+        finally
+        {
+            Assert.That(disposeThread.Join(TimeSpan.FromSeconds(10)), Is.True);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.MainScope, Is.Null);
+            Assert.That(caches.ConsumerScopeOpen, Is.False);
+            baseScope.Received(1).Dispose();
+        }
     }
 
     [Test]

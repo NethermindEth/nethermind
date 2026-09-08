@@ -28,6 +28,8 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     // Invariant: the pool return runs exactly once, at refcount zero, so an in-flight trie-warmer
     // lookup can never overlap Reset/re-rent of this resource.
     private long _leases = RefCountingLease.Single;
+    private long _accesses = RefCountingLease.Single;
+    private bool _isRetired;
     private IResourcePool? _returnPool;
     private ResourcePool.Usage _returnUsage;
 
@@ -38,19 +40,34 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     {
         _returnPool = pool;
         _returnUsage = usage;
+        Volatile.Write(ref _accesses, RefCountingLease.Single);
+        Volatile.Write(ref _isRetired, false);
         Volatile.Write(ref _leases, RefCountingLease.Single);
     }
 
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
-    /// <summary>
-    /// Waits until this retired resource is held only by its owner, so in-flight warmer reads have drained before
-    /// retirement scans its caches.
-    /// </summary>
-    internal void WaitForExclusiveLease()
+    internal bool TryAcquireAccess()
     {
+        if (Volatile.Read(ref _isRetired) || !RefCountingLease.TryAcquire(ref _accesses)) return false;
+        if (!Volatile.Read(ref _isRetired)) return true;
+
+        ReleaseAccess();
+        return false;
+    }
+
+    internal void ReleaseAccess() => RefCountingLease.ReleaseOnce(ref _accesses);
+
+    /// <summary>
+    /// Closes warmer access and waits for active lookups and traversals before scanning the retired cache.
+    /// </summary>
+    /// <remarks>Idle session borrowers retain lifetime leases without blocking retirement.</remarks>
+    internal void RetireAndWaitForAccesses()
+    {
+        if (!Interlocked.Exchange(ref _isRetired, true)) ReleaseAccess();
+
         SpinWait spinWait = default;
-        while (Volatile.Read(ref _leases) != RefCountingLease.Single)
+        while (Volatile.Read(ref _accesses) > RefCountingLease.NoAccessors)
         {
             spinWait.SpinOnce();
         }

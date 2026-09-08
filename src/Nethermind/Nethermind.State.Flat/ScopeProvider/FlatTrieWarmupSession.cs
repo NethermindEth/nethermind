@@ -26,8 +26,9 @@ internal sealed class FlatTrieWarmupSession :
     private readonly ILogManager _logManager;
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer?> _storageWarmers = [];
     private readonly int _hintSequenceId;
-    private bool _isDisposed;
+    private bool _isStopped;
     private long _leases = RefCountingLease.Single;
+    private long _operations = RefCountingLease.Single;
 
     public FlatTrieWarmupSession(
         in StateId baseState,
@@ -51,30 +52,33 @@ internal sealed class FlatTrieWarmupSession :
         };
     }
 
+    internal void AcquireLease()
+    {
+        if (!RefCountingLease.TryAcquire(ref _leases)) throw new ObjectDisposedException(nameof(FlatTrieWarmupSession));
+    }
+
+    internal void StopWarming() => Volatile.Write(ref _isStopped, true);
+
     public void HintWarmAccount(in ValueAddress address)
     {
-        if (Volatile.Read(ref _isDisposed) || !RefCountingLease.TryAcquire(ref _leases)) return;
-        bool enqueued = false;
+        if (!TryEnterOperation(_hintSequenceId)) return;
         try
         {
-            if (Volatile.Read(ref _isDisposed) || ShouldStopWarming(_hintSequenceId)
-                || !_transientResource.ShouldPrewarm(in address, null)) return;
-            enqueued = _trieWarmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId);
+            if (_transientResource.ShouldPrewarm(in address, null))
+                _trieWarmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId);
         }
         finally
         {
-            if (!enqueued) ReleaseLease();
+            ExitOperation();
         }
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
-        if (Volatile.Read(ref _isDisposed) || !RefCountingLease.TryAcquire(ref _leases)) return;
-        bool enqueued = false;
+        if (!TryEnterOperation(_hintSequenceId)) return;
         try
         {
-            if (Volatile.Read(ref _isDisposed) || ShouldStopWarming(_hintSequenceId)
-                || !_transientResource.ShouldPrewarm(in address, index)) return;
+            if (!_transientResource.ShouldPrewarm(in address, index)) return;
 
             Address accountAddress = address.ToAddress();
             StorageWarmer? storageWarmer = _storageWarmers.GetOrAdd(accountAddress, static (address, session) =>
@@ -85,34 +89,45 @@ internal sealed class FlatTrieWarmupSession :
                     : new StorageWarmer(session, address.Value.ToAccountPath.ToHash256(), storageRoot, session._logManager);
             }, this);
             if (storageWarmer is not null)
-            {
-                enqueued = _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, _hintSequenceId);
-            }
+                _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, _hintSequenceId);
         }
         finally
         {
-            if (!enqueued) ReleaseLease();
+            ExitOperation();
         }
     }
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
+        if (!TryEnterOperation(sequenceId)) return false;
         try
         {
-            if (ShouldStopWarming(sequenceId)) return false;
             _stateTree.WarmUpPath(address.ToAccountPath.Bytes);
             return true;
         }
         finally
         {
-            ReleaseLease();
+            ExitOperation();
         }
     }
 
-    // Producer disposal must not cancel accepted jobs: the main generation invalidates them,
-    // and each queued job holds a lease keeping the session's resources alive through execution.
     private bool ShouldStopWarming(int sequenceId) =>
-        _hintSequenceId != sequenceId || _snapshotBundle.HintSequenceId != sequenceId;
+        Volatile.Read(ref _isStopped) || _hintSequenceId != sequenceId || _snapshotBundle.HintSequenceId != sequenceId;
+
+    private bool TryEnterOperation(int sequenceId)
+    {
+        if (ShouldStopWarming(sequenceId) || !RefCountingLease.TryAcquire(ref _operations)) return false;
+        if (!ShouldStopWarming(sequenceId) && _transientResource.TryAcquireAccess()) return true;
+
+        RefCountingLease.ReleaseOnce(ref _operations);
+        return false;
+    }
+
+    private void ExitOperation()
+    {
+        _transientResource.ReleaseAccess();
+        RefCountingLease.ReleaseOnce(ref _operations);
+    }
 
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
@@ -146,21 +161,28 @@ internal sealed class FlatTrieWarmupSession :
         return ValidateNode(node, address, in path, hash);
     }
 
-    private static TrieNode CreateUnknownNode(Hash256 hash) => new(NodeType.Unknown, hash);
+    private static TrieNode CreateUnknownNode(Hash256 hash)
+    {
+        TrieNode node = new(NodeType.Unknown, hash);
+        node.MarkWarmerOwned();
+        return node;
+    }
 
     private static TrieNode ValidateNode(TrieNode node, Hash256? address, in TreePath path, Hash256 hash) =>
         node.Keccak != hash
             ? throw new NodeHashMismatchException($"Node hash mismatch. Address {address}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}")
             : node;
 
+    // Each borrower releases one reference; only the final release cancels and drains active operations.
+    // Queued jobs retain no lease, so abandoned jobs cannot keep the warming resources alive.
     public void Dispose()
     {
-        if (!Interlocked.Exchange(ref _isDisposed, true)) ReleaseLease();
-    }
-
-    private void ReleaseLease()
-    {
         if (!RefCountingLease.ReleaseOnce(ref _leases)) return;
+
+        StopWarming();
+        RefCountingLease.ReleaseOnce(ref _operations);
+        SpinWait spinWait = default;
+        while (Volatile.Read(ref _operations) > RefCountingLease.NoAccessors) spinWait.SpinOnce();
 
         try
         {
@@ -206,10 +228,9 @@ internal sealed class FlatTrieWarmupSession :
 
         public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
         {
+            if (!session.TryEnterOperation(sequenceId)) return false;
             try
             {
-                if (session.ShouldStopWarming(sequenceId)) return false;
-
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
                 _storageTree.WarmUpPath(key.BytesAsSpan);
@@ -217,7 +238,7 @@ internal sealed class FlatTrieWarmupSession :
             }
             finally
             {
-                session.ReleaseLease();
+                session.ExitOperation();
             }
         }
     }

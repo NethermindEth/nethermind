@@ -970,16 +970,16 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
+    public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup([Values] bool storage)
     {
         BlockingPersistenceReader reader = new();
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        using SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
-        FlatWorldStateScope scope = new(
+        using FlatWorldStateScope scope = new(
             new StateId(0, TestItem.KeccakA),
             bundle,
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
@@ -988,18 +988,22 @@ public class FlatWorldStateScopeProviderTests
             warmer,
             LimboLogs.Instance);
 
-        // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
-        // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
-
-        Task disposeTask = Task.Run(() => scope.Dispose());
-        await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
-
-        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
-        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
-
-        reader.ResumeReads.Set();
+        if (storage) scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), UInt256.Zero);
+        else scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        try
+        {
+            Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
+            await Task.Run(scope.Dispose).WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.DisposedDuringActiveRead, Is.False);
+                Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+            }
+        }
+        finally
+        {
+            reader.ResumeReads.Set();
+        }
 
         Assert.That(() => reader.IsDisposed, Is.True.After(5000, 50), "Reader should be disposed once the warmup job completes");
     }
@@ -1174,188 +1178,172 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void OwnedTrieWarmupSession_StopsQueuedWarmupWhenMainWarmerStops()
+    public void TrieWarmupSession_StopsQueuedWarmupWhenMainWarmerStops()
     {
-        FlatDbConfig config = new();
-        TrackingResourcePool resourcePool = new();
-        ReadOnlySnapshotBundle snapshotBundle = new(
-            new SnapshotPooledList(0), new RecordingPersistenceReader(), false, PersistedSnapshotStack.Empty());
-        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, Substitute.For<ITrieNodeCache>());
-        using DeferredTrieWarmer trieWarmer = new();
-        using FlatScopeProvider provider = new(
-            new TestMemDb(),
-            flatDbManager,
-            config,
-            trieWarmer,
-            ResourcePool.Usage.MainBlockProcessing,
-            LimboLogs.Instance,
-            isReadOnly: false);
+        using WarmupSessionContext context = new();
+        using TestMemDb codeDb = new();
+        Assert.That(context.ReadOnlyBundle.TryLease(), Is.True);
+        using FlatScopeProvider provider = new(codeDb,
+            new FixedFlatDbManager(context.ReadOnlyBundle, context.ResourcePool, context.TrieNodeCache),
+            new FlatDbConfig(), context.TrieWarmer, ResourcePool.Usage.MainBlockProcessing,
+            LimboLogs.Instance, isReadOnly: false);
         using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
             Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject, new LocalMetrics());
         using IWorldStateScopeProvider.ITrieWarmupSession session = ordinaryScope.CreateTrieWarmupSession();
-
         session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
-
         ordinaryScope.StartWriteBatch(0).Dispose();
         session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
-            Assert.That(trieWarmer.CompleteAccountJob(), Is.False);
+            Assert.That(context.TrieWarmer.AddressJobPushes, Is.EqualTo(1));
+            Assert.That(context.TrieWarmer.CompleteJob(), Is.False);
         }
     }
 
     [Test]
-    public void OwnedTrieWarmupSession_DisposeRejectsNewHintsAndInFlightJobsFinishSafely()
+    public void TrieWarmupSession_BorrowersShareSessionAndReleaseWithoutStopping([Values] bool storage)
     {
-        FlatDbConfig config = new();
-        TrackingResourcePool resourcePool = new();
-        RecordingPersistenceReader reader = new();
-        ReadOnlySnapshotBundle snapshotBundle = new(
-            new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty());
-        ITrieNodeCache trieNodeCache = Substitute.For<ITrieNodeCache>();
-        FixedFlatDbManager flatDbManager = new(snapshotBundle, resourcePool, trieNodeCache);
-        using DeferredTrieWarmer trieWarmer = new();
-        using FlatScopeProvider provider = new(
-            new TestMemDb(),
-            flatDbManager,
-            config,
-            trieWarmer,
-            ResourcePool.Usage.MainBlockProcessing,
-            LimboLogs.Instance,
-            isReadOnly: false);
-        using IWorldStateScopeProvider.IScope ordinaryScope = provider.BeginScope(
-            Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject, new LocalMetrics());
-        FlatTrieWarmupSession session = (FlatTrieWarmupSession)ordinaryScope.CreateTrieWarmupSession();
-
-        session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        Assert.That(trieWarmer.JobAccepted.Wait(TimeSpan.FromSeconds(5)), Is.True);
-
-        ordinaryScope.Dispose();
-        session.Dispose();
-        session.Dispose();
-        session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
-        using (Assert.EnterMultipleScope())
+        using WarmupSessionContext context = new();
+        using (IWorldStateScopeProvider.ITrieWarmupSession firstBorrow = context.Borrow())
+        using (IWorldStateScopeProvider.ITrieWarmupSession secondBorrow = context.Borrow())
         {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.Zero);
-            Assert.That(reader.DisposeCount, Is.Zero);
+            Assert.That(firstBorrow, Is.SameAs(secondBorrow));
         }
-        Assert.That(() => trieWarmer.CompleteAccountJob(), Throws.Nothing);
 
+        using (IWorldStateScopeProvider.ITrieWarmupSession remainingBorrow = context.Borrow())
+        {
+            QueueWarmup(remainingBorrow, storage);
+            Assert.That(context.TrieWarmer.CompleteJob(), Is.True);
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieWarmer.AddressJobPushes, Is.EqualTo(1));
-            Assert.That(trieWarmer.EnterCount, Is.EqualTo(1));
-            Assert.That(trieWarmer.ExitCount, Is.EqualTo(1));
-            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
-            Assert.That(reader.DisposeCount, Is.EqualTo(1));
-            trieNodeCache.DidNotReceive().Add(Arg.Any<TransientResource>());
+            Assert.That(context.Reader.TrieReads, Is.EqualTo(1));
+            Assert.That(context.Reader.DisposeCount, Is.Zero);
+            Assert.That(context.ResourcePool.ReturnedCachedResources, Is.Zero);
         }
     }
 
-    [TestCase(false, false, true)]
-    [TestCase(true, false, true)]
-    [TestCase(false, true, true)]
-    [TestCase(true, true, true)]
-    [TestCase(false, false, false)]
-    [TestCase(true, false, false)]
-    public void OwnedTrieWarmupSession_QueuedJobsOutliveProducerUntilMainGenerationStops(
-        bool storage, bool stopWarming, bool acceptJob)
+    [Test]
+    public void TrieWarmupSession_QueuedJobsDoNotRetainResources(
+        [Values] bool storage, [Values] bool stopWarming, [Values] bool acceptJob)
     {
-        TrackingResourcePool resourcePool = new();
-        RecordingPersistenceReader reader = new();
-        using SnapshotBundle snapshotBundle = new(
-            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        using DeferredTrieWarmer trieWarmer = new(acceptJob);
-        using IWorldStateScopeProvider.ITrieWarmupSession session = snapshotBundle.CreateTrieWarmupSession(
-            new StateId(0, TestItem.KeccakA), trieWarmer, LimboLogs.Instance);
-
-        if (storage) session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), UInt256.Zero);
-        else session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        session.Dispose();
-        session.Dispose();
-        if (storage) session.HintWarmSlot(new ValueAddress(TestItem.AddressB.Bytes), UInt256.One);
-        else session.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
-        if (stopWarming) snapshotBundle.StopWarming();
-
-        if (acceptJob)
+        using WarmupSessionContext context = new(acceptJob);
+        using (IWorldStateScopeProvider.ITrieWarmupSession session = context.Borrow())
         {
-            Assert.That(trieWarmer.CompleteJob(), Is.EqualTo(!stopWarming));
+            QueueWarmup(session, storage);
         }
+        if (stopWarming) context.Bundle.StopWarming();
+        if (acceptJob) Assert.That(context.TrieWarmer.CompleteJob(), Is.EqualTo(!stopWarming));
 
+        context.Bundle.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieWarmer.AddressJobPushes + trieWarmer.SlotJobPushes, Is.EqualTo(1));
-            Assert.That(reader.TrieReads, Is.EqualTo(acceptJob && !stopWarming ? 1 : 0));
-        }
-        if (acceptJob && !stopWarming)
-        {
-            TrieNode sharedNode = storage
-                ? snapshotBundle.FindStorageNodeOrUnknown(TestItem.AddressA.ToAccountPath.ToHash256(), TreePath.Empty, TestItem.KeccakA)
-                : snapshotBundle.FindStateNodeOrUnknown(TreePath.Empty, TestItem.KeccakA);
-            Assert.That(sharedNode.NodeType, Is.EqualTo(NodeType.Unknown));
-            TrieNode repeatedNode = storage
-                ? snapshotBundle.FindStorageNodeOrUnknown(TestItem.AddressA.ToAccountPath.ToHash256(), TreePath.Empty, TestItem.KeccakA)
-                : snapshotBundle.FindStateNodeOrUnknown(TreePath.Empty, TestItem.KeccakA);
-            Assert.That(repeatedNode, Is.SameAs(sharedNode));
-        }
-
-        snapshotBundle.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
-            Assert.That(reader.DisposeCount, Is.EqualTo(1));
+            Assert.That(context.Reader.TrieReads, Is.EqualTo(acceptJob && !stopWarming ? 1 : 0));
+            Assert.That(context.ResourcePool.ReturnedCachedResources, Is.EqualTo(1));
+            Assert.That(context.Reader.DisposeCount, Is.EqualTo(1));
+            Assert.That(context.TrieWarmer.CompleteJob(), Is.False);
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task OwnedTrieWarmupSession_InFlightJobsKeepResourcesAlive(bool storage)
+    [Test]
+    public void TrieWarmupSession_LastBorrowRetainsResourcesButQueuedJobDoesNot([Values] bool storage)
+    {
+        using WarmupSessionContext context = new();
+        using (IWorldStateScopeProvider.ITrieWarmupSession session = context.Borrow())
+        {
+            QueueWarmup(session, storage);
+            context.Bundle.Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(context.Reader.DisposeCount, Is.Zero);
+                Assert.That(context.ResourcePool.ReturnedCachedResources, Is.Zero);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Reader.DisposeCount, Is.EqualTo(1));
+            Assert.That(context.ResourcePool.ReturnedCachedResources, Is.EqualTo(1));
+            Assert.That(context.TrieWarmer.CompleteJob(), Is.False);
+            Assert.That(context.Reader.TrieReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task TrieWarmupSession_FinalReleaseDrainsInFlightJobs([Values] bool storage)
     {
         using ManualResetEventSlim readEntered = new(false);
         using ManualResetEventSlim resumeRead = new(false);
-        TrackingResourcePool resourcePool = new();
-        RecordingPersistenceReader reader = new()
+        using WarmupSessionContext context = new(onTrieRead: () =>
         {
-            OnTrieRead = () =>
-            {
-                readEntered.Set();
-                Assert.That(resumeRead.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            }
-        };
-        using SnapshotBundle snapshotBundle = new(
-            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        using DeferredTrieWarmer trieWarmer = new();
-        using IWorldStateScopeProvider.ITrieWarmupSession session = snapshotBundle.CreateTrieWarmupSession(
-            new StateId(0, TestItem.KeccakA), trieWarmer, LimboLogs.Instance);
-        if (storage) session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), UInt256.Zero);
-        else session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-
-        Task<bool> warmup = Task.Run(trieWarmer.CompleteJob);
+            readEntered.Set();
+            Assert.That(resumeRead.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        });
+        IWorldStateScopeProvider.ITrieWarmupSession session = context.Borrow();
+        QueueWarmup(session, storage);
+        Task<bool> warmup = Task.Run(context.TrieWarmer.CompleteJob);
+        Thread? releaseThread = null;
         try
         {
             Assert.That(readEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            session.Dispose();
-            snapshotBundle.Dispose();
+            context.Bundle.Dispose();
+            releaseThread = new Thread(session.Dispose) { IsBackground = true };
+            releaseThread.Start();
+            Assert.That(SpinWait.SpinUntil(() =>
+                (releaseThread.ThreadState & (ThreadState.WaitSleepJoin | ThreadState.Stopped)) != 0,
+                TimeSpan.FromSeconds(5)), Is.True);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(resourcePool.ReturnedCachedResources, Is.Zero);
-                Assert.That(reader.DisposeCount, Is.Zero);
+                Assert.That(releaseThread.IsAlive, Is.True, "final release must drain the active traversal");
+                Assert.That(context.ResourcePool.ReturnedCachedResources, Is.Zero);
+                Assert.That(context.Reader.DisposeCount, Is.Zero);
             }
         }
         finally
         {
             resumeRead.Set();
-            await warmup;
+            await warmup.WaitAsync(TimeSpan.FromSeconds(5));
+            if (releaseThread is not null) Assert.That(releaseThread.Join(TimeSpan.FromSeconds(5)), Is.True);
+            else session.Dispose();
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(1));
-            Assert.That(reader.DisposeCount, Is.EqualTo(1));
+            Assert.That(context.ResourcePool.ReturnedCachedResources, Is.EqualTo(1));
+            Assert.That(context.Reader.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    private static void QueueWarmup(IWorldStateScopeProvider.ITrieWarmupSession session, bool storage)
+    {
+        if (storage) session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), UInt256.Zero);
+        else session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    private sealed class WarmupSessionContext : IDisposable
+    {
+        public TrackingResourcePool ResourcePool { get; } = new();
+        public ITrieNodeCache TrieNodeCache { get; } = Substitute.For<ITrieNodeCache>();
+        public RecordingPersistenceReader Reader { get; }
+        public ReadOnlySnapshotBundle ReadOnlyBundle { get; }
+        public SnapshotBundle Bundle { get; }
+        public DeferredTrieWarmer TrieWarmer { get; }
+
+        public WarmupSessionContext(bool acceptJob = true, Action? onTrieRead = null)
+        {
+            Reader = new RecordingPersistenceReader { OnTrieRead = onTrieRead };
+            ReadOnlyBundle = new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Reader, false, PersistedSnapshotStack.Empty());
+            Bundle = new SnapshotBundle(ReadOnlyBundle, TrieNodeCache, ResourcePool, Flat.ResourcePool.Usage.MainBlockProcessing);
+            TrieWarmer = new DeferredTrieWarmer(acceptJob);
+        }
+
+        public IWorldStateScopeProvider.ITrieWarmupSession Borrow() =>
+            Bundle.CreateTrieWarmupSession(new StateId(0, TestItem.KeccakA), TrieWarmer, LimboLogs.Instance);
+
+        public void Dispose()
+        {
+            Bundle.Dispose();
+            TrieWarmer.Dispose();
+            ResourcePool.Dispose();
         }
     }
 
@@ -1597,10 +1585,10 @@ public class FlatWorldStateScopeProviderTests
             ResumeReads.Dispose();
         }
 
-        public Account? GetAccount(Address address) => null;
+        public Account? GetAccount(Address address) => new(0, UInt256.Zero, TestItem.KeccakA, Keccak.OfAnEmptyString);
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => TryLoadStateRlp(in path, flags);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
