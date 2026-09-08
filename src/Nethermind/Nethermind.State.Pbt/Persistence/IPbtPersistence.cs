@@ -26,10 +26,10 @@ public interface IPbtPersistence
         ValueHash256 CurrentRoot { get; }
 
         Account? GetAccount(in ValueHash256 addressHash);
-        EvmWord GetSlot(PbtFullKey key);
+        EvmWord GetSlot(PbtStorageFullKey key);
         CodeInfo? GetCode(in ValueHash256 codeHash);
         IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
-        IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null);
+        IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null);
 
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
@@ -43,10 +43,10 @@ public interface IPbtPersistence
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="groupKey"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
-        RefCountingMemory? GetNodeGroup(PbtNodePath groupKey);
+        RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey);
 
-        /// <summary>Enumerates group keys in ascending <see cref="PbtNodePath.CompareTo"/> order.</summary>
-        IEnumerable<PbtNodePath> EnumerateNodeGroupKeys();
+        /// <summary>Enumerates group keys in ascending <see cref="IPbtNodePath.CompareTo"/> order.</summary>
+        IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys();
 
         ulong GetCodeReference(in ValueHash256 codeHash);
     }
@@ -54,7 +54,7 @@ public interface IPbtPersistence
     public interface IWriteBatch : IDisposable
     {
         void SetAccount(in ValueHash256 addressHash, Account? account);
-        void SetSlot(PbtFullKey key, in EvmWord value);
+        void SetSlot(PbtStorageFullKey key, in EvmWord value);
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
         void ClearStorage(in ValueHash256 addressHash);
         /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>
@@ -63,7 +63,7 @@ public interface IPbtPersistence
         /// its reference; an implementation retaining the payload must acquire an independent reference.
         /// Validates the boundary key and complete payload before staging the write.
         /// </remarks>
-        void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload);
+        void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload);
         void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
         void Commit();
     }

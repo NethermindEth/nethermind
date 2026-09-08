@@ -19,12 +19,9 @@ public sealed class PbtSnapshotBundle(
     PbtResourcePool.Usage usage) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
-    private readonly Dictionary<PbtPartition, PbtWriteBatchBuilder> _writeBatches = new()
-    {
-        [PbtPartition.Account] = resourcePool.GetWriteBatch(usage),
-        [PbtPartition.Code] = resourcePool.GetWriteBatch(usage),
-        [PbtPartition.Storage] = resourcePool.GetWriteBatch(usage),
-    };
+    private readonly PbtWriteBatchBuilder<PbtFullKey> _accountBatch = resourcePool.GetWriteBatch(usage);
+    private readonly PbtWriteBatchBuilder<PbtFullKey> _codeBatch = resourcePool.GetWriteBatch(usage);
+    private readonly PbtWriteBatchBuilder<PbtStorageFullKey> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
     private readonly Lock _accountLock = new();
     private readonly Dictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = [];
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
@@ -43,25 +40,25 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal int PendingMutationCount
-    {
-        get
-        {
-            int count = 0;
-            foreach (PbtWriteBatchBuilder batch in _writeBatches.Values) count += batch.Count;
-            return count;
-        }
-    }
+    internal int PendingMutationCount => _accountBatch.Count + _codeBatch.Count + _storageBatch.Count;
 
     private void SetPbtLeaf(PbtFullKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        int partition = PbtWriteBatchSet.PartitionOf(key);
-        if (partition < 0) throw new ArgumentException("A canonical account, code or storage key is required.", nameof(key));
-        _writeBatches[(PbtPartition)partition].SetLeaf(key, value);
+        int partition = PbtWriteBatchSet<PbtFullKey>.PartitionOf(key);
+        if (partition == (int)PbtPartition.Account) _accountBatch.SetLeaf(key, value);
+        else if (partition == (int)PbtPartition.Code) _codeBatch.SetLeaf(key, value);
+        else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
     }
 
-    internal IReadOnlyDictionary<PbtPartition, PbtWriteBatch> PrepareLeafChanges()
+    private void SetPbtLeaf(PbtStorageFullKey key, ValueHash256? value)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        if (PbtWriteBatchSet<PbtStorageFullKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf(key, value);
+        else SetPbtLeaf((PbtFullKey)key, value);
+    }
+
+    internal PbtPartitionBatches PrepareLeafChanges()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         lock (_accountLock)
@@ -73,28 +70,31 @@ public sealed class PbtSnapshotBundle(
             }
             _accountsAwaitingCode.Clear();
         }
-        Dictionary<PbtPartition, PbtWriteBatch> changes = new(_writeBatches.Count);
+        PbtPartitionBatches changes = new();
         try
         {
-            foreach ((PbtPartition partition, PbtWriteBatchBuilder batch) in _writeBatches)
-                if (batch.Count != 0) changes.Add(partition, batch.Build());
+            if (_accountBatch.Count != 0) changes.Account = _accountBatch.Build();
+            if (_codeBatch.Count != 0) changes.Code = _codeBatch.Build();
+            if (_storageBatch.Count != 0) changes.Storage = _storageBatch.Build();
             return changes;
         }
         catch
         {
-            foreach (PbtWriteBatch batch in changes.Values) batch.Dispose();
+            changes.Dispose();
             throw;
         }
     }
 
     internal void CompleteLeafChanges()
     {
-        foreach (PbtWriteBatchBuilder batch in _writeBatches.Values) batch.CompleteDrain();
+        _accountBatch.CompleteDrain();
+        _codeBatch.CompleteDrain();
+        _storageBatch.CompleteDrain();
     }
 
-    internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
+    internal void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
 
-    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+    internal RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
@@ -113,18 +113,19 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetCodeReference(codeHash);
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> EnumeratePendingLeafMutationsForTest()
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256?>> EnumeratePendingLeafMutationsForTest()
     {
-        foreach (PbtWriteBatchBuilder batch in _writeBatches.Values)
-            foreach (KeyValuePair<PbtFullKey, ValueHash256?> mutation in batch.Leaves) yield return mutation;
+        foreach ((PbtFullKey key, ValueHash256? value) in _accountBatch.Leaves) yield return new((PbtStorageFullKey)key, value);
+        foreach ((PbtFullKey key, ValueHash256? value) in _codeBatch.Leaves) yield return new((PbtStorageFullKey)key, value);
+        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256?> mutation in _storageBatch.Leaves) yield return mutation;
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() =>
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves() =>
         PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix)
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(PbtStorageFullKey prefix)
     {
-        foreach (KeyValuePair<PbtFullKey, ValueHash256> leaf in EnumerateLeaves())
+        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> leaf in EnumerateLeaves())
             if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
     }
 
@@ -139,20 +140,20 @@ public sealed class PbtSnapshotBundle(
             if (account is not null) yield return new(hash, account);
     }
 
-    private IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
+    private IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
-        SortedDictionary<PbtFullKey, EvmWord> visible = [];
-        foreach ((PbtFullKey key, EvmWord value) in readOnlyBundle.EnumerateStorage(addressFilter)) visible[key] = value;
+        SortedDictionary<PbtStorageFullKey, EvmWord> visible = [];
+        foreach ((PbtStorageFullKey key, EvmWord value) in readOnlyBundle.EnumerateStorage(addressFilter)) visible[key] = value;
         foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
         PbtFlatState.ApplyStorage(visible, WriteBuffer, addressFilter);
-        foreach ((PbtFullKey key, EvmWord value) in visible)
+        foreach ((PbtStorageFullKey key, EvmWord value) in visible)
             if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
     }
 
     internal bool HasStorage(Address address)
     {
         ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        foreach (KeyValuePair<PbtFullKey, EvmWord> _ in EnumerateStorage(hash)) return true;
+        foreach (KeyValuePair<PbtStorageFullKey, EvmWord> _ in EnumerateStorage(hash)) return true;
         return false;
     }
 
@@ -168,7 +169,7 @@ public sealed class PbtSnapshotBundle(
 
     public EvmWord GetSlot(Address address, in UInt256 slot)
     {
-        PbtFullKey key = PbtStateKey.Storage(address, slot);
+        PbtStorageFullKey key = PbtStateKey.Storage(address, slot);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
         if (WriteBuffer.Storages.TryGetValue(key, out EvmWord value)) return value;
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
@@ -250,7 +251,7 @@ public sealed class PbtSnapshotBundle(
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
     {
-        PbtFullKey key = PbtStateKey.Storage(address, slot);
+        PbtStorageFullKey key = PbtStateKey.Storage(address, slot);
         SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
         WriteBuffer.Storages[key] = value;
     }
@@ -258,7 +259,7 @@ public sealed class PbtSnapshotBundle(
     public void SelfDestruct(Address address)
     {
         ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        foreach ((PbtFullKey key, _) in EnumerateStorage(hash)) SetPbtLeaf(key, null);
+        foreach ((PbtStorageFullKey key, _) in EnumerateStorage(hash)) SetPbtLeaf(key, null);
         WriteBuffer.ClearStorage(hash);
     }
 
@@ -374,17 +375,17 @@ public sealed class PbtSnapshotBundle(
             {
                 try
                 {
-                    resourcePool.ReturnWriteBatch(usage, _writeBatches[PbtPartition.Account]);
+                    resourcePool.ReturnWriteBatch(usage, _accountBatch);
                 }
                 finally
                 {
                     try
                     {
-                        resourcePool.ReturnWriteBatch(usage, _writeBatches[PbtPartition.Code]);
+                        resourcePool.ReturnWriteBatch(usage, _codeBatch);
                     }
                     finally
                     {
-                        resourcePool.ReturnWriteBatch(usage, _writeBatches[PbtPartition.Storage]);
+                        resourcePool.ReturnStorageWriteBatch(usage, _storageBatch);
                     }
                 }
             }

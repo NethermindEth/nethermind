@@ -397,7 +397,7 @@ public class ImportPbtFromPreimageFlat(
                     await sink.Add(RebuildEntry.FromCode(account.CodeHash.ValueHash256, code));
                 }
             }
-            foreach ((PbtFullKey key, EvmWord value) in reader.EnumerateStorage())
+            foreach ((PbtStorageFullKey key, EvmWord value) in reader.EnumerateStorage())
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 await sink.Add(RebuildEntry.FromSlot(key, value));
@@ -452,7 +452,7 @@ public class ImportPbtFromPreimageFlat(
 
     private static byte[] PastEveryKey()
     {
-        byte[] key = new byte[PbtFullKey.MaxLength + 1];
+        byte[] key = new byte[PbtStorageFullKey.MaxLength + 1];
         key.AsSpan().Fill(0xFF);
         return key;
     }

@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
 /// <summary>An immutable complete EIP-8297 tree key.</summary>
-/// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key.</remarks>
-public readonly struct PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullKey>
+/// <remarks>Keys larger than 34 bytes are unsupported. The default value is not a valid complete key.</remarks>
+public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
 {
-    public const int MaxLength = 66;
+    public const int MaxLength = 34;
+    /// <inheritdoc/>
+    public static int Capacity => MaxLength;
+    /// <inheritdoc/>
+    public static PbtFullKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
     private readonly KeyBytes _bytes;
 
     [InlineArray(MaxLength)]
@@ -36,46 +39,13 @@ public readonly struct PbtFullKey : IEquatable<PbtFullKey>, IComparable<PbtFullK
     [UnscopedRef]
     public ReadOnlySpan<byte> Bytes => _bytes[..Length];
 
-    public int GetBit(int bitIndex)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(bitIndex);
-        if (bitIndex >= BitLength) throw new ArgumentOutOfRangeException(nameof(bitIndex));
-        return (_bytes[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
-    }
+    public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
     public bool IsPrefixOf(PbtFullKey other) =>
         Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
 
-    public int FirstDifferingBit(PbtFullKey other, int startBit = 0)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(startBit);
-        int commonBits = Math.Min(BitLength, other.BitLength);
-        if (startBit > commonBits) throw new ArgumentOutOfRangeException(nameof(startBit));
-
-        int bit = startBit;
-        int firstCompleteByte = Math.Min((bit + 7) & ~7, commonBits);
-        while (bit < firstCompleteByte)
-        {
-            if (((_bytes[bit >> 3] ^ other._bytes[bit >> 3]) & (1 << (7 - (bit & 7)))) != 0) return bit;
-            bit++;
-        }
-
-        int completeByteEnd = commonBits >> 3;
-        for (int byteIndex = bit >> 3; byteIndex < completeByteEnd; byteIndex++)
-        {
-            int difference = _bytes[byteIndex] ^ other._bytes[byteIndex];
-            if (difference != 0) return (byteIndex << 3) + (BitOperations.LeadingZeroCount((uint)difference) - 24);
-        }
-
-        bit = completeByteEnd << 3;
-        while (bit < commonBits)
-        {
-            if (((_bytes[bit >> 3] ^ other._bytes[bit >> 3]) & (1 << (7 - (bit & 7)))) != 0) return bit;
-            bit++;
-        }
-
-        return commonBits;
-    }
+    public int FirstDifferingBit(PbtFullKey other, int startBit = 0) =>
+        PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtFullKey other) => Bytes.SequenceCompareTo(other.Bytes);
     public bool Equals(PbtFullKey other) => Bytes.SequenceEqual(other.Bytes);

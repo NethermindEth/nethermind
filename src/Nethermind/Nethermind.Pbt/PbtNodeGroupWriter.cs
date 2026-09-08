@@ -12,7 +12,7 @@ namespace Nethermind.Pbt;
 internal sealed class PbtNodeGroupWriter : IDisposable
 {
     private const int MaxEntriesLength = ushort.MaxValue;
-    private readonly PbtNodePath _groupKey;
+    private readonly IPbtNodePath _groupKey;
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
@@ -23,7 +23,7 @@ internal sealed class PbtNodeGroupWriter : IDisposable
     private int _pendingLength;
     private bool _disposed;
 
-    internal PbtNodeGroupWriter(PbtNodePath groupKey, IRefCountingMemoryProvider memoryProvider)
+    internal PbtNodeGroupWriter(IPbtNodePath groupKey, IRefCountingMemoryProvider memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         ArgumentNullException.ThrowIfNull(memoryProvider);

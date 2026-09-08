@@ -21,10 +21,10 @@ internal sealed class PbtTreeHarness : IDisposable
 
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
-        using PbtWriteBatchBuilder batch = new(0);
+        using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in writes)
         {
-            PbtFullKey fullKey = new(key);
+            PbtStorageFullKey fullKey = new(key);
             if (value is null) batch.Delete(fullKey);
             else batch.Set(fullKey, new ValueHash256(value));
         }
@@ -32,7 +32,7 @@ internal sealed class PbtTreeHarness : IDisposable
         return RootHash;
     }
 
-    public bool TryGetNode(PbtNodePath path, out byte[]? encoding)
+    public bool TryGetNode(IPbtNodePath path, out byte[]? encoding)
     {
         encoding = _store.GetNode(path);
         return encoding is not null;
@@ -64,7 +64,36 @@ internal sealed class PbtTreeHarness : IDisposable
 
 internal static class PbtStoreTestExtensions
 {
-    internal static byte[]? GetNode(this IPbtStore store, PbtNodePath path)
+    internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
+    {
+        using PbtWriteBatchBuilder<PbtFullKey> account = new(2);
+        using PbtWriteBatchBuilder<PbtFullKey> code = new(2);
+        using PbtWriteBatchBuilder<PbtStorageFullKey> storage = new(2);
+        foreach ((byte[] key, byte[]? value) in changes)
+        {
+            switch (key[0])
+            {
+                case 0x00: Apply(account, new PbtFullKey(key), value); break;
+                case 0x01: Apply(code, new PbtFullKey(key), value); break;
+                case 0xFF: Apply(storage, new PbtStorageFullKey(key), value); break;
+                default: throw new ArgumentException("Unsupported partition zone.", nameof(changes));
+            }
+        }
+        return new PbtPartitionBatches
+        {
+            Account = account.Count == 0 ? null : account.Build(),
+            Code = code.Count == 0 ? null : code.Build(),
+            Storage = storage.Count == 0 ? null : storage.Build(),
+        };
+    }
+
+    private static void Apply<TKey>(PbtWriteBatchBuilder<TKey> builder, TKey key, byte[]? value) where TKey : struct, IPbtKey<TKey>
+    {
+        if (value is null) builder.Delete(key);
+        else builder.Set(key, new ValueHash256(value));
+    }
+
+    internal static byte[]? GetNode(this IPbtStore store, IPbtNodePath path)
     {
         PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
         using RefCountingMemory? payload = store.GetNodeGroup(location.GroupKey);
@@ -73,7 +102,7 @@ internal static class PbtStoreTestExtensions
         return reader.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding) ? encoding.ToArray() : null;
     }
 
-    internal static void SetNode(this IPbtStore store, PbtNodePath path, byte[]? encoding,
+    internal static void SetNode(this IPbtStore store, IPbtNodePath path, byte[]? encoding,
         IRefCountingMemoryProvider? memoryProvider = null)
     {
         PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
@@ -114,7 +143,7 @@ internal static class PbtStoreTestExtensions
         List<PbtNodeRecord> records = [];
         foreach (PbtPhysicalPayload payload in store.ExportPhysicalPayloads())
         {
-            PbtNodePath groupKey = PbtNodePath.Decode(payload.Key.Span);
+            IPbtNodePath groupKey = PbtStorageNodePath.Decode(payload.Key.Span);
             PbtNodeGroupReader reader = new(groupKey, payload.Payload.Span);
             PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
             while (enumerator.MoveNext())
@@ -124,7 +153,7 @@ internal static class PbtStoreTestExtensions
         return records;
     }
 
-    internal static int CountNodeChanges(this IPbtStore store, PbtNodePath groupKey, RefCountingMemory? payload)
+    internal static int CountNodeChanges(this IPbtStore store, IPbtNodePath groupKey, RefCountingMemory? payload)
     {
         using RefCountingMemory? priorPayload = store.GetNodeGroup(groupKey);
         PbtNodeGroupReader priorReader = priorPayload is null ? default : new(groupKey, priorPayload.GetSpan());

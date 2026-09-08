@@ -11,7 +11,7 @@ namespace Nethermind.Pbt;
 /// <summary>Accumulates complete-key mutations in shards selected by a key nibble.</summary>
 /// <remarks>Writes and reads synchronize per shard. Count, enumeration, preparation and reset require joined writers.</remarks>
 /// <param name="shardNibbleIndex">The zero-based key nibble used to select a shard.</param>
-public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IResettable
+public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposable, IResettable where TKey : struct, IPbtKey<TKey>
 {
     // Full inline keys and values make dictionary entries substantially larger than stem-map entries.
     private const int RetainedShardEntries = 512;
@@ -22,14 +22,14 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
 
     private static int ValidateShardNibbleIndex(int shardNibbleIndex)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)shardNibbleIndex, (uint)(PbtFullKey.MaxLength * 2));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)shardNibbleIndex, (uint)(TKey.Capacity * 2));
         return shardNibbleIndex;
     }
 
     private sealed class Shard
     {
         internal readonly Lock Lock = new();
-        internal Dictionary<PbtFullKey, ValueHash256?>? Entries;
+        internal Dictionary<TKey, ValueHash256?>? Entries;
     }
 
     private static ShardBuffer CreateShards()
@@ -45,7 +45,7 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
         private Shard _element;
     }
 
-    private int ShardOf(PbtFullKey key)
+    private int ShardOf(TKey key)
     {
         if (key.Length * 2 <= _shardNibbleIndex)
             throw new ArgumentException("The complete key must contain the sharding nibble.", nameof(key));
@@ -53,21 +53,21 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
     }
 
     /// <summary>Adds an explicit complete-key value mutation.</summary>
-    public void Set(PbtFullKey key, in ValueHash256 value) => SetMutation(key, value);
+    public void Set(TKey key, in ValueHash256 value) => SetMutation(key, value);
 
     /// <summary>Adds an explicit complete-key deletion.</summary>
-    public void Delete(PbtFullKey key) => SetMutation(key, null);
+    public void Delete(TKey key) => SetMutation(key, null);
 
-    internal void SetLeaf(PbtFullKey key, ValueHash256? value) =>
+    internal void SetLeaf(TKey key, ValueHash256? value) =>
         SetMutation(key, value is null || value.Value == default ? null : value);
 
-    private void SetMutation(PbtFullKey key, ValueHash256? value)
+    private void SetMutation(TKey key, ValueHash256? value)
     {
         Shard shard = _shards[ShardOf(key)];
         lock (shard.Lock) (shard.Entries ??= [])[key] = value;
     }
 
-    internal bool TryGetLeaf(PbtFullKey key, out ValueHash256? value)
+    internal bool TryGetLeaf(TKey key, out ValueHash256? value)
     {
         Shard shard = _shards[ShardOf(key)];
         lock (shard.Lock)
@@ -88,7 +88,7 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
         }
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> Leaves
+    internal IEnumerable<KeyValuePair<TKey, ValueHash256?>> Leaves
     {
         get
         {
@@ -96,31 +96,31 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
             {
                 Shard shard = _shards[shardIndex];
                 if (shard.Entries is null) continue;
-                foreach (KeyValuePair<PbtFullKey, ValueHash256?> entry in shard.Entries) yield return entry;
+                foreach (KeyValuePair<TKey, ValueHash256?> entry in shard.Entries) yield return entry;
             }
         }
     }
 
-    internal IEnumerable<PbtWriteOperation> Operations
+    internal IEnumerable<PbtWriteOperation<TKey>> Operations
     {
         get
         {
-            foreach ((PbtFullKey key, ValueHash256? value) in Leaves)
-                if (value is null) yield return PbtWriteOperation.Delete(key);
-            foreach ((PbtFullKey key, ValueHash256? value) in Leaves)
-                if (value is { } hash) yield return PbtWriteOperation.Set(key, hash);
+            foreach ((TKey key, ValueHash256? value) in Leaves)
+                if (value is null) yield return PbtWriteOperation<TKey>.Delete(key);
+            foreach ((TKey key, ValueHash256? value) in Leaves)
+                if (value is { } hash) yield return PbtWriteOperation<TKey>.Set(key, hash);
         }
     }
 
     /// <summary>Builds an independent, single-use batch without clearing pending mutations.</summary>
     /// <remarks>Writers must be joined before building. Dispose the batch if it is not consumed by the updater.
     /// Reset only after a successful fold to retain mutations for retry.</remarks>
-    public PbtWriteBatch Build()
+    public PbtWriteBatch<TKey> Build()
     {
         Span<int> deleteCounts = stackalloc int[ShardCount];
         deleteCounts.Clear();
         ArrayPoolList<int> table = new(33, 33);
-        ArrayPoolList<PbtWriteOperation>? operations = null;
+        ArrayPoolList<PbtWriteOperation<TKey>>? operations = null;
         try
         {
             int compactCount = 0;
@@ -142,14 +142,14 @@ public sealed class PbtWriteBatchBuilder(int shardNibbleIndex) : IDisposable, IR
                 if (_shards[shardIndex].Entries is not { } entries) continue;
                 int deleteOffset = offset;
                 int setOffset = offset + deleteCounts[shardIndex];
-                foreach ((PbtFullKey key, ValueHash256? value) in entries)
+                foreach ((TKey key, ValueHash256? value) in entries)
                 {
-                    if (value is null) operations[deleteOffset++] = PbtWriteOperation.Delete(key);
-                    else operations[setOffset++] = PbtWriteOperation.Set(key, value.Value);
+                    if (value is null) operations[deleteOffset++] = PbtWriteOperation<TKey>.Delete(key);
+                    else operations[setOffset++] = PbtWriteOperation<TKey>.Set(key, value.Value);
                 }
                 offset += entries.Count;
             }
-            return new PbtWriteBatch(operations, table, _shardNibbleIndex);
+            return new PbtWriteBatch<TKey>(operations, table, _shardNibbleIndex);
         }
         catch
         {

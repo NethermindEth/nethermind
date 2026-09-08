@@ -21,7 +21,7 @@ internal static class PbtNodeCodec
         if (encoding[0] == LeafTag)
         {
             int keyLength = BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]);
-            if (keyLength is < 1 or > PbtFullKey.MaxLength)
+            if (keyLength is < 1 or > PbtStorageFullKey.MaxLength)
                 throw new InvalidDataException("Invalid PBT leaf key length.");
             int encodedLength = checked(3 + keyLength + 32);
             if (encoding.Length != encodedLength) throw new InvalidDataException("Invalid PBT leaf encoding length.");
@@ -58,7 +58,7 @@ internal static class PbtNodeCodec
         return Blake3Hash.Hash(preimage);
     }
 
-    internal static byte[] EncodeLeaf(PbtFullKey key, ReadOnlySpan<byte> value)
+    internal static byte[] EncodeLeaf<TKey>(TKey key, ReadOnlySpan<byte> value) where TKey : struct, IPbtKey<TKey>
     {
         if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
@@ -67,7 +67,7 @@ internal static class PbtNodeCodec
         return encoding;
     }
 
-    internal static void EncodeLeaf(Span<byte> encoding, PbtFullKey key, ReadOnlySpan<byte> value)
+    internal static void EncodeLeaf<TKey>(Span<byte> encoding, TKey key, ReadOnlySpan<byte> value) where TKey : struct, IPbtKey<TKey>
     {
         if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));

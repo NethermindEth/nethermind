@@ -16,7 +16,7 @@ public readonly record struct RebuildEntry
     internal EntryKind Kind { get; private init; }
     internal ValueHash256 Hash { get; private init; }
     internal Account? Account { get; private init; }
-    internal PbtFullKey Key { get; private init; }
+    internal PbtStorageFullKey Key { get; private init; }
     internal EvmWord Slot { get; private init; }
     internal CodeInfo? Code { get; private init; }
 
@@ -25,7 +25,7 @@ public readonly record struct RebuildEntry
         new() { Kind = EntryKind.Account, Hash = addressHash, Account = account };
 
     /// <summary>Creates a storage entry with its complete PBT storage key.</summary>
-    public static RebuildEntry FromSlot(PbtFullKey key, EvmWord slot) =>
+    public static RebuildEntry FromSlot(PbtStorageFullKey key, EvmWord slot) =>
         new() { Kind = EntryKind.Storage, Key = key, Slot = slot };
 
     /// <summary>Creates a whole-code entry keyed by its content hash.</summary>

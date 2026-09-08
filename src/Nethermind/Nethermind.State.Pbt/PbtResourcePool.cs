@@ -50,10 +50,16 @@ public class PbtResourcePool : IPbtResourcePool
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
     /// <inheritdoc/>
-    public PbtWriteBatchBuilder GetWriteBatch(Usage usage) => _categories[usage].GetWriteBatch();
+    public PbtWriteBatchBuilder<PbtFullKey> GetWriteBatch(Usage usage) => _categories[usage].GetWriteBatch();
 
     /// <inheritdoc/>
-    public void ReturnWriteBatch(Usage usage, PbtWriteBatchBuilder batch) => _categories[usage].ReturnWriteBatch(batch);
+    public void ReturnWriteBatch(Usage usage, PbtWriteBatchBuilder<PbtFullKey> batch) => _categories[usage].ReturnWriteBatch(batch);
+
+    /// <inheritdoc/>
+    public PbtWriteBatchBuilder<PbtStorageFullKey> GetStorageWriteBatch(Usage usage) => _categories[usage].GetStorageWriteBatch();
+
+    /// <inheritdoc/>
+    public void ReturnStorageWriteBatch(Usage usage, PbtWriteBatchBuilder<PbtStorageFullKey> batch) => _categories[usage].ReturnStorageWriteBatch(batch);
 
     /// <inheritdoc/>
     public PbtTransientResource GetCachedResource(Usage usage)
@@ -131,8 +137,9 @@ public class PbtResourcePool : IPbtResourcePool
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         // Each writable bundle holds three partition batches and one prewarm resource.
-        private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _writeBatchPool = new(writableBundlePoolSize * 3);
-        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
+        private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtFullKey>> _writeBatchPool = new(writableBundlePoolSize * 2);
+        private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtStorageFullKey>> _storageWriteBatchPool = new(writableBundlePoolSize);
+        private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
         private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
         private long _lastCachedResourceCapacity = 1024;
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
@@ -159,23 +166,42 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
         }
 
-        public PbtWriteBatchBuilder GetWriteBatch()
+        public PbtWriteBatchBuilder<PbtFullKey> GetWriteBatch()
         {
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
-            if (_writeBatchPool.TryGet(out PbtWriteBatchBuilder? batch))
+            if (_writeBatchPool.TryGet(out PbtWriteBatchBuilder<PbtFullKey>? batch))
             {
-                Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
+                Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
                 return batch;
             }
             Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
-            return new PbtWriteBatchBuilder(2);
+            return new PbtWriteBatchBuilder<PbtFullKey>(2);
         }
 
-        public void ReturnWriteBatch(PbtWriteBatchBuilder batch)
+        public void ReturnWriteBatch(PbtWriteBatchBuilder<PbtFullKey> batch)
         {
             Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
             _writeBatchPool.Return(batch);
-            Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount;
+            Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
+        }
+
+        public PbtWriteBatchBuilder<PbtStorageFullKey> GetStorageWriteBatch()
+        {
+            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
+            if (_storageWriteBatchPool.TryGet(out PbtWriteBatchBuilder<PbtStorageFullKey>? batch))
+            {
+                Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
+                return batch;
+            }
+            Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
+            return new PbtWriteBatchBuilder<PbtStorageFullKey>(2);
+        }
+
+        public void ReturnStorageWriteBatch(PbtWriteBatchBuilder<PbtStorageFullKey> batch)
+        {
+            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
+            _storageWriteBatchPool.Return(batch);
+            Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
         }
 
         public PbtTransientResource GetCachedResource()

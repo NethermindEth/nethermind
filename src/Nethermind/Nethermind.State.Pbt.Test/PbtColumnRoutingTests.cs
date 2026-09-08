@@ -22,7 +22,7 @@ public class PbtColumnRoutingTests
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        PbtFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
+        PbtStorageFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
         Account account = new(7, 9);
         EvmWord slot = EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes);
         CodeInfo code = new(TestItem.KeccakB.Bytes.ToArray());

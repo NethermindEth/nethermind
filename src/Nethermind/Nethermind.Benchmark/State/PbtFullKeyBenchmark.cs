@@ -13,10 +13,10 @@ namespace Nethermind.Benchmarks.State;
 public class PbtFullKeyBenchmark
 {
     private byte[] _bytes;
-    private PbtFullKey _key;
-    private PbtFullKey _equalKey;
-    private PbtFullKey _differentKey;
-    private Dictionary<PbtFullKey, int> _dictionary;
+    private PbtStorageFullKey _key;
+    private PbtStorageFullKey _equalKey;
+    private PbtStorageFullKey _differentKey;
+    private Dictionary<PbtStorageFullKey, int> _dictionary;
 
     [Params(1, 34, 66)]
     public int ByteLength { get; set; }
@@ -26,16 +26,16 @@ public class PbtFullKeyBenchmark
     {
         _bytes = new byte[ByteLength];
         new Random(8297).NextBytes(_bytes);
-        _key = new PbtFullKey(_bytes);
-        _equalKey = new PbtFullKey(_bytes);
+        _key = new PbtStorageFullKey(_bytes);
+        _equalKey = new PbtStorageFullKey(_bytes);
         byte[] differentBytes = (byte[])_bytes.Clone();
         differentBytes[^1] ^= 1;
-        _differentKey = new PbtFullKey(differentBytes);
-        _dictionary = new Dictionary<PbtFullKey, int> { [_key] = 42 };
+        _differentKey = new PbtStorageFullKey(differentBytes);
+        _dictionary = new Dictionary<PbtStorageFullKey, int> { [_key] = 42 };
     }
 
     [Benchmark]
-    public PbtFullKey Construct() => new(_bytes);
+    public PbtStorageFullKey Construct() => new(_bytes);
 
     [Benchmark]
     public bool EqualKeys() => _key.Equals(_equalKey);
@@ -70,5 +70,51 @@ public class PbtFullKeyDerivationBenchmark
     public PbtFullKey Account() => Eip8297KeyDerivation.AccountKey(_address, 0);
 
     [Benchmark]
-    public PbtFullKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
+    public PbtStorageFullKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
+}
+
+[MemoryDiagnoser]
+[GenericTypeArguments(typeof(PbtFullKey))]
+[GenericTypeArguments(typeof(PbtStorageFullKey))]
+public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKey>
+{
+    private TKey[] _keys;
+    private PbtWriteBatchBuilder<TKey> _builder;
+
+    [Params(1000)]
+    public int Count { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _keys = new TKey[Count];
+        byte[] bytes = new byte[34];
+        for (int index = 0; index < Count; index++)
+        {
+            bytes[^2] = (byte)(index >> 8);
+            bytes[^1] = (byte)index;
+            _keys[index] = TKey.Create(bytes);
+        }
+        _builder = new(0);
+        foreach (TKey key in _keys) _builder.Set(key, default);
+        using PbtWriteBatch<TKey> warmup = _builder.Build();
+    }
+
+    [GlobalCleanup]
+    public void Cleanup() => _builder.Dispose();
+
+    [Benchmark]
+    public int PopulateColdBuilder()
+    {
+        using PbtWriteBatchBuilder<TKey> builder = new(0);
+        foreach (TKey key in _keys) builder.Set(key, default);
+        return builder.Count;
+    }
+
+    [Benchmark]
+    public int BuildWarmBatch()
+    {
+        using PbtWriteBatch<TKey> batch = _builder.Build();
+        return batch.Count;
+    }
 }

@@ -144,6 +144,49 @@ public class ParallelUpdateRootTests
         }
     }
 
+    [TestCase(0x00)]
+    [TestCase(0x01)]
+    public void Storage_singleton_survives_small_partition_expansion_promotion_and_reopen(byte smallZone)
+    {
+        byte[] storageKey = new byte[66];
+        storageKey[0] = 0xFF;
+        storageKey[^1] = 0xA5;
+        byte[] smallKey = new byte[34];
+        smallKey[0] = smallZone;
+        smallKey[^1] = 0x5A;
+        using PbtNodeGroupStore store = new();
+        using PbtTreeHarness sequential = new();
+        EipReferenceTree oracle = new();
+        ValueHash256 root = default;
+        ApplyAndCompare(store, [(storageKey, Value(1))]);
+        ValueHash256 singletonRoot = root;
+        ApplyAndCompare(store, [(smallKey, Value(2))]);
+        ApplyAndCompare(store, [(smallKey, null)]);
+        Assert.That(root, Is.EqualTo(singletonRoot));
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
+        ApplyAndCompare(reopened, [(smallKey, Value(3))]);
+        ApplyAndCompare(reopened, [(smallKey, null)]);
+        Assert.That(root, Is.EqualTo(singletonRoot));
+
+        void ApplyAndCompare(PbtNodeGroupStore target, (byte[] Key, byte[]? Value)[] changes)
+        {
+            using PbtPartitionBatches partitions = PreparePartitions(changes);
+            root = TrieUpdater.UpdateRoot(target, root, partitions);
+            sequential.ApplyBatch(changes);
+            foreach ((byte[] key, byte[]? value) in changes)
+            {
+                if (value is null) oracle.Delete(key);
+                else oracle.Insert(key, value);
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root, Is.EqualTo(sequential.RootHash));
+                Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+                Assert.That(PhysicalRecords(target), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
+            }
+        }
+    }
+
     [TestCase(8297)]
     [TestCase(9341)]
     public void Random_partition_mutations_match_reference_after_each_fold(int seed)
@@ -188,7 +231,7 @@ public class ParallelUpdateRootTests
         sequential.ApplyBatch(initial);
         string[] initialRecords = PhysicalRecords(store.Inner);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        Dictionary<PbtPartition, PbtWriteBatch> prepared = PreparePartitions(changes);
+        using PbtPartitionBatches prepared = PreparePartitions(changes);
         store.Coordinate = true;
         store.FailWorker = failWorker;
         store.Writes = 0;
@@ -218,22 +261,8 @@ public class ParallelUpdateRootTests
         }
     }
 
-    private static Dictionary<PbtPartition, PbtWriteBatch> PreparePartitions((byte[] Key, byte[]? Value)[] changes)
-    {
-        Dictionary<PbtPartition, PbtWriteBatch> prepared = [];
-        foreach (PbtPartition partition in new[] { PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage })
-        {
-            using PbtWriteBatchBuilder batch = new(2);
-            foreach ((byte[] key, byte[]? value) in changes)
-            {
-                PbtFullKey fullKey = new(key);
-                if (PbtWriteBatchSet.PartitionOf(fullKey) == (int)partition)
-                    batch.SetLeaf(fullKey, value is null ? null : new ValueHash256(value));
-            }
-            if (batch.Count != 0) prepared.Add(partition, batch.Build());
-        }
-        return prepared;
-    }
+    private static PbtPartitionBatches PreparePartitions((byte[] Key, byte[]? Value)[] changes) =>
+        PbtStoreTestExtensions.PreparePartitions(changes);
 
     private static (byte[] Key, byte[]? Value)[] ZoneEntries(int populatedZones, bool compressed)
     {
@@ -266,7 +295,7 @@ public class ParallelUpdateRootTests
     private sealed class CoordinatedStore : IPbtStore, IDisposable
     {
         private readonly Barrier _barrier = new(3);
-        private readonly HashSet<PbtNodePath> _writtenGroups = [];
+        private readonly HashSet<IPbtNodePath> _writtenGroups = [];
         private int _arrivedWorkers;
         private int _activeReads;
         internal PbtNodeGroupStore Inner { get; } = new();
@@ -277,7 +306,7 @@ public class ParallelUpdateRootTests
         internal int ActiveReads => _activeReads;
         internal bool DuplicateWrites { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
         {
             Interlocked.Increment(ref _activeReads);
             try
@@ -298,7 +327,7 @@ public class ParallelUpdateRootTests
             }
         }
 
-        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
         {
             lock (_writtenGroups)
             {
@@ -327,9 +356,9 @@ public class ParallelUpdateRootTests
         (byte[] Key, byte[]? Value)[] entries)
     {
         using CountingStore store = new();
-        using PbtWriteBatchBuilder batch = new(0);
+        using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in entries)
-            batch.Set(new PbtFullKey(key), new ValueHash256(value!));
+            batch.Set(new PbtStorageFullKey(key), new ValueHash256(value!));
         TrieUpdaterMetrics metrics = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
         return (root, metrics, store.Writes);
@@ -374,9 +403,9 @@ public class ParallelUpdateRootTests
 
         internal int Writes { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
 
-        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
         {
             Writes += _inner.CountNodeChanges(groupKey, payload);
             _inner.SetNodeGroup(groupKey, payload);

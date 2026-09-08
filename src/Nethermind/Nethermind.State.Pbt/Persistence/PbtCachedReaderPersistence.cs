@@ -125,12 +125,12 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public StateId CurrentState => inner.CurrentState;
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
         public Account? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
-        public EvmWord GetSlot(PbtFullKey key) => inner.GetSlot(key);
+        public EvmWord GetSlot(PbtStorageFullKey key) => inner.GetSlot(key);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
-        public IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null) => inner.EnumerateStorage(prefix);
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
-        public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
+        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => inner.EnumerateStorage(prefix);
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
+        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
         public ulong GetCodeReference(in ValueHash256 codeHash) => inner.GetCodeReference(codeHash);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
@@ -143,10 +143,10 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         private bool _disposed;
 
         public void SetAccount(in ValueHash256 addressHash, Account? account) => inner.SetAccount(addressHash, account);
-        public void SetSlot(PbtFullKey key, in EvmWord value) => inner.SetSlot(key, value);
+        public void SetSlot(PbtStorageFullKey key, in EvmWord value) => inner.SetSlot(key, value);
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
         public void ClearStorage(in ValueHash256 addressHash) => inner.ClearStorage(addressHash);
-        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload) => inner.SetNodeGroup(groupKey, payload);
+        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload) => inner.SetNodeGroup(groupKey, payload);
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => inner.SetCodeReference(codeHash, referenceCount);
 
         public void Commit()

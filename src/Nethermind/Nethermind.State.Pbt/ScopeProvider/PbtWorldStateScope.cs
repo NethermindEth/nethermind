@@ -143,7 +143,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     {
         if (!_rootDirty) return;
         long start = Stopwatch.GetTimestamp();
-        IReadOnlyDictionary<PbtPartition, PbtWriteBatch> changes = Bundle.PrepareLeafChanges();
+        PbtPartitionBatches changes = Bundle.PrepareLeafChanges();
         try
         {
             LastFoldMutationCount = Bundle.PendingMutationCount;
@@ -152,7 +152,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         }
         finally
         {
-            foreach (PbtWriteBatch batch in changes.Values) batch.Dispose();
+            changes.Dispose();
         }
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);

@@ -27,19 +27,19 @@ internal static class PbtStateKey
             ? Account(addressHash, checked((byte)(PbtKeyDerivation.CodeOffset + chunkId)))
             : Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
-    public static PbtFullKey Storage(Address address, in UInt256 slot) =>
+    public static PbtStorageFullKey Storage(Address address, in UInt256 slot) =>
         Eip8297KeyDerivation.StorageKey(Address32(address), slot);
 
     public static PbtFullKey Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.CodeKey(Address32(address), codeHash.Bytes, chunkId);
 
-    public static PbtFullKey StoragePrefix(Address address)
+    public static PbtStorageFullKey StoragePrefix(Address address)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
         Span<byte> prefix = stackalloc byte[33];
         prefix[0] = Eip8297KeyDerivation.StorageZone;
         addressHash.Bytes.CopyTo(prefix[1..]);
-        return new PbtFullKey(prefix);
+        return new PbtStorageFullKey(prefix);
     }
 
     private static byte[] Address32(Address address)

@@ -25,7 +25,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         CancellationToken cancellationToken)
     {
         Dictionary<ValueHash256, Account?> accounts = [];
-        Dictionary<PbtFullKey, EvmWord> storages = [];
+        Dictionary<PbtStorageFullKey, EvmWord> storages = [];
         Dictionary<ValueHash256, CodeInfo> codes = [];
         await foreach (ArrayPoolList<RebuildEntry> chunk in source.ReadAllAsync(cancellationToken))
         {
@@ -43,7 +43,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             }
         }
 
-        SortedDictionary<PbtFullKey, ValueHash256> leaves = [];
+        SortedDictionary<PbtStorageFullKey, ValueHash256> leaves = [];
         Dictionary<ValueHash256, ulong> codeReferences = [];
         foreach ((ValueHash256 addressHash, Account? account) in accounts)
         {
@@ -59,24 +59,24 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
                 codeReferences[codeHash] = checked(count + 1);
             }
             foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code, !account.HasCode || codeReferences[account.CodeHash.ValueHash256] == 1))
-                if (value != default) leaves[key] = value;
+                if (value != default) leaves[(PbtStorageFullKey)key] = value;
         }
-        foreach ((PbtFullKey key, EvmWord slot) in storages)
+        foreach ((PbtStorageFullKey key, EvmWord slot) in storages)
         {
             ValueHash256 value = new(EvmWordSlot.AsReadOnlySpan(slot));
             if (value != default) leaves[key] = value;
         }
 
-        using PbtWriteBatchBuilder changes = new(0);
-        foreach ((PbtFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
+        using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
+        foreach ((PbtStorageFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
         using PbtNodeGroupStore nodeStore = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes.Build());
 
         using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
         foreach ((ValueHash256 hash, Account? account) in accounts) batch.SetAccount(hash, account);
-        foreach ((PbtFullKey key, EvmWord slot) in storages) batch.SetSlot(key, slot);
+        foreach ((PbtStorageFullKey key, EvmWord slot) in storages) batch.SetSlot(key, slot);
         foreach ((ValueHash256 hash, CodeInfo code) in codes) batch.SetCode(hash, code);
-        foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
+        foreach (IPbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
         {
             cancellationToken.ThrowIfCancellationRequested();
             using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);

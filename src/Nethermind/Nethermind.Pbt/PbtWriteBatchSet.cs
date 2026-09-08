@@ -8,25 +8,13 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Pbt;
 
 /// <summary>One-shot preparation for a single canonical fold, with non-copying zone partitions.</summary>
-internal sealed class PbtWriteBatchSet : IDisposable
+internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable where TKey : struct, IPbtKey<TKey>
 {
-    private const int PartitionCount = 3;
-    private const int ShardsPerPartition = 256;
-    private const int BucketsPerShard = 2;
-    private const int BucketCount = PartitionCount * ShardsPerPartition * BucketsPerShard;
-    private const int LevelLength = 33;
-
-    private ArrayPoolList<PbtWriteOperation>? _operations;
+    private ArrayPoolList<PbtWriteOperation<TKey>>? _operations;
     private ArrayPoolList<int>? _table;
     private PartitionOffsets _partitionOffsets;
 
-    [InlineArray(PartitionCount + 1)]
-    private struct PartitionOffsets
-    {
-        private int _element;
-    }
-
-    private PbtWriteBatchSet(ArrayPoolList<PbtWriteOperation> operations, ArrayPoolList<int> table, PartitionOffsets partitionOffsets)
+    private PbtWriteBatchSet(ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table, PartitionOffsets partitionOffsets)
     {
         _operations = operations;
         _table = table;
@@ -34,7 +22,7 @@ internal sealed class PbtWriteBatchSet : IDisposable
     }
 
     internal int Count => Operations.Count;
-    internal ReadOnlySpan<PbtWriteOperation> Entries => Operations.AsSpan();
+    internal ReadOnlySpan<PbtWriteOperation<TKey>> Entries => Operations.AsSpan();
     internal ReadOnlySpan<int> Precalculated
     {
         get
@@ -44,7 +32,7 @@ internal sealed class PbtWriteBatchSet : IDisposable
         }
     }
 
-    internal ReadOnlySpan<PbtWriteOperation> this[PbtPartition partition]
+    internal ReadOnlySpan<PbtWriteOperation<TKey>> this[PbtPartition partition]
     {
         get
         {
@@ -53,15 +41,15 @@ internal sealed class PbtWriteBatchSet : IDisposable
         }
     }
 
-    private ArrayPoolList<PbtWriteOperation> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
+    private ArrayPoolList<PbtWriteOperation<TKey>> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
 
     /// <remarks>The source must already contain unique keys; preparation does not deduplicate or drain it.</remarks>
-    internal static PbtWriteBatchSet Create(IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> uniqueOperations) =>
+    internal static PbtWriteBatchSet<TKey> Create(IEnumerable<KeyValuePair<TKey, ValueHash256?>> uniqueOperations) =>
         PrepareOperations(uniqueOperations);
 
-    internal static PbtWriteBatchSet Create(PbtWriteBatch changes)
+    internal static PbtWriteBatchSet<TKey> Create(PbtWriteBatch<TKey> changes)
     {
-        changes.Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table);
+        changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
         using (table)
         {
             try
@@ -76,7 +64,7 @@ internal sealed class PbtWriteBatchSet : IDisposable
         }
     }
 
-    internal void Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table)
+    internal void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table)
     {
         operations = Operations;
         table = _table!;
@@ -95,13 +83,13 @@ internal sealed class PbtWriteBatchSet : IDisposable
         _table = null;
     }
 
-    private static PbtWriteBatchSet PrepareOperations(IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> uniqueOperations)
+    private static PbtWriteBatchSet<TKey> PrepareOperations(IEnumerable<KeyValuePair<TKey, ValueHash256?>> uniqueOperations)
     {
-        ArrayPoolList<PbtWriteOperation> operations = new(0);
+        ArrayPoolList<PbtWriteOperation<TKey>> operations = new(0);
         try
         {
-            foreach ((PbtFullKey key, ValueHash256? value) in uniqueOperations)
-                operations.Add(value is { } hash ? PbtWriteOperation.Set(key, hash) : PbtWriteOperation.Delete(key));
+            foreach ((TKey key, ValueHash256? value) in uniqueOperations)
+                operations.Add(value is { } hash ? PbtWriteOperation<TKey>.Set(key, hash) : PbtWriteOperation<TKey>.Delete(key));
             return Prepare(operations);
         }
         catch
@@ -111,11 +99,11 @@ internal sealed class PbtWriteBatchSet : IDisposable
         }
     }
 
-    private static PbtWriteBatchSet Prepare(ArrayPoolList<PbtWriteOperation> operations)
+    private static PbtWriteBatchSet<TKey> Prepare(ArrayPoolList<PbtWriteOperation<TKey>> operations)
     {
         Span<int> counts = stackalloc int[BucketCount];
         counts.Clear();
-        foreach (PbtWriteOperation operation in operations)
+        foreach (PbtWriteOperation<TKey> operation in operations)
         {
             if (PartitionOf(operation.Key) < 0)
             {
@@ -153,7 +141,7 @@ internal sealed class PbtWriteBatchSet : IDisposable
 
     /// <summary>Accepts unique operations already ordered by partition, shard, and delete/set bucket.</summary>
     /// <remarks>Takes ownership of operations, including when preparation fails.</remarks>
-    internal static PbtWriteBatchSet CreateGrouped(ArrayPoolList<PbtWriteOperation> operations, ReadOnlySpan<int> counts)
+    internal static PbtWriteBatchSet<TKey> CreateGrouped(ArrayPoolList<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> counts)
     {
         ArrayPoolList<int>? table = null;
         try
@@ -186,7 +174,7 @@ internal sealed class PbtWriteBatchSet : IDisposable
         }
     }
 
-    internal static int PartitionOf(PbtFullKey key) => key.Length == 0 ? -1 : key.Bytes[0] switch
+    internal static int PartitionOf(TKey key) => key.Length == 0 ? -1 : key.Bytes[0] switch
     {
         Eip8297KeyDerivation.AccountZone when key.Length >= Eip8297KeyDerivation.AccountKeyLength => (int)PbtPartition.Account,
         Eip8297KeyDerivation.CodeZone when key.Length >= Eip8297KeyDerivation.AccountKeyLength => (int)PbtPartition.Code,
@@ -194,11 +182,11 @@ internal sealed class PbtWriteBatchSet : IDisposable
         _ => -1,
     };
 
-    private static int BucketOf(in PbtWriteOperation operation) =>
+    private static int BucketOf(in PbtWriteOperation<TKey> operation) =>
         (PartitionOf(operation.Key) * ShardsPerPartition + operation.Key.Bytes[1]) * BucketsPerShard +
         (operation.Kind == PbtWriteOperationKind.Delete ? 0 : 1);
 
-    private static void OrderDeletesFirst(Span<PbtWriteOperation> operations)
+    private static void OrderDeletesFirst(Span<PbtWriteOperation<TKey>> operations)
     {
         int deleteCount = 0;
         for (int index = 0; index < operations.Length; index++)
@@ -208,8 +196,23 @@ internal sealed class PbtWriteBatchSet : IDisposable
             deleteCount++;
         }
     }
+}
 
-    private static int CountLevels(ReadOnlySpan<int> counts, ReadOnlySpan<int> partitionOffsets)
+internal abstract class PbtWriteBatchSet
+{
+    protected const int PartitionCount = 3;
+    protected const int ShardsPerPartition = 256;
+    protected const int BucketsPerShard = 2;
+    protected const int BucketCount = PartitionCount * ShardsPerPartition * BucketsPerShard;
+    protected const int LevelLength = 33;
+
+    [InlineArray(PartitionCount + 1)]
+    protected struct PartitionOffsets
+    {
+        private int _element;
+    }
+
+    protected static int CountLevels(ReadOnlySpan<int> counts, ReadOnlySpan<int> partitionOffsets)
     {
         if (partitionOffsets[PartitionCount] == 0) return 0;
         int levelCount = 1;
@@ -233,7 +236,7 @@ internal sealed class PbtWriteBatchSet : IDisposable
         return levelCount;
     }
 
-    private static void WriteLevel(Span<int> table, ref int tablePosition, ReadOnlySpan<int> counts, int startBucket, int endBucket, int depth)
+    protected static void WriteLevel(Span<int> table, ref int tablePosition, ReadOnlySpan<int> counts, int startBucket, int endBucket, int depth)
     {
         int levelStart = tablePosition;
         tablePosition += LevelLength;

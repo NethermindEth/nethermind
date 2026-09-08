@@ -26,12 +26,12 @@ public static class Eip8297KeyDerivation
         return new PbtFullKey(key);
     }
 
-    public static PbtFullKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
+    public static PbtStorageFullKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
     {
         Validate32(address32, nameof(address32));
         if (slot < PbtKeyDerivation.HeaderStorageOffset)
         {
-            return AccountKey(address32, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
+            return (PbtStorageFullKey)AccountKey(address32, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
         }
 
         UInt256 treeIndex = slot >> 8;
@@ -45,7 +45,7 @@ public static class Eip8297KeyDerivation
         addressHash.Bytes.CopyTo(key[1..]);
         suffixHash.Bytes.CopyTo(key[33..]);
         key[^1] = (byte)slot.u0;
-        return new PbtFullKey(key);
+        return new PbtStorageFullKey(key);
     }
 
     public static PbtFullKey CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId)

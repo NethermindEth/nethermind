@@ -283,18 +283,18 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public ValueHash256 CurrentRoot => default;
         public Account? GetAccount(in ValueHash256 addressHash) => null;
-        public EvmWord GetSlot(PbtFullKey key) => default;
+        public EvmWord GetSlot(PbtStorageFullKey key) => default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => [];
-        public IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null) => [];
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => [];
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
             return null;
         }
-        public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys() => [];
+        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys() => [];
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
 
         public void Dispose()

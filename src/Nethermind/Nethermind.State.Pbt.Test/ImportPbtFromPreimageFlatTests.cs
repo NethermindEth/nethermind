@@ -234,7 +234,7 @@ public class ImportPbtFromPreimageFlatTests
             staging.SetNodeGroup(groupKey, payload);
             staging.Commit();
         }
-        byte[] maximumLengthKey = new byte[PbtFullKey.MaxLength];
+        byte[] maximumLengthKey = new byte[PbtStorageFullKey.MaxLength];
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
 
@@ -267,7 +267,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence persistence = new(db, config);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         Account account = new(1, 100);
-        using PbtWriteBatchBuilder changes = new(0);
+        using PbtWriteBatchBuilder<PbtFullKey> changes = new(0);
         foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, null)) changes.Set(key, value);
         using PbtNodeGroupStore nodeStore = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes.Build());
@@ -279,7 +279,7 @@ public class ImportPbtFromPreimageFlatTests
             WriteFlags.None))
         {
             batch.SetAccount(addressHash, account);
-            foreach (PbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
+            foreach (IPbtNodePath groupKey in nodeStore.EnumerateNodeGroupKeys())
             {
                 using RefCountingMemory? payload = nodeStore.GetNodeGroup(groupKey);
                 batch.SetNodeGroup(groupKey, payload);

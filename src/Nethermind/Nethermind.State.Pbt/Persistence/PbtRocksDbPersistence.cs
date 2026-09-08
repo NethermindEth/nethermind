@@ -139,7 +139,7 @@ public class PbtRocksDbPersistence(
         {
             if (++upper[i] != 0) return upper[..(i + 1)];
         }
-        byte[] maximum = new byte[PbtFullKey.MaxLength + 1];
+        byte[] maximum = new byte[PbtStorageFullKey.MaxLength + 1];
         Array.Fill(maximum, byte.MaxValue);
         return maximum;
     }
@@ -157,7 +157,7 @@ public class PbtRocksDbPersistence(
             return value is null ? null : DecodeAccount(value);
         }
 
-        public EvmWord GetSlot(PbtFullKey key)
+        public EvmWord GetSlot(PbtStorageFullKey key)
         {
             byte[]? value = snapshot.GetColumn(PbtColumns.Storages).Get(key.Bytes);
             return value is null ? default : DecodeSlot(value);
@@ -179,13 +179,13 @@ public class PbtRocksDbPersistence(
                 yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
         }
 
-        public IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(PbtFullKey? prefix = null)
+        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null)
         {
             ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Storages);
             using ISortedView view = storage.GetViewBetween(prefix is null ? [] : prefix.Value.Bytes,
                 PrefixUpperBound(prefix is null ? [] : prefix.Value.Bytes));
             while (view.MoveNext())
-                yield return new(new PbtFullKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
+                yield return new(new PbtStorageFullKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
         }
 
         private static Account DecodeAccount(ReadOnlySpan<byte> value)
@@ -200,7 +200,7 @@ public class PbtRocksDbPersistence(
             return EvmWordSlot.FromStripped(value);
         }
 
-        public RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
@@ -210,16 +210,16 @@ public class PbtRocksDbPersistence(
             return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
-        public IEnumerable<PbtNodePath> EnumerateNodeGroupKeys()
+        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys()
         {
             ISortedKeyValueStore groups = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.NodeGroups);
             using ISortedView view = groups.GetViewBetween([], [0xFF, 0xFF]);
             while (view.MoveNext()) yield return DecodeGroupKey(view.CurrentKey);
         }
 
-        private static PbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
+        private static IPbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
         {
-            PbtNodePath groupKey = PbtNodePath.Decode(encoding);
+            IPbtNodePath groupKey = PbtPathOperations.Decode(encoding);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
             return groupKey;
@@ -245,7 +245,7 @@ public class PbtRocksDbPersistence(
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        private readonly Dictionary<ValueHash256, HashSet<PbtFullKey>> _stagedStorageKeys = [];
+        private readonly Dictionary<ValueHash256, HashSet<PbtStorageFullKey>> _stagedStorageKeys = [];
 
         public void SetAccount(in ValueHash256 addressHash, Account? account)
         {
@@ -258,14 +258,14 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public void SetSlot(PbtFullKey key, in EvmWord value)
+        public void SetSlot(PbtStorageFullKey key, in EvmWord value)
         {
             if (!IsStorageKey(key.Bytes)) throw new ArgumentException("A complete storage key is required.", nameof(key));
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
             if (EvmWordSlot.IsZero(value)) storage.Set(key.Bytes, null, flags);
             else storage.PutSpan(key.Bytes, EvmWordSlot.AsReadOnlySpan(in value), flags);
             ValueHash256 addressHash = new(key.Bytes.Slice(1, ValueHash256.MemorySize));
-            if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtFullKey>? keys))
+            if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageFullKey>? keys))
                 _stagedStorageKeys[addressHash] = keys = [];
             keys.Add(key);
         }
@@ -287,15 +287,15 @@ public class PbtRocksDbPersistence(
                 while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
             }
             // The database view does not include earlier writes in this batch.
-            if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtFullKey>? keys))
-                foreach (PbtFullKey key in keys) storage.Set(key.Bytes, null, flags);
+            if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtStorageFullKey>? keys))
+                foreach (PbtStorageFullKey key in keys) storage.Set(key.Bytes, null, flags);
         }
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
             key.Length == 34 && key[0] == Eip8297KeyDerivation.AccountZone && key[^1] is >= 64 and < 128
             || key.Length == 66 && key[0] == Eip8297KeyDerivation.StorageZone;
 
-        public void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
         {
             ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))

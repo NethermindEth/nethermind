@@ -6,13 +6,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-/// <summary>A single-use prepared mutation batch produced by <see cref="PbtWriteBatchBuilder"/>.</summary>
-public sealed class PbtWriteBatch : IDisposable
+/// <summary>A single-use prepared mutation batch produced by <see cref="PbtWriteBatchBuilder{TKey}"/>.</summary>
+public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtKey<TKey>
 {
-    private ArrayPoolList<PbtWriteOperation>? _operations;
+    private ArrayPoolList<PbtWriteOperation<TKey>>? _operations;
     private ArrayPoolList<int>? _table;
 
-    internal PbtWriteBatch(ArrayPoolList<PbtWriteOperation> operations, ArrayPoolList<int> table, int shardNibbleIndex)
+    internal PbtWriteBatch(ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table, int shardNibbleIndex)
     {
         _operations = operations;
         _table = table;
@@ -23,7 +23,7 @@ public sealed class PbtWriteBatch : IDisposable
     public int Count => Operations.Count;
 
     internal int ShardNibbleIndex { get; }
-    internal ReadOnlySpan<PbtWriteOperation> Entries => Operations.AsSpan();
+    internal ReadOnlySpan<PbtWriteOperation<TKey>> Entries => Operations.AsSpan();
     internal TrieUpdater.BucketPlan Plan
     {
         get
@@ -34,9 +34,9 @@ public sealed class PbtWriteBatch : IDisposable
         }
     }
 
-    private ArrayPoolList<PbtWriteOperation> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
+    private ArrayPoolList<PbtWriteOperation<TKey>> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
 
-    internal void Consume(out ArrayPoolList<PbtWriteOperation> operations, out ArrayPoolList<int> table)
+    internal void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table)
     {
         operations = Operations;
         table = _table!;
@@ -59,8 +59,8 @@ internal enum PbtWriteOperationKind : byte
     Delete,
 }
 
-internal readonly record struct PbtWriteOperation(PbtFullKey Key, ValueHash256 Value, PbtWriteOperationKind Kind)
+internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value, PbtWriteOperationKind Kind) where TKey : struct, IPbtKey<TKey>
 {
-    internal static PbtWriteOperation Set(PbtFullKey key, in ValueHash256 value) => new(key, value, PbtWriteOperationKind.Set);
-    internal static PbtWriteOperation Delete(PbtFullKey key) => new(key, default, PbtWriteOperationKind.Delete);
+    internal static PbtWriteOperation<TKey> Set(TKey key, in ValueHash256 value) => new(key, value, PbtWriteOperationKind.Set);
+    internal static PbtWriteOperation<TKey> Delete(TKey key) => new(key, default, PbtWriteOperationKind.Delete);
 }

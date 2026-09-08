@@ -39,7 +39,7 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
         return (_bytes[index >> 3] >> (7 - (index & 7))) & 1;
     }
 
-    public static PbtBitPrefix FromKey(PbtFullKey key, int startBit, int bitCount)
+    public static PbtBitPrefix FromKey<TKey>(TKey key, int startBit, int bitCount) where TKey : struct, IPbtKey<TKey>
     {
         if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         ArgumentOutOfRangeException.ThrowIfNegative(startBit);

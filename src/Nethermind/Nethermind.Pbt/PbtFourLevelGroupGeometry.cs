@@ -24,7 +24,7 @@ public static class PbtFourLevelGroupGeometry
     public const int RootPosition = PositionCount - 1;
 
     /// <summary>The maximum path depth supported by the four-level group geometry.</summary>
-    public const int MaxPathDepth = PbtFullKey.MaxLength * 8;
+    public const int MaxPathDepth = PbtStorageFullKey.MaxLength * 8;
 
     /// <summary>The greatest depth at which a group key can occur.</summary>
     public const int MaxGroupDepth = MaxPathDepth - LevelsPerGroup;
@@ -42,34 +42,34 @@ public static class PbtFourLevelGroupGeometry
     }
 
     /// <summary>Returns the group key and position for <paramref name="path"/>.</summary>
-    public static PbtNodeGroupLocation Locate(PbtNodePath path)
+    public static PbtNodeGroupLocation Locate(IPbtNodePath path)
     {
         ArgumentNullException.ThrowIfNull(path);
 
         int groupDepth = GroupDepthOf(path.BitDepth);
-        PbtNodePath groupKey = Prefix(path, groupDepth);
+        IPbtNodePath groupKey = Prefix(path, groupDepth);
         int position = PositionOf(path, groupDepth);
         return new PbtNodeGroupLocation(groupKey, position);
     }
 
     /// <summary>Returns the group key owning <paramref name="path"/>.</summary>
-    public static PbtNodePath GroupKeyOf(PbtNodePath path) => Locate(path).GroupKey;
+    public static IPbtNodePath GroupKeyOf(IPbtNodePath path) => Locate(path).GroupKey;
 
     /// <summary>Returns the position of <paramref name="path"/> in its owning group.</summary>
-    public static int PositionOf(PbtNodePath path)
+    public static int PositionOf(IPbtNodePath path)
     {
         ArgumentNullException.ThrowIfNull(path);
         return PositionOf(path, GroupDepthOf(path.BitDepth));
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
-    public static PbtNodePath PathOf(PbtNodePath groupKey, int position)
+    public static IPbtNodePath PathOf(IPbtNodePath groupKey, int position)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         ValidateGroupKey(groupKey);
         ValidatePosition(groupKey, position);
 
-        if (position == RootPosition) return new PbtNodePath([], 0);
+        if (position == RootPosition) return PbtPathOperations.Create([], 0);
 
         int currentPosition = RootPosition;
         int width = BoundarySlots;
@@ -118,13 +118,13 @@ public static class PbtFourLevelGroupGeometry
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
 
-        return new PbtNodePath(path, depth);
+        return PbtPathOperations.Create(path, depth);
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
-    public static PbtNodePath Reconstruct(PbtNodePath groupKey, int position) => PathOf(groupKey, position);
+    public static IPbtNodePath Reconstruct(IPbtNodePath groupKey, int position) => PathOf(groupKey, position);
 
-    private static int PositionOf(PbtNodePath path, int groupDepth)
+    private static int PositionOf(IPbtNodePath path, int groupDepth)
     {
         int relativeDepth = path.BitDepth - groupDepth;
         int position = RootPosition;
@@ -140,17 +140,17 @@ public static class PbtFourLevelGroupGeometry
         return position;
     }
 
-    private static PbtNodePath Prefix(PbtNodePath path, int depth)
+    private static IPbtNodePath Prefix(IPbtNodePath path, int depth)
     {
         int byteLength = (depth + 7) >> 3;
         Span<byte> prefix = stackalloc byte[byteLength];
         path.Path[..byteLength].CopyTo(prefix);
         if (byteLength != 0 && (depth & 7) != 0)
             prefix[^1] &= (byte)(0xFF << (8 - (depth & 7)));
-        return new PbtNodePath(prefix, depth);
+        return PbtPathOperations.Create(prefix, depth);
     }
 
-    private static void ValidateGroupKey(PbtNodePath groupKey)
+    private static void ValidateGroupKey(IPbtNodePath groupKey)
     {
         if (!IsGroupDepth(groupKey.BitDepth))
         {
@@ -158,7 +158,7 @@ public static class PbtFourLevelGroupGeometry
         }
     }
 
-    private static void ValidatePosition(PbtNodePath groupKey, int position)
+    private static void ValidatePosition(IPbtNodePath groupKey, int position)
     {
         if ((uint)position >= PositionCount)
         {
@@ -173,4 +173,4 @@ public static class PbtFourLevelGroupGeometry
 }
 
 /// <summary>Identifies one node's group key and post-order position.</summary>
-public readonly record struct PbtNodeGroupLocation(PbtNodePath GroupKey, int Position);
+public readonly record struct PbtNodeGroupLocation(IPbtNodePath GroupKey, int Position);

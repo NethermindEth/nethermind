@@ -17,23 +17,40 @@ public class PbtSnapshotCompactorTests
     private readonly PbtResourcePool _pool = new(new PbtConfig());
     private static readonly PbtConfig Config = new() { CompactSize = 16 };
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Compact_PreservesNewestCanonicalLeafAndGroupAfterSourcesAreDisposed(bool tombstone)
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Compact_PreservesNewestCanonicalLeafAndGroupAfterSourcesAreDisposed(bool tombstone, bool storagePathFirst)
     {
-        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
-        PbtNodePath groupKey = new([], 0);
+        PbtStorageFullKey key = PbtStateKey.Storage(TestItem.AddressA, 64);
+        IPbtNodePath groupKey = storagePathFirst ? new PbtStorageNodePath([], 0) : new PbtNodePath([], 0);
+        IPbtNodePath alternateGroupKey = storagePathFirst ? new PbtNodePath([], 0) : new PbtStorageNodePath([], 0);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
         older.Storages[key] = EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes);
         newer.Storages[key] = EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes);
         byte[] expected;
-        using (RefCountingMemory olderPayload = PbtResourcePoolTests.CreateGroup(memoryProvider, TestItem.KeccakA.ValueHash256))
-        using (RefCountingMemory newerPayload = PbtResourcePoolTests.CreateGroup(memoryProvider, TestItem.KeccakB.ValueHash256))
+        using (RefCountingMemory olderPayload = CreateStorageLeafGroup(TestItem.KeccakA.ValueHash256))
+        using (RefCountingMemory newerPayload = CreateStorageLeafGroup(TestItem.KeccakB.ValueHash256))
         {
             older.SetNodeGroup(groupKey, olderPayload);
-            newer.SetNodeGroup(groupKey, tombstone ? null : newerPayload);
+            Assert.That(older.TryGetNodeGroup(alternateGroupKey, out RefCountingMemory? original), Is.True);
+            using (original)
+            {
+                older.SetNodeGroup(alternateGroupKey, newerPayload);
+                Assert.That(older.TryGetNodeGroup(groupKey, out RefCountingMemory? replacement), Is.True);
+                using (replacement)
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(older.NodeGroups.Count, Is.EqualTo(1));
+                    Assert.That(original, Is.SameAs(olderPayload));
+                    Assert.That(replacement, Is.SameAs(newerPayload));
+                }
+            }
+            older.SetNodeGroup(groupKey, olderPayload);
+            newer.SetNodeGroup(alternateGroupKey, tombstone ? null : newerPayload);
             expected = newerPayload.GetSpan().ToArray();
         }
         PbtSnapshot compacted;
@@ -47,14 +64,26 @@ public class PbtSnapshotCompactorTests
         {
             bool found = compacted.Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload);
             using RefCountingMemory? payloadLease = payload;
+            bool alternateFound = compacted.Content.TryGetNodeGroup(alternateGroupKey, out RefCountingMemory? alternatePayload);
+            using RefCountingMemory? alternatePayloadLease = alternatePayload;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(compacted.Content.Storages.TryGetValue(key, out EvmWord leaf) && leaf.Equals(EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes)), Is.True);
+                Assert.That(compacted.Content.NodeGroups.Count, Is.EqualTo(1));
                 Assert.That(found, Is.True);
+                Assert.That(alternateFound, Is.True);
+                Assert.That(alternatePayload, Is.SameAs(payload));
                 Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : expected));
             }
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+
+        RefCountingMemory CreateStorageLeafGroup(ValueHash256 value)
+        {
+            using PbtNodeGroupWriter writer = new(groupKey, memoryProvider);
+            writer.Write(PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));
+            return writer.Detach()!;
+        }
     }
 
     [TestCase(7u, false)]
@@ -64,9 +93,9 @@ public class PbtSnapshotCompactorTests
     public void Compact_preserves_clear_ordering_and_whole_typed_values(uint slot, bool clearLast)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
-        PbtFullKey otherSlot = PbtStateKey.Storage(TestItem.AddressA, slot + 1);
-        PbtFullKey otherAddress = PbtStateKey.Storage(TestItem.AddressB, slot);
+        PbtStorageFullKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
+        PbtStorageFullKey otherSlot = PbtStateKey.Storage(TestItem.AddressA, slot + 1);
+        PbtStorageFullKey otherAddress = PbtStateKey.Storage(TestItem.AddressB, slot);
         EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
         EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
         CodeInfo code = new(Bytes.FromHexString("6001600055"));

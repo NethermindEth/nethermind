@@ -28,7 +28,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    internal RefCountingMemory? GetNodeGroup(PbtNodePath groupKey)
+    internal RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
     {
         GuardDispose();
         ArgumentNullException.ThrowIfNull(groupKey);
@@ -61,13 +61,13 @@ public sealed class PbtReadOnlySnapshotBundle(
             if (account is not null) yield return new(hash, account);
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
         GuardDispose();
-        SortedDictionary<PbtFullKey, EvmWord> visible = [];
+        SortedDictionary<PbtStorageFullKey, EvmWord> visible = [];
         if (addressFilter is null)
         {
-            foreach ((PbtFullKey key, EvmWord value) in reader.EnumerateStorage()) visible[key] = value;
+            foreach ((PbtStorageFullKey key, EvmWord value) in reader.EnumerateStorage()) visible[key] = value;
         }
         else
         {
@@ -76,20 +76,20 @@ public sealed class PbtReadOnlySnapshotBundle(
             foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
             {
                 prefix[0] = zone;
-                foreach ((PbtFullKey key, EvmWord value) in reader.EnumerateStorage(new PbtFullKey(prefix))) visible[key] = value;
+                foreach ((PbtStorageFullKey key, EvmWord value) in reader.EnumerateStorage(new PbtStorageFullKey(prefix))) visible[key] = value;
             }
         }
         foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
-        foreach ((PbtFullKey key, EvmWord value) in visible)
+        foreach ((PbtStorageFullKey key, EvmWord value) in visible)
             if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() =>
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves() =>
         PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix)
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(PbtStorageFullKey prefix)
     {
-        foreach (KeyValuePair<PbtFullKey, ValueHash256> leaf in EnumerateLeaves())
+        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> leaf in EnumerateLeaves())
             if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
     }
 
@@ -105,7 +105,7 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(PbtStateKey.Storage(address, slot));
 
-    internal EvmWord GetSlot(PbtFullKey key)
+    internal EvmWord GetSlot(PbtStorageFullKey key)
     {
         GuardDispose();
         ValueHash256 addressHash = PbtFlatState.StorageAddress(key);

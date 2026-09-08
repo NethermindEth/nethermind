@@ -105,9 +105,9 @@ public class PbtRebuilderTests
         using PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
         using IPbtPersistence.IReader reader = target.CreateReader();
-        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.EnumerateLeaves(reader))
+        foreach ((PbtStorageFullKey key, ValueHash256 value) in PbtFlatState.EnumerateLeaves(reader))
         {
-            using PbtWriteBatchBuilder incrementalChange = new(0);
+            using PbtWriteBatchBuilder<PbtStorageFullKey> incrementalChange = new(0);
             incrementalChange.Set(key, value);
             incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, incrementalChange.Build());
         }
@@ -240,10 +240,10 @@ public class PbtRebuilderTests
         }
     }
 
-    private static string[] CanonicalGroups(IEnumerable<PbtNodePath> groupKeys, Func<PbtNodePath, RefCountingMemory?> getNodeGroup)
+    private static string[] CanonicalGroups(IEnumerable<IPbtNodePath> groupKeys, Func<IPbtNodePath, RefCountingMemory?> getNodeGroup)
     {
         List<string> result = [];
-        foreach (PbtNodePath groupKey in groupKeys)
+        foreach (IPbtNodePath groupKey in groupKeys)
         {
             using RefCountingMemory? payload = getNodeGroup(groupKey);
             result.Add($"{Convert.ToHexString(groupKey.Encode())}:{Convert.ToHexString(payload!.GetSpan())}");

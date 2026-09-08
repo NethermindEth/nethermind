@@ -51,7 +51,7 @@ internal static class PbtReferenceModel
     private static byte[] Chunk(byte[] chunks, int chunkId) =>
         chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize).ToArray();
 
-    private static void Set(Dictionary<string, byte[]> model, PbtFullKey key, byte[] value)
+    private static void Set<TKey>(Dictionary<string, byte[]> model, TKey key, byte[] value) where TKey : struct, IPbtKey<TKey>
     {
         string encoded = key.Bytes.ToArray().ToHexString();
         if (value.AsSpan().IsZero()) model.Remove(encoded);

@@ -18,21 +18,21 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     private readonly Lock _treeLock = new();
 
     internal readonly ConcurrentDictionary<ValueHash256, Account?> Accounts = new();
-    internal readonly ConcurrentDictionary<PbtFullKey, EvmWord> Storages = new();
+    internal readonly ConcurrentDictionary<PbtStorageFullKey, EvmWord> Storages = new();
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
-    internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> NodeGroups = new();
+    internal readonly ConcurrentDictionary<IPbtNodePath, RefCountingMemory?> NodeGroups = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void ClearStorage(in ValueHash256 addressHash)
     {
-        foreach ((PbtFullKey key, _) in Storages)
+        foreach ((PbtStorageFullKey key, _) in Storages)
             if (PbtFlatState.StorageAddress(key) == addressHash) Storages.TryRemove(key, out _);
         SelfDestructedStorageAddresses[addressHash] = true;
     }
 
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
-    internal void SetNodeGroup(PbtNodePath groupKey, RefCountingMemory? payload)
+    internal void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
@@ -56,7 +56,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
-    internal bool TryGetNodeGroup(PbtNodePath groupKey, out RefCountingMemory? payload)
+    internal bool TryGetNodeGroup(IPbtNodePath groupKey, out RefCountingMemory? payload)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
@@ -93,12 +93,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
             + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
         long nodeBytes = 0;
-        foreach ((PbtFullKey key, _) in Storages) leafBytes += key.Length + ValueHash256.MemorySize;
+        foreach ((PbtStorageFullKey key, _) in Storages) leafBytes += key.Length + ValueHash256.MemorySize;
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
         lock (_treeLock)
         {
-            foreach ((PbtNodePath path, RefCountingMemory? payload) in NodeGroups)
+            foreach ((IPbtNodePath path, RefCountingMemory? payload) in NodeGroups)
                 nodeBytes += path.Encode().Length + (payload?.Memory.Length ?? 0);
         }
 
