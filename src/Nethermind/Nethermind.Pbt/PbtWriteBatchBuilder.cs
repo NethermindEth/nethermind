@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -9,14 +10,15 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.Pbt;
 
 /// <summary>Accumulates complete-key mutations in shards selected by a key nibble.</summary>
-/// <remarks>Writes and reads synchronize per shard. Count, enumeration, preparation and reset require joined writers.</remarks>
+/// <remarks>Writes synchronize per shard. Count, enumeration, preparation and reset require joined writers.</remarks>
 /// <param name="shardNibbleIndex">The zero-based key nibble used to select a shard.</param>
 public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposable, IResettable where TKey : struct, IPbtKey<TKey>
 {
     // Full inline keys and values make dictionary entries substantially larger than stem-map entries.
     private const int RetainedShardEntries = 512;
     private const int ShardCount = 16;
-    private ShardBuffer _shards = CreateShards();
+    private static readonly ObjectPool<Shard> ShardPool = new DefaultObjectPool<Shard>(new ShardPoolPolicy(), ShardCount * 2);
+    private ShardBuffer _shards;
 
     private readonly int _shardNibbleIndex = ValidateShardNibbleIndex(shardNibbleIndex);
 
@@ -32,17 +34,25 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         internal Dictionary<TKey, ValueHash256?>? Entries;
     }
 
-    private static ShardBuffer CreateShards()
+    private sealed class ShardPoolPolicy : IPooledObjectPolicy<Shard>
     {
-        ShardBuffer shards = default;
-        for (int index = 0; index < ShardCount; index++) shards[index] = new();
-        return shards;
+        public Shard Create() => new();
+
+        public bool Return(Shard shard)
+        {
+            if (shard.Entries is { } entries)
+            {
+                if (entries.Count > RetainedShardEntries) shard.Entries = null;
+                else entries.Clear();
+            }
+            return true;
+        }
     }
 
     [InlineArray(ShardCount)]
     private struct ShardBuffer
     {
-        private Shard _element;
+        private Shard? _element;
     }
 
     private int ShardOf(TKey key)
@@ -63,18 +73,16 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
 
     private void SetMutation(TKey key, ValueHash256? value)
     {
-        Shard shard = _shards[ShardOf(key)];
-        lock (shard.Lock) (shard.Entries ??= [])[key] = value;
-    }
-
-    internal bool TryGetLeaf(TKey key, out ValueHash256? value)
-    {
-        Shard shard = _shards[ShardOf(key)];
-        lock (shard.Lock)
+        ref Shard? shardSlot = ref _shards[ShardOf(key)];
+        Shard? shard = Volatile.Read(ref shardSlot);
+        if (shard is null)
         {
-            value = null;
-            return shard.Entries is not null && shard.Entries.TryGetValue(key, out value);
+            Shard rented = ShardPool.Get();
+            shard = Interlocked.CompareExchange(ref shardSlot, rented, null);
+            if (shard is null) shard = rented;
+            else ShardPool.Return(rented);
         }
+        lock (shard.Lock) (shard.Entries ??= [])[key] = value;
     }
 
     /// <summary>Gets the number of pending unique mutations.</summary>
@@ -83,7 +91,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         get
         {
             int count = 0;
-            foreach (Shard shard in _shards) count += shard.Entries?.Count ?? 0;
+            foreach (Shard? shard in _shards) count += shard?.Entries?.Count ?? 0;
             return count;
         }
     }
@@ -94,9 +102,8 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         {
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
-                Shard shard = _shards[shardIndex];
-                if (shard.Entries is null) continue;
-                foreach (KeyValuePair<TKey, ValueHash256?> entry in shard.Entries) yield return entry;
+                if (_shards[shardIndex]?.Entries is not { } entries) continue;
+                foreach (KeyValuePair<TKey, ValueHash256?> entry in entries) yield return entry;
             }
         }
     }
@@ -127,7 +134,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             int count = 0;
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
-                if (_shards[shardIndex].Entries is not { Count: > 0 } entries) continue;
+                if (_shards[shardIndex]?.Entries is not { Count: > 0 } entries) continue;
                 foreach (ValueHash256? value in entries.Values)
                     if (value is null) deleteCounts[shardIndex]++;
                 table[0] |= 1 << shardIndex;
@@ -139,7 +146,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             int offset = 0;
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
-                if (_shards[shardIndex].Entries is not { } entries) continue;
+                if (_shards[shardIndex]?.Entries is not { } entries) continue;
                 int deleteOffset = offset;
                 int setOffset = offset + deleteCounts[shardIndex];
                 foreach ((TKey key, ValueHash256? value) in entries)
@@ -161,14 +168,14 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
 
     internal void CompleteDrain() => Reset();
 
-    /// <summary>Discards pending mutations while retaining bounded shard capacity for reuse.</summary>
+    /// <summary>Discards pending mutations and returns shards to the pool.</summary>
     public void Reset()
     {
-        foreach (Shard shard in _shards)
+        for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
         {
-            if (shard.Entries is not { } entries) continue;
-            if (entries.Count > RetainedShardEntries) shard.Entries = null;
-            else entries.Clear();
+            if (_shards[shardIndex] is not { } shard) continue;
+            _shards[shardIndex] = null;
+            ShardPool.Return(shard);
         }
     }
 

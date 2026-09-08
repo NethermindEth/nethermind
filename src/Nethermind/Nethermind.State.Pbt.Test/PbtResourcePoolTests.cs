@@ -109,7 +109,7 @@ public class PbtResourcePoolTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(batch.TryGetLeaf(keys[index], out ValueHash256? value), Is.True);
+                Assert.That(leaves.TryGetValue(keys[index], out ValueHash256? value), Is.True);
                 Assert.That(value, Is.EqualTo(index % 2 == 0 ? null : (ValueHash256?)TestItem.KeccakB.ValueHash256));
             }
         }
@@ -128,9 +128,39 @@ public class PbtResourcePoolTests
             Assert.That(rented.Count, Is.Zero);
             Assert.That(empty.Count, Is.Zero);
             Assert.That(empty.ShardNibbleIndex, Is.EqualTo(2));
-            Assert.That(rented.TryGetLeaf(keys[0], out _), Is.False);
+            Assert.That(rented.Leaves, Is.Empty);
         }
         returnBatch(usage, rented);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Returned_shards_are_empty_and_not_shared_with_the_previous_builder(bool dispose)
+    {
+        using PbtWriteBatchBuilder<PbtStorageFullKey> original = new(0);
+        PbtStorageFullKey key = new(Bytes.FromHexString("1234"));
+        original.Set(key, TestItem.KeccakA.ValueHash256);
+        if (dispose) original.Dispose();
+        else original.Reset();
+
+        using PbtWriteBatchBuilder<PbtStorageFullKey> replacement = new(0);
+        PbtStorageFullKey replacementKey = new(Bytes.FromHexString("1235"));
+        replacement.Set(replacementKey, TestItem.KeccakB.ValueHash256);
+        original.Reset();
+        original.Dispose();
+        original.Set(key, TestItem.KeccakC.ValueHash256);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.Leaves, Is.EquivalentTo(new[]
+            {
+                new KeyValuePair<PbtStorageFullKey, ValueHash256?>(key, TestItem.KeccakC.ValueHash256)
+            }));
+            Assert.That(replacement.Leaves, Is.EquivalentTo(new[]
+            {
+                new KeyValuePair<PbtStorageFullKey, ValueHash256?>(replacementKey, TestItem.KeccakB.ValueHash256)
+            }));
+        }
     }
 
     [TestCase(false)]
