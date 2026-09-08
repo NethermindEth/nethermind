@@ -99,6 +99,15 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         try
         {
             await jsonRpcRunner.Start(cancellationToken);
+
+            // #13203: until now nothing at Info marked the moment RPC became reachable, so an operator could not
+            // tell a node still gated behind startup work from one that was already serving. The engine port is in
+            // this same collection and comes up with it, so this line is also when the consensus client can
+            // connect.
+            if (logger.IsInfo)
+            {
+                logger.Info($"JSON-RPC is listening on {string.Join(", ", jsonRpcUrlCollection.Values.Select(static u => u.ToString()))}");
+            }
         }
         catch (Exception e) when (logger.IsError)
         {
