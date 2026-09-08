@@ -17,12 +17,26 @@ namespace Nethermind.Serialization.Rlp;
 /// Decode helpers that take the cursor by value and return the advanced one.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <see cref="RlpReader"/> is threaded through the decoders as <c>ref RlpReader</c>, which makes it
 /// address-exposed and blocks struct promotion, so every <see cref="RlpReader.Position"/> touch is a
 /// real 4-byte load or store. Taking the cursor as an argument and handing it back as the return value
-/// keeps it in a register for a whole chain of these calls, and the reader's field is touched once at
-/// each end. <see cref="RlpReader"/>'s own methods are thin wrappers over these, so the two forms
-/// cannot drift.
+/// keeps it in a register for a whole chain of these calls.
+/// </para>
+/// <para>
+/// The buffer and the cursor stay two separate values rather than one cursor type because a struct
+/// pairing a <see cref="ReadOnlySpan{T}"/> with an <see cref="int"/> is past the size the ABI returns
+/// in registers, so handing one back would put the cursor into memory again — the cost this file
+/// exists to remove. A decoder therefore picks the pair up once through <see cref="TryConsumeNull"/>
+/// and stores the cursor back once on the way out. The reader's cursor is only meaningful on that
+/// success path: a decode that throws mid-record leaves it wherever the last store put it, so callers
+/// that retry (see <c>ReceiptArrayStorageDecoder</c>) must reset it themselves.
+/// </para>
+/// <para>
+/// <see cref="RlpReader"/>'s span-based methods are thin wrappers over these, so those two forms cannot
+/// drift. Its <see cref="Memory{T}"/>-returning byte-string methods are the known exception — they still
+/// carry their own copy of the byte-string prefix decode.
+/// </para>
 /// </remarks>
 internal static partial class RlpHelpers
 {
@@ -93,7 +107,13 @@ internal static partial class RlpHelpers
     public static bool IsEmptySequenceNext(ReadOnlySpan<byte> data, int position) => data[position] == Rlp.EmptyListByte;
 
     /// <summary>Picks up a reader's buffer and cursor, consuming the empty sequence that encodes a null item.</summary>
-    /// <remarks>The opening step of every cursor-threaded decoder, and the one place each reads the reader.</remarks>
+    /// <remarks>
+    /// The opening step of every cursor-threaded decoder: the reader is picked up here once, and a decoder
+    /// that does not re-enter a <c>ref RlpReader</c> API mid-run touches <see cref="RlpReader.Position"/>
+    /// only again on the way out. The reader is <see langword="scoped"/> <see langword="ref"/> so that
+    /// <paramref name="data"/> may escape to the caller: a plain <see langword="ref"/> parameter is
+    /// return-only, which would stop callers passing slices of the buffer onward.
+    /// </remarks>
     /// <returns>
     /// <see langword="true"/> when an encoded null was consumed and the reader advanced past it; otherwise
     /// <see langword="false"/>, with the cursor to thread in <paramref name="data"/> and <paramref name="position"/>.
