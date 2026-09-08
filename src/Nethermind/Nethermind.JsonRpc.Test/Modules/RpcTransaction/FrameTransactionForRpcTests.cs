@@ -301,8 +301,8 @@ public class FrameTransactionForRpcTests
         FrameSignatureForRpc[] signatures = new FrameSignatureForRpc[entries];
         for (int i = 0; i < entries; i++)
         {
-            // The reviewer's shape: an explicit non-zero digest and a named signer, so the entry is
-            // structurally acceptable and each repeat costs a full recovery.
+            // An explicit non-zero digest and a named signer, so the entry is structurally
+            // acceptable and each repeat costs a full recovery.
             signatures[i] = new FrameSignatureForRpc
             {
                 Scheme = TxFrameSignature.SchemeSecp256k1,
@@ -341,6 +341,33 @@ public class FrameTransactionForRpcTests
         Assert.That(result.IsError, Is.True);
         // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
         Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(GasCap));
+    }
+
+    /// <remarks>
+    /// The rejection reports the two terms apart, because the common one is a frame transaction carrying no
+    /// signatures at all: a single combined figure blames a verification cost that contributed nothing to it.
+    /// </remarks>
+    [TestCase(0, 0UL, TestName = "ToTransaction_AboveTheCapWithoutSignatures_ReportsAZeroVerificationTerm")]
+    [TestCase(2, 2 * Eip8141Constants.Secp256k1VerificationGasCost, TestName = "ToTransaction_AboveTheCapWithSignatures_ReportsBothTerms")]
+    public void FrameTransactionForRpc_ToTransaction_ReportsTheFrameAndSignatureTermsApart(int entries, ulong expectedSignatureGas)
+    {
+        FrameSignatureForRpc[] signatures = new FrameSignatureForRpc[entries];
+        for (int i = 0; i < entries; i++)
+        {
+            signatures[i] = new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1, Signer = TestItem.AddressA };
+        }
+
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = GasCap + 1 }],
+            Signatures = signatures,
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.Error, Is.EqualTo(
+            $"frame gas limits ({GasCap + 1}) and signature verification ({expectedSignatureGas}) exceed the gas cap ({GasCap})"));
     }
 
     // The combined reservation saturates rather than wrapping to a value under the cap.
