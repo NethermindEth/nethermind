@@ -24,6 +24,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public class PayloadPreparationServiceTests
 {
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TimePerSlot = TimeSpan.FromSeconds(12);
     private static readonly BlockHeader ParentHeader = Build.A.BlockHeader.TestObject;
     private static readonly PayloadAttributes Attributes = new()
     {
@@ -92,8 +93,7 @@ public class PayloadPreparationServiceTests
         string payloadId = Attributes.GetPayloadId(ParentHeader);
 
         // A later round owns the storage entry, with a cancellation source of its own.
-        SharedCancellationTokenSource laterRound = new(new CancellationTokenSource());
-        MockBlockImprovementContext laterContext = new(Build.A.Block.TestObject, DateTimeOffset.UtcNow, laterRound);
+        (MockBlockImprovementContext laterContext, SharedCancellationTokenSource laterRound) = CreateRound(DateTimeOffset.UtcNow);
         service.Store(payloadId, laterContext);
 
         // A stale improvement from an earlier round, whose source has already been cancelled.
@@ -101,6 +101,59 @@ public class PayloadPreparationServiceTests
         earlierRound.CancelAndDispose();
         service.Improve(payloadId, earlierRound);
 
+        AssertLaterRoundUntouched(service, payloadId, laterContext, laterRound);
+    }
+
+    [Test]
+    public void GetPayload_leaves_the_context_of_a_later_round_stored()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+
+        // The entry ages out and a forkchoice request restarts the payload while the retrieval is in flight,
+        // so what the retrieval finds stored is a later round rather than its own replacement.
+        (MockBlockImprovementContext laterContext, SharedCancellationTokenSource laterRound) = CreateRound(DateTimeOffset.UtcNow + 3 * TimePerSlot);
+        (MockBlockImprovementContext retrieved, _) = CreateRound(DateTimeOffset.UtcNow, onCancelling: () => service.Store(payloadId, laterContext));
+        service.Store(payloadId, retrieved);
+
+        Retrieve(service, payloadId);
+
+        AssertLaterRoundUntouched(service, payloadId, laterContext, laterRound);
+    }
+
+    [Test]
+    public void ImproveBlock_publishes_the_same_candidate_when_the_entry_moves_under_it()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+
+        (MockBlockImprovementContext current, SharedCancellationTokenSource round) = CreateRound(DateTimeOffset.UtcNow);
+        service.Store(payloadId, current);
+
+        // The cleanup timer evicts the entry between the candidate's creation and its publication.
+        factory.OnContextCreated = () => service.Remove(payloadId);
+
+        service.Improve(payloadId, round);
+
+        IReadOnlyList<IBlockImprovementContext> contexts = factory.Contexts;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contexts, Has.Count.EqualTo(1), "the candidate is re-offered, not rebuilt and orphaned");
+            Assert.That(service.Stored(payloadId), Is.SameAs(contexts[0]));
+            Assert.That(contexts[0].Disposed, Is.False);
+        }
+    }
+
+    private static (MockBlockImprovementContext Context, SharedCancellationTokenSource Cts) CreateRound(DateTimeOffset startDateTime, Action? onCancelling = null)
+    {
+        SharedCancellationTokenSource cts = new(new CancellationTokenSource());
+        return (new MockBlockImprovementContext(Build.A.Block.TestObject, startDateTime, cts, onCancelling: onCancelling), cts);
+    }
+
+    private static void AssertLaterRoundUntouched(TestPayloadPreparationService service, string payloadId, MockBlockImprovementContext laterContext, SharedCancellationTokenSource laterRound)
+    {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(service.Stored(payloadId), Is.SameAs(laterContext));
@@ -129,7 +182,7 @@ public class PayloadPreparationServiceTests
             factory,
             Substitute.For<ITimerFactory>(),
             LimboLogs.Instance,
-            TimeSpan.FromSeconds(12),
+            TimePerSlot,
             TimeSpan.FromMilliseconds(1));
     }
 
@@ -153,6 +206,8 @@ public class PayloadPreparationServiceTests
 
         public void Store(string payloadId, IBlockImprovementContext context) => _payloadStorage[payloadId] = context;
 
+        public void Remove(string payloadId) => _payloadStorage.TryRemove(payloadId, out _);
+
         public void Improve(string payloadId, SharedCancellationTokenSource cts) =>
             ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, DateTimeOffset.UtcNow, UInt256.Zero, cts);
 
@@ -172,6 +227,9 @@ public class PayloadPreparationServiceTests
         public Action? OnFirstContextDispose { get; set; }
         public Action? OnFirstContextCancelling { get; set; }
 
+        /// <summary>Invoked once a context has been created, before the service gets a chance to publish it.</summary>
+        public Action? OnContextCreated { get; set; }
+
         public IReadOnlyList<IBlockImprovementContext> Contexts
         {
             get
@@ -185,18 +243,21 @@ public class PayloadPreparationServiceTests
 
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
+            MockBlockImprovementContext context;
             lock (_contexts)
             {
                 bool isFirst = _contexts.Count == 0;
-                MockBlockImprovementContext context = new(
+                context = new(
                     currentBestBlock,
                     startDateTime,
                     cts,
                     isFirst ? () => OnFirstContextDispose?.Invoke() : null,
                     isFirst ? () => OnFirstContextCancelling?.Invoke() : null);
                 _contexts.Add(context);
-                return context;
             }
+
+            OnContextCreated?.Invoke();
+            return context;
         }
     }
 }
