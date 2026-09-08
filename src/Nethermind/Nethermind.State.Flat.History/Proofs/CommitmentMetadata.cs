@@ -194,6 +194,18 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryRaiseDemotedThroughEpoch(ulong epoch) => TryRaiseMirroredEpoch(ref _demotedThroughEpoch, DemotedThroughEpochKey, epoch);
 
+    public bool TryAdvanceDemotedThroughEpoch(ulong from, ulong to)
+    {
+        lock (_lock)
+        {
+            if (ReadMirroredEpoch(ref _demotedThroughEpoch, DemotedThroughEpochKey) != from) return false;
+
+            WriteEpoch(DemotedThroughEpochKey, to);
+            Volatile.Write(ref _demotedThroughEpoch, (long)to);
+            return true;
+        }
+    }
+
     public void LowerDemotedThroughEpoch(ulong epoch)
     {
         lock (_lock)
