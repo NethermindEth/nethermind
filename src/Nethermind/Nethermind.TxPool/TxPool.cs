@@ -351,7 +351,9 @@ namespace Nethermind.TxPool
         /// ordered by its own sequence, so it can sort either side of an eligible account-nonce transaction whose
         /// domain it says nothing about. Account-nonce entries do execute in nonce order, so once one at or above
         /// the account nonce is unready the rest are too and the scan skips them; only keyed entries are judged all
-        /// the way down.</remarks>
+        /// the way down. Judging one reads a NONCE_MANAGER slot per key it selects, so the whole scan is bounded by
+        /// the pool's configured size times <see cref="Eip8250Constants.MaxNonceKeys"/>; a per-sender limit spreads
+        /// that same total over more buckets rather than lowering it.</remarks>
         private bool HasReadyTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
         {
             ulong accountNonce = _accounts.GetNonce(sender);

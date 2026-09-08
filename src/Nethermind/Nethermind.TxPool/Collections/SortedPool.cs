@@ -135,7 +135,8 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        /// <param name="where">Runs while the pool lock is held, so it must be short and must not call back into the pool.</param>
+        /// <param name="where">Runs once per bucket while the pool lock is held, so whatever it costs is paid
+        /// across the whole pool, and it must not call back into the pool.</param>
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, IReadOnlySortedSet<TValue> bucket)>? where = null)
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
