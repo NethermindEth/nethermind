@@ -86,6 +86,7 @@ public class PayloadPreparationServiceTests
     }
 
     [Test]
+    [CancelAfter(30000)]
     public void ImproveBlock_leaves_the_context_of_a_later_round_alone_when_its_own_round_was_cancelled()
     {
         RecordingBlockImprovementContextFactory factory = new();
@@ -105,6 +106,7 @@ public class PayloadPreparationServiceTests
     }
 
     [Test]
+    [CancelAfter(30000)]
     public void GetPayload_leaves_the_context_of_a_later_round_stored()
     {
         RecordingBlockImprovementContextFactory factory = new();
@@ -123,6 +125,28 @@ public class PayloadPreparationServiceTests
     }
 
     [Test]
+    [CancelAfter(30000)]
+    public void ImproveBlock_stores_nothing_when_its_round_was_cancelled_and_the_entry_is_gone()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+
+        // Shutdown or the cleanup timer took the entry away and cancelled the round it belonged to.
+        SharedCancellationTokenSource round = new(new CancellationTokenSource());
+        round.CancelAndDispose();
+
+        service.Improve(payloadId, round);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Contexts, Is.Empty, "a dead round starts no build");
+            Assert.That(service.Stored(payloadId), Is.Null, "and does not re-add the id it was removed under");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
     public void ImproveBlock_publishes_the_same_candidate_when_the_entry_moves_under_it()
     {
         RecordingBlockImprovementContextFactory factory = new();

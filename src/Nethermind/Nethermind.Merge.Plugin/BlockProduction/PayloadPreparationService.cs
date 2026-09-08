@@ -148,14 +148,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             while (true)
             {
+                if (cts.IsCancellationRequested)
+                {
+                    // If cancelled, keep whatever is stored: a build started here belongs to a round nobody
+                    // will collect from, and publishing it re-adds an id that shutdown or cleanup has removed.
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
+                    return;
+                }
+
                 if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? currentContext))
                 {
-                    if (cts.IsCancellationRequested)
-                    {
-                        // If cancelled, keep the previous
-                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
-                        return;
-                    }
                     if (!currentContext.ImprovementTask.IsCompleted)
                     {
                         // If there is payload improvement and its not yet finished leave it be
