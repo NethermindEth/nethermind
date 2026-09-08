@@ -14,7 +14,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pull request runs are waste, but every master push must reach its save step: a merge
+  # burst that cancels its predecessors leaves those commits without a baseline, and the pull requests
+  # based on them fall back to whichever older master cache `restore-keys` happens to match.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -22,7 +25,7 @@ permissions:
 env:
   GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
   # Bumping this invalidates every stored baseline, which is what you want if the parsed shape changes.
-  CACHE_VERSION: v1
+  CACHE_VERSION: v2
 
 jobs:
   measure:
@@ -30,7 +33,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       report: ${{ steps.report.outputs.report }}
-      regressed: ${{ steps.report.outputs.regressed }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -54,20 +56,32 @@ jobs:
 
       # One ziskemu run per block yields the output hash, the step count and the cost model, so
       # correctness and cost come from the same execution and cannot describe different builds.
+      #
+      # A block of ~400M steps emulates in about 45 s here, so the nine of them plus the image pull
+      # land near eight minutes; the cap below is headroom for a slower runner, not a budget.
       - name: Measure
         id: measure
         working-directory: ${{ env.GUEST_DIR }}
         timeout-minutes: 30
         run: |
           set -euo pipefail
+          # ziskemu prints the guest's output hash followed by its own fixed trailer.
+          suffix=0101000000000000000100
           echo '[]' > "$RUNNER_TEMP/current.json"
           jq -r '.[] | "\(.input) \(.output)"' inputs.json | while read -r input output; do
             echo "::group::${input}"
             make stats INPUT="${input}" 2>&1 | tee "$RUNNER_TEMP/stats.log"
             echo "::endgroup::"
 
-            grep -q "^${output}0101000000000000000100" "$RUNNER_TEMP/stats.log" \
+            grep -q "^${output}${suffix}" "$RUNNER_TEMP/stats.log" \
               || { echo "::error::${input}: output mismatch — cost figures would describe a broken run"; exit 1; }
+
+            # A guest that threw or rejected the block can still exit zero and print the right hash;
+            # AGENTS.md requires these signals be reported and fail the run.
+            if grep -nE 'Exception|Invalid Block' "$RUNNER_TEMP/stats.log"; then
+              echo "::error::${input}: the run logged an exception or an invalid block"
+              exit 1
+            fi
 
             python3 "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
               --input "${input}" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
@@ -93,14 +107,23 @@ jobs:
             --current "$RUNNER_TEMP/current.json" \
             ${baseline:+--baseline "$baseline"} \
             --commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --base-commit "${{ github.event.pull_request.base.sha }}" \
             --summary "$GITHUB_STEP_SUMMARY" \
             --github-output "$GITHUB_OUTPUT"
+
+      - name: Flag cost regression
+        if: steps.report.outputs.regressed == 'true'
+        run: echo "::warning::Guest prover cost rose against the master baseline — see the job summary."
 
       - name: Stage baseline
         if: github.event_name == 'push' && github.ref_name == 'master'
         run: |
+          set -euo pipefail
           mkdir -p /tmp/zisk-bench-baseline
-          cp "$RUNNER_TEMP/current.json" /tmp/zisk-bench-baseline/baseline.json
+          # The commit travels with the rows so the report can name what it compared against: a pull
+          # request whose own base never stored a cache is served an older master's by `restore-keys`.
+          jq --arg commit "$GITHUB_SHA" '{commit: $commit, rows: .}' \
+            "$RUNNER_TEMP/current.json" > /tmp/zisk-bench-baseline/baseline.json
 
       - name: Save master baseline
         if: github.event_name == 'push' && github.ref_name == 'master'
