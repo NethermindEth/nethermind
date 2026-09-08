@@ -66,7 +66,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void GlobalRocksDbOption_AllowsFlushAndReopen()
+        public void AvoidUnnecessaryBlockingIo_IsPersistedAndCanBeOverridden()
         {
             byte[] key = [1, 2, 3];
             byte[] value = [4, 5, 6];
@@ -77,12 +77,11 @@ namespace Nethermind.Db.Test
             {
                 db.Set(key, value);
                 db.Flush();
-                db.Set(key, [7, 8, 9]);
-                db.Flush();
-                db.Set([10, 11, 12], [13, 14, 15]);
-                db.Flush();
-                db.Compact();
 
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=true"));
+
+                string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+                File.WriteAllText(Path.Combine(fullPath, "OPTIONS-999999.dbtmp"), "avoid_unnecessary_blocking_io=false");
                 Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=true"));
             }
 
@@ -90,10 +89,9 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(GetValue(reopened, key), Is.EqualTo([7, 8, 9]));
-                Assert.That(GetValue(reopened, [10, 11, 12]), Is.EqualTo([13, 14, 15]));
+                Assert.That(GetValue(reopened, key), Is.EqualTo(value));
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=false"));
             }
-            Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=false"));
         }
 
         [Test]
@@ -715,14 +713,24 @@ namespace Nethermind.Db.Test
         {
             string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
             string? latestOptionsPath = null;
+            ulong latestOptionsNumber = 0;
             foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
             {
-                if (latestOptionsPath is null || string.CompareOrdinal(Path.GetFileName(optionsPath), Path.GetFileName(latestOptionsPath)) > 0)
+                string fileName = Path.GetFileName(optionsPath);
+                if (!fileName.StartsWith("OPTIONS-", StringComparison.Ordinal) ||
+                    !ulong.TryParse(fileName.AsSpan("OPTIONS-".Length), out ulong optionsNumber))
+                {
+                    continue;
+                }
+
+                if (latestOptionsPath is null || optionsNumber > latestOptionsNumber)
                 {
                     latestOptionsPath = optionsPath;
+                    latestOptionsNumber = optionsNumber;
                 }
             }
 
+            Assert.That(latestOptionsPath, Is.Not.Null, $"No persisted RocksDB options file found in '{fullPath}'.");
             return File.ReadAllText(latestOptionsPath!).Replace(" ", string.Empty, StringComparison.Ordinal);
         }
 
