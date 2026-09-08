@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -102,9 +102,9 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Separates_keys_that_share_a_hash_code()
+    public void Separates_keys_that_share_a_hash_code([Range(0, 3)] int word)
     {
-        (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision();
+        (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision(word);
 
         HashKeyedNodeStorage storage = Storage();
         storage.Set(null, TreePath.Empty, first, [0x01]);
@@ -167,29 +167,37 @@ public class HashKeyedNodeStorageTests
         }
     }
 
-    /// <summary>Finds two distinct keys the store buckets together, so equality is what tells them apart.</summary>
+    /// <summary>
+    /// Finds two keys the store buckets together that differ in <paramref name="word"/> alone, so that
+    /// word's comparison is what tells them apart.
+    /// </summary>
     /// <remarks>
     /// Searched rather than hard-coded: the hash code is seeded, so no fixed pair collides across runs.
-    /// A 32-bit birthday collision is overwhelmingly likely well inside <c>Attempts</c>.
+    /// Only one word varies because equality is spelled out word by word - dropping any one comparison
+    /// has to fail for some <paramref name="word"/>, and a pair differing anywhere else would still be
+    /// separated by the words that remain. A 32-bit birthday collision is overwhelmingly likely well
+    /// inside <c>Attempts</c>.
+    /// <para>
+    /// <see cref="NodeKeyHashCode"/> mirrors the store's private hash. Should the two ever drift apart,
+    /// the pair no longer shares a bucket and this test passes without reaching equality at all, rather
+    /// than failing.
+    /// </para>
     /// </remarks>
-    private static (ValueHash256, ValueHash256) FindHashCodeCollision()
+    private static (ValueHash256, ValueHash256) FindHashCodeCollision(int word)
     {
         const int Attempts = 1 << 19;
-        Dictionary<int, ValueHash256> seen = new(Attempts);
+        Dictionary<int, ValueHash256> seen = [];
 
         for (int i = 0; i < Attempts; i++)
         {
-            ValueHash256 candidate = ValueKeccak.Compute(MemoryMarshal.AsBytes(new ReadOnlySpan<int>(in i)));
+            ValueHash256 candidate = default;
+            BinaryPrimitives.WriteInt32LittleEndian(candidate.BytesAsSpan[(word * sizeof(ulong))..], i);
             int hashCode = NodeKeyHashCode(in candidate);
 
-            if (seen.TryGetValue(hashCode, out ValueHash256 previous))
-            {
-                if (previous != candidate) return (previous, candidate);
-            }
-            else
-            {
-                seen[hashCode] = candidate;
-            }
+            // Distinct i give distinct candidates, so the first repeated hash code is the collision.
+            if (seen.TryGetValue(hashCode, out ValueHash256 previous)) return (previous, candidate);
+
+            seen[hashCode] = candidate;
         }
 
         Assert.Fail($"No hash-code collision within {Attempts} keys.");
