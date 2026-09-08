@@ -37,6 +37,7 @@ public partial class BlockProcessor
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+        private int _pooledSlotsInUse;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -122,11 +123,17 @@ public partial class BlockProcessor
             EnsureParallelBuffers(len);
             BlockReceiptsTracer[] receiptsTracers = _receiptsTracerPool;
             GasValidationResultSlot[] gasResults = _gasResultPool;
-            for (int i = 0; i < len; i++)
+            // Also reset the slots the previous block used but this one does not: an unreset
+            // tracer keeps that block's receipts and the Block itself, and an unreset gas slot
+            // keeps its InvalidBlockException, so a shrinking tx count would pin the larger
+            // block indefinitely. The pool never shrinks, so this runs once per shrink.
+            int slotsToReset = Math.Max(len, _pooledSlotsInUse);
+            for (int i = 0; i < slotsToReset; i++)
             {
                 receiptsTracers[i].ResetForParallelTx(block, parallelSafeTracer);
                 gasResults[i].Reset();
             }
+            _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);

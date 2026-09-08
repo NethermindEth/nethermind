@@ -34,6 +34,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Security;
 using System.Threading;
@@ -1387,6 +1388,52 @@ public class BlockProcessorTests
         }
         return slots;
     }
+
+    [Test]
+    public void Parallel_validation_resets_the_pooled_slots_a_shorter_block_leaves_unused()
+    {
+        const int wideTxCount = 8;
+        const int narrowTxCount = 2;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
+            LimboLogs.Instance);
+
+        Block wide = BuildParallelValidationBlock(wideTxCount);
+        executor.ProcessTransactions(wide, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+        executor.ProcessTransactions(BuildParallelValidationBlock(narrowTxCount), ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+
+        BlockReceiptsTracer[] pool = (BlockReceiptsTracer[])typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
+            .GetField("_receiptsTracerPool", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(executor)!;
+        FieldInfo tracedBlock = typeof(BlockReceiptsTracer)
+            .GetField("Block", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.That(pool, Has.Length.AtLeast(wideTxCount), "the pool must still hold the wide block's slots");
+        for (int i = narrowTxCount; i < wideTxCount; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool[i].TxReceipts.Length, Is.Zero, $"slot {i} still holds the wide block's receipt");
+                Assert.That(tracedBlock.GetValue(pool[i]), Is.Not.SameAs(wide), $"slot {i} still references the wide block");
+            }
+        }
+    }
+
+    private static Block BuildParallelValidationBlock(int txCount) =>
+        Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit((ulong)txCount * 1_000_000ul)
+            .WithTransactions(CreateParallelValidationTransactions(txCount))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
 
     private static Transaction[] CreateParallelValidationTransactions(int txCount, ulong gasLimit = 21_000ul)
     {
