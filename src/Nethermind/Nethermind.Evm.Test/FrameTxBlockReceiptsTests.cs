@@ -224,6 +224,8 @@ public class FrameTxBlockReceiptsTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        // Ahead of the scope: the frame receipts are indexed below.
+        Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(5));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));

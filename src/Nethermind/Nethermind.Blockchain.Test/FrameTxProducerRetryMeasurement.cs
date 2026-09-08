@@ -63,13 +63,14 @@ public class FrameTxProducerRetryMeasurement
         _chain = await BasicTestBlockchain.Create(builder =>
         {
             builder.AddSingleton(_specProvider);
-            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
-                new FunctionalGenesisPostProcessor(_ =>
-                {
-                    worldState.CreateAccount(Sender, 100.Ether);
-                    worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
-                    worldState.RecalculateStateRoot();
-                }));
+            builder.WithGenesisPostProcessor((_, worldState, specProvider) =>
+            {
+                // Replaces the account TestBlockchain funds in genesis, clearing the placeholder code and
+                // storage slot it puts on this address so only the measured code is reachable.
+                worldState.CreateAccount(Sender, 100.Ether);
+                worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
+                worldState.RecalculateStateRoot();
+            });
         });
 
         _source = _chain.ReadOnlyTxProcessingEnvFactory.Create();

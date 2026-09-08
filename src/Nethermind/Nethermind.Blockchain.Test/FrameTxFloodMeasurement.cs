@@ -978,7 +978,6 @@ public class FrameTxFloodMeasurement
         return PrefixCode(shape);
     }
 
-
     private static byte[] Groth16Artifact(Groth16Sweep sweep, string fileName)
     {
         string root = Groth16ArtifactRoot();

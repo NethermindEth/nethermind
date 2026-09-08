@@ -697,13 +697,14 @@ public class FrameTxMempoolDosMeasurement
         _chain = await BasicTestBlockchain.Create(builder =>
         {
             builder.AddSingleton(_specProvider);
-            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
-                new FunctionalGenesisPostProcessor(_ =>
-                {
-                    worldState.CreateAccount(Sender, SenderBalance);
-                    if (senderCode.Length > 0) worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
-                    worldState.RecalculateStateRoot();
-                }));
+            builder.WithGenesisPostProcessor((_, worldState, specProvider) =>
+            {
+                // Replaces the account TestBlockchain funds in genesis, clearing the placeholder code and
+                // storage slot it puts on this address so only the measured code is reachable.
+                worldState.CreateAccount(Sender, SenderBalance);
+                if (senderCode.Length > 0) worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
+                worldState.RecalculateStateRoot();
+            });
         });
 
         // The pool refuses everything while the tree reports a zero best-suggested block, so the head has to
@@ -716,7 +717,12 @@ public class FrameTxMempoolDosMeasurement
 
         _blockTree = _chain.BlockTree;
 
-        AssertSeededCodeIsVisibleAtHead(_blockTree.Head!.Header, senderCode);
+        // The container registration shares the process-wide code cache; production hands the simulator its
+        // own env (BlockProcessingModule) so a rolled-back deposit cannot outlive its scope.
+        IReadOnlyTxProcessingEnvFactory envFactory = new AutoReadOnlyTxProcessingEnvFactory(
+            _chain.Container, _chain.WorldStateManager, _specProvider, shareCodeCache: false);
+
+        AssertSeededCodeIsVisibleAtHead(envFactory, _blockTree.Head!.Header, senderCode);
 
         // The per-head budget sheds admission after a second of simulation against one head. This harness
         // times single rejections against a fixed head, so leaving it at the default would measure the
@@ -728,7 +734,7 @@ public class FrameTxMempoolDosMeasurement
             FrameTxSimulationBudgetPerHeadMs = int.MaxValue,
         };
         _realSimulator = new FrameTxPrefixSimulator(
-            _chain.ReadOnlyTxProcessingEnvFactory,
+            envFactory,
             _blockTree,
             _specProvider,
             txPoolConfig,
@@ -738,14 +744,15 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>Confirms that both pool and EVM views contain the sender code before measurement.</summary>
-    private void AssertSeededCodeIsVisibleAtHead(BlockHeader head, byte[] senderCode)
+    /// <param name="envFactory">The same factory the simulator under measurement is given.</param>
+    private void AssertSeededCodeIsVisibleAtHead(IReadOnlyTxProcessingEnvFactory envFactory, BlockHeader head, byte[] senderCode)
     {
         if (senderCode.Length == 0) return;
 
         Assert.That(_poolState.GetCode(Sender), Is.EqualTo(senderCode),
             "the pool's chain-head view does not carry the sender's code, so the two stores disagree");
 
-        using IReadOnlyTxProcessorSource source = _chain!.ReadOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessorSource source = envFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(head);
         Assert.That(scope.WorldState.GetCode(Sender), Is.EqualTo(senderCode),
             "the simulator's view of the head does not carry the sender's code, so the EVM would run "

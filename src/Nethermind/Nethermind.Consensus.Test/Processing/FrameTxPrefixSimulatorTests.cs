@@ -348,13 +348,16 @@ public class FrameTxPrefixSimulatorTests
         Task<FrameTxSimulationResult> local = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
         // Reading the head is the last step before contending for the env, so the env is still held here.
         Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
-        Assert.That(local.IsCompleted, Is.False, "a local submission must not be shed while the simulator is busy");
+        // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
+        // fails deterministically on a zero wait is the reason check below.
+        Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
 
         release.Set();
         Assert.That(local.Wait(TimeSpan.FromSeconds(10)), Is.True);
         holder.Wait(TimeSpan.FromSeconds(10));
 
-        Assert.That(local.Result.Reason, Does.Not.Contain("busy"));
+        Assert.That(local.Result.Reason, Does.Not.Contain("busy"),
+            "a local submission must wait for a busy simulator rather than being shed");
     }
 
     // The budget rejects nearly everything under spam, so it is read before the lock; reading it after would
