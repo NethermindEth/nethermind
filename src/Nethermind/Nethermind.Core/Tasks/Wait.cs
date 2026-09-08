@@ -34,14 +34,13 @@ public static class Wait
                 Task<T> resolved = await Task.WhenAny<T>(taskSet);
                 T result = await resolved;
 
-                // Kept in the set until forwarded, so a throwing `cond` still discards this result.
-                if (cond(result) || taskSet.Count == 1)
-                {
-                    taskSet.Remove(resolved);
-                    return result;
-                }
-
+                // Kept in the set until the forward decision, so a throwing `cond` leaves it for the
+                // `finally`. `taskSet.Count` is read before the removal, so the last task still wins.
+                bool forward = cond(result) || taskSet.Count == 1;
                 taskSet.Remove(resolved);
+
+                if (forward) return result;
+
                 Discard(result);
             }
 
@@ -64,7 +63,19 @@ public static class Wait
         {
             _ = task.ContinueWith(static abandoned =>
             {
-                if (abandoned.IsCompletedSuccessfully) Discard(abandoned.Result);
+                if (abandoned.IsCompletedSuccessfully)
+                {
+                    try
+                    {
+                        Discard(abandoned.Result);
+                    }
+                    catch
+                    {
+                        // Swallowed rather than logged: this continuation is itself discarded, so a
+                        // throwing `Dispose` would surface as the UnobservedTaskException the branch
+                        // below exists to prevent, and there is no caller left to report it to.
+                    }
+                }
                 // Observe a failure too, so abandoning it does not raise UnobservedTaskException.
                 else _ = abandoned.Exception;
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

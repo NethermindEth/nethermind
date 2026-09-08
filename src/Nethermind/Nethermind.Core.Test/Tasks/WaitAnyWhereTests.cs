@@ -11,18 +11,21 @@ namespace Nethermind.Core.Test.Tasks;
 
 public class WaitAnyWhereTests
 {
+    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
+
     [Test]
-    public async Task Forwarded_result_is_left_to_the_caller()
+    public async Task Single_result_is_forwarded_undisposed([Values] bool accepted)
     {
-        Disposable forwarded = new();
+        // Accepted or not, the only result is forwarded: the caller owns it either way.
+        Disposable onlyResult = new();
 
-        Disposable result = await Wait.AnyWhere(r => r is not null, Task.FromResult(forwarded));
+        Disposable result = await Wait.AnyWhere(_ => accepted, Task.FromResult(onlyResult));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.SameAs(forwarded));
-            Assert.That(forwarded.Disposed, Is.False);
-        });
+            Assert.That(result, Is.SameAs(onlyResult));
+            Assert.That(onlyResult.DisposeCount, Is.Zero);
+        }
     }
 
     [Test]
@@ -36,26 +39,14 @@ public class WaitAnyWhereTests
             Task.FromResult(rejected),
             Task.FromResult(accepted));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.SameAs(accepted));
-            Assert.That(rejected.Disposed, Is.True);
-            Assert.That(accepted.Disposed, Is.False);
-        });
-    }
-
-    [Test]
-    public async Task Last_rejected_result_is_forwarded_undisposed()
-    {
-        Disposable onlyResult = new();
-
-        Disposable result = await Wait.AnyWhere(_ => false, Task.FromResult(onlyResult));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.SameAs(onlyResult));
-            Assert.That(onlyResult.Disposed, Is.False);
-        });
+            // Exactly once: the rejected path and the abandoned path both reach `Discard`, and only
+            // the removal from the set keeps them from both reaching it for the same result.
+            Assert.That(rejected.DisposeCount, Is.EqualTo(1));
+            Assert.That(accepted.DisposeCount, Is.Zero);
+        }
     }
 
     [Test]
@@ -72,12 +63,12 @@ public class WaitAnyWhereTests
         // The straggler produces its result only after the winner has already been forwarded.
         pending.SetResult(straggler);
 
-        Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
-        Assert.That(winner.Disposed, Is.False);
+        await straggler.WaitForDisposal();
+        Assert.That(winner.DisposeCount, Is.Zero);
     }
 
     [Test]
-    public void Result_of_a_task_abandoned_by_a_failure_is_disposed([Values] bool cancelled)
+    public async Task Result_of_a_task_abandoned_by_a_failure_is_disposed([Values] bool cancelled)
     {
         Disposable straggler = new();
         TaskCompletionSource<Disposable> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,11 +86,11 @@ public class WaitAnyWhereTests
         // The straggler produces its result only after the failure has already unwound the call.
         pending.SetResult(straggler);
 
-        Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
+        await straggler.WaitForDisposal();
     }
 
     [Test]
-    public void Throwing_predicate_disposes_current_and_abandoned_results()
+    public async Task Throwing_predicate_disposes_current_and_abandoned_results()
     {
         Disposable current = new();
         Disposable straggler = new();
@@ -109,11 +100,11 @@ public class WaitAnyWhereTests
             _ => throw new InvalidOperationException(), Task.FromResult(current), pending.Task);
 
         Assert.ThrowsAsync<InvalidOperationException>(() => anyWhere);
-        Assert.That(current.Disposed, Is.True);
+        Assert.That(current.DisposeCount, Is.EqualTo(1));
 
         pending.SetResult(straggler);
 
-        Assert.That(() => straggler.Disposed, Is.True.After(1000, 10));
+        await straggler.WaitForDisposal();
     }
 
     [Test]
@@ -130,7 +121,7 @@ public class WaitAnyWhereTests
         Assert.That(result, Is.SameAs(accepted));
         if (!rejected) pending.SetResult(discarded);
 
-        Assert.That(() => discarded.Disposed, Is.True.After(1000, 10));
+        await discarded.WaitForDisposal();
     }
 
     [Test]
@@ -146,12 +137,28 @@ public class WaitAnyWhereTests
         Assert.That(result, Is.SameAs(accepted));
     }
 
+    /// <summary>A result whose disposal can be awaited rather than polled for.</summary>
     private sealed class Disposable : IDisposable
     {
+        private readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _disposeCount;
 
-        public bool Disposed => Volatile.Read(ref _disposeCount) > 0;
+        public int DisposeCount => Volatile.Read(ref _disposeCount);
 
-        public void Dispose() => Interlocked.Increment(ref _disposeCount);
+        public void Dispose()
+        {
+            Interlocked.Increment(ref _disposeCount);
+            _disposed.TrySetResult();
+        }
+
+        /// <summary>Completes once this instance has been disposed; the timeout is the failure guard.</summary>
+        /// <remarks>
+        /// `AnyWhere` disposes an abandoned result from a continuation it does not wait for, so the
+        /// disposal is asynchronous. Awaiting the signal keeps that deterministic rather than betting
+        /// on a deadline a loaded worker can miss.
+        /// </remarks>
+        public async Task WaitForDisposal() =>
+            Assert.That(await Task.WhenAny(_disposed.Task, Task.Delay(WaitTimeout)), Is.SameAs(_disposed.Task),
+                "the result was not disposed");
     }
 }

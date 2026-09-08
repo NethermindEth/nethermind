@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -190,13 +191,24 @@ public class RecoveryTests
         Assert.That(response, Is.Null);
     }
 
+    /// <summary>
+    /// Asserts <paramref name="recovery"/> returns its rented node buffer on a path that recovers nothing.
+    /// </summary>
+    /// <remarks>
+    /// Identity after a rent/return round-trip is how disposal is observed without adding a seam, and it
+    /// holds because <see cref="ArrayPool{T}.Shared"/> parks the most recent return in a per-thread slot
+    /// per bucket. That is a property of the current implementation rather than a documented contract, so
+    /// a runtime change would show up here as a false failure rather than a real one. Both recoveries rent
+    /// bucket 0 and never grow on these paths, and the attempts complete in sequence, so the rentals nest
+    /// rather than interleave - which is what the <c>IsCompletedSuccessfully</c> guard below pins.
+    /// </remarks>
     private void AssertFailedRecoveryReturnsBuffer(IPathRecovery recovery, PeerInfo peer)
     {
         (TreePath, byte[])[] expected = SafeArrayPool<(TreePath, byte[])>.Shared.Rent(1);
         SafeArrayPool<(TreePath, byte[])>.Shared.Return(expected);
 
         Task<IOwnedReadOnlyList<(TreePath, byte[])>?> task = Recover(recovery, peer);
-        // Completed mocks keep all rentals on this thread, where the pool reuses its last returned array.
+        // Completed mocks keep every rental on this thread; an async recovery would break the identity.
         Assert.That(task.IsCompletedSuccessfully, Is.True);
         using IOwnedReadOnlyList<(TreePath, byte[])>? response = task.GetAwaiter().GetResult();
 
