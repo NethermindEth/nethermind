@@ -154,10 +154,12 @@ internal sealed class XdcExtendedEthModule(
             if (code is null)
             {
                 // The account claims code the code store cannot produce; reporting zero here would be
-                // indistinguishable from an externally owned account.
+                // indistinguishable from an externally owned account. A node still fetching state can have
+                // the account before its code lands, so that window is an expected miss like the two above.
                 return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
                     $"Code {account.CodeHash} of account {accountAddress} is not available",
-                    ErrorCodes.ResourceUnavailable));
+                    ErrorCodes.ResourceUnavailable,
+                    ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()));
             }
 
             codeSize = code.Length;

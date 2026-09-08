@@ -185,20 +185,24 @@ public class XdcExtendedEthModuleTests
     /// store cannot resolve has to surface as a failure.
     /// </remarks>
     [Test]
-    public async Task eth_getAccountInfo_fails_when_the_code_is_missing_from_the_store()
+    public async Task eth_getAccountInfo_fails_when_the_code_is_missing_from_the_store([Values] bool syncingState)
     {
         AccountStruct account = new(1UL, 5, TestItem.KeccakC.ValueHash256, ValueKeccak.Compute([0x60]));
         (IStateReader stateReader, IBlockFinder blockFinder, BlockHeader _) = StateWith(TestItem.AddressA, account);
         stateReader.GetCode(Arg.Any<ValueHash256>()).Returns((byte[]?)null);
 
         ResultWrapper<XdcAccountInfo> result =
-            await CreateModule(blockFinder: blockFinder, stateReader: stateReader)
+            await CreateModule(
+                blockFinder: blockFinder,
+                stateReader: stateReader,
+                ethSyncingInfo: SyncingState(syncingState ? SyncMode.StateNodes : SyncMode.Full))
                 .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(result.IsTemporary, Is.EqualTo(syncingState));
         }
     }
 
@@ -247,6 +251,35 @@ public class XdcExtendedEthModuleTests
     }
 
     /// <remarks>
+    /// Only a header the node has not reached yet is an expected miss, so both halves of that condition have
+    /// to hold: a request the node cannot serve at all stays a warning however far behind it is.
+    /// </remarks>
+    [Test]
+    public async Task eth_getAccountInfo_marks_a_header_miss_temporary_only_while_headers_sync(
+        [Values] bool headerNotFound, [Values] bool syncingHeaders)
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        // A head with no matching header is the ResourceNotFound branch; no head at all is InternalError.
+        if (headerNotFound)
+        {
+            blockFinder.Head.Returns(Build.A.Block.TestObject);
+        }
+
+        ResultWrapper<XdcAccountInfo> result =
+            await CreateModule(
+                blockFinder: blockFinder,
+                ethSyncingInfo: SyncingState(syncingHeaders ? SyncMode.FastHeaders : SyncMode.Full))
+                .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(headerNotFound ? ErrorCodes.ResourceNotFound : ErrorCodes.InternalError));
+            Assert.That(result.IsTemporary, Is.EqualTo(headerNotFound && syncingHeaders));
+        }
+    }
+
+    /// <remarks>
     /// A node still fetching state is expected to miss it, so the failure is marked temporary and the
     /// response suppresses the warning the caller would otherwise log on every call during sync.
     /// </remarks>
@@ -254,11 +287,12 @@ public class XdcExtendedEthModuleTests
     public async Task eth_getAccountInfo_fails_when_the_block_has_no_state([Values] bool syncingState)
     {
         (IStateReader stateReader, IBlockFinder blockFinder, BlockHeader _) = HeadWithState(hasState: false);
-        IEthSyncingInfo ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
-        ethSyncingInfo.SyncMode.Returns(syncingState ? SyncMode.StateNodes : SyncMode.Full);
 
         ResultWrapper<XdcAccountInfo> result =
-            await CreateModule(blockFinder: blockFinder, stateReader: stateReader, ethSyncingInfo: ethSyncingInfo)
+            await CreateModule(
+                blockFinder: blockFinder,
+                stateReader: stateReader,
+                ethSyncingInfo: SyncingState(syncingState ? SyncMode.StateNodes : SyncMode.Full))
                 .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
 
         using (Assert.EnterMultipleScope())
@@ -267,6 +301,13 @@ public class XdcExtendedEthModuleTests
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
             Assert.That(result.IsTemporary, Is.EqualTo(syncingState));
         }
+    }
+
+    private static IEthSyncingInfo SyncingState(SyncMode syncMode)
+    {
+        IEthSyncingInfo ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
+        ethSyncingInfo.SyncMode.Returns(syncMode);
+        return ethSyncingInfo;
     }
 
     /// <summary>Points the finder at a head block and the reader at whether that block's state is retained.</summary>
