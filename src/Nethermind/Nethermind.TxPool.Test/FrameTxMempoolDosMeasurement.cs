@@ -20,10 +20,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
+using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -32,7 +32,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -58,8 +57,6 @@ public class FrameTxMempoolDosMeasurement
     private const int Warmup = 600;
     private const int Samples = 1_000;
     private const long BlockGasLimit = 30_000_000;
-    private const long HeadNumber = 1;
-    private const ulong HeadTimestamp = 1_700_000_000;
 
     /// <summary>Maximum per-frame verification budget enforced by the processor.</summary>
     private const ulong VerifyGas = Eip8141Constants.MaxVerifyGas;
@@ -160,10 +157,9 @@ public class FrameTxMempoolDosMeasurement
     private ILogManager _logManager = null!;
     private ISpecProvider _specProvider = null!;
     private EthereumEcdsa _ethereumEcdsa = null!;
-    private IDbProvider _dbProvider = null!;
-    private WorldStateManager _worldStateManager = null!;
+    private BasicTestBlockchain? _chain;
     private TestReadOnlyStateProvider _poolState = null!;
-    private TestBlockTree _blockTree = null!;
+    private IBlockTree _blockTree = null!;
     private TxPool _txPool = null!;
     private FrameTxPrefixSimulator? _realSimulator;
     private List<double> _simulateMicros = null!;
@@ -173,8 +169,6 @@ public class FrameTxMempoolDosMeasurement
     private TxFrameSignature[] _frameSignatures = [];
 
     private byte[] _frameCalldataPrefix = [];
-
-    private IReleaseSpec Spec => _specProvider.GenesisSpec;
 
     [SetUp]
     public void Setup()
@@ -189,7 +183,7 @@ public class FrameTxMempoolDosMeasurement
 
         _txPool = null!;
         _realSimulator = null;
-        _dbProvider = null!;
+        _chain = null;
     }
 
     [TearDown]
@@ -197,7 +191,7 @@ public class FrameTxMempoolDosMeasurement
     {
         if (_txPool is not null) await _txPool.DisposeAsync();
         _realSimulator?.Dispose();
-        _dbProvider?.Dispose();
+        _chain?.Dispose();
     }
 
     /// <summary>
@@ -205,22 +199,22 @@ public class FrameTxMempoolDosMeasurement
     /// of gas while keeping their behavior stable across ceilings.
     /// </summary>
     [TestCaseSource(nameof(BudgetBurningCases))]
-    public void Reject_cost_of_a_budget_burning_prefix(string shape, ulong ceiling) => MeasureFrameRejection(shape, ceiling);
+    public Task Reject_cost_of_a_budget_burning_prefix(string shape, ulong ceiling) => MeasureFrameRejection(shape, ceiling);
 
     /// <summary>Measures immediate rejection caused by a banned validation-prefix opcode.</summary>
     [TestCase(Ceiling100k)]
-    public void Reject_cost_of_a_banned_opcode_prefix(ulong ceiling) => MeasureFrameRejection("banned-opcode", ceiling);
+    public Task Reject_cost_of_a_banned_opcode_prefix(ulong ceiling) => MeasureFrameRejection("banned-opcode", ceiling);
 
     /// <summary>Measures rejection after a complete Groth16 verification with an invalid proof or input.</summary>
     [TestCaseSource(nameof(Groth16Cases))]
-    public void Reject_cost_of_a_groth16_verifier_prefix(string shape) =>
+    public Task Reject_cost_of_a_groth16_verifier_prefix(string shape) =>
         MeasureFrameRejection(shape, Groth16Sweeps[shape].Ceiling);
 
     /// <summary>Measures ordinary transaction rejection as the non-frame admission baseline.</summary>
     [Test]
-    public void Reject_cost_of_an_ordinary_transaction()
+    public async Task Reject_cost_of_an_ordinary_transaction()
     {
-        BuildHarness(senderCode: []);
+        await BuildHarness(senderCode: []);
 
         Transaction probe = OrdinaryTx(0);
         AcceptTxResult probeResult = _txPool.SubmitTx(probe, TxHandlingOptions.None);
@@ -248,7 +242,7 @@ public class FrameTxMempoolDosMeasurement
              + $"simulate_samples=0 rejected_by=InsufficientFunds");
     }
 
-    private void MeasureFrameRejection(string shape, ulong ceiling)
+    private async Task MeasureFrameRejection(string shape, ulong ceiling)
     {
         bool isGroth16 = Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep);
         byte[] code;
@@ -263,7 +257,7 @@ public class FrameTxMempoolDosMeasurement
             code = PrefixCode(shape);
         }
 
-        BuildHarness(code);
+        await BuildHarness(code);
 
         // Probe outside the timed loop to verify that the intended workload entered the EVM.
         FrameGasReadout gas = isGroth16
@@ -396,13 +390,13 @@ public class FrameTxMempoolDosMeasurement
             .Done;
 
     [TestCaseSource(nameof(CeilingCases))]
-    public void Reject_cost_of_a_signature_stuffed_prefix(ulong ceiling)
+    public async Task Reject_cost_of_a_signature_stuffed_prefix(ulong ceiling)
     {
         int count = StuffedSignatureCount(ceiling);
 
-        BuildHarness(PrefixCode("banned-opcode"), ceiling);
+        await BuildHarness(PrefixCode("banned-opcode"), ceiling);
         _frameExecutionGasLimit = MinimalFrameGas;
-        _frameSignatures = BuildSecp256k1Signatures(count);
+        _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count);
 
         ulong declaredGas = FrameTxValidation.ValidationWorkGas(FrameTx(0));
         Assert.That(declaredGas, Is.LessThanOrEqualTo(ceiling),
@@ -410,13 +404,13 @@ public class FrameTxMempoolDosMeasurement
             + "transaction never asked for");
 
         long gasRefusalsBefore = Metrics.PendingTransactionsFrameTxVerifyGasTooHigh;
-        _frameSignatures = BuildSecp256k1Signatures(count + 1);
+        _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count + 1);
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
             Is.EqualTo(AcceptTxResult.FrameTxVerifyGasTooHigh),
             $"{count + 1} entries declare more than {ceiling} and must be refused by the declared-gas gate; "
             + "if they are not, the pool is not enforcing the ceiling this row claims");
         Assert.That(Metrics.PendingTransactionsFrameTxVerifyGasTooHigh, Is.EqualTo(gasRefusalsBefore + 1));
-        _frameSignatures = BuildSecp256k1Signatures(count);
+        _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count);
 
         long signatureFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
@@ -473,29 +467,6 @@ public class FrameTxMempoolDosMeasurement
 
         micros.Sort();
         return Percentile(micros, 0.50);
-    }
-
-    /// <summary>
-    /// Builds secp256k1 entries that all require recovery, with the final entry failing signer validation.
-    /// </summary>
-    private TxFrameSignature[] BuildSecp256k1Signatures(int count)
-    {
-        TxFrameSignature[] entries = new TxFrameSignature[count];
-        for (int i = 0; i < count; i++)
-        {
-            byte[] msg = ValueKeccak.Compute(BitConverter.GetBytes(i)).ToByteArray();
-            byte[] signed = i == count - 1 ? ValueKeccak.Compute("mismatch"u8).ToByteArray() : msg;
-            Signature signature = _ethereumEcdsa.Sign(TestItem.PrivateKeyA, new Hash256(signed));
-
-            byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
-            raw[0] = signature.RecoveryId;
-            signature.RAsSpan.CopyTo(raw.AsSpan(1));
-            signature.SAsSpan.CopyTo(raw.AsSpan(33));
-            entries[i] = new TxFrameSignature(
-                TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyA.Address, msg, raw);
-        }
-
-        return entries;
     }
 
     private static byte[] PrefixCode(string shape) => shape switch
@@ -564,7 +535,7 @@ public class FrameTxMempoolDosMeasurement
         BlockHeader head = _blockTree.Head!.Header;
         FrameGasProbeTracer probe = tracer ?? new FrameGasProbeTracer();
 
-        using IReadOnlyTxProcessorSource source = new HarnessEnvFactory(_worldStateManager, _specProvider, _logManager).Create();
+        using IReadOnlyTxProcessorSource source = _chain!.ReadOnlyTxProcessingEnvFactory.Create();
         using (IReadOnlyTxProcessingScope scope = source.Build(head))
         {
             scope.TransactionProcessor.SetBlockExecutionContext(head);
@@ -718,39 +689,40 @@ public class FrameTxMempoolDosMeasurement
     /// <summary>
     /// Creates a TxPool and real frame simulator backed by equivalent pool-state and EVM-state views.
     /// </summary>
-    private void BuildHarness(byte[] senderCode, ulong verifyGasCeiling = 0)
+    /// <remarks>The EVM side is the chain's production processing wiring, so the code cache and blockhash
+    /// policy the simulation runs under are the ones a node uses; only the pool's chain-head view is seeded
+    /// separately, which is what the two views existing at all is here to check.</remarks>
+    private async Task BuildHarness(byte[] senderCode, ulong verifyGasCeiling = 0)
     {
-        _dbProvider = TestMemDbProvider.Init();
-        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, _logManager);
-
-        Hash256 stateRoot;
-        IWorldState seedState = new WorldState(_worldStateManager.GlobalWorldState, _logManager);
-        using (seedState.BeginScope(IWorldState.PreGenesis))
+        _chain = await BasicTestBlockchain.Create(builder =>
         {
-            seedState.CreateAccount(Sender, SenderBalance);
-            if (senderCode.Length > 0) seedState.InsertCode(Sender, senderCode, Spec);
-            seedState.Commit(Spec);
-            seedState.CommitTree(HeadNumber);
-            stateRoot = seedState.StateRoot;
-        }
+            builder.AddSingleton(_specProvider);
+            builder.WithGenesisPostProcessor((_, worldState, specProvider) =>
+            {
+                // Replaces the account TestBlockchain funds in genesis, dropping the placeholder code so only
+                // the measured code is reachable. Its storage slot survives; no measured shape reads storage.
+                worldState.CreateAccount(Sender, SenderBalance);
+                if (senderCode.Length > 0) worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
+                worldState.RecalculateStateRoot();
+            });
+        });
+
+        // The pool refuses everything while the tree reports a zero best-suggested block, so the head has to
+        // be a block rather than genesis before anything is submitted.
+        await _chain.AddBlock();
 
         _poolState = new TestReadOnlyStateProvider();
         _poolState.CreateAccount(Sender, SenderBalance);
         if (senderCode.Length > 0) _poolState.InsertCode(senderCode, Sender);
 
-        _blockTree = new TestBlockTree();
-        Block head = Build.A.Block
-            .WithNumber(HeadNumber)
-            .WithTimestamp(HeadTimestamp)
-            .WithBaseFeePerGas(0)
-            .WithBeneficiary(TestItem.AddressE)
-            .WithGasLimit(BlockGasLimit)
-            .WithStateRoot(stateRoot)
-            .TestObject;
-        _blockTree.Head = head;
-        _blockTree.BestSuggestedHeader = head.Header;
+        _blockTree = _chain.BlockTree;
 
-        AssertSeededCodeIsVisibleAtHead(head.Header, senderCode);
+        // The container registration shares the process-wide code cache; production hands the simulator its
+        // own env (BlockProcessingModule) so a rolled-back deposit cannot outlive its scope.
+        IReadOnlyTxProcessingEnvFactory envFactory = new AutoReadOnlyTxProcessingEnvFactory(
+            _chain.Container, _chain.WorldStateManager, _specProvider, shareCodeCache: false);
+
+        AssertSeededCodeIsVisibleAtHead(envFactory, _blockTree.Head!.Header, senderCode);
 
         // The per-head budget sheds admission after a second of simulation against one head. This harness
         // times single rejections against a fixed head, so leaving it at the default would measure the
@@ -762,7 +734,7 @@ public class FrameTxMempoolDosMeasurement
             FrameTxSimulationBudgetPerHeadMs = int.MaxValue,
         };
         _realSimulator = new FrameTxPrefixSimulator(
-            new HarnessEnvFactory(_worldStateManager, _specProvider, _logManager),
+            envFactory,
             _blockTree,
             _specProvider,
             txPoolConfig,
@@ -772,20 +744,19 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>Confirms that both pool and EVM views contain the sender code before measurement.</summary>
-    private void AssertSeededCodeIsVisibleAtHead(BlockHeader head, byte[] senderCode)
+    /// <param name="envFactory">The same factory the simulator under measurement is given.</param>
+    private void AssertSeededCodeIsVisibleAtHead(IReadOnlyTxProcessingEnvFactory envFactory, BlockHeader head, byte[] senderCode)
     {
         if (senderCode.Length == 0) return;
 
         Assert.That(_poolState.GetCode(Sender), Is.EqualTo(senderCode),
             "the pool's chain-head view does not carry the sender's code, so the two stores disagree");
 
-        IWorldState headView = new WorldState(_worldStateManager.CreateResettableWorldState(), _logManager);
-        using (headView.BeginScope(head))
-        {
-            Assert.That(headView.GetCode(Sender), Is.EqualTo(senderCode),
-                "the simulator's view of the head does not carry the sender's code, so the EVM would run "
-                + "default verify code and the measurement would describe the wrong work");
-        }
+        using IReadOnlyTxProcessorSource source = envFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(head);
+        Assert.That(scope.WorldState.GetCode(Sender), Is.EqualTo(senderCode),
+            "the simulator's view of the head does not carry the sender's code, so the EVM would run "
+            + "default verify code and the measurement would describe the wrong work");
     }
 
     private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator, TxPoolConfig txPoolConfig)
@@ -930,31 +901,6 @@ public class FrameTxMempoolDosMeasurement
         {
             if (_depth == 1) { CloseOp(remainingGas); TopLevelFrameGas = _entryGas - remainingGas; }
             if (_depth > 0) _depth--;
-        }
-    }
-
-    /// <summary>Minimal read-only environment matching the production transaction-processing setup.</summary>
-    private sealed class HarnessEnvFactory(
-        IWorldStateManager worldStateManager,
-        ISpecProvider specProvider,
-        ILogManager logManager) : IReadOnlyTxProcessingEnvFactory
-    {
-        public IReadOnlyTxProcessorSource Create()
-        {
-            IWorldState worldState = new WorldState(worldStateManager.CreateResettableWorldState(), logManager);
-            EthereumCodeInfoRepository codeInfoRepository = new(worldState);
-            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, logManager);
-            EthereumTransactionProcessor processor = new(
-                BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-            return new HarnessEnv(processor, worldState);
-        }
-
-        private sealed class HarnessEnv(ITransactionProcessor processor, IWorldState worldState) : IReadOnlyTxProcessorSource
-        {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
-                new ReadOnlyTxProcessingScope(processor, worldState.BeginScope(baseBlock), worldState);
-
-            public void Dispose() { }
         }
     }
 }

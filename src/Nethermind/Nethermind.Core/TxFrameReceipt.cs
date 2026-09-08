@@ -10,14 +10,22 @@ namespace Nethermind.Core;
 /// where <c>gas_used = [execution, state]</c>.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </summary>
+/// <param name="status">One of <see cref="StatusSuccess"/>, <see cref="StatusFailure"/> or <see cref="StatusSkipped"/>.</param>
+/// <param name="executionGasUsed">The frame's <c>gas_used.execution</c>, before refunds.</param>
+/// <param name="stateGasUsed">The frame's <c>gas_used.state</c>, after refills and rollbacks.</param>
+/// <param name="logs">The logs the frame committed, empty when its state was discarded.</param>
 public class TxFrameReceipt(byte status, ulong executionGasUsed, ulong stateGasUsed, LogEntry[] logs)
 {
+    /// <summary>The frame reverted or halted; its state and logs did not survive.</summary>
     public const byte StatusFailure = 0;
+
+    /// <summary>The frame ran to completion.</summary>
     public const byte StatusSuccess = 1;
 
     /// <summary>Frames skipped by a failed atomic batch.</summary>
     public const byte StatusSkipped = 2;
 
+    /// <summary>The frame's outcome, as encoded in the receipt payload.</summary>
     public byte Status { get; } = status;
 
     /// <summary>Execution gas used by the frame (<c>gas_used.execution</c>), not accounting for refunds.</summary>
@@ -29,6 +37,7 @@ public class TxFrameReceipt(byte status, ulong executionGasUsed, ulong stateGasU
     /// <summary>The frame's combined gas: execution plus state.</summary>
     public ulong GasUsed => ExecutionGasUsed + StateGasUsed;
 
+    /// <summary>The logs this frame committed; empty for a frame whose state was discarded.</summary>
     public LogEntry[] Logs { get; } = logs;
 
     /// <summary>The transaction-level status reported for a frame transaction with these frame receipts.</summary>

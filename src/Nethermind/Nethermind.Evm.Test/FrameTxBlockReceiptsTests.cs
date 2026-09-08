@@ -40,23 +40,27 @@ public class FrameTxBlockReceiptsTests
 
         (TxReceipt receipt, Block block, IReleaseSpec spec) = RunFrameTx(emitLog);
 
-        Assert.That(receipt.TxType, Is.EqualTo(TxType.FrameTx));
-        Assert.That(receipt.Payer, Is.EqualTo(Sender));
-        // Naming either would invent an address, and the receipt-recovery path derives them independently.
-        Assert.That(receipt.ContractAddress, Is.Null);
-        Assert.That(receipt.Recipient, Is.Null);
+        // Ahead of the scope: the frame receipts are indexed below.
         Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(2));
-        Assert.That(receipt.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "SENDER frame log must land in its frame receipt");
-        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must be the union of frame logs");
-        Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo((long)Eip8141Constants.IntrinsicGasCost),
-            "spec gas includes the frame tx intrinsic cost");
-        Assert.That(block.Header.GasUsed, Is.EqualTo(receipt.GasUsedTotal),
-            "block header GasUsed must equal the cumulative receipt gas (production/processing parity)");
-        Assert.That(block.Transactions[0].BlockGasUsed, Is.EqualTo((ulong)receipt.GasUsed),
-            "frame tx must report block gas via Transaction.BlockGasUsed for parallel block validation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.TxType, Is.EqualTo(TxType.FrameTx));
+            Assert.That(receipt.Payer, Is.EqualTo(Sender));
+            // Naming either would invent an address, and the receipt-recovery path derives them independently.
+            Assert.That(receipt.ContractAddress, Is.Null);
+            Assert.That(receipt.Recipient, Is.Null);
+            Assert.That(receipt.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "SENDER frame log must land in its frame receipt");
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must be the union of frame logs");
+            Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo((long)Eip8141Constants.IntrinsicGasCost),
+                "spec gas includes the frame tx intrinsic cost");
+            Assert.That(block.Header.GasUsed, Is.EqualTo(receipt.GasUsedTotal),
+                "block header GasUsed must equal the cumulative receipt gas (production/processing parity)");
+            Assert.That(block.Transactions[0].BlockGasUsed, Is.EqualTo((ulong)receipt.GasUsed),
+                "frame tx must report block gas via Transaction.BlockGasUsed for parallel block validation");
+        }
 
         // The frame-aware wire encoding must produce a computable receipts root.
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
@@ -220,10 +224,15 @@ public class FrameTxBlockReceiptsTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         TxReceipt receipt = receiptsTracer.TxReceipts[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
-        Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
-        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
+        // Ahead of the scope: the frame receipts are indexed below.
+        Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
+            Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
+        }
     }
 
     private static byte[] Approve(byte scope) =>

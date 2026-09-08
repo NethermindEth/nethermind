@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -26,17 +25,22 @@ namespace Nethermind.Consensus.Processing;
 /// <para>Every prefix simulation node-wide serialises on one lock and runs with instruction/stack tracing on
 /// (the slow interpreter path), so frame-transaction admission throughput is capped at one simulation at a
 /// time. Under real frame-transaction volume this lock, not <c>MAX_VERIFY_GAS</c>, is the admission bottleneck.</para></remarks>
+/// <param name="timeProvider">The clock the timeout and the per-head budget are measured against; the system
+/// clock by default.</param>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
     ISpecProvider specProvider,
     ITxPoolConfig txPoolConfig,
-    ILogManager logManager) : IFrameTxPrefixSimulator, IDisposable
+    ILogManager logManager,
+    TimeProvider? timeProvider = null) : IFrameTxPrefixSimulator, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
     private readonly object _lock = new();
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
-    private readonly long _headBudgetTicks = (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * Stopwatch.Frequency);
+    private readonly long _headBudgetTicks =
+        (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * (timeProvider ?? TimeProvider.System).TimestampFrequency);
     private IReadOnlyTxProcessorSource? _source;
     private Hash256? _budgetHead;
     private long _budgetSpentTicks;
@@ -97,7 +101,7 @@ public sealed class FrameTxPrefixSimulator(
                 return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
             }
 
-            long startedAt = Stopwatch.GetTimestamp();
+            long startedAt = _time.GetTimestamp();
             try
             {
                 return SimulateLocked(tx, head, signaturesPreValidated, token);
@@ -106,7 +110,7 @@ public sealed class FrameTxPrefixSimulator(
             {
                 // Charged only to the share it drew on. Narrow, since only HasHeadBudget claims a head and
                 // local skips it, so an unclaimed head resets on the next gossip call and wipes the charge.
-                if (!local) Volatile.Write(ref _budgetSpentTicks, _budgetSpentTicks + Stopwatch.GetTimestamp() - startedAt);
+                if (!local) Volatile.Write(ref _budgetSpentTicks, _budgetSpentTicks + _time.GetTimestamp() - startedAt);
             }
         }
         finally
@@ -128,7 +132,7 @@ public sealed class FrameTxPrefixSimulator(
             processor.SetBlockExecutionContext(head);
 
             IReleaseSpec spec = specProvider.GetSpec(head);
-            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, token, _timeout);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, token, _timeout, _time);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);
