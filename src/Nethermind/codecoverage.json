@@ -1,0 +1,37 @@
+{
+  "Configuration": {
+    "DeterministicReport": true,
+    "IncludeTestAssembly": false,
+    "ExcludeAssembliesWithoutSources": "MissingAll",
+    "CodeCoverage": {
+      "CollectFromChildProcesses": true,
+      "ModulePaths": {
+        "Exclude": [
+          ".*[\\\\/](Ethereum|Nethermind)\\..*\\.Test(\\.Runner)?\\.dll$",
+          ".*[\\\\/]testhost[^\\\\/]*\\.dll$",
+          ".*[\\\\/]Microsoft\\.(Testing\\.Platform|TestPlatform|VisualStudio\\.TestPlatform)[^\\\\/]*\\.dll$"
+        ]
+      },
+      "Attributes": {
+        "Exclude": [
+          "^System\\.CodeDom\\.Compiler\\.GeneratedCodeAttribute$",
+          "^System\\.Diagnostics\\.CodeAnalysis\\.ExcludeFromCodeCoverageAttribute$"
+        ]
+      },
+      "Sources": {
+        "Exclude": [
+          ".*[\\\\/]artifacts[\\\\/]obj[\\\\/].*",
+          ".*[\\\\/]obj[\\\\/].*",
+          ".*[\\\\/]bin[\\\\/].*",
+          ".*\\.g\\.cs$",
+          ".*\\.generated\\.cs$",
+          ".*[\\\\/]Generated[\\\\/].*",
+          ".*[\\\\/]AssemblyInfo\\.cs$",
+          ".*[\\\\/]GlobalUsings\\.g\\.cs$",
+          ".*[\\\\/]TemporaryGeneratedFile_.*\\.cs$",
+          ".*[\\\\/]System\\.Text\\.RegularExpressions\\.Generator[\\\\/].*"
+        ]
+      }
+    }
+  }
+}

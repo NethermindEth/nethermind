@@ -3,13 +3,9 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Types;
+
 public class MasterNode(Address address, UInt256 stake)
 {
     public Address Address { get; set; } = address;

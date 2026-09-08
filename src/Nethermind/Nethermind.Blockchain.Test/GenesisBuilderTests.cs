@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -15,29 +15,50 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class GenesisBuilderTests
 {
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_load_genesis_with_emtpy_accounts_and_storage()
+    [Test]
+    public void Missing_genesis_is_rejected()
     {
+        (GenesisBuilder builder, _) = BuildGenesisBuilder(new ChainSpec());
+
+        Assert.That(() => builder.Build(), Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Can_build_again_after_allocations_are_released()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Genesis = Build.A.Block.Genesis.TestObject,
+            GenesisStateUnavailable = true,
+            Allocations = [],
+        };
+        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
+
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        Block first = builder.Build();
+        Block second = builder.Build();
+
+        Assert.That(second.Hash, Is.EqualTo(first.Hash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_load_genesis_with_empty_accounts_and_storage() =>
         AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "Specs/empty_accounts_and_storages.json");
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_load_genesis_with_emtpy_accounts_and_code()
-    {
+    public void Can_load_genesis_with_empty_accounts_and_code() =>
         AssertBlockHash("0xfa3da895e1c2a4d2673f60dd885b867d60fb6d823abaf1e5276a899d7e2feca5", "Specs/empty_accounts_and_codes.json");
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_load_genesis_with_precompile_that_has_zero_balance()
-    {
+    public void Can_load_genesis_with_precompile_that_has_zero_balance() =>
         AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/hive_zero_balance_test.json");
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_load_withdrawals_with_empty_root()
@@ -47,20 +68,36 @@ public class GenesisBuilderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_load_plataberget_genesis()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/plataberget.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        GenesisBuilder genesisBuilder = new(chainSpec, specProvider, stateProvider, transactionProcessor);
+
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        Block block = genesisBuilder.Build();
+
+        Assert.That(block.Hash!.ToString(), Is.EqualTo("0xee33ef92bbabcf07bcf44fea1d18a7925c5f7f9da8f81334ea19b0f3cb892b31"));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Remove_ChainSpecAllocation_AfterPostProcessor()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        FunctionalGenesisPostProcessor genesisPostProcessor = new FunctionalGenesisPostProcessor((block) =>
+        FunctionalGenesisPostProcessor genesisPostProcessor = new((block) =>
         {
-            chainSpec.Allocations.Should().NotBeNull();
+            Assert.That(chainSpec.Allocations, Is.Not.Null);
         });
         (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec, genesisPostProcessor);
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         genesisLoader.Build();
-        chainSpec.Allocations.Should().BeNull();
+        Assert.That(chainSpec.Allocations, Is.Null);
     }
 
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)
@@ -92,15 +129,15 @@ public class GenesisBuilderTests
         ChainSpec chainSpec = LoadChainSpec(path);
         (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         return genesisLoader.Build();
     }
 
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
-        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 }

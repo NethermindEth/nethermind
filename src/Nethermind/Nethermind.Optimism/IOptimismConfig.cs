@@ -19,9 +19,9 @@ public interface IOptimismConfig : IConfig
     [ConfigItem(Description = "CL p2p communication host", DefaultValue = "3030", HiddenFromDocs = true)]
     public int ClP2PPort { get; set; }
 
-    [ConfigItem(Description = "The URL of the Optimism L1 consensus node API.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The URL of the Optimism L1 consensus node API.", DefaultValue = "null", HiddenFromDocs = true, IsSensitive = true)]
     string? L1BeaconApiEndpoint { get; set; }
 
-    [ConfigItem(Description = "The URL of the Optimism L1 execution node JSON-RPC API.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The URL of the Optimism L1 execution node JSON-RPC API.", DefaultValue = "null", HiddenFromDocs = true, IsSensitive = true)]
     string? L1EthApiEndpoint { get; set; }
 }

@@ -6,13 +6,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 public class TraceSerializerTests
 {
@@ -20,14 +19,14 @@ public class TraceSerializerTests
     public void can_deserialize_deep_graph()
     {
         List<ParityLikeTxTrace>? traces = Deserialize(new ParityLikeTraceSerializer(LimboLogs.Instance));
-        traces?.Count.Should().Be(36);
+        Assert.That(traces?.Count, Is.EqualTo(36));
     }
 
     [Test]
     public void cant_deserialize_deep_graph()
     {
         Func<List<ParityLikeTxTrace>?> traces = () => Deserialize(new ParityLikeTraceSerializer(LimboLogs.Instance, 128));
-        traces.Should().Throw<JsonException>();
+        Assert.That(traces, Throws.TypeOf<JsonException>());
     }
 
     private List<ParityLikeTxTrace>? Deserialize(ITraceSerializer<ParityLikeTxTrace> serializer)

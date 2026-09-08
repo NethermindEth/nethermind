@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -11,18 +10,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs.GnosisForks;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -43,27 +39,21 @@ public class TransactionProcessorFeeTests
 
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser.Dispose();
-    }
+    public void TearDown() => _worldStateCloser.Dispose();
 
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    public void Check_fees_with_fee_collector(bool isTransactionEip1559, bool withFeeCollector)
+    [Test]
+    public void Check_fees_with_fee_collector([Values] bool isTransactionEip1559, [Values] bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -84,8 +74,41 @@ public class TransactionProcessorFeeTests
 
         ExecuteAndTrace(block, compositeTracer);
 
-        tracer.Fees.Should().Be(189000);
-        tracer.BurntFees.Should().Be(21000);
+        Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+    }
+
+    [Test]
+    public void Base_fee_collected_is_capped_at_effective_price_when_validation_skipped()
+    {
+        // Regression: eth_simulateV1 with validation disabled may run a maxFeePerGas = 0 < baseFee tx.
+        // The sender pays effectiveGasPrice = 0, so the fee collector must not be credited baseFee * gasUsed
+        // (= 0xa * 0x5208, which would mint value); it is capped at what was actually paid. A 0 < maxFeePerGas
+        // < baseFee tx cannot reach PayFees (rejected as MaxFeePerGasBelowBaseFee in BuyGas), so the effective
+        // price here is either 0 or >= baseFee.
+        _spec.FeeCollector = TestItem.AddressC;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithMaxFeePerGas(0).WithMaxPriorityFeePerGas(0)
+            .WithType(TxType.EIP1559).WithGasLimit(21000).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(10).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = receiptsTracer.StartNewTxTrace(tx);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        _transactionProcessor.Process(tx, txTracer, ExecutionOptions.SkipValidationAndCommit);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        Assert.That(feesTracer.Fees, Is.EqualTo(UInt256.Zero));       // no tip to the coinbase
+        Assert.That(feesTracer.BurntFees, Is.EqualTo(UInt256.Zero));  // capped base fee (0), not baseFee * gasUsed
+        Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero)); // fee collector not credited
     }
 
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
@@ -95,7 +118,7 @@ public class TransactionProcessorFeeTests
     {
         _spec.FeeCollector = TestItem.AddressC;
 
-        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether);
 
         byte[] byteCode = Prepare.EvmCode
             .PushData(SelfDestructAddress)
@@ -121,13 +144,12 @@ public class TransactionProcessorFeeTests
 
         ExecuteAndTrace(block, compositeTracer);
 
-        tracer.Fees.Should().Be(525213);
-        tracer.BurntFees.Should().Be(58357);
+        Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_multiple_transactions(bool withFeeCollector)
+    [Test]
+    public void Check_paid_fees_multiple_transactions([Values] bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -148,15 +170,14 @@ public class TransactionProcessorFeeTests
 
         // tx1: 1 * 21000
         // tx2: (10 - 2) * 21000 = 168000
-        tracer.Fees.Should().Be(189000);
+        Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
 
-        block.GasUsed.Should().Be(42000);
-        tracer.BurntFees.Should().Be(84000);
+        Assert.That(block.GasUsed, Is.EqualTo(42000));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_with_blob(bool withFeeCollector)
+    [Test]
+    public void Check_paid_fees_with_blob([Values] bool withFeeCollector)
     {
         UInt256 initialBalance = 0;
         if (withFeeCollector)
@@ -177,15 +198,15 @@ public class TransactionProcessorFeeTests
         FeesTracer tracer = new();
         ExecuteAndTrace(block, tracer);
 
-        tracer.Fees.Should().Be(0);
+        Assert.That(tracer.Fees, Is.EqualTo(UInt256.Zero));
 
-        block.GasUsed.Should().Be(21000);
-        tracer.BurntFees.Should().Be(131072);
+        Assert.That(block.GasUsed, Is.EqualTo(21000));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)131072));
 
         if (withFeeCollector)
         {
             UInt256 currentBalance = _stateProvider.GetBalance(TestItem.AddressC);
-            (currentBalance - initialBalance).Should().Be(131072);
+            Assert.That((currentBalance - initialBalance), Is.EqualTo((UInt256)131072));
         }
     }
 
@@ -222,15 +243,14 @@ public class TransactionProcessorFeeTests
         // tx1: 2 * 21000
         // tx2: (10 - 1) * 21000
         // tx3: 1 * 60000
-        tracer.Fees.Should().Be(291000);
+        Assert.That(tracer.Fees, Is.EqualTo((UInt256)291000));
 
-        block.GasUsed.Should().Be(102000);
-        tracer.BurntFees.Should().Be(102000);
+        Assert.That(block.GasUsed, Is.EqualTo(102000));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Should_stop_when_cancellation(bool withCancellation)
+    [Test]
+    public void Should_stop_when_cancellation([Values] bool withCancellation)
     {
         Transaction tx1 = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
@@ -251,10 +271,10 @@ public class TransactionProcessorFeeTests
         BlockReceiptsTracer blockTracer = new();
         blockTracer.SetOtherTracer(cancellationBlockTracer);
 
-        var blkCtx = new BlockExecutionContext(block.Header, _spec);
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
         blockTracer.StartNewBlockTrace(block);
         {
-            var txTracer = blockTracer.StartNewTxTrace(tx1);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx1);
             _transactionProcessor.Execute(tx1, blkCtx, txTracer);
             blockTracer.EndTxTrace();
         }
@@ -266,7 +286,7 @@ public class TransactionProcessorFeeTests
 
         try
         {
-            var txTracer = blockTracer.StartNewTxTrace(tx2);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx2);
             _transactionProcessor.Execute(tx2, blkCtx, txTracer);
             blockTracer.EndTxTrace();
             blockTracer.EndBlockTrace();
@@ -276,14 +296,14 @@ public class TransactionProcessorFeeTests
         if (withCancellation)
         {
             // tx1: 1 * 21000
-            feesTracer.Fees.Should().Be(21000);
-            feesTracer.BurntFees.Should().Be(42000);
+            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)21000));
+            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)42000));
         }
         else
         {
             // tx2: (10 - 2) * 21000 = 168000
-            feesTracer.Fees.Should().Be(189000);
-            feesTracer.BurntFees.Should().Be(84000);
+            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)189000));
+            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)84000));
         }
     }
 
@@ -304,10 +324,47 @@ public class TransactionProcessorFeeTests
         FeesTracer tracer = new();
         ExecuteAndTrace(block, tracer);
 
-        tracer.Fees.Should().Be(42000);
+        Assert.That(tracer.Fees, Is.EqualTo((UInt256)42000));
 
-        block.GasUsed.Should().Be(42000);
-        tracer.BurntFees.Should().Be(21000);
+        Assert.That(block.GasUsed, Is.EqualTo(42000));
+        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+    }
+
+    [Test]
+    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee([Values(TxType.EIP1559, TxType.Legacy)] TxType txType)
+    {
+        UInt256 baseFee = 100;
+        UInt256 feeCap = 50;
+
+        Transaction tx = txType == TxType.EIP1559
+            ? Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(feeCap)
+                .WithMaxPriorityFeePerGas(feeCap)
+                .WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject
+            : Build.A.Transaction
+                .WithType(TxType.Legacy)
+                .WithGasPrice(feeCap)
+                .WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(baseFee)
+            .WithTransactions(tx)
+            .WithGasLimit(21000)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, blkCtx, NullTxTracer.Instance);
+
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
+        Assert.That(result.ErrorDescription, Does.Contain($"maxFeePerGas: {feeCap}"));
+        Assert.That(result.ErrorDescription, Does.Contain($"baseFee: {baseFee}"));
+        Assert.That(result.ErrorDescription, Does.Contain(TestItem.AddressA.ToString(withEip55Checksum: true)));
     }
 
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
@@ -318,7 +375,7 @@ public class TransactionProcessorFeeTests
         tracer.StartNewBlockTrace(block);
         foreach (Transaction tx in block.Transactions)
         {
-            var txTracer = tracer.StartNewTxTrace(tx);
+            ITxTracer txTracer = tracer.StartNewTxTrace(tx);
             _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
             tracer.EndTxTrace();
         }

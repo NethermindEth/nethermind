@@ -4,20 +4,26 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using System;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class Timeout(ulong round, Signature? signature, ulong gapNumber)
+public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool isMyVote = false) : RlpHashEqualityBase, IXdcPoolItem
 {
-    private Address signer;
-
+    private static readonly TimeoutDecoder _timeoutDecoder = new();
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
-
+    public Address? Signer { get; set; }
+    public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
+    public (ulong Round, Hash256 hash) PoolKey()
+    {
+        KeccakRlpWriter writer = new();
+        _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
+        return (Round, writer.GetHash());
+    }
 
-    public void SetSigner(Address signer) => this.signer = signer;
+    protected override void Encode(ref KeccakRlpWriter writer) =>
+        _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.None);
 }

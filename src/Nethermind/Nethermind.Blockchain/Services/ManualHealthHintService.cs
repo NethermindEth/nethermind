@@ -1,15 +1,9 @@
 namespace Nethermind.Blockchain.Services;
 
-public class ManualHealthHintService : IHealthHintService
+public class ManualHealthHintService(ulong? maxSecsIntervalForProcessingBlocksHint, ulong? maxSecsIntervalForProducingBlocksHint) : IHealthHintService
 {
-    private readonly ulong? _maxSecondsIntervalForProcessingBlocksHint;
-    private readonly ulong? _maxSecondsIntervalForProducingBlocksHint;
-
-    public ManualHealthHintService(ulong? maxSecsIntervalForProcessingBlocksHint, ulong? maxSecsIntervalForProducingBlocksHint)
-    {
-        _maxSecondsIntervalForProcessingBlocksHint = maxSecsIntervalForProcessingBlocksHint;
-        _maxSecondsIntervalForProducingBlocksHint = maxSecsIntervalForProducingBlocksHint;
-    }
+    private readonly ulong? _maxSecondsIntervalForProcessingBlocksHint = maxSecsIntervalForProcessingBlocksHint;
+    private readonly ulong? _maxSecondsIntervalForProducingBlocksHint = maxSecsIntervalForProducingBlocksHint;
 
     public ulong? MaxSecondsIntervalForProcessingBlocksHint() => _maxSecondsIntervalForProcessingBlocksHint;
 

@@ -17,7 +17,7 @@ namespace Nethermind.Core.Collections
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public sealed class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
     {
-        private readonly List<T> _list = new();
+        private readonly List<T> _list = [];
         public int TakeSnapshot() => Count - 1;
 
         public void Restore(int snapshot)
@@ -33,7 +33,7 @@ namespace Nethermind.Core.Collections
 
         [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
-            => throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+            => throw new InvalidOperationException($"{nameof(JournalCollection<>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_list).GetEnumerator();

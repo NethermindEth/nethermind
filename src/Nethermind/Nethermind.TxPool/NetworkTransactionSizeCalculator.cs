@@ -6,19 +6,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class NetworkTransactionSizeCalculator : ITransactionSizeCalculator
+public class NetworkTransactionSizeCalculator(TxDecoder txDecoder) : ITransactionSizeCalculator
 {
-    private readonly TxDecoder _txDecoder;
+    private readonly TxDecoder _txDecoder = txDecoder;
 
-    public NetworkTransactionSizeCalculator(TxDecoder txDecoder)
-    {
-        _txDecoder = txDecoder;
-    }
-
-    public int GetLength(Transaction tx, bool shouldCountBlobs)
-    {
-        return shouldCountBlobs
+    public int GetLength(Transaction tx, bool shouldCountBlobs) => shouldCountBlobs
             ? _txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)
             : _txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping);
-    }
 }

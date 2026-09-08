@@ -1,22 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Attributes;
 using Nethermind.Serialization.Rlp;
+using System;
+using System.Threading;
 
 namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        public void DisableFraming()
-        {
-            MaxFrameSize = int.MaxValue;
-        }
+        public void DisableFraming() => MaxFrameSize = int.MaxValue;
 
         public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
@@ -27,10 +24,7 @@ namespace Nethermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
-            int packetType = input.ReadByte();
-
-            int packetTypeSize = packetType >= 128 ? 2 : 1;
-            int totalPayloadSize = packetTypeSize + input.ReadableBytes;
+            int totalPayloadSize = input.ReadableBytes;
 
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
@@ -77,54 +71,28 @@ namespace Nethermind.Network.Rlpx
                 }
                 else
                 {
-                    NettyRlpStream stream = new(output);
                     int contentLength = Rlp.LengthOf(_contextId) + Rlp.LengthOf(0);
                     if (i == 0)
                     {
                         contentLength += Rlp.LengthOf(totalPayloadSize);
                     }
                     output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                    stream.StartSequence(contentLength);
-                    stream.Encode(0);
-                    stream.Encode(_contextId);
+                    ByteBufferRlpWriter writer = new(output);
+                    writer.StartSequence(contentLength);
+                    writer.Encode(0);
+                    writer.Encode(_contextId);
                     if (i == 0)
                     {
-                        stream.Encode(totalPayloadSize);
+                        writer.Encode(totalPayloadSize);
                     }
                     output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 
-                int framePacketTypeSize = 0;
-                if (i == 0)
-                {
-                    /*33 or 33-34*/
-                    framePacketTypeSize = WritePacketType(packetType, output);
-                }
-
                 /*message*/
-                input.ReadBytes(output, framePayloadSize - framePacketTypeSize);
+                input.ReadBytes(output, framePayloadSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
             }
-        }
-
-        private static int WritePacketType(int packetType, IByteBuffer output)
-        {
-            if (packetType == 0)
-            {
-                output.WriteByte(128);
-                return 1;
-            }
-
-            if (packetType < 128)
-            {
-                output.WriteByte(packetType);
-                return 1;
-            }
-
-            output.WriteByte(129);
-            output.WriteByte(packetType);
-            return 2;
         }
     }
 }

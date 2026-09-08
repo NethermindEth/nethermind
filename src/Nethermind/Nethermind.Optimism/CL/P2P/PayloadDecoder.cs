@@ -35,9 +35,9 @@ public class PayloadDecoder : IPayloadDecoder
         payload.ReceiptsRoot = new(movingData.TakeAndMove(32));
         payload.LogsBloom = new(movingData.TakeAndMove(256));
         payload.PrevRandao = new(movingData.TakeAndMove(32));
-        payload.BlockNumber = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.GasLimit = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.GasUsed = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.BlockNumber = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.GasLimit = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.GasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
         payload.Timestamp = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
         UInt32 extraDataOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
         payload.BaseFeePerGas = new(movingData.TakeAndMove(32));
@@ -63,6 +63,8 @@ public class PayloadDecoder : IPayloadDecoder
     {
         if (4 > data.Length) throw new ArgumentException("Invalid transaction data");
         UInt32 firstTxOffset = BinaryPrimitives.ReadUInt32LittleEndian(data[..4]);
+        // SSZ layout: the first transaction starts after a 4-byte offset per transaction.
+        if (firstTxOffset is 0 || firstTxOffset % 4 != 0 || firstTxOffset > data.Length) throw new ArgumentException("Invalid first transaction offset");
         UInt32 txCount = firstTxOffset / 4;
         byte[][] txs = new byte[txCount][];
         int previous = (int)firstTxOffset;
@@ -71,7 +73,6 @@ public class PayloadDecoder : IPayloadDecoder
             int next;
             if (i + 1 < txCount)
             {
-                if (i * 4 + 8 > data.Length) throw new ArgumentException("Invalid transaction data");
                 next = (int)BinaryPrimitives.ReadUInt32LittleEndian(data[(i * 4 + 4)..(i * 4 + 8)]);
             }
             else

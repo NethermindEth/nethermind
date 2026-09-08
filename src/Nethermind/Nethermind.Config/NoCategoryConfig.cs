@@ -5,8 +5,8 @@ namespace Nethermind.Config;
 
 public class NoCategoryConfig : INoCategoryConfig
 {
-    public string Config { get; set; } = null;
-    public string MonitoringJob { get; set; }
-    public string MonitoringGroup { get; set; }
-    public string CliSwitchLocal { get; set; }
+    public string? Config { get; set; } = null;
+    public string? MonitoringJob { get; set; }
+    public string? MonitoringGroup { get; set; }
+    public string? CliSwitchLocal { get; set; }
 }

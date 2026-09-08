@@ -6,7 +6,9 @@ namespace Nethermind.Db.Rocks.Config;
 public class AdjustedRocksdbConfig(
     IRocksDbConfig baseConfig,
     string additionalRocksDbOptions,
-    ulong writeBufferSize
+    ulong writeBufferSize,
+    nint? blockCache = null,
+    bool compactOnDeletions = false
 ) : IRocksDbConfig
 {
     public ulong? WriteBufferSize => writeBufferSize;
@@ -36,5 +38,8 @@ public class AdjustedRocksdbConfig(
 
     public double CompressibilityHint => baseConfig.CompressibilityHint;
 
-    public bool FlushOnExit => baseConfig.FlushOnExit;
+    public FlushOnExitMode FlushOnExit => baseConfig.FlushOnExit;
+    public nint? BlockCache => blockCache ?? baseConfig.BlockCache;
+    /// <inheritdoc/>
+    public bool CompactOnDeletions => compactOnDeletions || baseConfig.CompactOnDeletions;
 }

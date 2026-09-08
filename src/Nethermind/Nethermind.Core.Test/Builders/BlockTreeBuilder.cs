@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -18,22 +19,22 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Int256;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class BlockTreeBuilder : BuilderBase<BlockTree>
+    public class BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider) : BuilderBase<BlockTree>
     {
-        private readonly Block _genesisBlock;
-        private ISpecProvider _specProvider;
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
+        private ISpecProvider _specProvider = specProvider;
         private IReceiptStorage? _receiptStorage;
         private IEthereumEcdsa? _ecdsa;
         private Hash256? _stateRoot;
+        private Func<Block, Hash256>? _stateRootGen;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         private bool _onlyHeaders;
         private bool _noHead = false;
@@ -41,19 +42,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder(ISpecProvider specProvider)
             : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
-        }
-
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
-        {
-            BlocksDb = new TestMemDb();
-            HeadersDb = new TestMemDb();
-            BlockNumbersDb = new TestMemDb();
-            BlockInfoDb = new TestMemDb();
-            MetadataDb = new TestMemDb();
-            BadBlocksDb = new TestMemDb();
-
-            _genesisBlock = genesisBlock;
-            _specProvider = specProvider;
         }
 
         public BlockTreeBuilder WithoutSettingHead
@@ -84,11 +72,12 @@ namespace Nethermind.Core.Test.Builders
                         BlockInfoDb,
                         MetadataDb,
                         BadBlockStore,
+                        BlockAccessListStore,
                         ChainLevelInfoRepository,
                         _specProvider,
-                        BloomStorage,
                         SyncConfig,
-                        LimboLogs.Instance);
+                        StateBoundary,
+                        _logManager);
                 }
 
                 return _blockTree;
@@ -102,12 +91,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal ??= BlockTree;
         }
 
-        public IBloomStorage BloomStorage { get; set; } = Substitute.For<IBloomStorage>();
-
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
-        public IDb BlocksDb { get; set; }
-        public IDb BadBlocksDb { get; set; }
+        public TestStateBoundary StateBoundary { get; set; } = new();
+
+        public IDb BlocksDb { get; set; } = new TestMemDb();
+        public IDb BadBlocksDb { get; set; } = new TestMemDb();
 
         private IBlockStore? _blockStore;
         public IBlockStore BlockStore
@@ -122,8 +111,9 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public IDb HeadersDb { get; set; }
-        public IDb BlockNumbersDb { get; set; }
+        public IDb HeadersDb { get; set; } = new TestMemDb();
+        public IDb BlockNumbersDb { get; set; } = new TestMemDb();
+        public IDb BlockAccessListsDb { get; set; } = new TestMemDb();
 
         private IHeaderStore? _headerStore;
         public IHeaderStore HeaderStore
@@ -138,9 +128,22 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public IDb BlockInfoDb { get; set; }
+        private IBlockAccessListStore? _balStore;
+        public IBlockAccessListStore BlockAccessListStore
+        {
+            get
+            {
+                return _balStore ??= new BlockAccessListStore(BlockAccessListsDb);
+            }
+            set
+            {
+                _balStore = value;
+            }
+        }
 
-        public IDb MetadataDb { get; set; }
+        public IDb BlockInfoDb { get; set; } = new TestMemDb();
+
+        public IDb MetadataDb { get; set; } = new TestMemDb();
 
         private IBadBlockStore? _badBlockStore;
         public IBadBlockStore BadBlockStore
@@ -185,20 +188,27 @@ namespace Nethermind.Core.Test.Builders
 
         public bool PostMergeBlockTree { get; set; }
 
-        public BlockTreeBuilder WithRealBloom
-        {
-            get
-            {
-                BloomStorage = new BloomStorage(new BloomConfig(), HeadersDb, new InMemoryDictionaryFileStoreFactory());
-                return this;
-            }
-        }
 
         public BlockTreeBuilder WithStateRoot(Hash256 stateRoot)
         {
             _stateRoot = stateRoot;
             return this;
         }
+
+        public BlockTreeBuilder WithStateRoot(Func<Block, Hash256> stateRootGen)
+        {
+            _stateRootGen = stateRootGen;
+            return this;
+        }
+
+        public BlockTreeBuilder OfChainLength(ulong chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        {
+            OfChainLength(out _, (int)chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
+            return this;
+        }
+
+        public BlockTreeBuilder OfChainLength(out Block headBlock, ulong chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries) =>
+            OfChainLength(out headBlock, (int)chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
@@ -208,8 +218,8 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            Block current = _genesisBlock;
-            headBlock = _genesisBlock;
+            Block current = genesisBlock;
+            headBlock = genesisBlock;
 
             bool skipGenesis = BlockTree.Genesis is not null;
             for (int i = 0; i < chainLength; i++)
@@ -233,7 +243,7 @@ namespace Nethermind.Core.Test.Builders
                         AddBlockResult result = BlockTree.SuggestBlock(current);
                         Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
 
-                        BlockTree.UpdateMainChain(current);
+                        BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
                     }
 
                     Block parent = current;
@@ -245,51 +255,90 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder OfChainLengthWithSharedSplits(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        {
+            bool fromGenesis = splitFrom == 0;
+            Block current = fromGenesis
+                ? genesisBlock
+                : BlockTree.FindBlock((ulong)splitFrom, BlockTreeLookupOptions.RequireCanonical) ?? throw new ArgumentException("Cannot find split block");
+            bool skipGenesis = BlockTree.Genesis is not null;
+            for (int i = 0; i < chainLength; i++)
+            {
+                Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i % blockBeneficiaries.Length];
+                if ((fromGenesis || i > 0) && !(current.IsGenesis && skipGenesis))
+                {
+                    if (_onlyHeaders)
+                    {
+                        BlockTree.SuggestHeader(current.Header);
+                    }
+                    else
+                    {
+                        AddBlockResult result = BlockTree.SuggestBlock(current);
+                        Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
+                        BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
+                    }
+                }
+
+                if (i < chainLength - 1)
+                {
+                    current = CreateBlock(splitVariant, splitFrom, i, current, withWithdrawals, beneficiary);
+                }
+            }
+
+            headBlock = current;
+
+            return this;
+        }
+
         private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, bool withWithdrawals, Address beneficiary)
         {
             Block currentBlock;
             BlockBuilder currentBlockBuilder = Build.A.Block
                 .WithNumber(blockIndex + 1)
                 .WithParent(parent)
-                .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                .WithWithdrawals(withWithdrawals ? [TestItem.WithdrawalA_1Eth] : null)
                 .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
                 .WithBeneficiary(beneficiary);
 
-            if (_stateRoot != null)
+            if (_stateRoot is not null)
             {
                 currentBlockBuilder.WithStateRoot(_stateRoot);
             }
 
             if (PostMergeBlockTree)
+            {
                 currentBlockBuilder.WithPostMergeRules();
+            }
             else
+            {
                 currentBlockBuilder.WithDifficulty(BlockHeaderBuilder.DefaultDifficulty -
-                                                   (splitFrom > parent.Number ? 0 : (ulong)splitVariant));
+                                                   ((ulong)splitFrom > parent.Number ? 0 : (ulong)splitVariant));
+            }
 
             if (_receiptStorage is not null && blockIndex % 3 == 0)
             {
-                Transaction[] transactions = new[]
-                {
+                Transaction[] transactions =
+                [
                     Build.A.Transaction
                         .WithValue(1)
                         .WithData(Rlp.Encode(blockIndex).Bytes)
                         .WithGasLimit(GasCostOf.Transaction * 2)
-                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
+                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec((ulong)(blockIndex + 1), null).IsEip155Enabled)
                         .TestObject,
                     Build.A.Transaction
                         .WithValue(2)
                         .WithData(Rlp.Encode(blockIndex + 1).Bytes)
                         .WithGasLimit(GasCostOf.Transaction * 2)
-                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
+                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec((ulong)(blockIndex + 1), null).IsEip155Enabled)
                         .TestObject
-                };
+                ];
 
                 currentBlock = currentBlockBuilder
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
                     .TestObject;
 
-                List<TxReceipt> receipts = new();
+                List<TxReceipt> receipts = [];
                 foreach (Transaction transaction in currentBlock.Transactions)
                 {
                     LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? [];
@@ -309,7 +358,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, ReceiptDecoder);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
@@ -324,20 +373,23 @@ namespace Nethermind.Core.Test.Builders
                     .TestObject;
             }
 
-            currentBlock.Header.AuRaStep = blockIndex;
+            if (_stateRootGen is not null)
+            {
+                currentBlock.Header.StateRoot = _stateRootGen(currentBlock);
+            }
 
             return currentBlock;
         }
 
         public BlockTreeBuilder WithOnlySomeBlocksProcessed(int chainLength, int processedChainLength)
         {
-            Block current = _genesisBlock;
+            Block current = genesisBlock;
             for (int i = 0; i < chainLength; i++)
             {
                 BlockTree.SuggestBlock(current);
-                if (current.Number < processedChainLength)
+                if (current.Number < (ulong)processedChainLength)
                 {
-                    BlockTree.UpdateMainChain(current);
+                    BlockTree.TryUpdateMainChain(current.Header, true, preloadedBlocks: new[] { current });
                 }
 
                 current = Build.A.Block.WithNumber(i + 1).WithParent(current).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -349,7 +401,7 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBlock(IBlockTree blockTree, Block block)
         {
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(new[] { block }, true);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
         }
 
         public BlockTreeBuilder WithBlocks(params Block[] blocks)
@@ -367,27 +419,27 @@ namespace Nethermind.Core.Test.Builders
 
             foreach (Block block in blocks)
             {
-                if (block.Number != counter++)
+                if (block.Number != (ulong)counter++)
                 {
                     throw new ArgumentException("Block numbers are not consecutively increasing.");
                 }
 
                 BlockTree.SuggestBlock(block);
-                BlockTree.UpdateMainChain(new[] { block }, true);
+                BlockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             }
 
             return this;
         }
 
-        public static void ExtendTree(IBlockTree blockTree, long newChainLength)
+        public static void ExtendTree(IBlockTree blockTree, ulong newChainLength)
         {
             Block previous = blockTree.RetrieveHeadBlock()!;
-            long initialLength = previous.Number + 1;
-            for (long i = initialLength; i < newChainLength; i++)
+            ulong initialLength = previous.Number + 1;
+            for (ulong i = initialLength; i < newChainLength; i++)
             {
                 previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
-                blockTree.UpdateMainChain(new[] { previous }, true);
+                blockTree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
             }
         }
 
@@ -411,7 +463,21 @@ namespace Nethermind.Core.Test.Builders
             HeaderStore = otherBuilder.HeaderStore;
             BlockInfoDb = otherBuilder.BlockInfoDb;
             MetadataDb = otherBuilder.MetadataDb;
+            StateBoundary = otherBuilder.StateBoundary;
 
+            return this;
+        }
+
+        public BlockTreeBuilder WithBestPersistedState(ulong? bestPersistedState)
+        {
+            StateBoundary.BestPersistedState = bestPersistedState;
+            return this;
+        }
+
+        public BlockTreeBuilder WithLogManager(ILogManager logManager)
+        {
+            ArgumentNullException.ThrowIfNull(logManager);
+            _logManager = logManager;
             return this;
         }
 
@@ -460,12 +526,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithMetadataDb(IDb metadataDb)
         {
             MetadataDb = metadataDb;
-            return this;
-        }
-
-        public BlockTreeBuilder WithBloomStorage(IBloomStorage bloomStorage)
-        {
-            BloomStorage = bloomStorage;
             return this;
         }
 

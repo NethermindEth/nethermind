@@ -24,7 +24,7 @@ namespace Nethermind.Abi
         public static new readonly AbiUInt UInt96 = new(96);
         public static new readonly AbiUInt UInt256 = new(256);
 
-        private static readonly byte[][] PrealocatedBytes =
+        private static readonly byte[][] PreallocatedBytes =
             Enumerable.Range(0, 256).Select(x => new[] { (byte)x }).ToArray();
 
         public AbiUInt(int length)
@@ -45,9 +45,11 @@ namespace Nethermind.Abi
 
         public override string Name { get; }
 
+        internal override int GetHeadSize(bool packed) => packed ? LengthInBytes : PaddingSize;
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            var (value, length) = DecodeUInt(data, position, packed);
+            (UInt256 value, int length) = DecodeUInt(data, position, packed);
 
             return Length switch
             {
@@ -109,7 +111,7 @@ namespace Nethermind.Abi
             }
             else if (arg is byte byteInput)
             {
-                bytes = PrealocatedBytes[byteInput];
+                bytes = PreallocatedBytes[byteInput];
             }
             else if (arg is JsonElement element && element.ValueKind == JsonValueKind.Number)
             {
@@ -126,16 +128,13 @@ namespace Nethermind.Abi
 
         public override Type CSharpType { get; }
 
-        private Type GetCSharpType()
+        private Type GetCSharpType() => Length switch
         {
-            return Length switch
-            {
-                { } n when n <= 8 => typeof(byte),
-                { } n when n <= 16 => typeof(ushort),
-                { } n when n <= 32 => typeof(uint),
-                { } n when n <= 64 => typeof(ulong),
-                _ => typeof(UInt256),
-            };
-        }
+            { } n when n <= 8 => typeof(byte),
+            { } n when n <= 16 => typeof(ushort),
+            { } n when n <= 32 => typeof(uint),
+            { } n when n <= 64 => typeof(ulong),
+            _ => typeof(UInt256),
+        };
     }
 }

@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -60,6 +59,10 @@ public class OptimismBlockValidator(
         error = null;
         return true;
     }
+
+    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) =>
+        // Base implementation validates BlobGasUsed, but Blob transactions are disabled in Optimism since Ecotone
+        specHelper.IsEcotone(block.Header) || base.ValidateEip4844Fields(block, spec, ref error);
 
     protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
         ValidateWithdrawals(block.Header, block.Body, out error);

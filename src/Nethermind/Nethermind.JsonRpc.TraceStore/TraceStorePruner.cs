@@ -3,8 +3,8 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Core.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -17,16 +17,16 @@ public class TraceStorePruner : IDisposable
 {
     private readonly IBlockTree _blockTree;
     private readonly IDb _db;
-    private readonly int _blockToKeep;
+    private readonly ulong _blockToKeep;
     private readonly ILogger _logger;
 
-    [UseConstructorForDependencyInjection]
     public TraceStorePruner(IBlockTree blockTree, [KeyFilter(TraceStorePlugin.DbName)] IDb db, ITraceStoreConfig traceStoreConfig, ILogManager logManager)
         : this(blockTree, db, traceStoreConfig.BlocksToKeep, logManager)
     {
     }
 
-    public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
+    [ConstructorWithSideEffect]
+    public TraceStorePruner(IBlockTree blockTree, IDb db, ulong blockToKeep, ILogManager logManager)
     {
         _blockTree = blockTree;
         _db = db;
@@ -36,29 +36,19 @@ public class TraceStorePruner : IDisposable
         if (_logger.IsDebug) _logger.Debug($"TraceStore pruning is enabled, keeping last {blockToKeep} blocks.");
     }
 
-    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => Task.Run((() =>
     {
-        Task.Run((() =>
+        if (e.Block.Number <= _blockToKeep) return;
+        ulong levelToDelete = e.Block.Number - _blockToKeep;
+        ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
+        if (level is null) return;
+        for (int i = 0; i < level.BlockInfos.Length; i++)
         {
-            long levelToDelete = e.Block.Number - _blockToKeep;
-            if (levelToDelete > 0)
-            {
-                ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
-                if (level is not null)
-                {
-                    for (int i = 0; i < level.BlockInfos.Length; i++)
-                    {
-                        BlockInfo blockInfo = level.BlockInfos[i];
-                        if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
-                        _db.Delete(blockInfo.BlockHash);
-                    }
-                }
-            }
-        }));
-    }
+            BlockInfo blockInfo = level.BlockInfos[i];
+            if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
+            _db.Delete(blockInfo.BlockHash);
+        }
+    }));
 
-    public void Dispose()
-    {
-        _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
-    }
+    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 }

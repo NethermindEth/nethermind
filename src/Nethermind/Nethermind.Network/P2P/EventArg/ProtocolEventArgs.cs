@@ -3,16 +3,10 @@
 
 namespace Nethermind.Network.P2P.EventArg
 {
-    public class ProtocolEventArgs : System.EventArgs
+    public class ProtocolEventArgs(string protocolCode, int version) : System.EventArgs
     {
-        public int Version { get; }
+        public int Version { get; } = version;
 
-        public string ProtocolCode { get; }
-
-        public ProtocolEventArgs(string protocolCode, int version)
-        {
-            Version = version;
-            ProtocolCode = protocolCode;
-        }
+        public string ProtocolCode { get; } = protocolCode;
     }
 }

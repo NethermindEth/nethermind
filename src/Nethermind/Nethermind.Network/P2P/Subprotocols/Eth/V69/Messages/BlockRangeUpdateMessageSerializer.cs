@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -12,30 +11,29 @@ public class BlockRangeUpdateMessageSerializer :
 {
     public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message)
     {
-        NettyRlpStream rlpStream = new(byteBuffer);
-
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        rlpStream.StartSequence(contentLength);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
 
-        rlpStream.Encode(message.EarliestBlock);
-        rlpStream.Encode(message.LatestBlock);
-        rlpStream.Encode(message.LatestBlockHash);
+        writer.Encode(message.EarliestBlock);
+        writer.Encode(message.LatestBlock);
+        writer.Encode(message.LatestBlockHash);
     }
 
-    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer)
+    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
+        byteBuffer.DeserializeRlp(Deserialize);
+
+    private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
     {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.ReadSequenceLength();
+        ctx.ReadSequenceLength();
 
-        BlockRangeUpdateMessage statusMessage = new()
+        return new BlockRangeUpdateMessage
         {
-            EarliestBlock = rlpStream.DecodeLong(),
-            LatestBlock = rlpStream.DecodeLong(),
-            LatestBlockHash = rlpStream.DecodeKeccak() ?? Hash256.Zero
+            EarliestBlock = ctx.DecodeULong(),
+            LatestBlock = ctx.DecodeULong(),
+            LatestBlockHash = ctx.DecodeKeccak()
         };
-
-        return statusMessage;
     }
 
     public int GetLength(BlockRangeUpdateMessage message, out int contentLength)

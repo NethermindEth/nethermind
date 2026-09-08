@@ -26,22 +26,23 @@ public class ExternalRpcIntegrationTests
     public async Task CanonicalTreeIsConsistent()
     {
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-        int destinationBlockNumber = 5000;
-        long? currentBlockNumber = null;
+        uint destinationBlockNumber = 5000;
+        ulong? currentBlockNumber = null;
         Hash256? currentHash = null;
         BasicJsonRpcClient client = new(new Uri("http://127.0.0.1:8545"), jsonSerializer, LimboLogs.Instance);
         do
         {
-            string? requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
-            BlockForRpcForTest block =
-                await client.Post<BlockForRpcForTest>("eth_getBlockByNumber", [requestedBlockNumber!, false]);
+            string requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+            BlockForRpcForTest? block =
+                await client.Post<BlockForRpcForTest>("eth_getBlockByNumber", [requestedBlockNumber, false]);
+            Assert.That(block, Is.Not.Null);
             if (currentHash is not null)
             {
-                Assert.That(block.Hash, Is.EqualTo(currentHash), $"incorrect block hash found {block}");
+                Assert.That(block!.Hash, Is.EqualTo(currentHash), $"incorrect block hash found {block}");
             }
 
-            currentHash = block.ParentHash;
-            currentBlockNumber = block.Number!.Value - 1;
+            currentHash = block!.ParentHash;
+            currentBlockNumber = block!.Number!.Value - 1;
         } while (currentBlockNumber != destinationBlockNumber);
     }
 
@@ -50,22 +51,23 @@ public class ExternalRpcIntegrationTests
     public async Task ParentTimestampIsAlwaysLowerThanChildTimestamp()
     {
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-        int destinationBlockNumber = 5000;
-        long? currentBlockNumber = null;
+        uint destinationBlockNumber = 5000;
+        ulong? currentBlockNumber = null;
         UInt256? childTimestamp = null;
         BasicJsonRpcClient client = new(new Uri("http://127.0.0.1:8545"), jsonSerializer, LimboLogs.Instance);
         do
         {
-            string? requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
-            BlockForRpcForTest block =
-                await client.Post<BlockForRpcForTest>("eth_getBlockByNumber", [requestedBlockNumber!, false]);
+            string requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+            BlockForRpcForTest? block =
+                await client.Post<BlockForRpcForTest>("eth_getBlockByNumber", [requestedBlockNumber, false]);
+            Assert.That(block, Is.Not.Null);
             if (childTimestamp is not null)
             {
-                Assert.That(childTimestamp, Is.GreaterThan(block.Timestamp), $"incorrect timestamp for block {block}");
+                Assert.That(childTimestamp, Is.GreaterThan(block!.Timestamp), $"incorrect timestamp for block {block}");
             }
 
-            childTimestamp = block.Timestamp;
-            currentBlockNumber = block.Number!.Value - 1;
+            childTimestamp = block!.Timestamp;
+            currentBlockNumber = block!.Number!.Value - 1;
         } while (currentBlockNumber != destinationBlockNumber);
     }
 }

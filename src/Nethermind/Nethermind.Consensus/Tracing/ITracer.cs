@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Trie;
 
@@ -27,6 +26,6 @@ namespace Nethermind.Consensus.Tracing
         /// <param name="tracer">Trace to act on block processing events.</param>
         void Execute(Block block, IBlockTracer tracer);
 
-        void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
+        void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>;
     }
 }

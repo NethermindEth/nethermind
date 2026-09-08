@@ -8,6 +8,13 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build
@@ -18,18 +25,30 @@ jobs:
         config: [release]
         project:
           - DocGen/DocGen.slnx
+          - Bootnode/Bootnode.slnx
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
+          - JitAsm/JitAsm.slnx
           - Kute/Kute.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
+          - StatelessInputGen/StatelessInputGen.slnx
+          - StatsAnalyzer/StatsAnalyzer.slnx
           - TxParser/TxParser.slnx
+          - RpcTests/RpcTests.slnx
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
       - name: Build ${{ matrix.project }}
         working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}
+
+      - name: Test Bootnode
+        if: matrix.project == 'Bootnode/Bootnode.slnx'
+        working-directory: tools
+        run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c ${{ matrix.config }} --no-build

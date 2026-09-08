@@ -1,20 +1,22 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using System;
-using System.Linq;
-using System.Net;
-using System.Net.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Nethermind.Config
 {
     public class Enode : IEnode
     {
+        private const string DiscoveryPortQuery = "?discport=";
         private readonly PublicKey _nodeKey;
+        private string? _info;
 
         public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
         {
@@ -26,50 +28,51 @@ namespace Nethermind.Config
 
         public Enode(string enodeString)
         {
+            ArgumentException GetInvalidEnodeException() =>
+                new($"Invalid enode value '{enodeString}'");
+
             ArgumentException GetDnsException(string hostName, Exception? innerException = null) =>
                 new($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
 
             ArgumentException GetPortException(string hostName) =>
                 new($"Can't get Port for host {hostName}.");
 
-            if (!(Uri.TryCreate(enodeString, new UriCreationOptions() { }, out Uri? parsed)
-                && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase)))
+            if (!IsEnode(enodeString, out Uri? parsed))
             {
-                throw new ArgumentException($"Invalid enode value '{enodeString}'");
+                throw GetInvalidEnodeException();
             }
 
-            string[] enodeParts = enodeString.Split(':');
-            string[] enodeParts2 = enodeParts[1].Split('@');
             _nodeKey = new PublicKey(parsed.UserInfo);
-            string host = parsed.Host;
+            string host = parsed.DnsSafeHost;
 
             if (parsed.Port == -1)
             {
                 throw GetPortException(host);
             }
 
-            string[] portParts = enodeParts[2].Split("?discport=");
-
-            switch (portParts.Length)
+            if (parsed.AbsolutePath is not "/" || parsed.Fragment.Length > 0)
             {
-                case 1:
-                    if (int.TryParse(portParts[0], out int port))
-                    {
-                        Port = port;
-                        DiscoveryPort = port;
-                    }
-                    else throw GetPortException(host);
-                    break;
-                case 2:
-                    if (int.TryParse(portParts[0], out int listeningPort) && int.TryParse(portParts[1], out int discoveryPort))
-                    {
-                        Port = listeningPort;
-                        DiscoveryPort = discoveryPort;
-                    }
-                    else throw GetPortException(host);
-                    break;
-                default:
-                    throw GetPortException(host);
+                throw new ArgumentException($"Unexpected path or fragment in enode value '{enodeString}'.");
+            }
+
+            Port = parsed.Port;
+            if (parsed.Query.Length == 0)
+            {
+                DiscoveryPort = Port;
+            }
+            else if (!parsed.Query.StartsWith(DiscoveryPortQuery, StringComparison.Ordinal))
+            {
+                throw GetInvalidEnodeException();
+            }
+            else
+            {
+                DiscoveryPort = ushort.TryParse(
+                    parsed.Query[DiscoveryPortQuery.Length..],
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out ushort discoveryPort)
+                    ? discoveryPort
+                    : throw GetPortException(host);
             }
 
             try
@@ -86,16 +89,22 @@ namespace Nethermind.Config
 
         public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
         {
-            for (var index = 0; index < hostAddresses.Length; index++)
+            IPAddress? mappedIpv4 = null;
+            for (int index = 0; index < hostAddresses.Length; index++)
             {
-                var hostAddress = hostAddresses[index];
-                if (Equals(hostAddress, hostAddress.MapToIPv4()))
+                IPAddress hostAddress = hostAddresses[index];
+                if (hostAddress.AddressFamily == AddressFamily.InterNetwork)
                 {
                     return hostAddress;
                 }
+
+                if (hostAddress.IsIPv4MappedToIPv6 && mappedIpv4 is null)
+                {
+                    mappedIpv4 = hostAddress.MapToIPv4();
+                }
             }
 
-            return hostAddresses.FirstOrDefault()?.MapToIPv4();
+            return mappedIpv4 ?? (hostAddresses.Length > 0 ? hostAddresses[0] : null);
         }
 
         public PublicKey PublicKey => _nodeKey;
@@ -103,10 +112,24 @@ namespace Nethermind.Config
         public IPAddress HostIp { get; }
         public int Port { get; }
         public int DiscoveryPort { get; }
-        public string Info => DiscoveryPort == Port
-            ? $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}"
-            : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
+        public string Info => _info ??= DiscoveryPort == Port
+            ? $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}"
+            : $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}{DiscoveryPortQuery}{DiscoveryPort}";
 
         public override string ToString() => Info;
+
+        /// <summary>
+        /// Formats an IP address as an enode host: native IPv6 is bracketed and IPv4-mapped IPv6 is normalized to plain IPv4.
+        /// </summary>
+        public static string FormatEnodeHost(IPAddress hostIp)
+        {
+            IPAddress normalized = hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp;
+            return normalized.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{normalized}]" : normalized.ToString();
+        }
+
+        private string FormattedHost => FormatEnodeHost(HostIp);
+
+        public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
+            Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
     }
 }

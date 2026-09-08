@@ -1,0 +1,131 @@
+name: EVM Opcode Benchmark (single runner)
+
+# Runs EvmOpcodesBenchmark once, on one runner, at one ref, and prints the table.
+# Two dispatches at two refs on the same runner give an A/B; never compare across runners.
+#
+# Exists because evm-opcode-benchmark-diff.yml is bound to `pull_request` and to the amd64
+# `benchmark` pool, so it cannot answer questions about ARM64 codegen changes.
+
+on:
+  # Dispatch-only workflows on a non-default branch never register, so pushing the file both
+  # registers it and doubles as the first ARM run. See arm-runner-maintenance.yml for the same trick.
+  push:
+    branches: [free-threaded]
+    paths: [.github/workflows/evm-opcode-benchmark-single.yml]
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner to measure on. Hosted ARM is shared and noisy; the self-hosted pools are quiet.
+        required: false
+        type: choice
+        default: ubuntu-24.04-arm
+        options:
+          - ubuntu-24.04-arm
+          - ubuntu-arm64-8-core
+          - benchmark
+          - ubuntu-latest
+      ref:
+        description: Commit, branch or tag to measure. Defaults to the dispatching ref.
+        required: false
+        type: string
+      opcodes:
+        # No `default:`. A dispatch that supplies an empty value gets the default substituted for it
+        # before any expression sees it, which is what made the empty-means-every-opcode mode
+        # unreachable. The `push` trigger picks its own subset below.
+        description: Comma-separated opcode names. Leave empty to measure every opcode, which takes hours.
+        required: false
+        type: string
+      invocation_count:
+        description: BenchmarkDotNet invocations per iteration. Lower it for the slow arithmetic opcodes.
+        required: false
+        type: string
+        default: "1500"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.runner || 'ubuntu-24.04-arm' }}-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: EvmOpcodesBenchmark on ${{ inputs.runner || 'ubuntu-24.04-arm' }}
+    if: github.repository_owner == 'NethermindEth'
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 240
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      # Not `inputs.opcodes || default`: an empty value is falsy, so that form would swallow the
+      # documented empty-means-every-opcode mode. Only `push`, which carries no inputs, needs a default.
+      NETHERMIND_EVM_BENCHMARK_OPCODES: ${{ github.event_name == 'push' && 'SHL,SHR,SAR,MLOAD,MSTORE,ADD,LT,MUL,ADDMOD,SIGNEXTEND' || inputs.opcodes }}
+      NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT: ${{ inputs.invocation_count || '1500' }}
+    steps:
+      - name: Check out ${{ inputs.ref || github.sha }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          # An abbreviated SHA is not fetchable on its own, and pasting one from a log is the
+          # obvious thing to do; full history costs a few seconds and accepts any commit-ish.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Seed precompile benchmark inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Nethermind.Benchmark.Runner enumerates these directories at startup for the precompile
+          # benchmarks, so they have to exist even when only opcode benchmarks are selected.
+          inputs_root="${GITHUB_WORKSPACE}/src/Nethermind/artifacts/bin/Nethermind.Benchmark.Runner/release"
+          for d in blake2f blsg1add blsg1msm blsg1mul blsg2add blsg2msm blsg2mul blsmapfp2tog2 \
+                   blsmapfptog1 blspairingcheck bnadd bnmul bnpair ec_recover modexp \
+                   point_evaluation ripemd sha256; do
+            mkdir -p "${inputs_root}/${d}/current"
+            [[ -f "${inputs_root}/${d}/current/sample.csv" ]] || echo "00" > "${inputs_root}/${d}/current/sample.csv"
+          done
+
+      - name: Run EvmOpcodesBenchmark
+        shell: bash
+        working-directory: src/Nethermind/Nethermind.Benchmark.Runner
+        run: |
+          set -euo pipefail
+          dotnet restore ../Benchmarks.slnx --locked-mode
+          dotnet run -c Release -- --filter "*EvmOpcodesBenchmark*" --join --buildTimeout 900 \
+            | tee "${GITHUB_WORKSPACE}/evm-opcodes.log"
+
+      - name: Publish the table
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="${GITHUB_WORKSPACE}/evm-opcodes.log"
+          {
+            echo "## EvmOpcodesBenchmark"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| runner | \`${{ inputs.runner || 'ubuntu-24.04-arm' }}\` |"
+            echo "| ref | \`${{ inputs.ref || github.sha }}\` |"
+            echo "| arch | \`$(uname -m)\` |"
+            echo "| opcodes | \`${NETHERMIND_EVM_BENCHMARK_OPCODES:-all}\` |"
+            echo "| invocations | \`${NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT}\` |"
+            echo
+            echo "Medians are the comparison column; StdDev says whether this runner can resolve the"
+            echo "difference at all. Compare only against another run on the same runner."
+            echo
+            # Strip ANSI first: BDN colours the table and the escapes break the pipe alignment.
+            sed -e 's/\x1b\[[0-9;]*m//g' "${log}" | grep -E '^\|' || echo "_No benchmark table in the log; see the artifact._"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evm-opcodes-${{ inputs.runner || 'ubuntu-24.04-arm' }}-${{ inputs.ref || github.sha }}
+          path: evm-opcodes.log
+          if-no-files-found: warn
+          retention-days: 14

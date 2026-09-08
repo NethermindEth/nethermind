@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto.Blake2;
 using NUnit.Framework;
@@ -26,12 +26,13 @@ namespace Nethermind.Core.Test
             byte[] blake2Result = new byte[64];
             _blake2Compression.Compress(Bytes.FromHexString(input), blake2Result);
             string? result = blake2Result.ToHexString();
-            result.Should().BeEquivalentTo(output);
+            Assert.That(result, Is.EqualTo(output));
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
         public void avx2_should_compute_correct_values((int Rounds, string Output) testCase)
         {
+            if (!Avx2.IsSupported) Assert.Ignore("AVX2 is not supported on this platform");
             (int rounds, string output) = testCase;
             Test(rounds, output, Blake2CompressMethod.Avx2);
         }
@@ -39,6 +40,7 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(TestCaseSource))]
         public void sse41_should_compute_correct_values((int Rounds, string Output) testCase)
         {
+            if (!Sse41.IsSupported) Assert.Ignore("SSE4.1 is not supported on this platform");
             (int rounds, string output) = testCase;
             Test(rounds, output, Blake2CompressMethod.Sse41);
         }
@@ -57,7 +59,7 @@ namespace Nethermind.Core.Test
             byte[] blake2Result = new byte[64];
             _blake2Compression.Compress(Bytes.FromHexString(input), blake2Result, method);
             string result = blake2Result.ToHexString();
-            result.Should().BeEquivalentTo(output);
+            Assert.That(result, Is.EqualTo(output));
         }
 
         public static IEnumerable<(int, string)> TestCaseSource()

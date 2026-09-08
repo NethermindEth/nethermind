@@ -5,11 +5,7 @@ using System;
 
 namespace Nethermind.Network.P2P.Subprotocols
 {
-    public class SubprotocolException : Exception
+    public class SubprotocolException(string message) : Exception(message)
     {
-        public SubprotocolException(string message)
-            : base(message)
-        {
-        }
     }
 }

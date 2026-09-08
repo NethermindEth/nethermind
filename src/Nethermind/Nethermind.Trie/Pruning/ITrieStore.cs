@@ -15,6 +15,13 @@ namespace Nethermind.Trie.Pruning
     {
         bool HasRoot(Hash256 stateRoot);
 
+        /// <summary>
+        /// Checks if the state root exists and the state for the given block number is still available
+        /// (i.e., not partially pruned). Implementations that perform pruning should reject blocks
+        /// whose state may have been partially pruned.
+        /// </summary>
+        bool HasRoot(Hash256 stateRoot, ulong blockNumber) => HasRoot(stateRoot);
+
         IDisposable BeginScope(BlockHeader? baseBlock);
 
         IScopedTrieStore GetTrieStore(Hash256? address);
@@ -25,7 +32,7 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns></returns>
-        IBlockCommitter BeginBlockCommit(long blockNumber);
+        IBlockCommitter BeginBlockCommit(ulong blockNumber);
     }
 
     public interface IScopableTrieStore
@@ -34,7 +41,6 @@ namespace Nethermind.Trie.Pruning
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
         INodeStorage.KeyScheme Scheme { get; }
     }
 

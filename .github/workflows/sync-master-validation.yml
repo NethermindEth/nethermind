@@ -1,0 +1,223 @@
+# NOTE: Requires repository secret SLACK_SYNC_WEBHOOK_URL for failure notifications.
+# Create a Slack incoming webhook and add it as a repo secret.
+
+name: Sync Master Validation
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker image"]
+    branches: [master]
+    types:
+      - completed
+
+  workflow_dispatch:
+    inputs:
+      nethermind_image:
+        description: "Docker image tag to test (e.g. nethermindeth/nethermind:master)"
+        default: ""
+        required: false
+      mode:
+        description: "Sync mode"
+        type: choice
+        options:
+          - Both
+          - HalfPath
+          - Flat
+        default: Both
+        required: true
+      chain_filter:
+        description: "Run specific chain(s) only (partial name match, e.g. 'mainnet')"
+        default: ""
+        required: false
+      provisioning_model:
+        description: "Override the per-network Spot/Standard choice from testnet-matrix.json"
+        type: choice
+        options:
+          - Default
+          - Spot
+          - Standard
+        default: Default
+        required: false
+      machine_type:
+        description: "Override the per-network GCE machine type. Empty uses testnet-matrix.json."
+        default: ""
+        required: false
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      docker_image: ${{ steps.set-image.outputs.docker_image }}
+    steps:
+      - name: Determine docker image
+        id: set-image
+        env:
+          IMAGE_INPUT: ${{ github.event.inputs.nethermind_image }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          if [ -n "$IMAGE_INPUT" ]; then
+            echo "docker_image=$IMAGE_INPUT" >> "$GITHUB_OUTPUT"
+          elif [ "$TRIGGER_EVENT" = "push" ] && [ -n "$HEAD_SHA" ]; then
+            # Pin to the per-commit tag so concurrent runs each validate their own
+            # commit; the nightly schedule publish creates no master-<sha> tag
+            echo "docker_image=nethermindeth/nethermind:master-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          else
+            echo "docker_image=nethermindeth/nethermind:master" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts/config
+            scripts/sync
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+
+      - name: Set Matrix
+        id: set-matrix
+        env:
+          MODE_INPUT: ${{ github.event.inputs.mode }}
+          CHAIN_FILTER: ${{ github.event.inputs.chain_filter }}
+          PROVISIONING_INPUT: ${{ github.event.inputs.provisioning_model }}
+          MACHINE_TYPE_INPUT: ${{ github.event.inputs.machine_type }}
+        run: |
+          requested_mode="${MODE_INPUT:-Both}"
+          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
+
+          case "$requested_mode" in
+            both)     modes='["HalfPath","Flat"]' ;;
+            halfpath) modes='["HalfPath"]' ;;
+            flat)     modes='["Flat"]' ;;
+            *)
+              echo "Unsupported mode '$requested_mode'. Expected 'Both', 'HalfPath', or 'Flat'."
+              exit 1
+              ;;
+          esac
+
+          # master-validation chains; op-mainnet dropped to cut cost (kept in sync-supported-chains)
+          MASTER_CHAINS='["mainnet","gnosis"]'
+
+          matrix=$(cat scripts/config/testnet-matrix.json | jq \
+            --argjson chains "$MASTER_CHAINS" \
+            --argjson modes "$modes" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg model "$PROVISIONING_INPUT" \
+            --arg machine_type "$MACHINE_TYPE_INPUT" \
+            '[.[] | select(.network as $n | $chains | index($n)) ] |
+             [.[] as $config
+              | $modes[] as $mode
+              | ($config + {
+                  mode: $mode,
+                  runner_label: (
+                    (if $mode == "Flat" then "f-" else "hp-" end)
+                    + $run_id + "-master-" + $config.network
+                  ),
+                  machine_type: (if $machine_type == "" then $config.machine_type else $machine_type end),
+                  # This is the path that pages people on Slack, and a reclaimed Spot VM is
+                  # indistinguishable from a real regression in that alert. Default to
+                  # STANDARD regardless of the matrix flag; Spot stays available on demand.
+                  provisioning_model: (
+                    if $model == "Spot" then "SPOT" else "STANDARD" end
+                  ),
+                  timeout: (
+                    if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
+                    else $config.timeout end
+                  )
+                })
+              | . + { max_run_duration: (((.timeout + 60) | tostring) + "m") }]')
+
+          matrix=$(echo "$matrix" | scripts/sync/select-networks.sh "$CHAIN_FILTER")
+
+          if [ "$(echo "$matrix" | jq 'length')" -eq 0 ]; then
+            echo "chain_filter '$CHAIN_FILTER' matched no networks"
+            exit 1
+          fi
+
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  sync:
+    needs: [setup-matrix]
+    # A called workflow can never elevate GITHUB_TOKEN above its caller, and
+    # id-token defaults to none, so the runner lifecycle needs it granted here.
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+    name: "Sync ${{ matrix.config.network }} (${{ matrix.config.mode }})"
+    uses: ./.github/workflows/sync-one-chain.yml
+    secrets: inherit
+    with:
+      network: ${{ matrix.config.network }}
+      mode: ${{ matrix.config.mode }}
+      runner_label: ${{ matrix.config.runner_label }}
+      machine_type: ${{ matrix.config.machine_type }}
+      local_ssd_count: ${{ matrix.config.local_ssd_count }}
+      provisioning_model: ${{ matrix.config.provisioning_model }}
+      max_run_duration: ${{ matrix.config.max_run_duration }}
+      timeout: ${{ matrix.config.timeout }}
+      docker_image: ${{ needs.setup-matrix.outputs.docker_image }}
+      node_name_prefix: SyncMasterValidation
+      checkout_ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+      cl: ${{ matrix.config.cl }}
+      cl_image: ${{ matrix.config.cl_image }}
+      checkpoint_sync_url: ${{ matrix.config.checkpoint-sync-url }}
+
+  notify-on-failure:
+    needs: [setup-matrix, sync]
+    # Each network's create/sync/teardown is one unit now, so a failure anywhere in it
+    # surfaces as a failed matrix entry here. setup-matrix failing must page too — on the
+    # workflow_run path nobody is watching the Actions tab — but a skipped setup-matrix
+    # means the docker-publish guard rejected the run, which should stay quiet.
+    if: >-
+      ${{ always() && needs.setup-matrix.result != 'skipped'
+          && (contains(needs.*.result, 'failure')
+              || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect failed jobs
+        id: failures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          failed=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name' \
+            | cut -c1-60 | tr '\n' ', ' | sed 's/,$//')
+          if [ -z "$failed" ]; then
+            failed="(check run for details)"
+          fi
+          echo "failed_jobs=$failed" >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v2
+        env:
+          FAILED_JOBS: ${{ steps.failures.outputs.failed_jobs }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          webhook: ${{ secrets.SLACK_SYNC_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "Sync validation failed after merge to master",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Sync Failure on Master*\n*Failed:* ${{ env.FAILED_JOBS }}\n*Commit:* `${{ env.COMMIT_SHA }}`\n*Run:* ${{ env.RUN_URL }}"
+                  }
+                }
+              ]
+            }

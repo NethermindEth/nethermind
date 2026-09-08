@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -11,12 +12,12 @@ namespace Nethermind.Optimism;
 
 public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => SealEngineType;
-    public string? SealEngineType => Core.SealEngineType.Optimism;
+    public string EngineName => SealEngineType;
+    public string SealEngineType => Core.SealEngineType.Optimism;
 
     public ulong? RegolithTimestamp { get; set; }
 
-    public long? BedrockBlockNumber { get; set; }
+    public ulong? BedrockBlockNumber { get; set; }
 
     public ulong? CanyonTimestamp { get; set; }
 
@@ -32,6 +33,10 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? IsthmusTimestamp { get; set; }
 
+    public ulong? JovianTimestamp { get; set; }
+
+    public ulong? KarstTimestamp { get; set; }
+
     public Address? L1FeeRecipient { get; set; }
 
     public Address? L1BlockAddress { get; set; }
@@ -42,7 +47,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
         if (CanyonTimestamp <= startTimestamp)
@@ -50,9 +55,27 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
 
-        if (HoloceneTimestamp is not null)
+        spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, JovianTimestamp, new DefaultBaseFeeCalculator());
+    }
+
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+    }
+
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        AddIfNotNull(timestamps, GraniteTimestamp);
+        AddIfNotNull(timestamps, HoloceneTimestamp);
+        AddIfNotNull(timestamps, IsthmusTimestamp);
+        AddIfNotNull(timestamps, JovianTimestamp);
+        AddIfNotNull(timestamps, KarstTimestamp);
+    }
+
+    private void AddIfNotNull(SortedSet<ulong> timestamps, ulong? timestamp)
+    {
+        if (timestamp is not null)
         {
-            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
+            timestamps.Add(timestamp.Value);
         }
     }
 }

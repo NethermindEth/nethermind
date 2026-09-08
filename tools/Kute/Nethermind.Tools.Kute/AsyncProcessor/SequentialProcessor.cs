@@ -7,7 +7,7 @@ public sealed class SequentialProcessor : IAsyncProcessor
 {
     public async Task Process<T>(IAsyncEnumerable<T> source, Func<T, Task> process, CancellationToken token = default)
     {
-        await foreach (var t in source)
+        await foreach (T? t in source)
         {
             await process(t);
         }

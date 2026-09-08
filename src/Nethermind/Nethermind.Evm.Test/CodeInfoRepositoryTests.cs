@@ -1,174 +1,197 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
+using System.Collections.Frozen;
 using Nethermind.Core;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Evm.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.State;
+using System;
 
 namespace Nethermind.Evm.Test;
 
 [TestFixture, Parallelizable]
 public class CodeInfoRepositoryTests
 {
-    public static IEnumerable<object[]> NotDelegationCodeCases()
+    private static readonly IReleaseSpec _releaseSpec;
+
+    static CodeInfoRepositoryTests()
+    {
+        _releaseSpec = ReleaseSpecSubstitute.Create();
+        _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
+    }
+
+    /// <summary>Precompile numbers a chain might register, including ones the index array cannot hold.</summary>
+    /// <remarks>Ethereum's stop at 0x100 (RIP-7212), which is what the index array is sized against, but a
+    /// plugin may register anywhere: Taiko's L1Sload and L1StaticCall sit at 0x10001 and 0x10002, and at
+    /// 0x8000_0000 the number no longer fits an <see cref="int"/>, so it comes back negative. Indexing by
+    /// precompile number is only sound if all of those are still resolved. The membership half of the same
+    /// contract is covered against the real spec in <c>ReleaseSpecTests</c>; the substitute here answers
+    /// <c>IsPrecompile</c> from its own arrangement, so it could not tell us anything about it.</remarks>
+    private static readonly long[] PrecompileNumbers = [1, 2, 9, 0x11, 0x100, 0x101, 0x10001, 0x10002, 0x8000_0000];
+
+    [TestCaseSource(nameof(PrecompileNumbers))]
+    public void Precompile_is_resolved_whatever_its_number(long number)
+    {
+        Address address = Address.FromNumber((UInt256)(ulong)number);
+        CodeInfo expected = new(Substitute.For<IPrecompile>());
+
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [Address.FromNumber(UInt256.One)] = new(Substitute.For<IPrecompile>()),
+            [address] = expected,
+        }.ToFrozenDictionary());
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.Precompiles.Returns(new AddressAsKey[] { Address.FromNumber(UInt256.One), address }.ToFrozenSet());
+
+        CodeInfoRepository repository = new(Substitute.For<IWorldState>(), provider);
+
+        Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
+    }
+
+    [Test]
+    public void Ordinary_address_is_not_taken_for_a_precompile()
+    {
+        // Sixteen leading zero bytes is what makes an address a candidate; this has none.
+        Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
+        Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
+
+        // Zero clears the shape guard — index 0 — so only the set can reject it.
+        Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
+        Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+    }
+
+    public static IEnumerable<TestCaseData> NotDelegationCodeCases()
     {
         byte[] rndAddress = new byte[20];
         TestContext.CurrentContext.Random.NextBytes(rndAddress);
         //Change first byte of the delegation header
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
         code[0] = TestContext.CurrentContext.Random.NextByte(0xee);
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Corrupted first byte of delegation header");
         //Change second byte of the delegation header
         code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
         code[1] = TestContext.CurrentContext.Random.NextByte(0x2, 0xff);
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Corrupted second byte of delegation header");
         //Change third byte of the delegation header
         code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
         code[2] = TestContext.CurrentContext.Random.NextByte(0x1, 0xff);
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Corrupted third byte of delegation header");
         code = [.. Eip7702Constants.DelegationHeader, .. new byte[21]];
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Address too long (21 bytes)");
         code = [.. Eip7702Constants.DelegationHeader, .. new byte[19]];
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Address too short (19 bytes)");
     }
+
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void TryGetDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.TryGetDelegation(TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(false);
+        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.EqualTo(false));
     }
 
+    [TestCase(false, TestName = "Missing account")]
+    [TestCase(true, TestName = "Existing empty-code account")]
+    public void TryGetDelegation_AccountWithoutCode_DoesNotLoadCodeInfo(bool createAccount)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        if (createAccount)
+        {
+            stateProvider.CreateAccount(TestItem.AddressA, 0);
+        }
 
-    public static IEnumerable<object[]> DelegationCodeCases()
+        bool codeInfoLoaderCalled = false;
+        CodeInfoRepository sut = new(stateProvider, new EthereumPrecompileProvider(), (_, _, _) =>
+        {
+            codeInfoLoaderCalled = true;
+            return CodeInfo.Empty;
+        });
+
+        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
+
+        Assert.That(codeInfoLoaderCalled, Is.False);
+    }
+
+    public static IEnumerable<TestCaseData> DelegationCodeCases()
     {
         byte[] address = new byte[20];
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. address];
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Valid delegation with zero address");
         TestContext.CurrentContext.Random.NextBytes(address);
         code = [.. Eip7702Constants.DelegationHeader, .. address];
-        yield return new object[]
-        {
-            code
-        };
+        yield return new TestCaseData(code).SetName("Valid delegation with random address");
     }
+
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_ReturnsTrue(byte[] code)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.TryGetDelegation(TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(true);
+        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.EqualTo(true));
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_CorrectDelegationAddressIsSet(byte[] code)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        Address result;
-        sut.TryGetDelegation(TestItem.AddressA, Substitute.For<IReleaseSpec>(), out result);
+        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address result);
 
-        result.Should().Be(new Address(code.Slice(3, Address.Size)));
-    }
-
-    [TestCaseSource(nameof(DelegationCodeCases))]
-    public void GetExecutableCodeHash_CodeTryGetDelegation_ReturnsHashOfDelegated(byte[] code)
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        Address delegationAddress = new Address(code.Slice(3, Address.Size));
-        byte[] delegationCode = new byte[32];
-        stateProvider.CreateAccount(delegationAddress, 0);
-        stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
-
-        EthereumCodeInfoRepository sut = new(stateProvider);
-
-        sut.GetExecutableCodeHash(TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
-    }
-
-    [TestCaseSource(nameof(NotDelegationCodeCases))]
-    public void GetExecutableCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-
-        EthereumCodeInfoRepository sut = new(stateProvider);
-
-        sut.GetExecutableCodeHash(TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
+        Assert.That(result, Is.EqualTo(new Address(code.Slice(3, Address.Size))));
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        Address delegationAddress = new Address(code.Slice(3, Address.Size));
+        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
+        Address delegationAddress = new(code.Slice(3, Address.Size));
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
-        stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        ICodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, Substitute.For<IReleaseSpec>());
-        result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
+        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
+        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetCachedCodeInfo_CodeIsNotDelegation_ReturnsCodeOfAddress(byte[] code)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
 
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.GetCachedCodeInfo(TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
+        Assert.That(sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec), Is.EqualTo(new CodeInfo(code)));
     }
 }

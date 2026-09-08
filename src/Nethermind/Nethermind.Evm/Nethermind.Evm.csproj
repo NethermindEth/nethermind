@@ -1,13 +1,28 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Nullable>annotations</Nullable>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Collections.Pooled" />
+    <PackageReference Include="Fody" PrivateAssets="all" />
+    <PackageReference Include="InlineIL.Fody" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" ReferenceOutputAssembly="false" OutputItemType="WeaverFiles" PrivateAssets="all"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishReadyToRun;PublishAot"
+                      UndefineProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishReadyToRun;PublishAot" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
+
+  <Target Name="TrackOpcodeWeaverChanges" BeforeTargets="CoreCompile" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <CustomAdditionalCompileInputs Include="@(WeaverFiles)" />
+    </ItemGroup>
+  </Target>
 </Project>

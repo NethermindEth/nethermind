@@ -30,7 +30,6 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
@@ -39,5 +38,6 @@
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
   </ItemGroup>
 </Project>

@@ -25,7 +25,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         ITimestamper timestamper,
         ISpecProvider specProvider,
         ILogManager logManager,
-        IBlocksConfig? blocksConfig)
+        IBlocksConfig? blocksConfig,
+        IInclusionListTxSource? inclusionListTxSource = null)
         : BlockProducerBase(txSource,
             processor,
             sealEngine,
@@ -38,11 +39,22 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ConstantDifficulty.Zero,
             blocksConfig)
     {
+        /// <remarks>The fallback payload still has to satisfy the inclusion list, so the empty block carries
+        /// the list even though it skips mempool selection (EIP-7805).</remarks>
+        protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+        {
+            BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
+            if (inclusionListTxSource is not null && (flags & IBlockProducer.Flags.EmptyBlock) != 0)
+            {
+                blockToProduce.Transactions = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
+            }
+            return blockToProduce;
+        }
+
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
 
-            blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
             IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
 

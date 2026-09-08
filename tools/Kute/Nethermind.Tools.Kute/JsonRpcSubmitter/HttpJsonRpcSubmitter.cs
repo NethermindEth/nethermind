@@ -8,28 +8,21 @@ using Nethermind.Tools.Kute.Auth;
 
 namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
 
-public sealed class HttpJsonRpcSubmitter : IJsonRpcSubmitter
+public sealed class HttpJsonRpcSubmitter(HttpClient httpClient, IAuth auth, string hostAddress) : IJsonRpcSubmitter
 {
-    private readonly Uri _uri;
-    private readonly HttpClient _httpClient;
-    private readonly IAuth _auth;
-
-    public HttpJsonRpcSubmitter(HttpClient httpClient, IAuth auth, string hostAddress)
-    {
-        _httpClient = httpClient;
-        _auth = auth;
-        _uri = new Uri(hostAddress);
-    }
+    private readonly Uri _uri = new(hostAddress);
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly IAuth _auth = auth;
 
     public async Task<JsonRpc.Response> Submit(JsonRpc.Request rpc, CancellationToken token = default)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, _uri)
+        HttpRequestMessage request = new(HttpMethod.Post, _uri)
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", _auth.AuthToken) },
             Content = new StringContent(rpc.ToJsonString(), Encoding.UTF8, MediaTypeNames.Application.Json),
         };
 
-        var httpResponse = await _httpClient.SendAsync(request, token);
+        using HttpResponseMessage httpResponse = await _httpClient.SendAsync(request, token);
         return await JsonRpc.Response.FromHttpResponseAsync(httpResponse, token);
     }
 }

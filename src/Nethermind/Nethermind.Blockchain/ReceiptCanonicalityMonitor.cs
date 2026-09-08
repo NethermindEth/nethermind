@@ -24,15 +24,13 @@ namespace Nethermind.Blockchain
         public ReceiptCanonicalityMonitor(IReceiptStorage? receiptStorage, ILogManager? logManager)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _receiptStorage.ReceiptsInserted += OnBlockAddedToMain;
+            _logger = logManager?.GetClassLogger<ReceiptCanonicalityMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
+            _receiptStorage.NewCanonicalReceipts += OnBlockAddedToMain;
         }
 
-        private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e)
-        {
+        private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e) =>
             // we don't want this to be on main processing thread
             Task.Run(() => TriggerReceiptInsertedEvent(e.Block, e.PreviousBlock));
-        }
 
         private void TriggerReceiptInsertedEvent(Block newBlock, Block? previousBlock)
         {
@@ -53,9 +51,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void Dispose()
-        {
-            _receiptStorage.ReceiptsInserted -= OnBlockAddedToMain;
-        }
+        public void Dispose() => _receiptStorage.NewCanonicalReceipts -= OnBlockAddedToMain;
     }
 }

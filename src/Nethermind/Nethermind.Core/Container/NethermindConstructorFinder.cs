@@ -17,7 +17,7 @@ public class NethermindConstructorFinder : IConstructorFinder
     public static NethermindConstructorFinder Instance { get; } = new();
 
 
-    private readonly DefaultConstructorFinder _baseFinder = new DefaultConstructorFinder();
+    private readonly DefaultConstructorFinder _baseFinder = new();
 
     public ConstructorInfo[] FindConstructors(Type targetType)
     {

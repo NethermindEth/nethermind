@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -16,10 +17,13 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
-            (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(new RlpStream(rlp.Bytes));
-            Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
-            Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
+            RlpReader ctx = Encode(decoder, account);
+            (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
+                Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
+            }
         }
 
         [Test]
@@ -27,12 +31,46 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
-            Account decoded = decoder.Decode(new RlpStream(rlp.Bytes))!;
-            Assert.That((int)decoded.Balance, Is.EqualTo(100));
-            Assert.That((int)decoded.Nonce, Is.EqualTo(0));
-            Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
-            Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
+            RlpReader ctx = Encode(decoder, account);
+            Account decoded = decoder.Decode(ref ctx)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(decoded.Nonce, Is.EqualTo(0UL));
+                Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
+                Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
+            }
+        }
+
+        [Test]
+        public void DecodeStorageRootOnly_returns_correct_value_and_advances_past_it()
+        {
+            Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
+            AccountDecoder decoder = new();
+            RlpReader ctx = Encode(decoder, account);
+
+            int positionBefore = ctx.Position;
+            ctx.SkipLength();
+            ctx.SkipItem(); // nonce
+            ctx.SkipItem(); // balance
+            int positionBeforeStorageRoot = ctx.Position;
+
+            ctx.Position = positionBefore;
+            Hash256 storageRoot = decoder.DecodeStorageRootOnly(ref ctx);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
+                Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
+            }
+        }
+
+        private static RlpReader Encode(AccountDecoder decoder, Account account)
+        {
+            byte[] bytes = new byte[decoder.GetLength(account)];
+            RlpWriter writer = new(bytes);
+            decoder.Encode(ref writer, account);
+            return new RlpReader(bytes);
         }
     }
 }

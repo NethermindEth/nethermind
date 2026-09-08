@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -20,14 +20,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
+    public class StateSyncDownloader(ILogManager logManager) : ISyncDownloader<StateSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public StateSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<StateSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -37,133 +32,44 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-
-            // Try SNAP protocol first if available (newest and most served)
-            if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
-            {
-                if (await TryGetNodeDataViaSnapProtocol(snapHandler, batch, cancellationToken, peer))
-                {
-                    return;
-                }
-            }
-
-            // Try eth66 if protocol version is below eth67
-            if (peer.ProtocolVersion < EthVersions.Eth67)
-            {
-                if (await TryGetNodeDataViaEthProtocol(peer, batch, cancellationToken))
-                {
-                    return;
-                }
-            }
-
-            // Try NODEDATA protocol as fallback
-            if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
-            {
-                if (await TryGetNodeDataViaNodeDataProtocol(nodeDataHandler, batch, cancellationToken, peer))
-                {
-                    return;
-                }
-            }
-
-            // All protocols returned empty or failed - peer might be out of sync
-            if (Logger.IsDebug) Logger.Debug($"All protocols returned empty response for peer {peer}. Peer might be out of sync.");
-        }
-
-        private async Task<bool> TryGetNodeDataViaNodeDataProtocol(INodeDataPeer nodeDataHandler, StateSyncBatch batch, CancellationToken cancellationToken, ISyncPeer peer)
-        {
-            if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
-            HashList hashList = HashList.Rent(batch.RequestedNodes);
-            try
-            {
-                batch.Responses = await nodeDataHandler.GetNodeData(hashList, cancellationToken);
-                if (batch.Responses is not null && batch.Responses.Count > 0)
-                {
-                    return true;
-                }
-                else
-                {
-                    if (Logger.IsTrace) Logger.Trace($"Received empty response from NodeDataProtocol, trying next protocol for peer {peer}");
-                    batch.Responses?.Dispose();
-                    batch.Responses = null;
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the NodeData request", e);
-                return false;
-            }
-            finally
-            {
-                HashList.Return(hashList);
-            }
-        }
-
-        private async Task<bool> TryGetNodeDataViaEthProtocol(ISyncPeer peer, StateSyncBatch batch, CancellationToken cancellationToken)
-        {
-            if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
-            HashList hashList = HashList.Rent(batch.RequestedNodes);
-            try
-            {
-                batch.Responses = await peer.GetNodeData(hashList, cancellationToken);
-                if (batch.Responses is not null && batch.Responses.Count > 0)
-                {
-                    return true;
-                }
-                else
-                {
-                    if (Logger.IsTrace) Logger.Trace($"Received empty response from EthProtocol, trying next protocol for peer {peer}");
-                    batch.Responses?.Dispose();
-                    batch.Responses = null;
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the EthProtocol request", e);
-                return false;
-            }
-            finally
-            {
-                HashList.Return(hashList);
-            }
-        }
-
-        private async Task<bool> TryGetNodeDataViaSnapProtocol(ISnapSyncPeer snapHandler, StateSyncBatch batch, CancellationToken cancellationToken, ISyncPeer peer)
-        {
-            GetTrieNodesRequest? getTrieNodesRequest = null;
+            Task<IByteArrayList>? task = null;
             HashList? hashList = null;
-            try
+            GetTrieNodesRequest? getTrieNodesRequest = null;
+            if (ProtocolSupportsNodeData(peer))
+            {
+                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
+                hashList = HashList.Rent(batch.RequestedNodes);
+                task = peer.GetNodeData(hashList, cancellationToken);
+            }
+            // If GetNodeData is not supported, fall back to the Snap protocol
+            else if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested ByteCodes via SnapProtocol from peer {peer}");
                     hashList = HashList.Rent(batch.RequestedNodes);
-                    batch.Responses = await snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
+                    task = snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
-                else
+                else if (ProtocolSupportsTrieNodes(snapHandler))
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
-                    batch.Responses = await snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
+                    task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
+            }
 
-                if (batch.Responses is not null && batch.Responses.Count > 0)
-                {
-                    return true;
-                }
-                else
-                {
-                    if (Logger.IsTrace) Logger.Trace($"Received empty response from SnapProtocol for peer {peer}");
-                    batch.Responses?.Dispose();
-                    batch.Responses = null;
-                    return false;
-                }
+            if (task is null)
+            {
+                throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
+            }
+
+            try
+            {
+                batch.Responses = await task;
             }
             catch (Exception e)
             {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the SnapProtocol request", e);
-                return false;
+                Logger.TraceError("Error after dispatching the state sync request", e);
             }
             finally
             {
@@ -171,6 +77,10 @@ namespace Nethermind.Synchronization.StateSync
                 getTrieNodesRequest?.Dispose();
             }
         }
+
+        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
+
+        protected virtual bool ProtocolSupportsTrieNodes(ISnapSyncPeer peer) => peer.CanGetTrieNodes();
 
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
@@ -180,16 +90,16 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
-            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
+            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = [];
+            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = [];
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
                 if (item.Address is not null)
                 {
-                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out var storagePaths))
+                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out List<(TreePath path, StateSyncItem syncItem)> storagePaths))
                     {
-                        storagePaths = new List<(TreePath, StateSyncItem)>();
+                        storagePaths = [];
                         itemsGroupedByAccount[item.Address] = storagePaths;
                     }
 
@@ -201,50 +111,45 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            ArrayPoolList<PathGroup> accountAndStoragePath = new ArrayPoolList<PathGroup>(
-                accountTreePaths.Count + itemsGroupedByAccount.Count,
-                accountTreePaths.Count + itemsGroupedByAccount.Count);
-            request.AccountAndStoragePaths = accountAndStoragePath;
+            using DeferredRlpItemList.Builder builder = new();
+            DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
 
             int requestedNodeIndex = 0;
-            int accountPathIndex = 0;
-            for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
+            for (int i = 0; i < accountTreePaths.Count; i++)
             {
-                (TreePath path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
+                (TreePath path, StateSyncItem syncItem) = accountTreePaths[i];
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
                 batch.RequestedNodes[requestedNodeIndex] = syncItem;
-
                 requestedNodeIndex++;
             }
 
-            foreach (var kvp in itemsGroupedByAccount)
+            foreach (KeyValuePair<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> kvp in itemsGroupedByAccount)
             {
-                byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = kvp.Key?.Value.Bytes.ToArray();
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());
 
-                for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
+                for (int groupIndex = 0; groupIndex < kvp.Value.Count; groupIndex++)
                 {
-                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex - 1];
-                    group[groupIndex] = Nibbles.EncodePath(path);
+                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex];
+                    groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes
                     batch.RequestedNodes[requestedNodeIndex] = syncItem;
-
                     requestedNodeIndex++;
                 }
-
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = group };
-
-                accountPathIndex++;
             }
+
+            rootWriter.Dispose();
 
             if (batch.RequestedNodes.Count != requestedNodeIndex)
             {
                 Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
+            request.AccountAndStoragePaths = new RlpPathGroupList(builder.ToRlpItemList());
             return request;
         }
 
@@ -271,15 +176,9 @@ namespace Nethermind.Synchronization.StateSync
                 Volatile.Write(ref s_cache, hashList);
             }
 
-            public void Initialize(IList<StateSyncItem> items)
-            {
-                _items = items;
-            }
+            public void Initialize(IList<StateSyncItem> items) => _items = items;
 
-            public void Reset()
-            {
-                _items = null;
-            }
+            public void Reset() => _items = null;
 
             public Hash256 this[int index] => _items[index].Hash;
 
@@ -303,10 +202,7 @@ namespace Nethermind.Synchronization.StateSync
         {
             private readonly HashList _innerList;
 
-            internal KeccakToValueKeccakList(HashList innerList)
-            {
-                _innerList = innerList;
-            }
+            internal KeccakToValueKeccakList(HashList innerList) => _innerList = innerList;
 
             public IEnumerator<ValueHash256> GetEnumerator()
             {
@@ -316,10 +212,7 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
             public int Count => _innerList.Count;
 

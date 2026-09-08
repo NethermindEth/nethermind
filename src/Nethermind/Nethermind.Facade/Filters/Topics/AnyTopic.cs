@@ -4,11 +4,13 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public class AnyTopic : TopicExpression
     {
         public static readonly AnyTopic Instance = new();
+
+        public override bool AcceptsAnyBlock => true;
 
         private AnyTopic() { }
 

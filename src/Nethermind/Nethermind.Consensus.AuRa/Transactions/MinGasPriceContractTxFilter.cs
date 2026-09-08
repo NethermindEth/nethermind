@@ -11,17 +11,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class MinGasPriceContractTxFilter : ITxFilter
+    public class MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices) : ITxFilter
     {
-        private readonly IMinGasPriceTxFilter _minGasPriceFilter;
-        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices;
-
-        public MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices)
-        {
-            _minGasPriceFilter = minGasPriceFilter;
-            _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));
-        }
-
+        private readonly IMinGasPriceTxFilter _minGasPriceFilter = minGasPriceFilter;
+        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         {

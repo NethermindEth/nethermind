@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Taiko;
@@ -12,10 +13,12 @@ public class BlockMetadata
 {
     public required Address Beneficiary { get; set; }
 
-    public required long GasLimit { get; set; }
+    public required ulong GasLimit { get; set; }
     public required ulong Timestamp { get; set; }
 
     public required Hash256 MixHash { get; set; }
+
+    public UInt256? BatchID { get; set; }
 
     public required byte[] TxList { get; set; }
 

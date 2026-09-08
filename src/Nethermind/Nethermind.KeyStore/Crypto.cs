@@ -13,7 +13,6 @@ namespace Nethermind.KeyStore
         [JsonPropertyName("cipherparams")]
         public CipherParams CipherParams { get; set; }
 
-        [JsonPropertyName("cipher")]
         public string Cipher { get; set; }
 
         [JsonPropertyName("kdf")]

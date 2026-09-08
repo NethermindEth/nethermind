@@ -11,43 +11,21 @@ using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.AuRa
 {
-    public class AuRaPostMergeBlockProducerFactory : PostMergeBlockProducerFactory
+    public class AuRaPostMergeBlockProducerFactory(
+        ISpecProvider specProvider,
+        ISealEngine sealEngine,
+        ITimestamper timestamper,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager,
+        IGasLimitCalculator? gasLimitCalculator = null,
+        IInclusionListTxSource? inclusionListTxSource = null) : PostMergeBlockProducerFactory(
+            specProvider,
+            sealEngine,
+            timestamper,
+            blocksConfig,
+            logManager,
+            gasLimitCalculator,
+            inclusionListTxSource)
     {
-        public AuRaPostMergeBlockProducerFactory(
-            ISpecProvider specProvider,
-            ISealEngine sealEngine,
-            ITimestamper timestamper,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager,
-            IGasLimitCalculator? gasLimitCalculator = null)
-            : base(
-                specProvider,
-                sealEngine,
-                timestamper,
-                blocksConfig,
-                logManager,
-                gasLimitCalculator)
-        {
-        }
-
-        public override PostMergeBlockProducer Create(
-            IBlockProducerEnv producerEnv,
-            ITxSource? txSource = null)
-        {
-            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =
-                new(_specProvider, _blocksConfig);
-
-            return new PostMergeBlockProducer(
-                txSource ?? producerEnv.TxSource,
-                producerEnv.ChainProcessor,
-                producerEnv.BlockTree,
-                producerEnv.ReadOnlyStateProvider,
-                _gasLimitCalculator ?? targetAdjustedGasLimitCalculator,
-                _sealEngine,
-                _timestamper,
-                _specProvider,
-                _logManager,
-                _blocksConfig);
-        }
     }
 }

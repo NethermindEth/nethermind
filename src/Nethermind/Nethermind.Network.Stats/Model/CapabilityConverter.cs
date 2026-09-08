@@ -10,7 +10,8 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Network.Contract.P2P;
+
+#nullable enable
 
 namespace Nethermind.Stats.Model
 {
@@ -20,7 +21,7 @@ namespace Nethermind.Stats.Model
         private const byte SeparatorByte = (byte)'/';
         private const int StackAllocThreshold = 256;
 
-        public override Capability Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Capability? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
             {
@@ -32,7 +33,7 @@ namespace Nethermind.Stats.Model
                 ThrowJsonException();
             }
 
-            if (!TryParseCapability(ref reader, out Capability capability))
+            if (!TryParseCapability(ref reader, out Capability? capability))
             {
                 ThrowJsonException();
             }
@@ -61,24 +62,25 @@ namespace Nethermind.Stats.Model
             if (totalLength <= StackAllocThreshold)
             {
                 Span<byte> buffer = stackalloc byte[totalLength];
-                WriteToBuffer(writer, capability, buffer, protocolByteCount);
+                if (!TryWriteToBuffer(writer, capability, buffer, protocolByteCount))
+                {
+                    ThrowJsonException();
+                }
             }
             else
             {
                 byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
-                try
+                bool written = TryWriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
+                ArrayPool<byte>.Shared.Return(rented);
+                if (!written)
                 {
-                    WriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(rented);
+                    ThrowJsonException();
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void WriteToBuffer(Utf8JsonWriter writer, Capability capability, Span<byte> buffer, int protocolByteCount)
+        private static bool TryWriteToBuffer(Utf8JsonWriter writer, Capability capability, Span<byte> buffer, int protocolByteCount)
         {
             Encoding.UTF8.GetBytes(capability.ProtocolCode, buffer);
             buffer[protocolByteCount] = SeparatorByte;
@@ -86,14 +88,13 @@ namespace Nethermind.Stats.Model
             if (Utf8Formatter.TryFormat(capability.Version, buffer[(protocolByteCount + 1)..], out int versionBytes))
             {
                 writer.WriteStringValue(buffer[..(protocolByteCount + 1 + versionBytes)]);
+                return true;
             }
-            else
-            {
-                ThrowJsonException();
-            }
+
+            return false;
         }
 
-        private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability capability)
+        private static bool TryParseCapability(ref Utf8JsonReader reader, [NotNullWhen(true)] out Capability? capability)
         {
             capability = null;
 
@@ -120,25 +121,12 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
-            string protocolCode = GetProtocolCode(protocolSpan);
+            if (!Network.Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
+            {
+                protocolCode = Encoding.UTF8.GetString(protocolSpan);
+            }
             capability = new Capability(protocolCode, version);
             return true;
-        }
-
-        private static string GetProtocolCode(ReadOnlySpan<byte> protocolSpan)
-        {
-            if (protocolSpan.SequenceEqual("eth"u8)) return Protocol.Eth;
-            if (protocolSpan.SequenceEqual("snap"u8)) return Protocol.Snap;
-            if (protocolSpan.SequenceEqual("p2p"u8)) return Protocol.P2P;
-            if (protocolSpan.SequenceEqual("nodedata"u8)) return Protocol.NodeData;
-            if (protocolSpan.SequenceEqual("shh"u8)) return Protocol.Shh;
-            if (protocolSpan.SequenceEqual("bzz"u8)) return Protocol.Bzz;
-            if (protocolSpan.SequenceEqual("par"u8)) return Protocol.Par;
-            if (protocolSpan.SequenceEqual("ndm"u8)) return Protocol.Ndm;
-            if (protocolSpan.SequenceEqual("aa"u8)) return Protocol.AA;
-
-            // Fallback for unknown protocols
-            return Encoding.UTF8.GetString(protocolSpan);
         }
 
         [DoesNotReturn, StackTraceHidden]

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Test;
 
 public interface IPrecompileTests
 {
-    static abstract IEnumerable<string> TestFiles();
-    static abstract IPrecompile Precompile();
+    static virtual IEnumerable<string> TestFiles() => [];
+
+    static virtual IEnumerable<(string file, IReleaseSpec spec)> TestFilesWithSpec() => [];
 }

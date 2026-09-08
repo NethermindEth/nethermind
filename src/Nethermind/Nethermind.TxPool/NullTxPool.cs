@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Contract.Messages;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool
 {
@@ -36,6 +37,11 @@ namespace Nethermind.TxPool
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
 
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default)
+            => new Dictionary<AddressAsKey, Transaction[]>();
+
+        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
+
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }
@@ -43,6 +49,10 @@ namespace Nethermind.TxPool
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
+
+        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
+
+        public void ForgetRejectedBlobTransaction(Hash256 hash) { }
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
@@ -82,10 +92,45 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
+        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs) => 0;
 
-        public UInt256 GetLatestPendingNonce(Address address) => 0;
+        public bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask)
+        {
+            availableMask = default;
+            return false;
+        }
 
+        public bool TryGetPendingBlobCellMetadata(Hash256 hash, out BlobCellMask availableMask, out int blobCount, out int materializationWork)
+        {
+            availableMask = default;
+            blobCount = 0;
+            materializationWork = 0;
+            return false;
+        }
+
+        public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
+        {
+            availableMask = default;
+            cells = null;
+            return false;
+        }
+
+        public bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
+        {
+            availableMask = default;
+            cells = null;
+            proofs = null;
+            return false;
+        }
+
+        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
+
+        public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => BlobCellMergeResult.TransactionUnavailable;
+
+        public ulong GetLatestPendingNonce(Address address) => 0;
+
+        public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {
@@ -111,5 +156,6 @@ namespace Nethermind.TxPool
             remove { }
         }
         public bool AcceptTxWhenNotSynced { get; set; }
+        public void ResetTxPoolState() { }
     }
 }

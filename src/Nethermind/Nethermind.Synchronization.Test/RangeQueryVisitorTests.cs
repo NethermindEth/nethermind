@@ -18,18 +18,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -40,33 +37,32 @@ public class RangeQueryVisitorTests
     private StateTree _inputTree = null!;
 
     [OneTimeSetUp]
-    public void Setup()
-    {
+    public void Setup() =>
         _inputTree = TestItem.Tree.GetStateTree();
-    }
 
     [Test]
     public void AccountRangeFetchVisitor()
     {
-        var startHash = new Hash256("0000000000000000000000000000000000000000000000000000000001113456");
-        var limitHash = new Hash256("0000000000000000000000000000000000000000000000000000000001123458");
+        Hash256 startHash = new("0000000000000000000000000000000000000000000000000000000001113456");
+        Hash256 limitHash = new("0000000000000000000000000000000000000000000000000000000001123458");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         _inputTree.Accept(visitor, _inputTree.RootHash, CreateVisitingOptions());
 
-        leafCollector.Leafs.Count.Should().Be(4);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(4));
 
         int k = 0;
-        leafCollector.Leafs.Should().AllSatisfy(pair =>
-            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account).Bytes.Should().BeEquivalentTo(pair.Item2)
-        );
+        foreach ((ValueHash256 _, byte[]? value) in leafCollector.Leafs)
+        {
+            Assert.That(Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account).Bytes, Is.EqualTo(value));
+        }
     }
 
     [Test]
     public void AccountRangeFetchWithSparserTree()
     {
-        StateTree tree = new StateTree();
+        StateTree tree = new();
         tree.Set(new Hash256("0100000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0200000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0300000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
@@ -75,40 +71,40 @@ public class RangeQueryVisitorTests
         tree.UpdateRootHash();
         tree.Commit();
 
-        var startHash = new Hash256("0150000000000000000000000000000000000000000000000000000000000000");
-        var limitHash = new Hash256("0350000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0150000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0350000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
 
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary(static (it) => it.Item1, static (it) => it.Item2);
-        nodes.Count.Should().Be(3);
+        Assert.That(nodes.Count, Is.EqualTo(3));
 
-        nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
-        nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
-        nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
+        Assert.That(nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")), Is.True);
+        Assert.That(nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")), Is.True);
+        Assert.That(nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")), Is.True);
     }
 
     [Test]
     public void AccountRangeFetch_AfterTree()
     {
-        StateTree tree = new StateTree();
+        StateTree tree = new();
         tree.Set(new Hash256("0400000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0500000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.UpdateRootHash();
         tree.Commit();
 
-        var startHash = new Hash256("0510000000000000000000000000000000000000000000000000000000000000");
-        var limitHash = new Hash256("0600000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0510000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0600000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
 
-        leafCollector.Leafs.Count.Should().Be(0);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(0));
         Action act = () => visitor.GetProofs();
-        act.Should().NotThrow();
+        Assert.That(act, Throws.Nothing);
     }
 
     private static VisitingOptions CreateVisitingOptions() => new() { };
@@ -116,7 +112,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void RangeFetchPartialLimit()
     {
-        var stateTree = new StateTree();
+        StateTree stateTree = new();
         stateTree.Set(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Set(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Set(new Hash256("0x2000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
@@ -128,13 +124,13 @@ public class RangeQueryVisitorTests
         stateTree.Set(new Hash256("0x8000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Commit();
 
-        var startHash = new Hash256("0x3000000000000000000000000000000000000000000000000000000000000000");
-        var limitHash = new Hash256("0x4500000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0x3000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0x4500000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
-        leafCollector.Leafs.Count.Should().Be(3);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(3));
     }
 
 
@@ -156,27 +152,27 @@ public class RangeQueryVisitorTests
             "0x1320000000000000000000000000000000000000000000000000000000000000",
         ];
 
-        var stateTree = new StateTree();
-        var random = new Random(0);
-        foreach (var path in paths)
+        StateTree stateTree = new();
+        Random random = new(0);
+        foreach (string path in paths)
         {
             stateTree.Set(new Hash256(path), TestItem.GenerateRandomAccount(random));
         }
         stateTree.Commit();
 
-        var startHash = new Hash256("0x1140000000000000000000000000000000000000000000000000000000000000");
-        var limitHash = new Hash256("0x1235000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0x1140000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0x1235000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
 
-        leafCollector.Leafs.Count.Should().Be(4);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(4));
 
         using ArrayPoolList<byte[]> proofs = visitor.GetProofs();
-        proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
+        Assert.That(proofs.Count, Is.EqualTo(6)); // Need to make sure `0x11` is included
 
-        var proofHashes = proofs.Select(static (rlp) => Keccak.Compute(rlp)).ToHashSet();
+        HashSet<Hash256> proofHashes = proofs.Select(static (rlp) => Keccak.Compute(rlp)).ToHashSet();
         foreach (Hash256 proofHash in proofHashes)
         {
             Console.Out.WriteLine(proofHash);
@@ -192,9 +188,9 @@ public class RangeQueryVisitorTests
             "0xfbd8c8f3cd78599b87fd3ab0cfe127c5b2d488cb913aeec5b80230668fed45c8"
         ];
 
-        foreach (var proofHashStr in proofHashStrs)
+        foreach (string proofHashStr in proofHashStrs)
         {
-            proofHashes.Contains(new Hash256(Bytes.FromHexString(proofHashStr))).Should().BeTrue();
+            Assert.That(proofHashes.Contains(new Hash256(Bytes.FromHexString(proofHashStr))), Is.True);
         }
     }
 
@@ -202,24 +198,27 @@ public class RangeQueryVisitorTests
     [Test]
     public void StorageRangeFetchVisitor()
     {
-        TestRawTrieStore store = new TestRawTrieStore(new MemDb());
+        TestRawTrieStore store = new(new MemDb());
         (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, leafCollector);
         inputStateTree.Accept(visitor, inputStateTree.RootHash, CreateVisitingOptions(), storageAddr: account);
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary((it) => it.Item1, (it) => it.Item2);
-        nodes.Count.Should().Be(6);
+        Assert.That(nodes.Count, Is.EqualTo(6));
 
         int k = 0;
-        nodes.Should().AllSatisfy(pair => pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k++ + 0].SlotRlpValue));
+        foreach (KeyValuePair<ValueHash256, byte[]?> pair in nodes)
+        {
+            Assert.That(pair.Value, Is.EqualTo(TestItem.Tree.SlotsWithPaths[k++ + 0].SlotRlpValue));
+        }
     }
 
     public class RlpCollector : RangeQueryVisitor.ILeafValueCollector
     {
         public ArrayPoolList<(ValueHash256, byte[]?)> Leafs { get; } = new(0);
 
-        public int Collect(in ValueHash256 path, SpanSource value)
+        public int Collect(in ValueHash256 path, CappedArray<byte> value)
         {
             Leafs.Add((path, value.ToArray()));
             return 32 + Rlp.LengthOfByteString(value.Length, 0);

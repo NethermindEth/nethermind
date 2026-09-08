@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Services;
 
+[Parallelizable(ParallelScope.All)]
 public class HealthHintServiceTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

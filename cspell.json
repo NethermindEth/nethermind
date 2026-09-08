@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "allowCompoundWords": true,
+  "ignoreRandomStrings": true,
+  "unknownWords": "report-common-typos",
+  "ignorePaths": [
+    ".gitignore",
+    "**/*.json",
+    "**/*.zst",
+    "**/artifacts/**",
+    "**/Makefile/**",
+    "**/node_modules/**",
+    "**/wwwroot/**",
+    "src/bench_precompiles",
+    "src/Nethermind/BenchmarkDotNet.Artifacts/**",
+    "src/Nethermind/Chains/**",
+    "src/Nethermind/Nethermind.Runner/configs/**",
+    "src/Nethermind/TestResults/**",
+    "src/tests"
+  ],
+  "words": [
+    "Expresso"
+  ]
+}

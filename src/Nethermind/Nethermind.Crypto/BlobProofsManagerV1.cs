@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -15,9 +14,12 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
     {
-        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobs.Length][], new byte[blobs.Length * Ckzg.CellsPerExtBlob][], ProofVersion.V1);
+        int blobCount = blobs.Length;
+        int proofCount = blobCount * Ckzg.CellsPerExtBlob;
 
-        for (int i = 0; i < blobs.Length; i++)
+        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobCount][], new byte[proofCount][], ProofVersion.V1);
+
+        for (int i = 0; i < blobCount; i++)
         {
             result.Commitments[i] = new byte[Ckzg.BytesPerCommitment];
             for (int j = 0; j < Ckzg.CellsPerExtBlob; j++)
@@ -48,26 +50,65 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
     {
-        if (wrapper.Blobs.Length != wrapper.Commitments.Length || wrapper.Blobs.Length * Ckzg.CellsPerExtBlob != wrapper.Proofs.Length)
+        if (wrapper.Blobs is null || wrapper.Commitments is null || wrapper.Proofs is null)
         {
             return false;
         }
 
-        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        int blobCount = wrapper.Commitments.Length;
+        int proofCount = blobCount * Ckzg.CellsPerExtBlob;
+
+        if ((wrapper.Blobs.Length != 0 && blobCount != wrapper.Blobs.Length) || proofCount != wrapper.Proofs.Length)
         {
-            if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
+            return false;
+        }
+
+        for (int i = 0; i < blobCount; i++)
+        {
+            if (wrapper.Commitments[i] is not { Length: Ckzg.BytesPerCommitment })
+            {
+                return false;
+            }
+
+            if (wrapper.Blobs.Length != 0)
+            {
+                if (wrapper.Blobs[i] is null)
+                {
+                    return false;
+                }
+
+                int blobLength = wrapper.Blobs[i].Length;
+                if (blobLength != 0 && blobLength != Ckzg.BytesPerBlob)
+                {
+                    return false;
+                }
+            }
+        }
+
+        for (int i = 0; i < proofCount; i++)
+        {
+            if (wrapper.Proofs[i] is not { Length: Ckzg.BytesPerProof })
             {
                 return false;
             }
         }
 
-        for (int i = 0; i < wrapper.Proofs.Length; i++)
+        if (wrapper.Cells is null)
         {
-            if (wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
+            return wrapper.CellMask.IsEmpty;
+        }
+
+        if (wrapper.CellMask.IsEmpty || wrapper.Cells.Length != blobCount * wrapper.CellMask.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < wrapper.Cells.Length; i++)
+        {
+            if (wrapper.Cells[i] is not { Length: Ckzg.BytesPerCell })
             {
                 return false;
             }
-
         }
 
         return true;
@@ -75,19 +116,37 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
-        if (wrapper.Version is not ProofVersion.V1)
+        if (wrapper.Version is not ProofVersion.V1 || !ValidateLengths(wrapper))
         {
             return false;
         }
 
-        using ArrayPoolSpan<byte> cells = new(wrapper.Blobs.Length * Ckzg.BytesPerBlob * 2);
-        using ArrayPoolSpan<byte> flatCommitments = new(wrapper.Blobs.Length * Ckzg.BytesPerCommitment * Ckzg.CellsPerExtBlob);
-        using ArrayPoolSpan<byte> flatProofs = new(wrapper.Blobs.Length * Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob);
-        using ArrayPoolSpan<ulong> indices = new(wrapper.Blobs.Length * Ckzg.CellsPerExtBlob);
+        if (wrapper.Commitments.Length == 0)
+        {
+            return wrapper.Blobs.Length == 0
+                && wrapper.Proofs.Length == 0
+                && wrapper.Cells is null
+                && wrapper.CellMask.IsEmpty;
+        }
+
+        if (!wrapper.HasFullBlobs())
+        {
+            return wrapper.Cells is not null
+                && !wrapper.CellMask.IsEmpty
+                && BlobCellsHelper.ValidateCells(wrapper);
+        }
+
+        int blobCount = wrapper.Blobs.Length;
+        int cellCount = blobCount * Ckzg.CellsPerExtBlob;
+
+        using ArrayPoolSpan<byte> cells = new(blobCount * Ckzg.BytesPerBlob * 2);
+        using ArrayPoolSpan<byte> flatCommitments = new(cellCount * Ckzg.BytesPerCommitment);
+        using ArrayPoolSpan<byte> flatProofs = new(cellCount * Ckzg.BytesPerProof);
+        using ArrayPoolSpan<ulong> indices = new(cellCount);
 
         try
         {
-            for (int i = 0; i < wrapper.Blobs.Length; i++)
+            for (int i = 0; i < blobCount; i++)
             {
 
                 Ckzg.ComputeCells(cells.Slice(i * Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob, Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob), wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
@@ -103,7 +162,7 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
             }
 
             return Ckzg.VerifyCellKzgProofBatch(flatCommitments, indices, cells,
-                flatProofs, wrapper.Blobs.Length * Ckzg.CellsPerExtBlob, KzgPolynomialCommitments.CkzgSetup);
+                flatProofs, cellCount, KzgPolynomialCommitments.CkzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

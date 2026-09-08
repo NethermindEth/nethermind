@@ -3,37 +3,30 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
-using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class XdcBlockHeader : BlockHeader, IHashResolver
+
+public class XdcBlockHeader(
+    Hash256 parentHash,
+    Hash256 unclesHash,
+    Address beneficiary,
+    in UInt256 difficulty,
+    ulong number,
+    ulong gasLimit,
+    ulong timestamp,
+    byte[] extraData,
+    bool isSelfMined = false
+) : BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData), IHashResolver
 {
-    private static XdcHeaderDecoder _headerDecoder = new();
+    private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
-    public XdcBlockHeader(
-        Hash256 parentHash,
-        Hash256 unclesHash,
-        Address beneficiary,
-        in UInt256 difficulty,
-        long number,
-        long gasLimit,
-        ulong timestamp,
-        byte[] extraData)
-        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
-    {
-    }
 
     public byte[]? Validators { get; set; }
 
@@ -44,7 +37,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_validatorsAddress is not null)
                 return _validatorsAddress;
-            _validatorsAddress = ExtractAddresses(Validators);
+            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators)?.ToImmutableArray();
             return _validatorsAddress;
         }
         set { _validatorsAddress = value; }
@@ -59,83 +52,142 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_penaltiesAddress is not null)
                 return _penaltiesAddress;
-            _penaltiesAddress = ExtractAddresses(Penalties);
+            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties)?.ToImmutableArray();
             return _penaltiesAddress;
         }
         set { _penaltiesAddress = value; }
     }
 
-    internal Address[] GetMasterNodesFromEpochSwitchHeader()
-    {
-        if (Validators == null)
-            throw new InvalidOperationException("Header has no validators.");
-        Address[] masterNodes = new Address[Validators.Length / 20];
-        for (int i = 0; i < masterNodes.Length; i++)
-        {
-            masterNodes[i] = new Address(Validators.AsSpan(i * 20, 20));
-        }
-        return masterNodes;
-    }
-
-    private ExtraFieldsV2 _extraFieldsV2;
+    private ExtraFieldsV2? _extraFieldsV2;
     /// <summary>
-    /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information. 
+    /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information.
     /// </summary>
     public ExtraFieldsV2? ExtraConsensusData
     {
         get
         {
+            if (_extraFieldsV2 is not null)
+            {
+                return _extraFieldsV2;
+            }
+
             if (ExtraData is null || ExtraData.Length == 0)
                 return null;
 
-            if (_extraFieldsV2 == null)
-            {
-                //Check V2 consensus version in ExtraData field.
-                if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
-                    return null;
-                Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(ExtraData.AsSpan(1));
-                _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
-            }
+            //Check V2 consensus version in ExtraData field.
+            if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
+                return null;
+            RlpReader reader = new(ExtraData.AsSpan(1));
+            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref reader);
             return _extraFieldsV2;
         }
-        set { _extraFieldsV2 = value; }
+        internal set
+        {
+            _extraFieldsV2 = value;
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
+        }
     }
 
-    public bool IsEpochSwitch(IXdcReleaseSpec spec)
-    {
-        if (spec.SwitchBlock == this.Number)
-        {
-            return true;
-        }
-        ExtraFieldsV2? extraFields = ExtraConsensusData;
-        if (extraFields is null)
-        {
-            //Should this throw instead?
-            return false;
-        }
-        ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength;
+    public bool IsSelfMined { get; } = isSelfMined;
 
-        return parentRound < epochStart;
+    internal XdcProcessedRewards? ProcessedRewards { get; set; }
+
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
+    {
+        KeccakRlpWriter writer = new();
+        _headerDecoder.Encode(ref writer, this, behaviors);
+        return writer.GetHash();
     }
 
-    private static ImmutableArray<Address>? ExtractAddresses(byte[]? data)
+    /// <inheritdoc />
+    public override BlockHeader CreateSimulatedChild(ulong timestamp)
     {
-        if (data is null || data.Length % Address.Size != 0)
-            return null;
-
-        Address[] addresses = new Address[data.Length / Address.Size];
-        for (int i = 0; i < addresses.Length; i++)
+        Hash256? requestsHash = RequestsHash;
+        return new XdcBlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            IsSelfMined)
         {
-            addresses[i] = new Address(data.AsSpan(i * Address.Size, Address.Size));
-        }
-        return addresses.ToImmutableArray();
+            MixHash = Hash256.Zero,
+            RequestsHash = requestsHash,
+        };
     }
 
-    public ValueHash256 CalculateHash()
+    internal virtual XdcBlockHeader CreateHeaderForProcessing()
     {
-        KeccakRlpStream rlpStream = new KeccakRlpStream();
-        _headerDecoder.Encode(rlpStream, this);
-        return rlpStream.GetHash();
+        XdcBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined);
+
+        CopyFieldsForProcessing(header);
+
+        return header;
+    }
+
+    protected void CopyFieldsForProcessing(XdcBlockHeader header)
+    {
+        header.Bloom = Bloom.Empty;
+        header.Author = Author;
+        header.Hash = Hash;
+        header.MixHash = MixHash;
+        header.Nonce = Nonce;
+        header.TxRoot = TxRoot;
+        header.TotalDifficulty = TotalDifficulty;
+        header.ReceiptsRoot = ReceiptsRoot;
+        header.BaseFeePerGas = BaseFeePerGas;
+        header.WithdrawalsRoot = WithdrawalsRoot;
+        header.RequestsHash = RequestsHash;
+        header.IsPostMerge = IsPostMerge;
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        header.ExcessBlobGas = ExcessBlobGas;
+        header.BlobGasUsed = BlobGasUsed;
+        header.Validator = Validator;
+        header.Validators = Validators;
+        header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
+    }
+
+    public static XdcBlockHeader FromBlockHeader(BlockHeader src)
+    {
+        XdcBlockHeader x = new(
+            src.ParentHash,
+            src.UnclesHash,
+            src.Beneficiary,
+            src.Difficulty,
+            src.Number,
+            src.GasLimit,
+            src.Timestamp,
+            src.ExtraData)
+        {
+            Bloom = src.Bloom ?? Bloom.Empty,
+            Hash = src.Hash,
+            MixHash = src.MixHash,
+            Nonce = src.Nonce,
+            TxRoot = src.TxRoot,
+            TotalDifficulty = src.TotalDifficulty,
+            ReceiptsRoot = src.ReceiptsRoot,
+            BaseFeePerGas = src.BaseFeePerGas,
+            WithdrawalsRoot = src.WithdrawalsRoot,
+            RequestsHash = src.RequestsHash,
+            IsPostMerge = src.IsPostMerge,
+            ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
+            ExcessBlobGas = src.ExcessBlobGas,
+            BlobGasUsed = src.BlobGasUsed,
+        };
+
+        return x;
     }
 }

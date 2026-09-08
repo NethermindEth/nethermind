@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Serialization.Json;
@@ -12,10 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStore
     {
-        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace)
-        {
-            return ReturnActionsRecursively(txTrace, txTrace.Action);
-        }
+        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace) => ReturnActionsRecursively(txTrace, txTrace.Action);
 
         public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
         {
@@ -67,14 +65,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public Hash256 BlockHash { get; set; }
 
-        [JsonConverter(typeof(LongRawJsonConverter))]
-        public long BlockNumber { get; set; }
+        [JsonConverter(typeof(ULongRawJsonConverter))]
+        public ulong BlockNumber { get; set; }
 
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }
 
-        public int[] TraceAddress { get; set; }
+        public CappedArray<int> TraceAddress { get; set; } = default;
 
         public Hash256 TransactionHash { get; set; }
 

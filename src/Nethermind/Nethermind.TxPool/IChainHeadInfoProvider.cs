@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -16,9 +15,9 @@ namespace Nethermind.TxPool
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        long HeadNumber { get; }
+        ulong HeadNumber { get; }
 
-        long? BlockGasLimit { get; }
+        ulong? BlockGasLimit { get; }
 
         UInt256 CurrentBaseFee { get; }
 

@@ -11,10 +11,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private ValidationResult _always;
 
-        public TransactionValidatorBuilder()
-        {
-            TestObject = Substitute.For<ITxValidator>();
-        }
+        public TransactionValidatorBuilder() => TestObject = Substitute.For<ITxValidator>();
 
         public TransactionValidatorBuilder ThatAlwaysReturnsFalse
         {
@@ -37,7 +34,12 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>()).Returns(_always);
+            TestObjectInternal.IsWellFormed(
+                Arg.Any<Transaction>(),
+                Arg.Any<IReleaseSpec>(),
+                Arg.Any<ulong>(),
+                Arg.Any<TxValidationOptions>()).Returns(_always);
             base.BeforeReturn();
         }
     }

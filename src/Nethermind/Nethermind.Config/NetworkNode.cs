@@ -1,70 +1,104 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Net;
+#nullable enable
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Enr;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
 
-namespace Nethermind.Config
+namespace Nethermind.Config;
+
+/// <summary>
+/// Node data for storage and configuration only.
+/// </summary>
+public class NetworkNode
 {
-    /// <summary>
-    /// Node data for storage and configuration only.
-    /// </summary>
-    public class NetworkNode
+    private readonly Enode? _enode;
+    private readonly NodeRecord? _enr;
+
+    [MemberNotNullWhen(true, nameof(Enode))]
+    [MemberNotNullWhen(false, nameof(Enr))]
+    public bool IsEnode => _enode is not null;
+
+    [MemberNotNullWhen(true, nameof(Enr))]
+    [MemberNotNullWhen(false, nameof(Enode))]
+    public bool IsEnr => _enr is not null;
+
+    public NetworkNode(string nodeString)
     {
-        private readonly Enode _enode;
-
-        public NetworkNode(string enode)
+        if (Enode.IsEnode(nodeString, out _))
         {
-            //enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303
-            _enode = new Enode(enode);
+            _enode = new Enode(nodeString);
+        }
+        else
+        {
+            _enr = NodeRecord.FromEnrString(nodeString);
+        }
+    }
+
+    public static NetworkNode[] ParseNodes(string? nodeRecords, ILogger logger)
+    {
+        if (nodeRecords is null)
+        {
+            return [];
         }
 
-        public static NetworkNode[] ParseNodes(string enodesString, ILogger logger)
+        string[] nodeStrings = nodeRecords.Split(",", StringSplitOptions.RemoveEmptyEntries);
+
+        return ParseNodes(nodeStrings, logger);
+    }
+
+    public static NetworkNode[] ParseNodes(string[]? nodeRecords, ILogger logger)
+    {
+        if (nodeRecords is null)
         {
-            string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
-            if (nodeStrings is null)
+            return [];
+        }
+
+        List<NetworkNode> nodes = new(nodeRecords.Length);
+
+        foreach (string nodeString in nodeRecords)
+        {
+            try
             {
-                return [];
+                nodes.Add(new NetworkNode(nodeString.Trim()));
             }
-
-            List<NetworkNode> nodes = new();
-            foreach (string nodeString in nodeStrings)
+            catch (Exception e)
             {
-                try
-                {
-                    nodes.Add(new NetworkNode(nodeString.Trim()));
-                }
-                catch (Exception e)
-                {
-                    if (logger.IsError) logger.Error($"Could not parse enode data from {nodeString}", e);
-                }
+                if (logger.IsError) logger.Error($"Could not parse enode data from {nodeString}", e);
             }
-
-            return nodes.ToArray();
         }
 
-        public override string ToString() => _enode.ToString();
+        return [.. nodes];
+    }
 
-        public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
-        {
-            _enode = new Enode(publicKey, IPAddress.Parse(ip), port);
-            Reputation = reputation;
-        }
+    public override string ToString() => IsEnode ? Enode.ToString() : Enr.ToString();
 
-        public NetworkNode(Enode enode)
-        {
-            _enode = enode;
-        }
+    public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
+        : this(new Enode(publicKey, IPAddress.Parse(ip), port)) => Reputation = reputation;
 
-        public Enode Enode => _enode;
+    public NetworkNode(Enode enode) => _enode = enode;
 
-        public PublicKey NodeId => _enode.PublicKey;
-        public string Host => _enode.HostIp.ToString();
-        public IPAddress HostIp => _enode.HostIp;
-        public int Port => _enode.Port;
-        public long Reputation { get; set; }
+    public Enode? Enode => _enode;
+
+    public NodeRecord? Enr => _enr;
+
+    public PublicKey NodeId => IsEnode ? Enode.PublicKey : GetEnrPublicKey();
+    public string Host => IsEnode ? Enode.HostIp.ToString() : HostIp.ToString();
+    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.Ip ?? IPAddress.None;
+    public int Port => IsEnode ? Enode.Port : Enr!.TcpPort ?? 0;
+    public int DiscoveryPort => IsEnode ? Enode.DiscoveryPort : Enr!.DiscoveryPort ?? 0;
+    public long Reputation { get; set; }
+
+    private PublicKey GetEnrPublicKey()
+    {
+        CompressedPublicKey publicKey = Enr!.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)
+            ?? throw new InvalidOperationException("ENR is missing secp256k1 public key.");
+
+        return publicKey.Decompress();
     }
 }

@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
@@ -10,40 +13,46 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 [Parallelizable(ParallelScope.All)]
 public class BlockRangeUpdateMessageSerializerTests
 {
-    private static object[] _testData =
+    private static IEnumerable<TestCaseData> _testData =
     [
-        new object[]
-        {
+        new TestCaseData(
             new BlockRangeUpdateMessage
             {
                 EarliestBlock = 0,
                 LatestBlock = 0,
                 LatestBlockHash = Hash256.Zero
             },
-            "e38080a00000000000000000000000000000000000000000000000000000000000000000"
-        },
-        new object[]
-        {
+            "e38080a00000000000000000000000000000000000000000000000000000000000000000")
+            .SetName("Zero values"),
+        new TestCaseData(
             new BlockRangeUpdateMessage
             {
                 EarliestBlock = long.MaxValue,
                 LatestBlock = long.MaxValue,
                 LatestBlockHash = new("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
             },
-            "f3887fffffffffffffff887fffffffffffffffa0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        }
+            "f3887fffffffffffffff887fffffffffffffffa0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            .SetName("Max values"),
     ];
 
     [Theory]
     [TestCaseSource(nameof(_testData))]
     public void Roundtrip(BlockRangeUpdateMessage message, string expected)
     {
-        var serializer = new BlockRangeUpdateMessageSerializer();
+        BlockRangeUpdateMessageSerializer serializer = new();
 
         SerializerTester.TestZero(
             serializer,
             message,
             expected
         );
+    }
+
+    [Test]
+    public void Rejects_empty_latest_block_hash()
+    {
+        BlockRangeUpdateMessageSerializer serializer = new();
+
+        Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c3808080")), Throws.InstanceOf<RlpException>());
     }
 }

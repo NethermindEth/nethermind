@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException(nameof(_selectionType), _selectionType, "Unknown selection type.");
             }
 
             return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);

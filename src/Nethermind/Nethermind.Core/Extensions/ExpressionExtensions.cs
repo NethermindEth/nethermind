@@ -30,14 +30,14 @@ namespace Nethermind.Core.Extensions
         /// </summary>
         public static Action<T, TProperty> GetSetter<T, TProperty>(this Expression<Func<T, TProperty>> expression)
         {
-            var memberExpression = expression.GetMemberInfo();
+            MemberExpression memberExpression = expression.GetMemberInfo();
             if (memberExpression.Member is PropertyInfo property)
             {
-                var setMethod = property.GetSetMethod() ?? throw new NotSupportedException($"Property {typeof(T).Name}{memberExpression.Member.Name} doesn't have a setter.");
-                var parameterT = Expression.Parameter(typeof(T), "x");
-                var parameterTProperty = Expression.Parameter(typeof(TProperty), "y");
+                MethodInfo setMethod = property.GetSetMethod() ?? throw new NotSupportedException($"Property {typeof(T).Name}{memberExpression.Member.Name} doesn't have a setter.");
+                ParameterExpression parameterT = Expression.Parameter(typeof(T), "x");
+                ParameterExpression parameterTProperty = Expression.Parameter(typeof(TProperty), "y");
 
-                var newExpression =
+                Expression<Action<T, TProperty>> newExpression =
                     Expression.Lambda<Action<T, TProperty>>(
                         Expression.Call(parameterT, setMethod, parameterTProperty),
                         parameterT,
@@ -48,7 +48,37 @@ namespace Nethermind.Core.Extensions
             }
             else
             {
-                // TODO: Add fields
+                if (memberExpression.Member is FieldInfo field)
+                {
+                    if (field.IsStatic)
+                    {
+                        throw new NotSupportedException($"Member {typeof(T).Name}{memberExpression.Member.Name} is a static field.");
+                    }
+
+                    if (field.IsInitOnly || field.IsLiteral)
+                    {
+                        throw new NotSupportedException($"Member {typeof(T).Name}{memberExpression.Member.Name} is a readonly or const field.");
+                    }
+
+                    ParameterExpression parameterT = Expression.Parameter(typeof(T), "x");
+                    ParameterExpression parameterTProperty = Expression.Parameter(typeof(TProperty), "y");
+
+                    MemberExpression fieldExpr = Expression.Field(parameterT, field);
+                    Expression valueExpr = field.FieldType == typeof(TProperty)
+                        ? (Expression)parameterTProperty
+                        : Expression.Convert(parameterTProperty, field.FieldType);
+
+                    BinaryExpression assignExpr = Expression.Assign(fieldExpr, valueExpr);
+
+                    Expression<Action<T, TProperty>> setter = Expression.Lambda<Action<T, TProperty>>(
+                        assignExpr,
+                        parameterT,
+                        parameterTProperty
+                    );
+
+                    return setter.Compile();
+                }
+
                 throw new NotSupportedException($"Member {typeof(T).Name}{memberExpression.Member.Name} is not a property.");
             }
         }

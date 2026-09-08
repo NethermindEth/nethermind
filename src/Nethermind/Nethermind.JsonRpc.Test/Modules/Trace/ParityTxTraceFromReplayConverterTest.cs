@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -38,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0, 0 }
             };
@@ -49,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };
@@ -91,11 +92,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Todo(Improve.Refactor, "Different action serializers")]
         public void Can_serialize_reward()
         {
-            Block block = Build.A.Block.WithNumber(long.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
+            Block block = Build.A.Block.WithNumber(ulong.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
-            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether());
+            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether);
             blockTracer.EndTxTrace();
             blockTracer.ReportReward(TestItem.AddressA, "block", UInt256.One);
 
@@ -115,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };
@@ -156,11 +157,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test, Ignore("Reenable it after running compare on PoW chains")]
         public void Can_serialize_reward_state_only()
         {
-            Block block = Build.A.Block.WithNumber(long.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
+            Block block = Build.A.Block.WithNumber(ulong.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
-            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether());
+            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether);
             blockTracer.EndTxTrace();
             blockTracer.ReportReward(TestItem.AddressA, "block", UInt256.One);
 

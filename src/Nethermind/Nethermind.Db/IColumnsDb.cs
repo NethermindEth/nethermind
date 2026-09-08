@@ -7,16 +7,24 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IColumnsDb<TKey> : IDbMeta, IDisposable
+    public interface IColumnsDb<TKey> : IDbMeta, IDisposable where TKey : notnull
     {
         IDb GetColumnDb(TKey key);
         IEnumerable<TKey> ColumnKeys { get; }
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         IColumnsWriteBatch<TKey> StartWriteBatch();
+        IColumnDbSnapshot<TKey> CreateSnapshot();
     }
 
-    public interface IColumnsWriteBatch<in TKey> : IDisposable
+    public interface IColumnsWriteBatch<in TKey> : IDisposable where TKey : notnull
     {
         IWriteBatch GetColumnBatch(TKey key);
+        void Clear();
+    }
+
+
+    public interface IColumnDbSnapshot<in TKey> : IDisposable where TKey : notnull
+    {
+        IReadOnlyKeyValueStore GetColumn(TKey key);
     }
 }

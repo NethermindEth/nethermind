@@ -18,10 +18,10 @@ namespace Nethermind.JsonRpc.Benchmark
 
         public UInt256ToHexStringBenchmark()
         {
-            var a = new UInt256(Bytes.FromHexString("0xA0A1A2A3A4A5A6A7B0B1B2B3B4B5B6B7C0C1C2C3C4C5C6C7D0D1D2D3D4D5D6D7").AsSpan());
-            var b = new UInt256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000").AsSpan());
-            var c = new UInt256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001").AsSpan());
-            var d = new UInt256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000aaa").AsSpan());
+            UInt256 a = new(Bytes.FromHexString("0xA0A1A2A3A4A5A6A7B0B1B2B3B4B5B6B7C0C1C2C3C4C5C6C7D0D1D2D3D4D5D6D7").AsSpan());
+            UInt256 b = new(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000").AsSpan());
+            UInt256 c = new(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001").AsSpan());
+            UInt256 d = new(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000aaa").AsSpan());
 
             _scenarios[0] = a;
             _scenarios[1] = b;
@@ -50,15 +50,9 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [Benchmark]
-        public string Improved()
-        {
-            return _scenarios[ScenarioIndex].ToHexString(true);
-        }
+        public string Improved() => _scenarios[ScenarioIndex].ToHexString(true);
 
         [Benchmark(Baseline = true)]
-        public string Current()
-        {
-            return _scenarios[ScenarioIndex].ToHexString(true);
-        }
+        public string Current() => _scenarios[ScenarioIndex].ToHexString(true);
     }
 }

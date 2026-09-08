@@ -3,32 +3,31 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
+    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>, IHash64bit<ValueHash256>
     {
-        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
-        // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+        public static GenericEqualityComparer<ValueHash256> EqualityComparer { get; } = new();
 
         private readonly Vector256<byte> _bytes;
 
         public const int MemorySize = 32;
         public static int Length => MemorySize;
 
+        [JsonIgnore]
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
+        [JsonIgnore]
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
         public static implicit operator ValueHash256?(Hash256? keccak) => keccak?.ValueHash256;
@@ -58,14 +57,28 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
-        public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
-        public bool Equals(in ValueHash256 other) => _bytes.Equals(other._bytes);
+        public bool Equals(ValueHash256 other) => BytesEqual(in _bytes, in other._bytes);
+        public bool Equals(in ValueHash256 other) => BytesEqual(in _bytes, in other._bytes);
 
-        public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
+        public bool Equals(Hash256? other) => other is null ? IsZero : BytesEqual(in _bytes, in other.ValueHash256._bytes);
 
-        public override int GetHashCode() => GetChainedHashCode(s_instanceRandom);
+        /// <remarks>Whole-word rather than <see cref="Vector256{T}"/> comparison: the guest build has no
+        /// SIMD behind the vector compare, where ILC expands it to a byte-at-a-time element loop.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool BytesEqual(in Vector256<byte> a, in Vector256<byte> b)
+            => Extensions.Bytes.AreEqual32(
+                ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in a)),
+                ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in b)));
 
-        public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
+        public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
+
+        public long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetChainedHashCode(uint previousHash) => (int)BitOperations.Crc32C(previousHash, (uint)Bytes.FastHash());
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetChainedHashCode(ulong previousHash) => (int)BitOperations.Crc32C((uint)previousHash, (previousHash & ~(ulong)uint.MaxValue) | (uint)Bytes.FastHash());
 
         public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 
@@ -92,17 +105,17 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
-        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : a.ValueHash256._bytes == b._bytes;
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => b.Equals(a);
         public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
         public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
         public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
-        public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
-        public Hash256 ToHash256() => new Hash256(this);
-        private bool IsZero => _bytes == default;
+        public UInt256 ToUInt256(bool isBigEndian = true) => new(Bytes, isBigEndian: isBigEndian);
+        public Hash256 ToHash256() => new(this);
+        private bool IsZero => Extensions.Bytes.IsZero32(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>, IHash64bit<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -112,6 +125,8 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
+        public bool Equals(in Hash256AsKey other) => Equals(_key, other._key);
 
         public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
@@ -128,19 +143,18 @@ namespace Nethermind.Core.Crypto
 
         private readonly ValueHash256 _hash256;
 
-        [ThreadStatic] private static byte[]? _threadStaticBuffer;
+        [ThreadStatic]
+        private static byte[]? _threadStaticBuffer;
 
         public ref readonly ValueHash256 ValueHash256 => ref _hash256;
 
+        [JsonIgnore]
         public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _hash256), 1));
 
         public Hash256(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public Hash256(in ValueHash256 hash256)
-        {
-            _hash256 = hash256;
-        }
+        public Hash256(in ValueHash256 hash256) => _hash256 = hash256;
 
         public Hash256(byte[] bytes)
         {
@@ -191,6 +205,7 @@ namespace Nethermind.Core.Crypto
         public override bool Equals(object? obj) => obj?.GetType() == typeof(Hash256) && Equals((Hash256)obj);
 
         public override int GetHashCode() => _hash256.GetHashCode();
+        internal long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash256)));
 
         public static bool operator ==(Hash256? a, Hash256? b) => a is null ? b is null : b is not null && a._hash256 == b._hash256;
 

@@ -10,33 +10,23 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
     [TestFixture]
     public class Eip8MessagePadTests
     {
-        [Test]
-        public void Adds_at_least_100_bytes()
+        // When NextInt returns 0 the pad adds the minimum (100 bytes);
+        // when it returns maxValue-1 it adds the maximum (300 bytes).
+        [TestCase(false, 100, Description = "Adds at least 100 bytes")]
+        [TestCase(true, 300, Description = "Adds at most 300 bytes")]
+        public void Adds_expected_padding(bool useMaxRandom, int expectedPadding)
         {
             byte[] message = { 1 };
             int lengthBeforePadding = message.Length;
 
-            TestRandom testRandom = new(static i => 0, static i => new byte[i]);
+            TestRandom testRandom = useMaxRandom
+                ? new(static i => i - 1, static i => new byte[i])
+                : new TestRandom(static i => 0, static i => new byte[i]);
 
             Eip8MessagePad pad = new(testRandom);
             message = pad.Pad(message);
 
-            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + 100), "incorrect length");
-            Assert.That(message[0], Is.EqualTo(1), "first byte touched");
-        }
-
-        [Test]
-        public void Adds_at_most_300_bytes()
-        {
-            byte[] message = { 1 };
-            int lengthBeforePadding = message.Length;
-
-            TestRandom testRandom = new(static i => i - 1, static i => new byte[i]);
-
-            Eip8MessagePad pad = new(testRandom);
-            message = pad.Pad(message);
-
-            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + 300), "incorrect length");
+            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + expectedPadding), "incorrect length");
             Assert.That(message[0], Is.EqualTo(1), "first byte touched");
         }
     }

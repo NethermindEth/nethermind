@@ -9,5 +9,5 @@ namespace Nethermind.Evm;
 
 public interface IPrecompileProvider
 {
-    public FrozenDictionary<AddressAsKey, PrecompileInfo> GetPrecompiles();
+    public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles();
 }

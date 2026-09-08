@@ -15,6 +15,21 @@ namespace Nethermind.Stats.Model
         Erigon,
         Reth,
         Nimbus,
-        EthereumJS
+        EthereumJS,
+        Ethrex,
+        Bor,
+        Ronin,
+        Scraper,
+        Sentinel,
+        Grails,
+        Sonic,
+        Gait,
+        Diamond,
+        NodeCrawler,
+        Energi,
+        Opera,
+        Gwat,
+        Tempo,
+        Swarm
     }
 }

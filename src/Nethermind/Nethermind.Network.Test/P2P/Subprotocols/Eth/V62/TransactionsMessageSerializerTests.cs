@@ -66,7 +66,7 @@ public class TransactionsMessageSerializerTests
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.TestZero(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
 
     [Test]
@@ -75,8 +75,11 @@ public class TransactionsMessageSerializerTests
         using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
         using TransactionsMessage message2 = new(null);
 
-        _ = message.ToString();
-        _ = message2.ToString();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.ToString(), Does.StartWith(nameof(TransactionsMessage)));
+            Assert.That(message2.ToString(), Does.StartWith(nameof(TransactionsMessage)));
+        }
     }
 
     [TestCaseSource(nameof(GetTransactionMessages))]
@@ -84,17 +87,14 @@ public class TransactionsMessageSerializerTests
     {
         SerializerTester.TestZero(
             new TransactionsMessageSerializer(),
-            transactionsMessage,
-            additionallyExcluding: static (o) =>
-                o.For(static msg => msg.Transactions)
-                    .Exclude(static tx => tx.SenderAddress));
+            transactionsMessage);
         transactionsMessage.Dispose();
     }
 
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_contain_network_form_tx_wrapper(TransactionsMessage transactionsMessage)
     {
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130);
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
         TransactionsMessageSerializer serializer = new();
         serializer.Serialize(buffer, transactionsMessage);
         transactionsMessage.Dispose();

@@ -5,60 +5,68 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch>
     {
         private readonly Lock _syncLock = new();
 
-        private const int AllowedInvalidResponses = 5;
+        internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
+        // Guards the single-peer stale-pivot heuristic below: a pivot update wipes the result log, so a peer
+        // that keeps failing while staying the allocator's favorite would re-trip the same path forever without
+        // ever being punished. Holds the node the heuristic last fired for, cleared by the first useful range
+        // response from anyone; only that same node failing through a second streak is treated as the offender.
+        // Keyed on the node id rather than the PeerInfo instance, which the pool replaces on every reconnect -
+        // a peer that drops and comes back between two streaks would otherwise start over as a first offender.
+        private PublicKey? _stalePivotUpdateTrigger;
 
         private const SnapSyncBatch EmptyBatch = null;
 
-        private readonly ISnapProvider _snapProvider;
+        private readonly ISnapProvider _snapProvider = snapProvider;
 
-        private readonly ILogger _logger;
-        private bool _disposed = false;
-        public override bool IsMultiFeed => true;
-        public override AllocationContexts Contexts => AllocationContexts.Snap;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
 
-        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
+        public async Task<SnapSyncBatch?> PrepareRequest(CancellationToken token)
         {
-            _snapProvider = snapProvider;
-            _logger = logManager.GetClassLogger();
-        }
-
-        public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
-        {
-            try
+            while (!token.IsCancellationRequested)
             {
-                bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
-
-                if (request is null)
+                try
                 {
-                    if (finished)
+                    bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
+
+                    if (request is not null)
                     {
-                        Finish();
+                        return request;
                     }
 
-                    return Task.FromResult(EmptyBatch);
+                    if (finished)
+                    {
+                        _snapProvider.Dispose();
+                        return null;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return EmptyBatch;
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Error when preparing a batch", e);
                 }
 
-                return Task.FromResult(request);
+                await Task.Delay(50, token);
             }
-            catch (Exception e)
-            {
-                _logger.Error("Error when preparing a batch", e);
-                return Task.FromResult(EmptyBatch);
-            }
+
+            return EmptyBatch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
+        public SyncResponseHandlingResult HandleResponse(SnapSyncBatch batch, PeerInfo? peer = null)
         {
             if (batch is null)
             {
@@ -67,6 +75,9 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             AddRangeResult result = AddRangeResult.OK;
+            // A code response carries no AddRangeResult of its own, so it would otherwise read as range success.
+            bool isRangeResult = true;
+            bool responseHandled = false;
 
             try
             {
@@ -80,36 +91,44 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.CodesResponse is not null)
                 {
+                    isRangeResult = false;
                     _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
                 }
                 else if (batch.AccountsToRefreshResponse is not null)
                 {
-                    _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
+                    result = _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
                 }
                 else
                 {
-                    _snapProvider.RetryRequest(batch);
-
                     if (peer is null)
                     {
                         return SyncResponseHandlingResult.NotAssigned;
                     }
-                    else
-                    {
-                        _logger.Trace($"SNAP - timeout {peer}");
-                        return SyncResponseHandlingResult.LesserQuality;
-                    }
+
+                    _logger.Trace($"SNAP - timeout {peer}");
+                    return SyncResponseHandlingResult.LesserQuality;
                 }
+
+                responseHandled = true;
             }
             finally
             {
+                // The one release of the request the scheduler handed out. It must run after the handler,
+                // or IsSnapGetRangesFinished could see empty queues and a zero count mid-scheduling.
+                _snapProvider.ReleaseRequest(batch, responseHandled);
                 batch.Dispose();
             }
 
-            return AnalyzeResponsePerPeer(result, peer);
+            return AnalyzeResponsePerPeer(result, peer, isRangeResult);
         }
 
-        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer) =>
+            AnalyzeResponsePerPeer(result, peer, isRangeResult: true);
+
+        /// <param name="isRangeResult">Whether <paramref name="result"/> reflects range work. A code response
+        /// carries no <see cref="AddRangeResult"/> of its own and reads as OK even when it matched nothing, so it
+        /// must not count as the useful progress that clears the repeat-offender guard.</param>
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer, bool isRangeResult)
         {
             if (peer is null)
             {
@@ -135,6 +154,14 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (result == AddRangeResult.OK)
             {
+                if (isRangeResult)
+                {
+                    lock (_syncLock)
+                    {
+                        _stalePivotUpdateTrigger = null;
+                    }
+                }
+
                 return SyncResponseHandlingResult.OK;
             }
             else
@@ -142,10 +169,23 @@ namespace Nethermind.Synchronization.SnapSync
                 int allLastSuccess = 0;
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
+                bool seenOtherPeer = false;
 
                 lock (_syncLock)
                 {
-                    foreach (var item in _resultLog)
+                    // Scan the whole window first so the single-peer guard cannot fire
+                    // prematurely when a healthy peer's entries sit further back in the log
+                    // than the analyzed peer's recent failures.
+                    foreach ((PeerInfo peer, AddRangeResult _) probe in _resultLog)
+                    {
+                        if (probe.peer != peer)
+                        {
+                            seenOtherPeer = true;
+                            break;
+                        }
+                    }
+
+                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
                     {
                         if (item.result == AddRangeResult.OK)
                         {
@@ -166,6 +206,31 @@ namespace Nethermind.Synchronization.SnapSync
 
                                 if (peerLastFailures > AllowedInvalidResponses)
                                 {
+                                    // With a single peer in the entire window and no successes, the
+                                    // failure stream is more likely a stale pivot than a misbehaving
+                                    // peer — punishing the only available peer would stall sync. But when
+                                    // the pivot was already updated for this exact reason and nothing has
+                                    // succeeded since, the peer itself is the problem: without a punishment
+                                    // the allocator keeps picking the same fastest-but-useless peer and the
+                                    // heuristic loops forever on a wiped log.
+                                    if (!seenOtherPeer && allLastSuccess == 0)
+                                    {
+                                        PublicKey? peerNodeId = peer.SyncPeer?.Node?.Id;
+                                        bool repeatOffender = peerNodeId is not null && peerNodeId.Equals(_stalePivotUpdateTrigger);
+                                        _stalePivotUpdateTrigger = peerNodeId;
+                                        _snapProvider.UpdatePivot();
+
+                                        _resultLog.Clear();
+
+                                        if (repeatOffender)
+                                        {
+                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
+                                            return SyncResponseHandlingResult.LesserQuality;
+                                        }
+
+                                        break;
+                                    }
+
                                     if (allLastFailures == peerLastFailures)
                                     {
                                         _logger.Trace($"SNAP - peer to be punished:{peer}");
@@ -194,34 +259,5 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.OK;
             }
         }
-
-        public void Dispose()
-        {
-            _disposed = true;
-        }
-
-        public override void SyncModeSelectorOnChanged(SyncMode current)
-        {
-            if (_disposed) return;
-            if (CurrentState == SyncFeedState.Dormant)
-            {
-                if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
-                {
-                    if (_snapProvider.CanSync())
-                    {
-                        Activate();
-                    }
-                }
-            }
-        }
-
-        public override void Finish()
-        {
-            _snapProvider.Dispose();
-            base.Finish();
-        }
-
-        public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
-        public override string FeedName => nameof(SnapSyncFeed);
     }
 }

@@ -20,9 +20,11 @@ namespace Nethermind.Blockchain
 
             try
             {
-                long levelNumber = visitor.StartLevelInclusive;
-                long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
-                for (long i = 0; i < blocksToVisit; i++)
+                if (visitor.EndLevelExclusive <= visitor.StartLevelInclusive) return;
+
+                ulong levelNumber = visitor.StartLevelInclusive;
+                ulong blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
+                for (ulong i = 0; i < blocksToVisit; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
@@ -65,9 +67,9 @@ namespace Nethermind.Blockchain
                         {
                             if (visitor.CalculateTotalDifficultyIfMissing && (block.TotalDifficulty is null || block.TotalDifficulty == 0))
                             {
-                                if (_logger.IsTrace) _logger.Trace($"Setting TD for block {block.Number}. Old TD: {block.TotalDifficulty}.");
+                                if (Logger.IsTrace) Logger.Trace($"Setting TD for block {block.Number}. Old TD: {block.TotalDifficulty}.");
                                 SetTotalDifficulty(block.Header);
-                                if (_logger.IsTrace) _logger.Trace($"Setting TD for block {block.Number}. New TD: {block.TotalDifficulty}.");
+                                if (Logger.IsTrace) Logger.Trace($"Setting TD for block {block.Number}. New TD: {block.TotalDifficulty}.");
                             }
                             if (await VisitBlock(visitor, block, cancellationToken)) break;
                         }
@@ -86,7 +88,7 @@ namespace Nethermind.Blockchain
 
                 string resultWord = cancellationToken.IsCancellationRequested ? "Canceled" : "Completed";
 
-                if (_logger.IsDebug) _logger.Debug($"{resultWord} visiting blocks in DB at level {levelNumber} - best known {BestKnownNumber}");
+                if (Logger.IsDebug) Logger.Debug($"{resultWord} visiting blocks in DB at level {levelNumber} - best known {BestKnownNumber}");
             }
             finally
             {

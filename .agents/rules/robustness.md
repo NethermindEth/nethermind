@@ -1,0 +1,27 @@
+# C#/.NET Robustness
+
+Patterns that cause silent failures, resource leaks, or deadlocks in production. These apply to all C# code in the repo.
+
+## Async
+
+- **Never** use `async void` — exceptions are silently swallowed. Use `async Task`.
+- **Never** call `.Result` or `.Wait()` on a `Task` inside an `async` method — deadlock or thread-pool starvation. Use `await`.
+- A missing `await` on an async call silently discards the result. Only omit `await` when fire-and-forget is the **documented** intent.
+- Async methods that perform I/O or network calls must accept a `CancellationToken` — otherwise they're uncooperative with graceful shutdown.
+
+## Resource management
+
+- `IDisposable` / `IAsyncDisposable` objects (especially `IDb`, streams, channels) must be wrapped in `using` — otherwise they leak.
+- Except in zkVM guest entry-point code and assemblies listed in `BFLAT_REFS` in [`Nethermind.Stateless.ZiskGuest/Makefile`](../../src/Nethermind/Nethermind.Stateless.ZiskGuest/Makefile), do not add or retain a `try`/`finally` solely to guarantee `ArrayPool<T>.Shared.Return(array)` after an unexpected exception aborts the operation; the abandoned array remains GC-reclaimable. Return rentals normally and before expected failures are handled, retried, or rethrown, retaining an existing `finally` for recovery or other cleanup rather than replacing it with catches solely for `Return`; if code deliberately throws while it owns the array, return it immediately first.
+- Do not generalize this exception to `SafeArrayPool<T>.Shared`, `ArrayPoolDisposableReturn`, `ArrayPoolList<T>`, custom pools, or other `Return`, `Release`, or `Dispose` contracts, which may track ownership, use reference counting, or hold non-GC resources; `using`-based helpers remain permitted. Never return an array that may already have been returned or handed off — a double return silently corrupts the pool.
+- `ReadBytes(n)` allocates a new ref-counted `IByteBuffer`. The method that allocates the buffer owns it; if ownership transfers (e.g. passing to a handler or message), the receiver becomes responsible for calling `Release()` / `SafeRelease()`. Forgetting to release, or releasing after ownership has transferred, are the two most common leak/corruption sources in the networking layer.
+- Never swallow exceptions in an empty `catch` block — at minimum log the exception. Silent failures are the hardest to diagnose on a running node.
+
+## Thread safety
+
+- Shared mutable state (caches, peer tables, chain state) modified from multiple threads must use proper synchronisation — unsynchronised access causes data races and subtle corruption.
+
+## Safety
+
+- `unsafe` blocks must have a comment justifying the safety invariant — reviewers cannot verify correctness without it.
+- Validate data from untrusted sources (P2P peers, RPC callers) before use — a `NullReferenceException` on external input is a crash vector.

@@ -3,20 +3,20 @@
 
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
-internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlpStreamDecoder<ExtraFieldsV2>
+
+internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
 {
-    private QuorumCertificateDecoder _quorumCertificateDecoder = new();
-    public ExtraFieldsV2 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
+    protected override ExtraFieldsV2 DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
+
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
@@ -28,53 +28,37 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public ExtraFieldsV2 Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-            return null;
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        ulong round = rlpStream.DecodeULong();
-        QuorumCertificate? quorumCert = _quorumCertificateDecoder.Decode(rlpStream, rlpBehaviors);
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            rlpStream.Check(endPosition);
-        return new ExtraFieldsV2(round, quorumCert);
-    }
-
-    public Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
-    public void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.CurrentRound);
-        _quorumCertificateDecoder.Encode(stream, item.QuorumCert, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.BlockRound);
+        _quorumCertificateDecoder.Encode(ref writer, item.QuorumCert, rlpBehaviors);
     }
 
-    public int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(ExtraFieldsV2? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;
         int length = _quorumCertificateDecoder.GetLength(item.QuorumCert, rlpBehaviors);
-        return Rlp.LengthOf(item.CurrentRound) + length;
+        return Rlp.LengthOf(item.BlockRound) + length;
     }
 
 }

@@ -5,7 +5,6 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -25,7 +24,7 @@ namespace Nethermind.Wallet.Test
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyA.ToString();
-            test.NodeKeyManager.LoadNodeKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
+            Assert.That(test.NodeKeyManager.LoadNodeKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
 
         [Test]
@@ -38,12 +37,11 @@ namespace Nethermind.Wallet.Test
                 static c => ((SecureString)c[1]).Unsecure() == "p1"
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
-            test.NodeKeyManager.LoadNodeKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
+            Assert.That(test.NodeKeyManager.LoadNodeKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
 
-        [TestCase(null)]
-        [TestCase("testFile")]
-        public void LoadNodeKey_creates_file(string filePath)
+        [Test]
+        public void LoadNodeKey_creates_file([Values(null, "testFile")] string filePath)
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
@@ -52,13 +50,12 @@ namespace Nethermind.Wallet.Test
             filePath = filePath.GetApplicationResourcePath(test.KeyStoreConfig.KeyStoreDirectory);
             test.FileSystem.File.ReadAllBytes(filePath).Returns(TestItem.PrivateKeyA.KeyBytes);
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
-            nodeKey.Should().Be(TestItem.PrivateKeyA);
+            Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
             test.FileSystem.File.Received().WriteAllBytes(filePath, Arg.Is<byte[]>(a => a.SequenceEqual(nodeKey.KeyBytes)));
         }
 
-        [TestCase(null)]
-        [TestCase("testFile")]
-        public void LoadNodeKey_loads_file(string filePath)
+        [Test]
+        public void LoadNodeKey_loads_file([Values(null, "testFile")] string filePath)
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
@@ -67,7 +64,7 @@ namespace Nethermind.Wallet.Test
             test.FileSystem.File.ReadAllBytes(filePath).Returns(TestItem.PrivateKeyA.KeyBytes);
             test.FileSystem.File.Exists(filePath).Returns(true);
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
-            nodeKey.Should().Be(TestItem.PrivateKeyA);
+            Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
             test.FileSystem.File.DidNotReceive().WriteAllBytes(filePath, nodeKey.KeyBytes);
         }
 
@@ -76,7 +73,7 @@ namespace Nethermind.Wallet.Test
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyA.ToString();
-            test.NodeKeyManager.LoadSignerKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
+            Assert.That(test.NodeKeyManager.LoadSignerKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
 
         [Test]
@@ -89,14 +86,14 @@ namespace Nethermind.Wallet.Test
                 static c => ((SecureString)c[1]).Unsecure() == "p1"
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
-            test.NodeKeyManager.LoadSignerKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
+            Assert.That(test.NodeKeyManager.LoadSignerKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
 
         private NodeKeyManagerTest CreateTest()
         {
             IKeyStore keyStore = Substitute.For<IKeyStore>();
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
-            KeyStoreConfig keyStoreConfig = new KeyStoreConfig();
+            KeyStoreConfig keyStoreConfig = new();
             IPasswordProvider passwordProvider = Substitute.For<IPasswordProvider>();
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
 

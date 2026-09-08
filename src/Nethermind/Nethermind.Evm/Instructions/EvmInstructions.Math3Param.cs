@@ -3,41 +3,52 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
-    public interface IOpMath3Param
+    public interface IOpMath3Param : IGasCost
     {
-        virtual static long GasCost => GasCostOf.Mid;
+        static ulong IGasCost.GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpMath.GasCost;
+        if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        if (!stack.EnsureDepth(3)) return EvmExceptionType.StackUnderflow;
+        return Math3ParamCore<TOpMath, TTracingInst>(ref stack);
+    }
 
-        if (c.IsZero)
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math3ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath3Param
+        where TTracingInst : struct, IFlag
+    {
+        ref byte topRef = ref stack.Pop2Peek32BytesUnchecked();
+
+        if (!EvmStack.IsSlotZero(ref topRef))
         {
-            stack.PushZero<TTracingInst>();
-        }
-        else
-        {
+            EvmStack.ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, EvmStack.WordSize), out UInt256 b);
+            EvmStack.ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * EvmStack.WordSize), out UInt256 a);
+            EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         }
 
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
-    StackUnderflow:
-        // Jump forward to be unpredicted by the branch predictor
-        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpAddMod : IOpMath3Param

@@ -8,6 +8,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
@@ -29,7 +30,7 @@ public class EncryptionHandshakeServiceTests
             SerializerInfo.Create(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)))
         );
 
-        _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and epehemeral key for testing
+        _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
 
         _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
         _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, LimboLogs.Instance);
@@ -68,20 +69,11 @@ public class EncryptionHandshakeServiceTests
     private Packet _auth;
     private Packet _ack;
 
-    private void Auth(bool preEip8Format = false)
-    {
-        _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake, preEip8Format);
-    }
+    private void Auth(bool preEip8Format = false) => _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake, preEip8Format);
 
-    private void Ack()
-    {
-        _ack = _recipientService.Ack(_recipientHandshake, _auth);
-    }
+    private void Ack() => _ack = _recipientService.Ack(_recipientHandshake, _auth);
 
-    private void Agree()
-    {
-        _initiatorService.Agree(_initiatorHandshake, _ack);
-    }
+    private void Agree() => _initiatorService.Agree(_initiatorHandshake, _ack);
 
     private void InitializeRandom(bool preEip8Format = false)
     {
@@ -158,16 +150,14 @@ public class EncryptionHandshakeServiceTests
         Assert.That(ingressFooResult, Is.EqualTo(NetTestVectors.BIngressMacFoo), "recipient ingress foo");
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Agrees_on_secrets(bool preEip8Format)
+    [Test]
+    public void Agrees_on_secrets([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
         Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(_recipientHandshake.Secrets.AesSecret), "AES");
         Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(_recipientHandshake.Secrets.MacSecret), "MAC");
 
@@ -181,41 +171,78 @@ public class EncryptionHandshakeServiceTests
         Assert.That(recipientEgress, Is.EqualTo(initiatorIngress), "Ingress");
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Initiator_secrets_are_not_null(bool preEip8Format)
+    [Test]
+    public void Rejects_failed_eip8_decryption([Values] bool authMessage)
+    {
+        IEciesCipher cipher = Substitute.For<IEciesCipher>();
+        cipher.Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>())
+            .Returns((Success: false, PlainText: (byte[]?)null));
+        HandshakeService service = new(
+            _messageSerializationService,
+            cipher,
+            _testRandom,
+            _ecdsa,
+            NetTestVectors.StaticKeyB,
+            LimboLogs.Instance);
+        Packet malformedPacket = new(new byte[2]);
+
+        void Act()
+        {
+            if (authMessage)
+            {
+                service.Ack(new EncryptionHandshake(), malformedPacket);
+            }
+            else
+            {
+                service.Agree(new EncryptionHandshake(), malformedPacket);
+            }
+        }
+
+        Assert.Throws<NetworkingException>(Act);
+    }
+
+    [Test]
+    public void Initiator_secrets_match_the_test_vectors([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
-        Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.Not.Null, "AES");
-        Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.Not.Null, "MAC");
-        Assert.That(_initiatorHandshake.Secrets.EgressMac, Is.Not.Null, "Egress");
-        Assert.That(_initiatorHandshake.Secrets.IngressMac, Is.Not.Null, "Ingress");
+        AssertSecrets(_initiatorHandshake);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Recipient_secrets_are_not_null(bool preEip8Format)
+    [Test]
+    public void Recipient_secrets_match_the_test_vectors([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
-        Assert.That(_recipientHandshake.Secrets.AesSecret, Is.Not.Null, "AES");
-        Assert.That(_recipientHandshake.Secrets.MacSecret, Is.Not.Null, "MAC");
-        Assert.That(_recipientHandshake.Secrets.EgressMac, Is.Not.Null, "Egress");
-        Assert.That(_recipientHandshake.Secrets.IngressMac, Is.Not.Null, "Ingress");
+        AssertSecrets(_recipientHandshake);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_ephemeral_key_on_ack(bool preEip8Format)
+    // The nonces and ephemeral keys are fixed vectors, so the AES and MAC secrets are deterministic.
+    // The MAC states also hash the packet bytes, which carry ECIES randomness. Reading .Hash finalizes them. Call this helper last.
+    private static void AssertSecrets(EncryptionHandshake handshake)
+    {
+        const int SecretSize = 32;
+        byte[] egressHash = handshake.Secrets.EgressMac.Hash;
+        byte[] ingressHash = handshake.Secrets.IngressMac.Hash;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "AES");
+            Assert.That(handshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "MAC");
+            Assert.That(egressHash, Has.Length.EqualTo(SecretSize), "Egress");
+            Assert.That(ingressHash, Has.Length.EqualTo(SecretSize), "Ingress");
+            // The egress and ingress preimages differ. A derivation collapse makes the two hashes equal.
+            Assert.That(egressHash, Is.Not.EqualTo(ingressHash), "Egress vs Ingress");
+        }
+    }
+
+    [Test]
+    public void Sets_ephemeral_key_on_ack([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -223,18 +250,16 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_recipientHandshake.EphemeralPrivateKey, Is.EqualTo(NetTestVectors.EphemeralKeyB));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_ephemeral_key_on_auth(bool preEip8Format)
+    [Test]
+    public void Sets_ephemeral_key_on_auth([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Assert.That(_initiatorHandshake.EphemeralPrivateKey, Is.EqualTo(NetTestVectors.EphemeralKeyA));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_initiator_nonce_on_ack(bool preEip8Format)
+    [Test]
+    public void Sets_initiator_nonce_on_ack([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -242,18 +267,16 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_recipientHandshake.InitiatorNonce, Is.EqualTo(NetTestVectors.NonceA));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_initiator_nonce_on_auth(bool preEip8Format)
+    [Test]
+    public void Sets_initiator_nonce_on_auth([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Assert.That(_initiatorHandshake.InitiatorNonce, Is.EqualTo(NetTestVectors.NonceA));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_recipient_nonce_on_ack(bool preEip8Format)
+    [Test]
+    public void Sets_recipient_nonce_on_ack([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -261,9 +284,8 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_recipientHandshake.RecipientNonce, Is.EqualTo(NetTestVectors.NonceB));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_recipient_nonce_on_agree(bool preEip8Format)
+    [Test]
+    public void Sets_recipient_nonce_on_agree([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -272,9 +294,8 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_initiatorHandshake.RecipientNonce, Is.EqualTo(NetTestVectors.NonceB));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_remote_ephemeral_key_on_ack(bool preEip8Format)
+    [Test]
+    public void Sets_remote_ephemeral_key_on_ack([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -282,9 +303,8 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_recipientHandshake.RemoteEphemeralPublicKey, Is.EqualTo(NetTestVectors.EphemeralKeyA.PublicKey));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_remote_ephemeral_key_on_agree(bool preEip8Format)
+    [Test]
+    public void Sets_remote_ephemeral_key_on_agree([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -293,9 +313,8 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_initiatorHandshake.RemoteEphemeralPublicKey, Is.EqualTo(NetTestVectors.EphemeralKeyB.PublicKey));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_remote_public_key_on_ack(bool preEip8Format)
+    [Test]
+    public void Sets_remote_public_key_on_ack([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
@@ -303,9 +322,8 @@ public class EncryptionHandshakeServiceTests
         Assert.That(_recipientHandshake.RemoteNodeId, Is.EqualTo(NetTestVectors.StaticKeyA.PublicKey));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Sets_remote_public_key_on_auth(bool preEip8Format)
+    [Test]
+    public void Sets_remote_public_key_on_auth([Values] bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);

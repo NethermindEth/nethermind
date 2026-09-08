@@ -56,29 +56,21 @@ public static class TestLoader
     {
         Assembly assembly = typeof(TTest).Assembly;
         string[] resourceNames = assembly.GetManifestResourceNames();
-        string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-        if (resourceName is null)
-        {
-            throw new ArgumentException($"Cannot find test resource: {testFileName}");
-        }
-
-        var jsonOptions = new JsonSerializerOptions()
+        string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName))
+            ?? throw new ArgumentException($"Cannot find test resource: {testFileName}");
+        JsonSerializerOptions jsonOptions = new()
         {
             PropertyNameCaseInsensitive = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
             NumberHandling = JsonNumberHandling.AllowReadingFromString
         };
-        using (Stream stream = assembly.GetManifestResourceStream(resourceName))
-        {
-            Assert.That(stream, Is.Not.Null);
-            using (StreamReader reader = new(stream))
-            {
-                string testJson = reader.ReadToEnd();
-                TContainer testSpecs =
-                    JsonSerializer.Deserialize<TContainer>(testJson, jsonOptions);
-                return testExtractor(testSpecs);
-            }
-        }
+        using Stream stream = assembly.GetManifestResourceStream(resourceName);
+        Assert.That(stream, Is.Not.Null);
+        using StreamReader reader = new(stream);
+        string testJson = reader.ReadToEnd();
+        TContainer testSpecs =
+            JsonSerializer.Deserialize<TContainer>(testJson, jsonOptions);
+        return testExtractor(testSpecs);
     }
 }

@@ -8,11 +8,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Facade
 {
-    public abstract class BlockchainBridgeContract : Contract
+    public abstract class BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null) : Contract(abiEncoder, contractAddress, abiDefinition)
     {
-        public BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null) : base(abiEncoder, contractAddress, abiDefinition)
-        {
-        }
 
         /// <summary>
         /// Gets constant version of the contract. Allowing to call contract methods without state modification.
@@ -22,20 +19,14 @@ namespace Nethermind.Facade
         protected IConstantContract GetConstant(IBlockchainBridge blockchainBridge) =>
             new ConstantBridgeContract(this, blockchainBridge);
 
-        private class ConstantBridgeContract : ConstantContractBase
+        private class ConstantBridgeContract(Contract contract, IBlockchainBridge blockchainBridge) : ConstantContractBase(contract)
         {
-            private readonly IBlockchainBridge _blockchainBridge;
-
-            public ConstantBridgeContract(Contract contract, IBlockchainBridge blockchainBridge)
-                : base(contract)
-            {
-                _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            }
+            private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
 
             public override object[] Call(CallInfo callInfo)
             {
-                var transaction = GenerateTransaction(callInfo);
-                var result = _blockchainBridge.Call(callInfo.ParentHeader, transaction);
+                Transaction transaction = GenerateTransaction(callInfo);
+                CallOutput result = _blockchainBridge.Call(callInfo.ParentHeader, transaction);
                 if (!string.IsNullOrEmpty(result.Error))
                 {
                     throw new AbiException(result.Error);

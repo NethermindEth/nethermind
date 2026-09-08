@@ -64,20 +64,14 @@ namespace Nethermind.Synchronization.FastSync
 
             public override int GetHashCode()
             {
-                uint hash0 = (uint)hash.GetHashCode();
-                ulong hash1 = ((ulong)(uint)(address?.GetHashCode() ?? 1) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
+                uint hash0 = (uint)Hash.GetHashCode();
+                ulong hash1 = ((ulong)(uint)(Address.GetHashCode()) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
                 return (int)BitOperations.Crc32C(hash0, hash1);
             }
 
-            public static bool operator ==(in NodeKey left, in NodeKey right)
-            {
-                return left.Equals(right);
-            }
+            public static bool operator ==(in NodeKey left, in NodeKey right) => left.Equals(right);
 
-            public static bool operator !=(in NodeKey left, in NodeKey right)
-            {
-                return !(left == right);
-            }
+            public static bool operator !=(in NodeKey left, in NodeKey right) => !(left == right);
         }
     }
 }

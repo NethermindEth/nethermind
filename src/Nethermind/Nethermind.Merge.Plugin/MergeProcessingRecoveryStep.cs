@@ -7,15 +7,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeProcessingRecoveryStep : IBlockPreprocessorStep
+public class MergeProcessingRecoveryStep(
+    IPoSSwitcher poSSwitcher) : IBlockPreprocessorStep
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-
-    public MergeProcessingRecoveryStep(
-        IPoSSwitcher poSSwitcher)
-    {
-        _poSSwitcher = poSSwitcher;
-    }
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
 
     public void RecoverData(Block block)
     {

@@ -11,12 +11,13 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public static class BatchDecoder
 {
+    private const ulong MaxSpanBatchElementCount = 10_000_000;
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
-        var reader = new BinaryMemoryReader(source);
+        BinaryMemoryReader reader = new(source);
         while (reader.HasRemainder)
         {
-            var type = reader.TakeByte();
+            byte type = reader.TakeByte();
             if (type != 1)
             {
                 throw new NotSupportedException($"Only span batches are supported. Got type {type}");
@@ -30,22 +31,37 @@ public static class BatchDecoder
     /// </remarks>
     private static BatchV1 DecodeSpanBatch(BinaryMemoryReader reader)
     {
-        var relTimestamp = reader.Read(Protobuf.DecodeULong);
-        var l1OriginNum = reader.Read(Protobuf.DecodeULong);
-        var parentCheck = reader.Take(20);
-        var l1OriginCheck = reader.Take(20);
+        ulong relTimestamp = reader.Read(Protobuf.DecodeULong);
+        ulong l1OriginNum = reader.Read(Protobuf.DecodeULong);
+        ReadOnlyMemory<byte> parentCheck = reader.Take(20);
+        ReadOnlyMemory<byte> l1OriginCheck = reader.Take(20);
 
         // payload
-        // TODO: `blockCount`: This is at least 1, empty span batches are invalid.
-        var blockCount = reader.Read(Protobuf.DecodeULong);
-        var originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
+        ulong blockCount = reader.Read(Protobuf.DecodeULong);
+        if (blockCount < 1)
+        {
+            throw new FormatException("Invalid span batch: block_count must be >= 1");
+        }
+        if (blockCount > MaxSpanBatchElementCount)
+        {
+            throw new FormatException($"Invalid span batch: block_count exceeds MAX_SPAN_BATCH_ELEMENT_COUNT ({MaxSpanBatchElementCount})");
+        }
+        BigInteger originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
 
-        var blockTransactionCounts = new ulong[blockCount];
+        ulong[] blockTransactionCounts = new ulong[blockCount];
         ulong totalTxCount = 0;
-        for (var i = 0; i < (int)blockCount; ++i)
+        for (int i = 0; i < (int)blockCount; ++i)
         {
             blockTransactionCounts[i] = reader.Read(Protobuf.DecodeULong);
+            if (blockTransactionCounts[i] > MaxSpanBatchElementCount)
+            {
+                throw new FormatException($"Invalid span batch: tx count for block {i} exceeds MAX_SPAN_BATCH_ELEMENT_COUNT ({MaxSpanBatchElementCount})");
+            }
             totalTxCount += blockTransactionCounts[i];
+            if (totalTxCount > MaxSpanBatchElementCount)
+            {
+                throw new FormatException($"Invalid span batch: totalTxCount exceeds MAX_SPAN_BATCH_ELEMENT_COUNT ({MaxSpanBatchElementCount})");
+            }
         }
         // TODO:
         // `totalTxCount` in BatchV1 cannot be greater than MaxSpanBatchElementCount (`10_000_000`).
@@ -53,51 +69,51 @@ public static class BatchDecoder
 
         // Txs
 
-        var contractCreationBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
-        var yParityBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
+        BigInteger contractCreationBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
+        BigInteger yParityBits = reader.Read(Protobuf.DecodeBitList, totalTxCount);
 
         // Signatures
-        var signatures = new (UInt256 R, UInt256 S)[totalTxCount];
-        for (var i = 0; i < (int)totalTxCount; ++i)
+        (UInt256 R, UInt256 S)[] signatures = new (UInt256 R, UInt256 S)[totalTxCount];
+        for (int i = 0; i < (int)totalTxCount; ++i)
         {
             signatures[i] = (
                 R: new UInt256(reader.Take(32).Span, true),
                 S: new UInt256(reader.Take(32).Span, true));
         }
 
-        var contractCreationCnt = (int)BigInteger.PopCount(contractCreationBits);
+        int contractCreationCnt = (int)BigInteger.PopCount(contractCreationBits);
 
-        var tos = new Address[(int)totalTxCount - contractCreationCnt];
-        for (var i = 0; i < (int)totalTxCount - contractCreationCnt; ++i)
+        Address[] tos = new Address[(int)totalTxCount - contractCreationCnt];
+        for (int i = 0; i < (int)totalTxCount - contractCreationCnt; ++i)
         {
             tos[i] = new Address(reader.Take(Address.Size).Span);
         }
 
-        var datas = new ReadOnlyMemory<byte>[(int)totalTxCount];
-        var types = new TxType[(int)totalTxCount];
+        ReadOnlyMemory<byte>[] data = new ReadOnlyMemory<byte>[(int)totalTxCount];
+        TxType[] types = new TxType[(int)totalTxCount];
         ulong legacyTxCnt = 0;
-        for (var i = 0; i < (int)totalTxCount; ++i)
+        for (int i = 0; i < (int)totalTxCount; ++i)
         {
-            (datas[i], types[i]) = reader.Read(TxParser.Data);
+            (data[i], types[i]) = reader.Read(TxParser.Data);
             if (types[i] == TxType.Legacy)
             {
                 legacyTxCnt++;
             }
         }
 
-        var nonces = new ulong[(int)totalTxCount];
-        for (var i = 0; i < (int)totalTxCount; ++i)
+        ulong[] nonces = new ulong[(int)totalTxCount];
+        for (int i = 0; i < (int)totalTxCount; ++i)
         {
             nonces[i] = reader.Read(Protobuf.DecodeULong);
         }
 
-        var gases = new ulong[(int)totalTxCount];
-        for (var i = 0; i < (int)totalTxCount; ++i)
+        ulong[] gases = new ulong[(int)totalTxCount];
+        for (int i = 0; i < (int)totalTxCount; ++i)
         {
             gases[i] = reader.Read(Protobuf.DecodeULong);
         }
 
-        var protectedBits = reader.Read(Protobuf.DecodeBitList, legacyTxCnt);
+        BigInteger protectedBits = reader.Read(Protobuf.DecodeBitList, legacyTxCnt);
 
         return new BatchV1
         {
@@ -114,7 +130,7 @@ public static class BatchDecoder
                 YParityBits = yParityBits,
                 Signatures = signatures,
                 Tos = tos,
-                Datas = datas,
+                Data = data,
                 Types = types,
                 TotalLegacyTxCount = legacyTxCnt,
                 Nonces = nonces,

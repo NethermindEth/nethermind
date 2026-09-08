@@ -10,34 +10,64 @@ namespace Nethermind.State.Repositories
     public class BatchWrite : IDisposable
     {
         private readonly object _lockObject;
+        private readonly Func<IWriteBatch> _writeBatchFactory;
         private bool _lockTaken;
+        private int _disposed;
 
-        public BatchWrite(object lockObject, IWriteBatch writeBatch)
+        public BatchWrite(object lockObject, Func<IWriteBatch> writeBatchFactory)
         {
             _lockObject = lockObject;
+            _writeBatchFactory = writeBatchFactory;
             Monitor.Enter(_lockObject, ref _lockTaken);
 
-            WriteBatch = writeBatch;
-        }
-
-        public void Dispose()
-        {
-            if (!Disposed)
+            try
             {
-                WriteBatch.Dispose();
-
+                WriteBatch = _writeBatchFactory();
+            }
+            catch
+            {
                 if (_lockTaken)
                 {
                     _lockTaken = false;
                     Monitor.Exit(_lockObject);
                 }
-
-                Disposed = true;
+                throw;
             }
         }
 
-        public IWriteBatch WriteBatch { get; }
+        /// <summary>Writes the accumulated batch and starts a fresh one, keeping the write lock held.</summary>
+        /// <remarks>Splits atomicity at each flush — each segment is atomic on its own.</remarks>
+        public void Flush()
+        {
+            ObjectDisposedException.ThrowIf(Disposed, this);
+            IWriteBatch old = WriteBatch;
+            WriteBatch = _writeBatchFactory();
+            old.Dispose();
+        }
 
-        public bool Disposed { get; private set; }
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                WriteBatch.Dispose();
+            }
+            finally
+            {
+                if (_lockTaken)
+                {
+                    _lockTaken = false;
+                    Monitor.Exit(_lockObject);
+                }
+            }
+        }
+
+        public IWriteBatch WriteBatch { get; private set; }
+
+        public bool Disposed => _disposed != 0;
     }
 }

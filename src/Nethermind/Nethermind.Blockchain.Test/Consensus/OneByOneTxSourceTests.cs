@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using NSubstitute;
@@ -11,17 +10,19 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class OneByOneTxSourceTests
     {
         [Test, MaxTime(Timeout.MaxTestTime)]
         public void Can_serve_one_by_one()
         {
             ITxSource source = Substitute.For<ITxSource>();
-            BlockHeader blockHeader = new();
-            source.GetTransactions(blockHeader, 0).Returns(new Transaction[5]);
+            BlockHeader parent = new();
+            BlockHeader targetBlock = new();
+            source.GetTransactions(parent, targetBlock, 0).Returns(new Transaction[5]);
 
             ITxSource oneByOne = source.ServeTxsOneByOne();
-            oneByOne.GetTransactions(blockHeader, 0).Count().Should().Be(1);
+            Assert.That(oneByOne.GetTransactions(parent, targetBlock, 0).Count(), Is.EqualTo(1));
 
         }
     }

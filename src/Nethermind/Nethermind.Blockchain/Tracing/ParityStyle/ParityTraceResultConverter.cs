@@ -21,7 +21,7 @@ public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
             throw new ArgumentException($"Cannot deserialize {nameof(ParityTraceActionConverter)}.");
         }
 
-        var value = new ParityTraceResult();
+        ParityTraceResult value = new();
 
         reader.Read();
         while (reader.TokenType != JsonTokenType.EndObject)
@@ -34,7 +34,7 @@ public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
             if (reader.ValueTextEquals("gasUsed"u8))
             {
                 reader.Read();
-                value.GasUsed = JsonSerializer.Deserialize<long>(ref reader, options);
+                value.GasUsed = JsonSerializer.Deserialize<ulong>(ref reader, options);
             }
             else if (reader.ValueTextEquals("output"u8))
             {

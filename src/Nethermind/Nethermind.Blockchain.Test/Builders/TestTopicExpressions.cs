@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Test.Builders

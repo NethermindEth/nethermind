@@ -6,13 +6,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Wallet
 {
-    public class AccountUnlockedEventArgs : EventArgs
+    public class AccountUnlockedEventArgs(Address address) : EventArgs
     {
-        public Address Address { get; }
-
-        public AccountUnlockedEventArgs(Address address)
-        {
-            Address = address;
-        }
+        public Address Address { get; } = address;
     }
 }

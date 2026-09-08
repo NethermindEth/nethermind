@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <PackageReference Include="Microsoft.ClearScript.V8" />
   </ItemGroup>

@@ -26,13 +26,18 @@ public class DebugModuleFactory(
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
 
             // So the debug rpc change the adapter sometime.
-            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>();
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+
+            // The EIP-7928 BAL pool builds its per-worker adapters from this factory; route them through the
+            // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
+            .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
+                static changeable => changeable.ForProcessor);
 
     public IDebugRpcModule Create()
     {
         IOverridableEnv env = envFactory.Create();
 
-        ILifetimeScope tracerLifecyccle = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureTracerContainer(builder)
                 .AddModule(env));
 
@@ -40,9 +45,9 @@ public class DebugModuleFactory(
         // This is to prevent leaking processor or world state accidentally.
         // `GethStyleTracer` must be very careful to always dispose overridable env.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped<IGethStyleTracer>(tracerLifecyccle.Resolve<IGethStyleTracer>()));
+            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
 
-        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecyccle);
+        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
 
         return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();

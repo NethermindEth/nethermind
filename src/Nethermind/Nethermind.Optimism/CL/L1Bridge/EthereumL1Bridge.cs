@@ -17,9 +17,6 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumL1Bridge : IL1Bridge
 {
-    private const int L1EpochSlotSize = 32;
-    private const int L1SlotTimeMilliseconds = 12000;
-    private const int L1EpochTimeMilliseconds = L1EpochSlotSize * L1SlotTimeMilliseconds;
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
     private readonly ILogger _logger;
@@ -46,7 +43,7 @@ public class EthereumL1Bridge : IL1Bridge
         _batchSubmitter = engineParameters.BatchSubmitter;
         _batcherInboxAddress = engineParameters.BatcherInboxAddress;
         _l1BeaconGenesisSlotTime = engineParameters.L1BeaconGenesisSlotTime.Value;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EthereumL1Bridge>();
     }
 
     public async Task<L1BridgeStepResult> Step(CancellationToken token)
@@ -102,7 +99,7 @@ public class EthereumL1Bridge : IL1Bridge
             if (_logger.IsInfo) _logger.Info($"New L1 Block. Number {block.Number}");
             int startingBlobIndex = 0;
             // Filter batch submitter transaction
-            List<DaDataSource> result = new();
+            List<DaDataSource> result = [];
             foreach (L1Transaction transaction in block.Transactions!)
             {
                 if (transaction.Type == TxType.Blob)
@@ -222,11 +219,6 @@ public class EthereumL1Bridge : IL1Bridge
             if (result is not null) _unfinalizedL1BlocksQueue.Enqueue(result);
         }
         return _unfinalizedL1BlocksQueue.Count == 0 ? null : _unfinalizedL1BlocksQueue.Dequeue();
-    }
-
-    private void LogReorg()
-    {
-        if (_logger.IsInfo) _logger.Info("L1 reorg detected. Resetting pipeline");
     }
 
     public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token) =>

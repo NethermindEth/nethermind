@@ -13,9 +13,10 @@ public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
 {
     public ArrayPoolList<PathWithStorageSlot> Slots { get; } = new(0);
 
-    public int Collect(in ValueHash256 path, SpanSource value)
+    public int Collect(in ValueHash256 path, CappedArray<byte> value)
     {
-        Slots.Add(new PathWithStorageSlot(in path, value.ToArray()));
+        byte[] slotRlpValue = value.ToArray() ?? throw new TrieException("A storage leaf must have an encoded value.");
+        Slots.Add(new PathWithStorageSlot(in path, slotRlpValue));
         return 32 + value.Length;
     }
 }

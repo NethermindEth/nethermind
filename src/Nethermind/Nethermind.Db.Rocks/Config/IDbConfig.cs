@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
 
 
     int? MaxOpenFiles { get; set; }
+    bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
     string RocksDbOptions { get; set; }
@@ -32,10 +33,16 @@ public interface IDbConfig : IConfig
     bool? VerifyChecksum { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
-    bool FlushOnExit { get; set; }
+    [ConfigItem(
+        Description = "How RocksDB is flushed on shutdown. 'None' skips flushing; 'WalOnly' flushes only the write-ahead log (fast, recovered via WAL replay on restart); 'Full' also materializes memtables into SST files (slower).",
+        DefaultValue = "WalOnly")]
+    FlushOnExitMode FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
+
+    string BlockAccessListsDbRocksDbOptions { get; set; }
+    string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
 
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
@@ -76,9 +83,6 @@ public interface IDbConfig : IConfig
     string MetadataDbRocksDbOptions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    string BloomDbRocksDbOptions { get; set; }
-    string? BloomDbAdditionalRocksDbOptions { get; set; }
-
     ulong? CodeDbRowCacheSize { get; set; }
     string CodeDbRocksDbOptions { get; set; }
     string? CodeDbAdditionalRocksDbOptions { get; set; }
@@ -101,4 +105,75 @@ public interface IDbConfig : IConfig
 
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+    string LogIndexStorageDbRocksDbOptions { get; set; }
+    string LogIndexStorageDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageMetaDbRocksDbOptions { get; set; }
+    string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageAddressesDbRocksDbOptions { get; set; }
+    string LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics0DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics1DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics2DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageTopics3DbRocksDbOptions { get; set; }
+    string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
+
+    bool? FlatDbVerifyChecksum { get; set; }
+    string FlatDbRocksDbOptions { get; set; }
+    string? FlatDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatMetadataDbRocksDbOptions { get; set; }
+    string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatAccountDbRocksDbOptions { get; set; }
+    string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStorageDbRocksDbOptions { get; set; }
+    string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStateNodesDbRocksDbOptions { get; set; }
+    string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStateTopNodesDbRocksDbOptions { get; set; }
+    string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStorageNodesDbRocksDbOptions { get; set; }
+    string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatFallbackNodesDbRocksDbOptions { get; set; }
+    string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>
+    /// RocksDB options for every column of the flatHistory database (as-of-block state history). Defaults to LZ4
+    /// compression, 256 MB write buffers sized for the from-genesis capture replay, and
+    /// <c>optimize_filters_for_hits</c> — as-of reads are iterator floor-seeks that never consult the point bloom,
+    /// whose last-level memory cost would be prohibitive on a full archive.
+    /// </summary>
+    string FlatHistoryDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> (later keys win). Unset by default.</summary>
+    string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>
+    /// Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the AvailableBlocks column (per-block
+    /// availability markers and the watermark). Defaults to 8 MB write buffers: the column is tiny, so the
+    /// replay-sized buffers of the two bulky value columns would be wasted on it.
+    /// </summary>
+    string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; }
+
+    /// <summary>
+    /// Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the StorageClears column (per-block
+    /// storage-clear markers for self-destructed accounts). Defaults to 8 MB write buffers, like
+    /// <see cref="FlatHistoryAvailableBlocksDbRocksDbOptions"/>.
+    /// </summary>
+    string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
+
+    string? PreimageDbRocksDbOptions { get; set; }
+    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+
+    string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
+    string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

@@ -13,21 +13,19 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
     public class ChainSpecJson
     {
-        public string Name { get; set; }
-        public string DataDir { get; set; }
-        public EngineJson Engine { get; set; }
-        public ChainSpecParamsJson Params { get; set; }
-        [JsonPropertyName("genesis")]
-        public ChainSpecGenesisJson Genesis { get; set; }
-        public string[] Nodes { get; set; }
-        [JsonPropertyName("accounts")]
-        public Dictionary<string, AllocationJson> Accounts { get; set; }
+        public string? Name { get; set; }
+        public string? DataDir { get; set; }
+        public EngineJson? Engine { get; set; }
+        public ChainSpecParamsJson? Params { get; set; }
+        public ChainSpecGenesisJson? Genesis { get; set; }
+        public string[]? Nodes { get; set; }
+        public Dictionary<string, AllocationJson>? Accounts { get; set; }
         public Dictionary<string, byte[]>? CodeHashes { get; set; }
 
         public class EngineJson
         {
             [JsonExtensionData]
-            public Dictionary<string, JsonElement> CustomEngineData { get; set; }
+            public Dictionary<string, JsonElement> CustomEngineData { get; set; } = [];
         }
     }
 }

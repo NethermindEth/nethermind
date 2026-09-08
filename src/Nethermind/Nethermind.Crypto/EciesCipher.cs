@@ -15,21 +15,14 @@ namespace Nethermind.Crypto;
 /// <summary>
 ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
 /// </summary>
-public class EciesCipher : IEciesCipher
+public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 {
     private const int KeySize = 128;
-    private readonly ICryptoRandom _cryptoRandom;
-    private readonly PrivateKeyGenerator _keyGenerator;
-
-    public EciesCipher(ICryptoRandom cryptoRandom)
-    {
-        _cryptoRandom = cryptoRandom;
-        _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
-    }
-
+    private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
+    private readonly PrivateKeyGenerator _keyGenerator = new(cryptoRandom);
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
-    public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
+    public (bool Success, byte[]? PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
         if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
         {
@@ -44,7 +37,7 @@ public class EciesCipher : IEciesCipher
         return (true, plaintext);
     }
 
-    public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[] macData)
+    public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[]? macData = null)
     {
         byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
         PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
@@ -67,13 +60,13 @@ public class EciesCipher : IEciesCipher
         return outputArray;
     }
 
-    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
+    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[]? macData)
     {
         EthereumIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
         return iesEngine.ProcessBlock(ciphertextBody, macData);
     }
 
-    private static readonly IesWithCipherParameters _iesParameters = new IesWithCipherParameters([], [], KeySize, KeySize);
+    private static readonly IesWithCipherParameters _iesParameters = new([], [], KeySize, KeySize);
 
     private static EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
     {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -22,13 +23,16 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <summary>
 /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
 /// </summary>
-public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager) : IChainSpecLoader
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<ChainSpecLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
         {
-            ChainSpecJson chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            ChainSpecJson? chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            ArgumentNullException.ThrowIfNull(chainSpecJson);
             return InitChainSpecFrom(chainSpecJson);
         }
         catch (Exception e)
@@ -39,39 +43,56 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
     {
-        ChainSpec chainSpec = new();
+        ChainSpecParamsJson parameters = chainSpecJson.Params
+            ?? throw new ArgumentNullException(nameof(chainSpecJson.Params));
+        ChainSpecJson.EngineJson engine = chainSpecJson.Engine
+            ?? throw new ArgumentNullException(nameof(chainSpecJson.Engine));
 
-        chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-        chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
-        chainSpec.Name = chainSpecJson.Name;
-        chainSpec.DataDir = chainSpecJson.DataDir;
+        ulong networkId = parameters.NetworkId ?? parameters.ChainId ?? 1;
+        ChainSpec chainSpec = new()
+        {
+            NetworkId = networkId,
+            ChainId = parameters.ChainId ?? networkId,
+            Name = chainSpecJson.Name,
+            DataDir = chainSpecJson.DataDir
+        };
+
+        // LoadGenesis reads chainSpec.Parameters, which LoadParameters populates and label-expands.
+        LoadParameters(chainSpecJson, parameters, chainSpec);
         LoadGenesis(chainSpecJson, chainSpec);
-        LoadEngine(chainSpecJson, chainSpec);
+        LoadEngine(engine, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
         LoadBootnodes(chainSpecJson, chainSpec);
-        LoadParameters(chainSpecJson, chainSpec);
         LoadTransitions(chainSpecJson, chainSpec);
 
         return chainSpec;
     }
 
-    private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpecParamsJson parameters, ChainSpec chainSpec)
     {
-        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
+        ulong? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
+            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v =>
+                v.BuiltIn is { Name: { } name } && name.Equals(builtInName, StringComparison.OrdinalIgnoreCase));
             if (allocation is null) return null;
-            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+            BuiltInJson? builtIn = allocation.BuiltIn;
+            if (builtIn is null)
+            {
+                return null;
+            }
+
+            if (builtIn.Pricing is not { } builtInPricing) return null;
+            KeyValuePair<string, JsonElement>[] pricing = builtInPricing.Where(o => predicate(o)).ToArray();
             if (pricing.Length > 0)
             {
                 string key = pricing[0].Key;
-                return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
+                return ulong.TryParse(key, out ulong transition) ? transition : Convert.ToUInt64(key, 16);
             }
 
             return null;
         }
 
-        long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+        ulong? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
             bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) =>
                 o.Value.TryGetSubProperty(innerPath, out JsonElement value) && value.GetInt64() == expectedValue;
@@ -79,7 +100,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
-        long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+        ulong? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
             bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) =>
                 o.Value.TryGetSubProperty(innerPath, out _);
@@ -87,116 +108,147 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
-        ValidateParams(chainSpecJson.Params);
-
         chainSpec.Parameters = new ChainParameters
         {
-            GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
-            MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
-            MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
-            MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? 82125,
-            MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
-            MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
-            MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
-            Registrar = chainSpecJson.Params.EnsRegistrar,
-            ForkBlock = chainSpecJson.Params.ForkBlock,
-            ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
-            Eip7Transition = chainSpecJson.Params.Eip7Transition,
-            Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
-            Eip152Transition = chainSpecJson.Params.Eip152Transition,
-            Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,
-            Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0,
-            Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0,
-            Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0,
-            Eip140Transition = chainSpecJson.Params.Eip140Transition,
-            Eip211Transition = chainSpecJson.Params.Eip211Transition,
-            Eip214Transition = chainSpecJson.Params.Eip214Transition,
-            Eip658Transition = chainSpecJson.Params.Eip658Transition,
-            Eip145Transition = chainSpecJson.Params.Eip145Transition,
-            Eip1014Transition = chainSpecJson.Params.Eip1014Transition,
-            Eip1052Transition = chainSpecJson.Params.Eip1052Transition,
-            Eip1108Transition = chainSpecJson.Params.Eip1108Transition,
-            Eip1283Transition = chainSpecJson.Params.Eip1283Transition,
-            Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition,
-            Eip1283ReenableTransition = chainSpecJson.Params.Eip1283ReenableTransition,
-            Eip1344Transition = chainSpecJson.Params.Eip1344Transition,
-            Eip1706Transition = chainSpecJson.Params.Eip1706Transition,
-            Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
-            Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
-            Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
-            Eip1559Transition = chainSpecJson.Params.Eip1559Transition,
-            Eip2315Transition = chainSpecJson.Params.Eip2315Transition,
-            Eip2537Transition = chainSpecJson.Params.Eip2537Transition,
-            Eip2565Transition = chainSpecJson.Params.Eip2565Transition,
-            Eip2929Transition = chainSpecJson.Params.Eip2929Transition,
-            Eip2930Transition = chainSpecJson.Params.Eip2930Transition,
-            Eip3198Transition = chainSpecJson.Params.Eip3198Transition,
-            Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
-            Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
-            Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
-            BeaconChainGenesisTimestamp = chainSpecJson.Params.BeaconChainGenesisTimestamp,
-            Eip1153TransitionTimestamp = chainSpecJson.Params.Eip1153TransitionTimestamp,
-            Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
-            Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
-            Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
-            Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
-            Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
-            Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
-            Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
-            Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
-            Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
-            Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
-            Eip7692TransitionTimestamp = chainSpecJson.Params.Eip7692TransitionTimestamp,
-            OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
-            OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
-            OpIsthmusTransitionTimestamp = chainSpecJson.Params.OpIsthmusTransitionTimestamp,
-            Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
-            Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
-            Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,
-            Eip7907TransitionTimestamp = chainSpecJson.Params.Eip7907TransitionTimestamp,
-            Eip7823TransitionTimestamp = chainSpecJson.Params.Eip7823TransitionTimestamp,
-            Eip7825TransitionTimestamp = chainSpecJson.Params.Eip7825TransitionTimestamp,
-            Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
-            Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
-            Eip2935ContractAddress = chainSpecJson.Params.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
-            TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
-            TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
-            ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
-            ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
-            Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier,
-            Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
-            Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
+            GasLimitBoundDivisor = parameters.GasLimitBoundDivisor ?? 0x0400UL,
+            MaximumExtraDataSize = parameters.MaximumExtraDataSize ?? 32,
+            MinGasLimit = parameters.MinGasLimit ?? 5000UL,
+            MinHistoryRetentionEpochs = parameters.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
+            MinBalRetentionEpochs = parameters.MinBalRetentionEpochs ?? HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MaxCodeSize = parameters.MaxCodeSize,
+            MaxCodeSizeTransition = parameters.MaxCodeSizeTransition,
+            MaxCodeSizeTransitionTimestamp = parameters.MaxCodeSizeTransitionTimestamp,
+            Registrar = parameters.Registrar,
+            ForkBlock = parameters.ForkBlock,
+            ForkCanonHash = parameters.ForkCanonHash,
+            Eip7Transition = parameters.Eip7Transition,
+            Eip150Transition = parameters.Eip150Transition,
+            Eip152Transition = parameters.Eip152Transition,
+            Eip160Transition = parameters.Eip160Transition,
+            Eip161abcTransition = parameters.Eip161abcTransition,
+            Eip161dTransition = parameters.Eip161dTransition,
+            Eip155Transition = parameters.Eip155Transition,
+            Eip140Transition = parameters.Eip140Transition,
+            Eip211Transition = parameters.Eip211Transition,
+            Eip214Transition = parameters.Eip214Transition,
+            Eip658Transition = parameters.Eip658Transition,
+            Eip145Transition = parameters.Eip145Transition,
+            Eip1014Transition = parameters.Eip1014Transition,
+            Eip1052Transition = parameters.Eip1052Transition,
+            Eip1108Transition = parameters.Eip1108Transition,
+            Eip1283Transition = parameters.Eip1283Transition,
+            Eip1283DisableTransition = parameters.Eip1283DisableTransition,
+            Eip1283ReenableTransition = parameters.Eip1283ReenableTransition,
+            Eip1344Transition = parameters.Eip1344Transition,
+            Eip1706Transition = parameters.Eip1706Transition,
+            Eip1884Transition = parameters.Eip1884Transition,
+            Eip2028Transition = parameters.Eip2028Transition,
+            Eip2200Transition = parameters.Eip2200Transition,
+            Eip1559Transition = parameters.Eip1559Transition,
+            Eip2315Transition = parameters.Eip2315Transition,
+            Eip2537Transition = parameters.Eip2537Transition,
+            Eip2565Transition = parameters.Eip2565Transition,
+            Eip2929Transition = parameters.Eip2929Transition,
+            Eip2930Transition = parameters.Eip2930Transition,
+            Eip3198Transition = parameters.Eip3198Transition,
+            Eip3541Transition = parameters.Eip3541Transition,
+            Eip3529Transition = parameters.Eip3529Transition,
+            Eip3607Transition = parameters.Eip3607Transition,
+            BeaconChainGenesisTimestamp = parameters.BeaconChainGenesisTimestamp,
+            Eip1153Transition = parameters.Eip1153Transition,
+            Eip1153TransitionTimestamp = parameters.Eip1153TransitionTimestamp,
+            Eip3651Transition = parameters.Eip3651Transition,
+            Eip3651TransitionTimestamp = parameters.Eip3651TransitionTimestamp,
+            Eip3855Transition = parameters.Eip3855Transition,
+            Eip3855TransitionTimestamp = parameters.Eip3855TransitionTimestamp,
+            Eip3860Transition = parameters.Eip3860Transition,
+            Eip3860TransitionTimestamp = parameters.Eip3860TransitionTimestamp,
+            Eip4895TransitionTimestamp = parameters.Eip4895TransitionTimestamp,
+            Eip4844TransitionTimestamp = parameters.Eip4844TransitionTimestamp,
+            Eip4844Transition = parameters.Eip4844Transition,
+            Eip2537TransitionTimestamp = parameters.Eip2537TransitionTimestamp,
+            Eip5656Transition = parameters.Eip5656Transition,
+            Eip5656TransitionTimestamp = parameters.Eip5656TransitionTimestamp,
+            Eip6780Transition = parameters.Eip6780Transition,
+            Eip6780TransitionTimestamp = parameters.Eip6780TransitionTimestamp,
+            Eip7951TransitionTimestamp = parameters.Eip7951TransitionTimestamp,
+            Rip7212TransitionTimestamp = parameters.Rip7212TransitionTimestamp,
+            Eip4788TransitionTimestamp = parameters.Eip4788TransitionTimestamp,
+            Eip7702Transition = parameters.Eip7702Transition,
+            Eip7702TransitionTimestamp = parameters.Eip7702TransitionTimestamp,
+            Eip7918TransitionTimestamp = parameters.Eip7918TransitionTimestamp,
+            Eip7823TransitionTimestamp = parameters.Eip7823TransitionTimestamp,
+            Eip7825TransitionTimestamp = parameters.Eip7825TransitionTimestamp,
+            Eip4788ContractAddress = parameters.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
+            Eip2935Transition = parameters.Eip2935Transition,
+            Eip2935TransitionTimestamp = parameters.Eip2935TransitionTimestamp,
+            Eip2935ContractAddress = parameters.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            Eip2935RingBufferSize = parameters.Eip2935RingBufferSize ?? Eip2935Constants.RingBufferSize,
+            TransactionPermissionContract = parameters.TransactionPermissionContract,
+            TransactionPermissionContractTransition = parameters.TransactionPermissionContractTransition,
+            ValidateChainIdTransition = parameters.ValidateChainIdTransition,
+            ValidateReceiptsTransition = parameters.ValidateReceiptsTransition,
+            Eip1559ElasticityMultiplier = parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier,
+            Eip1559BaseFeeInitialValue = parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
+            Eip1559BaseFeeMaxChangeDenominator = parameters.Eip1559BaseFeeMaxChangeDenominator ??
                                                  Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
 
-            Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
-            DepositContractAddress = LoadDependentParam(chainSpecJson.Params.Eip6110TransitionTimestamp, chainSpecJson.Params.DepositContractAddress,
-                () => chainSpecJson.Params.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
-            Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
-            Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
-            Eip7883TransitionTimestamp = chainSpecJson.Params.Eip7883TransitionTimestamp,
-            Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
-            Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
-            Eip7251ContractAddress = chainSpecJson.Params.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
-            FeeCollector = chainSpecJson.Params.FeeCollector,
-            Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
-            Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
-            Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
-            Eip4844BlobGasPriceUpdateFraction = chainSpecJson.Params.Eip4844BlobGasPriceUpdateFraction,
-            Eip4844MinBlobGasPrice = chainSpecJson.Params.Eip4844MinBlobGasPrice,
-            Eip4844FeeCollectorTransitionTimestamp = chainSpecJson.Params.Eip4844FeeCollectorTransitionTimestamp,
-            MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
-            TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
-            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
-            BlobSchedule = chainSpecJson.Params.BlobSchedule,
+            Eip6110TransitionTimestamp = parameters.Eip6110TransitionTimestamp,
+            DepositContractAddress = LoadDependentParam(parameters.Eip6110TransitionTimestamp, parameters.DepositContractAddress,
+                () => parameters.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
+            Eip7002TransitionTimestamp = parameters.Eip7002TransitionTimestamp,
+            Eip7623Transition = parameters.Eip7623Transition,
+            Eip7623TransitionTimestamp = parameters.Eip7623TransitionTimestamp,
+            Eip7976TransitionTimestamp = parameters.Eip7976TransitionTimestamp,
+            Eip7981TransitionTimestamp = parameters.Eip7981TransitionTimestamp,
+            Eip7883TransitionTimestamp = parameters.Eip7883TransitionTimestamp,
+            Eip7002ContractAddress = parameters.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
+            Eip7251TransitionTimestamp = parameters.Eip7251TransitionTimestamp,
+            Eip7251ContractAddress = parameters.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
+            FeeCollector = parameters.FeeCollector,
+            Eip1559FeeCollectorTransition = parameters.Eip1559FeeCollectorTransition,
+            Eip1559BaseFeeMinValueTransition = parameters.Eip1559BaseFeeMinValueTransition,
+            Eip1559BaseFeeMinValue = parameters.Eip1559BaseFeeMinValue,
+            Eip4844BlobGasPriceUpdateFraction = parameters.Eip4844BlobGasPriceUpdateFraction,
+            Eip4844MinBlobGasPrice = parameters.Eip4844MinBlobGasPrice,
+            Eip4844FeeCollectorTransitionTimestamp = parameters.Eip4844FeeCollectorTransitionTimestamp,
+            MergeForkIdTransition = parameters.MergeForkIdTransition,
+            TerminalTotalDifficulty = parameters.TerminalTotalDifficulty,
+            TerminalPoWBlockNumber = parameters.TerminalPoWBlockNumber,
+            BlobSchedule = parameters.BlobSchedule,
 
-            Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
-            Eip7939TransitionTimestamp = chainSpecJson.Params.Eip7939TransitionTimestamp,
+            Eip7594TransitionTimestamp = parameters.Eip7594TransitionTimestamp,
+            Eip7939TransitionTimestamp = parameters.Eip7939TransitionTimestamp,
 
-            Eip7934TransitionTimestamp = chainSpecJson.Params.Eip7934TransitionTimestamp,
-            Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
+            Eip7934TransitionTimestamp = parameters.Eip7934TransitionTimestamp,
+            Eip7934MaxRlpBlockSize = parameters.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
 
-            Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
+            Eip7778TransitionTimestamp = parameters.Eip7778TransitionTimestamp,
+            Eip8037TransitionTimestamp = parameters.Eip8037TransitionTimestamp,
+
+            Eip7928TransitionTimestamp = parameters.Eip7928TransitionTimestamp,
+            Eip7708TransitionTimestamp = parameters.Eip7708TransitionTimestamp,
+
+            Eip8024TransitionTimestamp = parameters.Eip8024TransitionTimestamp,
+            Eip8246TransitionTimestamp = parameters.Eip8246TransitionTimestamp,
+            Eip8038TransitionTimestamp = parameters.Eip8038TransitionTimestamp,
+            Eip8282TransitionTimestamp = parameters.Eip8282TransitionTimestamp,
+            Eip7843TransitionTimestamp = parameters.Eip7843TransitionTimestamp,
+            Eip7954TransitionTimestamp = parameters.Eip7954TransitionTimestamp,
+            Eip2780TransitionTimestamp = parameters.Eip2780TransitionTimestamp,
+            Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
         };
+
+        chainSpec.Parameters.ExpandAll(parameters);
+        ValidateParams(chainSpec.Parameters);
+
+        // Pre-Shanghai EIPs that are part of the genesis baseline for chains without explicit
+        // transitions. Applied AFTER ExpandAll so an explicit chainspec field or fork label wins.
+        chainSpec.Parameters.Eip150Transition ??= 0;
+        chainSpec.Parameters.Eip160Transition ??= 0;
+        chainSpec.Parameters.Eip161abcTransition ??= 0;
+        chainSpec.Parameters.Eip161dTransition ??= 0;
+        chainSpec.Parameters.Eip155Transition ??= 0;
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
         chainSpec.Parameters.Eip1108Transition ??= GetTransitionForExpectedPricing("alt_bn128_add", "price.alt_bn128_const_operations.price", 150)
@@ -207,7 +259,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
 
-    private TValue? LoadDependentParam<TTransition, TValue>(
+    internal static TValue? LoadDependentParam<TTransition, TValue>(
         TTransition? transition,
         TValue? value,
         Func<TValue?>? fallback = null,
@@ -222,7 +274,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 : value
             : default;
 
-    private static void ValidateParams(ChainSpecParamsJson parameters)
+    private static void ValidateParams(ChainParameters parameters)
     {
         if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
             && parameters.Eip1283DisableTransition.HasValue)
@@ -256,12 +308,12 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
         chainSpec.PragueTimestamp = chainSpec.Parameters.Eip7002TransitionTimestamp;
         chainSpec.OsakaTimestamp = chainSpec.Parameters.Eip7594TransitionTimestamp;
+        chainSpec.AmsterdamTimestamp = chainSpec.Parameters.Eip7928TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPoWBlockNumber;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
-
 
         if (chainSpec.EngineChainSpecParametersProvider is not null)
         {
@@ -273,23 +325,26 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
     }
 
-    private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    private void LoadEngine(ChainSpecJson.EngineJson engine, ChainSpec chainSpec)
     {
-        var engineParameters = chainSpecJson.Engine.CustomEngineData.ToDictionary(
+        Dictionary<string, JsonElement> engineParameters = engine.CustomEngineData.ToDictionary(
             engine => engine.Key,
             engine => engine.Value.TryGetProperty("params", out JsonElement value) ? value : engine.Value);
 
         chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        if (IsUnspecifiedSealEngine(chainSpec.SealEngineType))
         {
             chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
         }
 
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        if (IsUnspecifiedSealEngine(chainSpec.SealEngineType))
         {
             throw new NotSupportedException("unknown seal engine in chainspec");
         }
     }
+
+    private static bool IsUnspecifiedSealEngine(string sealEngineType) =>
+        string.IsNullOrEmpty(sealEngineType) || sealEngineType == Nethermind.Core.SealEngineType.None;
 
     private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
@@ -298,23 +353,27 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             return;
         }
 
-        UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
+        ulong nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0UL;
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
-        byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
-        long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
+        // Engine-specific seal sections are stashed raw; the owning consensus plugin (e.g. AuRa)
+        // upgrades Genesis.Header via its ChainSpec interceptor.
+        chainSpec.CustomSeal = chainSpecJson.Genesis.Seal?.CustomSeal;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
-        UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
+        ulong gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-        UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
-        if (chainSpecJson.Params.Eip1559Transition is not null)
-            baseFee = chainSpecJson.Params.Eip1559Transition == 0
-                ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
-                : UInt256.Zero;
+        ChainParameters parameters = chainSpec.Parameters;
+        UInt256 baseFee = parameters.Eip1559Transition switch
+        {
+            null => chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero,
+            0 => chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
+            _ => UInt256.Zero,
+        };
+
 
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
@@ -325,38 +384,47 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             beneficiary,
             difficulty,
             0,
-            (long)gasLimit,
+            gasLimit,
             timestamp,
-            extraData);
+            extraData)
+        {
+            Author = beneficiary,
+            Hash = Keccak.Zero, // need to run the block to know the actual hash
+            Bloom = Bloom.Empty,
+            MixHash = mixHash,
+            Nonce = nonce,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = stateRoot,
+            TxRoot = Keccak.EmptyTreeHash,
+            BaseFeePerGas = baseFee
+        };
 
-        genesisHeader.Author = beneficiary;
-        genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-        genesisHeader.Bloom = Bloom.Empty;
-        genesisHeader.MixHash = mixHash;
-        genesisHeader.Nonce = (ulong)nonce;
-        genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = stateRoot;
-        genesisHeader.TxRoot = Keccak.EmptyTreeHash;
-        genesisHeader.BaseFeePerGas = baseFee;
-        bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
-        bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-        bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
-        bool consolidationRequestsEnabled = chainSpecJson.Params.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7251TransitionTimestamp;
+        bool withdrawalsEnabled = parameters.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4895TransitionTimestamp;
+        bool depositsEnabled = parameters.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip6110TransitionTimestamp;
+        bool withdrawalRequestsEnabled = parameters.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7002TransitionTimestamp;
+        bool consolidationRequestsEnabled = parameters.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7251TransitionTimestamp;
+        bool blockAccessListsEnabled = parameters.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7928TransitionTimestamp;
+        bool slotNumberEnabled = parameters.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7843TransitionTimestamp;
+
         if (withdrawalsEnabled)
+        {
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        }
 
-        var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
+        bool requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
         if (requestsEnabled)
+        {
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        }
 
-        bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+        bool isEip4844Enabled = parameters.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
         {
             genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed;
             genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
         }
 
-        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
+        bool isEip4788Enabled = parameters.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4788TransitionTimestamp;
         if (isEip4788Enabled)
         {
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
@@ -367,20 +435,26 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
 
-        genesisHeader.AuRaStep = step;
-        genesisHeader.AuRaSignature = auRaSignature;
+        if (blockAccessListsEnabled)
+        {
+            genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
 
-        chainSpec.Genesis = !withdrawalsEnabled
-            ? new Block(genesisHeader)
-            : new Block(
-                genesisHeader,
-                Array.Empty<Transaction>(),
-                Array.Empty<BlockHeader>(),
-                Array.Empty<Withdrawal>());
+        if (slotNumberEnabled)
+        {
+            genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
+        }
+
+        chainSpec.Genesis = !blockAccessListsEnabled ?
+            (!withdrawalsEnabled
+                ? new Block(genesisHeader)
+                : new Block(genesisHeader, [], [], []))
+            : new Block(genesisHeader, [], [], [], new());
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
+        chainSpec.Allocations = [];
         if (chainSpecJson.Accounts is null)
         {
             return;
@@ -395,7 +469,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
         }
 
-        chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
         foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
         {
             if (account.Value.BuiltIn is not null && account.Value.Balance is null)
@@ -413,7 +486,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             if (account.Value.CodeHash is not null)
             {
                 string codeHashString = account.Value.CodeHash.ToString();
-                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out var codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[]? codeHash) || codeHash is null) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
@@ -433,18 +506,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
     }
 
-    private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
-    {
-        if (chainSpecJson.Nodes is null)
-        {
-            chainSpec.Bootnodes = [];
-            return;
-        }
-
-        chainSpec.Bootnodes = new NetworkNode[chainSpecJson.Nodes.Length];
-        for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
-        {
-            chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i]);
-        }
-    }
+    private void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        => chainSpec.Bootnodes = NetworkNode.ParseNodes(chainSpecJson.Nodes, _logger);
 }

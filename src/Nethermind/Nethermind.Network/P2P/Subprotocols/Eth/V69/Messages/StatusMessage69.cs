@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -11,20 +10,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 public class StatusMessage69 : P2PMessage
 {
     public byte ProtocolVersion { get; set; }
-    public UInt256 NetworkId { get; set; }
+    public ulong NetworkId { get; set; }
     public required Hash256 GenesisHash { get; set; }
     public ForkId ForkId { get; set; }
-    public long EarliestBlock { get; set; }
-    public long LatestBlock { get; set; }
+    public ulong EarliestBlock { get; set; }
+    public ulong LatestBlock { get; set; }
     public required Hash256 LatestBlockHash { get; set; }
 
     public override int PacketType => Eth69MessageCode.Status;
     public override string Protocol => "eth";
 
-    public override string ToString()
-    {
-        return
-            $"{Protocol}.{ProtocolVersion} network: {NetworkId} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId} | " +
+    public override string ToString() => $"{Protocol}.{ProtocolVersion} network: {NetworkId} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId} | " +
             $"earliest: {EarliestBlock} | latest: {LatestBlock} ({LatestBlockHash?.ToShortString()})";
-    }
 }

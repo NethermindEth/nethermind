@@ -9,17 +9,13 @@ using System.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
-public abstract class SpecProviderBase
+public abstract class SpecProviderBase(ILogger? logger = null)
 {
-    protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions;
-    private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions;
+    protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions = [];
+    private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions = [];
     private ForkActivation? _firstTimestampActivation;
-    protected readonly ILogger _logger;
-
-    public SpecProviderBase(ILogger logger = default)
-    {
-        _logger = logger;
-    }
+    protected readonly ILogger _logger = logger ?? LimboTraceLogger.Instance;
+    private IReleaseSpec? _genesisSpec;
 
     protected void LoadTransitions((ForkActivation Activation, IReleaseSpec Spec)[] transitions)
     {
@@ -36,14 +32,15 @@ public abstract class SpecProviderBase
         _blockTransitions = transitions.TakeWhile(static t => t.Activation.Timestamp is null).ToArray();
         _timestampTransitions = transitions.SkipWhile(static t => t.Activation.Timestamp is null).ToArray();
         _firstTimestampActivation = _timestampTransitions.Length != 0 ? _timestampTransitions.First().Activation : null;
-        GenesisSpec = transitions.First().Spec;
+        _genesisSpec = transitions.First().Spec;
     }
 
-    public ForkActivation[] TransitionActivations { get; protected set; }
+    public ForkActivation[] TransitionActivations { get; protected set; } = [];
 
-    public IReleaseSpec GenesisSpec { get; private set; }
+    public IReleaseSpec GenesisSpec => _genesisSpec
+        ?? throw new InvalidOperationException("Release transitions have not been loaded.");
 
-    public IReleaseSpec GetSpecInternal(ForkActivation activation)
+    public IReleaseSpec GetSpec(ForkActivation activation)
     {
         static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
            activation.CompareTo(transition.Activation);

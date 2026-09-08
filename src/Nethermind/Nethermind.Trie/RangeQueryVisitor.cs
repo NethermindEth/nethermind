@@ -105,20 +105,14 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         return true;
     }
 
-    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode)
-    {
-        return ShouldVisit(ctx.Path);
-    }
+    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode) => ShouldVisit(ctx.Path);
 
 
-    public long GetBytesSize()
-    {
-        return _currentBytesCount;
-    }
+    public long GetBytesSize() => _currentBytesCount;
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        HashSet<byte[]> proofs = new();
+        HashSet<byte[]> proofs = [];
 
         AddToProof(_leftmostNodes);
         AddToProof(_rightmostNodes);
@@ -130,15 +124,15 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             int i = 0;
             while (true)
             {
-                TrieNode node = boundaryNodes[i];
+                TrieNode? node = boundaryNodes[i];
                 if (node is null) break;
 
-                proofs.Add(node.FullRlp.ToArray());
+                proofs.Add(node.FullRlp.ToArray() ?? throw new TrieException("A visited trie node must have encoded RLP."));
 
                 if (node.IsBranch)
                     i++;
                 else if (node.IsExtension)
-                    i += node.Key.Length;
+                    i += (node.Key ?? throw new TrieException("A resolved extension node must have a key.")).Length;
                 else
                     break;
             }
@@ -150,10 +144,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     }
 
 
-    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash)
-    {
-        throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
-    }
+    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node)
     {
@@ -172,7 +163,8 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
 
-        TreePath path = ctx.Path.Append(node.Key);
+        byte[] key = node.Key ?? throw new TrieException("A resolved leaf node must have a key.");
+        TreePath path = ctx.Path.Append(key);
         if (!ShouldVisit(path))
         {
             return;
@@ -196,7 +188,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
     }
 
-    private void CollectNode(in TreePath path, SpanSource value)
+    private void CollectNode(in TreePath path, CappedArray<byte> value)
     {
         int encodedSize = _valueCollector.Collect(path.Path, value);
         _currentBytesCount += encodedSize;
@@ -209,6 +201,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public interface ILeafValueCollector
     {
-        int Collect(in ValueHash256 path, SpanSource value);
+        int Collect(in ValueHash256 path, CappedArray<byte> value);
     }
 }

@@ -6,26 +6,21 @@ using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
+public sealed class JsonRpcMessageProvider(IMessageProvider<string> provider) : IMessageProvider<JsonRpc>
 {
-    private readonly IMessageProvider<string> _provider;
-
-    public JsonRpcMessageProvider(IMessageProvider<string> provider)
-    {
-        _provider = provider;
-    }
+    private readonly IMessageProvider<string> _provider = provider;
 
     public async IAsyncEnumerable<JsonRpc> Messages([EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var msg in _provider.Messages(token))
+        await foreach (string msg in _provider.Messages(token))
         {
-            var node = JsonNode.Parse(msg);
+            JsonNode? node = JsonNode.Parse(msg);
 
             switch (node)
             {
                 case JsonObject obj:
                     {
-                        var isResponse = obj["response"] is not null;
+                        bool isResponse = obj["response"] is not null;
                         if (isResponse)
                         {
                             yield return new JsonRpc.Response(node);

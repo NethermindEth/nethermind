@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.EventArg;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
@@ -23,59 +24,59 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
+        // The window is measured from the last pong received, so a session is disconnected once no pong has
+        // arrived for this many ping intervals. A ping only goes out every other tick - LastPingUtc is stamped
+        // after the tick that sent it, so the guard below fails on the next one - which makes the effective ping
+        // period two intervals. Three missed pongs therefore need a window of six intervals.
+        private const int MissedPongIntervalsBeforeDisconnect = 6;
+
         private readonly TimeSpan _pingInterval;
-        private readonly List<Task<bool>> _pingTasks = new();
+        private readonly List<Task<bool>> _pingTasks = [];
 
         private CancellationTokenSource? _cancellationTokenSource;
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SessionMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
         }
 
-        public void Start()
-        {
-            StartPingTimer();
-        }
+        public void Start() => StartPingTimer();
 
-        public void Stop()
-        {
-            StopPingTimer();
-        }
+        public void Stop() => StopPingTimer();
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-        public IEnumerable<ISession> Sessions => _sessions.Values;
+        public IEnumerable<ISession> Sessions => _sessions.Select(static kvp => kvp.Value);
 
         public void AddSession(ISession session)
         {
-            session.Disconnected += OnDisconnected;
             if (session.State < SessionState.DisconnectingProtocols)
             {
+                // Stagger ping times so sessions added around the same time don't all ping on the same tick.
+                // Set LastPingUtc to a random offset within the interval so the first ping is naturally spread.
+                int jitterMs = Random.Shared.Next((int)_pingInterval.TotalMilliseconds);
+                session.LastPingUtc = DateTime.UtcNow - TimeSpan.FromMilliseconds(jitterMs);
                 _sessions.TryAdd(session.SessionId, session);
             }
         }
 
-        private void OnDisconnected(object sender, DisconnectEventArgs e)
-        {
-            ISession session = (ISession)sender;
-            session.Disconnected -= OnDisconnected;
-            _sessions.TryRemove(session.SessionId, out session);
-        }
+        public void RemoveSession(ISession session) =>
+            _sessions.TryRemove(session.SessionId, out _);
 
         private async Task SendPingMessagesAsync()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _pingTimer.WaitForNextTickAsync(token))
             {
                 try
                 {
                     _pingTasks.Clear();
-                    foreach (ISession session in _sessions.Values)
+                    foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
                     {
+                        ISession session = kvp.Value;
                         if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
                         {
                             Task<bool> pingTask = SendPingMessage(session);
@@ -104,7 +105,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"DEBUG/ERROR Error during send ping messages: {ex}");
+                    _logger.DebugError($"Error during send ping messages: {ex}");
                 }
             }
         }
@@ -132,7 +133,12 @@ namespace Nethermind.Network
                 {
                     if (!session.IsClosing)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                        if (_logger.IsTrace) TraceNoPongReceived(pingTime, session);
+                        if (pingTime - session.LastPongUtc > MissedPongIntervalsBeforeDisconnect * _pingInterval)
+                        {
+                            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "no pong received");
+                        }
+
                         return false;
                     }
 
@@ -144,6 +150,10 @@ namespace Nethermind.Network
             }
 
             return true;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceNoPongReceived(DateTime pingSentAt, ISession monitoredSession) =>
+                _logger.Trace($"No pong received in response to the {pingSentAt:T} ping at {monitoredSession.Node:c} | last pong time {monitoredSession.LastPongUtc:T}");
         }
 
         private void StartPingTimer()
@@ -159,12 +169,13 @@ namespace Nethermind.Network
         {
             try
             {
+                _pingTimer.Dispose();
                 if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during ping timer stop", e);
+                _logger.DebugError("Error during ping timer stop", e);
             }
         }
     }

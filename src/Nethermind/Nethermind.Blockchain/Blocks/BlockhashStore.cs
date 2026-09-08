@@ -5,47 +5,54 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
-    : IBlockhashStore
+public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
-        => ApplyBlockhashStateChanges(blockHeader, specProvider.GetSpec(blockHeader));
-
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
-        if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
+        if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
 
-        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!worldState.IsContract(eip2935Account)) return;
-
-        Hash256 parentBlockHash = blockHeader.ParentHash;
-        var parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
-        StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.RecordBytecodeAccess(blockHashStoreCell.Address);
     }
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
-        => GetBlockHashFromState(currentHeader, requiredBlockNumber, specProvider.GetSpec(currentHeader));
+    public AccessList? GetAccessList(Block block, IReleaseSpec spec) =>
+        TryGetParentHashCell(block.Header, spec, out StorageCell blockHashStoreCell)
+            ? AccessList.ForSingleStorageCell(in blockHashStoreCell)
+            : null;
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec? spec)
+    private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
+    {
+        blockHashStoreCell = default;
+        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return false;
+
+        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        if (!worldState.IsContract(eip2935Account)) return false;
+
+        blockHashStoreCell = new StorageCell(eip2935Account, new UInt256((ulong)(header.Number - 1) % spec.Eip2935RingBufferSize));
+        return true;
+    }
+
+    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)
     {
         if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + Eip2935Constants.RingBufferSize < currentHeader.Number)
+            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
         {
             return null;
         }
-        var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
+        UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);

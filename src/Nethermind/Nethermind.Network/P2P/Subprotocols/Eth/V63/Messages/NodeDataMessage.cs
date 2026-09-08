@@ -6,9 +6,9 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    public class NodeDataMessage(IOwnedReadOnlyList<byte[]>? data) : P2PMessage
+    public class NodeDataMessage(IByteArrayList? data) : P2PMessage
     {
-        public IOwnedReadOnlyList<byte[]> Data { get; } = data ?? ArrayPoolList<byte[]>.Empty();
+        public IByteArrayList Data { get; } = data ?? EmptyByteArrayList.Instance;
         public override int PacketType => Eth63MessageCode.NodeData;
         public override string Protocol => "eth";
 

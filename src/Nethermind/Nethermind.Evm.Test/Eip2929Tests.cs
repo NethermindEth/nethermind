@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using System;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -15,63 +17,86 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class Eip2929Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
-        [Test]
-        public void Case1()
+        [TestCase("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000", 8653ul)]
+        [TestCase("0x60006000600060ff3c60006000600060ff3c600060006000303c00", 2835ul)]
+        [TestCase("0x60015450601160015560116002556011600255600254600154", 44529ul)]
+        [TestCase("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50", 2869ul)]
+        public void Eip2929_gas_cost(string codeHex, ulong expectedGasExcludingTx)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
             byte[] code = Prepare.EvmCode
-                .FromCode("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000")
+                .FromCode(codeHex)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 8653);
+            Assert.That(result.StatusCode, Is.EqualTo(1));
+            AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 
-        [Test]
-        public void Case2()
+        private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            public override bool IsTracingInstructions => false;
+            public override bool IsTracingOpLevelStorage => storage;
+            public int StorageReads { get; private set; }
 
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x60006000600060ff3c60006000600060ff3c600060006000303c00")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 2835);
+            public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => StorageReads++;
         }
 
-        [Test]
-        public void Case3()
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Storage_observation_flags_are_independent_and_refreshed(bool storage, bool access)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            byte[] code = Bytes.FromHexString("6001545060015450");
+            Verify(storage, access);
+            Verify(!storage, !access);
 
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x60015450601160015560116002556011600255600254600154")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 44529);
+            void Verify(bool traceStorage, bool traceAccess)
+            {
+                StorageObservationTracer tracer = new(traceStorage) { IsTracingAccess = traceAccess };
+                Execute(tracer, code);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                    Assert.That(tracer.StorageReads, Is.EqualTo(traceStorage ? 2 : 0));
+                    Assert.That(tracer.GasSpent, Is.EqualTo(traceAccess ? 21210UL : 23210UL));
+                }
+            }
         }
 
-        [Test]
-        public void Case4()
+        private sealed class RefundObservationTracer(bool refunds, bool actions) : TestAllTracerWithOutput
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            public override bool IsTracingInstructions => false;
+            public override bool IsTracingRefunds => refunds;
+            public override bool IsTracingActions => actions;
+        }
 
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50")
-                .Done;
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Refund_and_action_flags_are_independent_and_refreshed(bool refunds, bool actions)
+        {
+            byte[] code = Bytes.FromHexString("60016000556000600055");
+            Verify(refunds, actions);
+            Verify(!refunds, !actions);
 
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
-            AssertGas(result, GasCostOf.Transaction + 2869);
+            void Verify(bool traceRefunds, bool traceActions)
+            {
+                RefundObservationTracer tracer = new(traceRefunds, traceActions) { IsTracingAccess = false };
+                Execute(tracer, code);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                    Assert.That(tracer.Refund, Is.EqualTo(traceRefunds ? RefundOf.SSetReversedHotCold : 0));
+                    Assert.That(tracer.Actions, Has.Count.EqualTo(traceActions ? 1 : 0));
+                }
+            }
         }
 
         protected override TestAllTracerWithOutput CreateTracer()

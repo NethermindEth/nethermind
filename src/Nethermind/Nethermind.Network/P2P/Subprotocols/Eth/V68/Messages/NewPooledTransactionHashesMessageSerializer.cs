@@ -1,0 +1,81 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using DotNetty.Buffers;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
+
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
+{
+    public class NewPooledTransactionHashesMessageSerializer
+        : IZeroMessageSerializer<NewPooledTransactionHashesMessage68>
+    {
+        private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Types));
+        private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Sizes));
+        private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Hashes));
+
+        public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader ctx)
+        {
+            ctx.ReadSequenceLength();
+            ArrayPoolList<byte>? types = null;
+            ArrayPoolList<int>? sizes = null;
+            ArrayPoolList<Hash256>? hashes = null;
+            try
+            {
+                types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
+                sizes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt(), limit: SizesRlpLimit);
+                hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+                return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+            }
+            catch
+            {
+                types?.Dispose();
+                sizes?.Dispose();
+                hashes?.Dispose();
+                throw;
+            }
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
+        {
+            int sizesLength = 0;
+            foreach (int size in message.Sizes.AsSpan())
+            {
+                sizesLength += Rlp.LengthOf(size);
+            }
+
+            int hashesLength = 0;
+            foreach (Hash256 hash in message.Hashes.AsSpan())
+            {
+                hashesLength += Rlp.LengthOf(hash);
+            }
+
+            int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
+
+            byteBuffer.EnsureWritable(totalSize);
+
+            ByteBufferRlpWriter writer = new(byteBuffer);
+
+            writer.StartSequence(totalSize);
+            writer.Encode(message.Types.AsSpan());
+
+            writer.StartSequence(sizesLength);
+            foreach (int size in message.Sizes.AsSpan())
+            {
+                writer.Encode(size);
+            }
+
+            writer.StartSequence(hashesLength);
+            foreach (Hash256 hash in message.Hashes.AsSpan())
+            {
+                writer.Encode(hash);
+            }
+        }
+    }
+}

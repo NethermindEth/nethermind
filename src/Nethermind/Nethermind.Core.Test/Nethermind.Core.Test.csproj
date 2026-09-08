@@ -7,8 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.AuRa.Test" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />

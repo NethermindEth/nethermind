@@ -6,6 +6,7 @@ using System.Linq;
 using CkzgLib;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -14,25 +15,24 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TransactionBuilder<T> : BuilderBase<T> where T : Transaction, new()
     {
-        public TransactionBuilder()
+        public TransactionBuilder() => TestObjectInternal = new T
         {
-            TestObjectInternal = new T
-            {
-                GasPrice = 1,
-                GasLimit = Transaction.BaseTxGasCost,
-                To = Address.Zero,
-                Nonce = 0,
-                Value = 1,
-                Data = Array.Empty<byte>(),
-                Timestamp = 0,
-            };
-        }
+            GasPrice = 1,
+            GasLimit = Transaction.BaseTxGasCost,
+            To = Address.Zero,
+            Nonce = 0,
+            Value = 1,
+            Data = Array.Empty<byte>(),
+            Timestamp = 0,
+        };
 
-        public TransactionBuilder<T> WithNonce(UInt256 nonce)
+        public TransactionBuilder<T> WithNonce(ulong nonce)
         {
             TestObjectInternal.Nonce = nonce;
             return this;
         }
+
+        public TransactionBuilder<T> WithNonce(int nonce) => WithNonce((ulong)nonce);
 
         public TransactionBuilder<T> WithHash(Hash256? hash)
         {
@@ -52,11 +52,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithData(byte[] data)
+        public TransactionBuilder<T> WithData(byte[]? data)
         {
             TestObjectInternal.Data = data;
             return this;
         }
+
+        public TransactionBuilder<T> WithDataHex(string dataHex) => WithData(Bytes.FromHexString(dataHex));
 
         public TransactionBuilder<T> WithCode(byte[] data)
         {
@@ -77,7 +79,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithGasLimit(long gasLimit)
+        public TransactionBuilder<T> WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;
@@ -206,10 +208,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
-        {
-            return TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
-        }
+        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx() => TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
 
         public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple authTuple)
         {
@@ -257,11 +256,11 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
+        public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null, bool isEip155Enabled = true)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
             EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId);
-            ecdsa.Sign(privateKey, TestObjectInternal, true);
+            ecdsa.Sign(privateKey, TestObjectInternal, isEip155Enabled);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
         }

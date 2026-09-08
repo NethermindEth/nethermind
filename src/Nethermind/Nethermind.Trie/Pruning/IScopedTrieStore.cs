@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -15,9 +14,6 @@ public interface IScopedTrieStore : ITrieNodeResolver
 {
     // Begins a commit to update the trie store. The `ICommitter` provide `CommitNode` to add node into.
     ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
-
-    // Only used by snap provider, so ValueHash instead of Hash
-    bool IsPersisted(in TreePath path, in ValueHash256 keccak);
 }
 
 public interface ICommitter : IDisposable

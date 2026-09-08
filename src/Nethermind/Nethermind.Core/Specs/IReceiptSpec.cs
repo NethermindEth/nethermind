@@ -15,6 +15,11 @@ namespace Nethermind.Core.Specs
         bool IsEip658Enabled { get; }
 
         /// <summary>
+        /// EIP-7778: Block Gas Accounting without Refunds
+        /// </summary>
+        bool IsEip7778Enabled { get; }
+
+        /// <summary>
         /// Should validate ReceiptsRoot.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

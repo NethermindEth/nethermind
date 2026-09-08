@@ -2,40 +2,84 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
 internal static class XdcConstants
 {
-    public static readonly ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
+    public const string XDPoS = nameof(XDPoS);
+    public const string XDPoSSubnet = nameof(XDPoSSubnet);
 
-    public static readonly int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
-    public static readonly int ExtraSeal = 65;   // Fixed number of extra-data suffix bytes reserved for signer seal
+    public const ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
+    public const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
+    public const int ExtraSeal = 65;   // Fixed number of extra-data suffix bytes reserved for signer seal
 
     public const ulong NonceAuthVoteValue = 0xffffffffffffffff; // Magic nonce number to vote on adding a new signer
     public const ulong NonceDropVoteValue = 0x0000000000000000; // Magic nonce number to vote on removing a signer
 
-    public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
-    public static readonly ulong InMemoryEpochs = 5 * 900UL;   // Number of mapping from block to epoch switch infos to keep in memory
+    public const int InMemoryEpochs = 5 * 900;   // Number of mapping from block to epoch switch infos to keep in memory
 
-    public static readonly int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
+    public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
+
+    public const int BlockSignersCacheLimit = 9000;
+
+    // XDC default gas limit per block https://github.com/XinFinOrg/XDPoSChain/blob/dev-upgrade/cicd/mainnet/start.sh#L120
+    public const long DefaultTargetGasLimit = 420_000_000;
 
     public const byte ConsensusVersion = 0x02;
 
+    public const int GasLimitBoundDivisor = 1024; // The bound divisor of gas limit adjustment per block
+
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory
-    public const int BlockSignersCacheLimit = 9000;
     public const int M2ByteLength = 4;
 
     public const int PeriodicJobPeriod = 60;
     public const int PoolHygieneRound = 10;
-
-    public static UInt256 DifficultyDefault = UInt256.One;
     public const int InMemorySignatures = 4096;
+
+    // Suggested blocks are ahead of head while being processed; only treat the node
+    // as syncing once the gap exceeds this, so normal per-block processing doesn't look like a resync.
+    public const int MaxSyncDistanceForConsensus = 2;
+
+    public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
+    public static readonly UInt256 DifficultyDefault = UInt256.One;
+    public const int MinimumMinerBlockPerEpoch = 1;
+
+    // Penalty window of the pre-TIPUpgradePenalty rules, in epochs. Unlike the post-upgrade LimitPenaltyEpoch it is
+    // not chainspec configurable.
+    public const ulong LimitPenaltyEpochV2 = 1;
+
+    public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
+    public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
+    public static readonly byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
+    public static readonly byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
+    public static readonly byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
+    public static readonly byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
+    public static readonly byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
+
+    // 4-byte selector + 32-byte block number + 32-byte block hash
+    public const int SignTransactionDataLength = 68;
+
+
+    // Only sign recent head blocks.
+    public const ulong MaxSignableBlockPeriods = 2;
+
+    public const string RpcAccountStatusMasternode = "MasterNode";
+    public const string RpcAccountStatusProtector = "ProtectorNode";
+    public const string RpcAccountStatusObserver = "ObserverNode";
+
+    public const string RpcCandidateStatusMasternode = "MASTERNODE";
+    public const string RpcCandidateStatusProposed = "PROPOSED";
+    public const string RpcCandidateStatusSlashed = "SLASHED";
+
+    // Blocks after a signed block that are scanned for the sign transactions referencing it.
+    public const ulong LimitTimeFinality = 30;
+
+    // Epochs of checkpoint headers scanned for penalties when reporting candidate status.
+    public const ulong PenaltyEpochLookback = 4;
+
+    public const ulong SecondsPerYear = 365 * 86400;
 }

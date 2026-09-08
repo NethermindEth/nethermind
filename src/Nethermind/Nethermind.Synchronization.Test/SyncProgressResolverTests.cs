@@ -6,11 +6,10 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -21,109 +20,113 @@ namespace Nethermind.Synchronization.Test
     [TestFixture]
     public class SyncProgressResolverTests
     {
+        private IBlockTree _blockTree = null!;
+        private IStateReader _stateReader = null!;
+
+        [SetUp]
+        public void Setup()
+        {
+            _blockTree = Substitute.For<IBlockTree>();
+            _stateReader = Substitute.For<IStateReader>();
+        }
+
         [Test]
         public void Header_block_is_0_when_no_header_was_suggested()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
-            SyncConfig syncConfig = new()
-            {
-                PivotNumber = "1",
-            };
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
-            blockTree.BestSuggestedHeader.ReturnsNull();
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            _blockTree.BestSuggestedHeader.ReturnsNull();
             Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Header_block_uses_head_when_no_header_was_suggested()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.ReturnsNull();
+
+            Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(head.Number));
         }
 
         [Test]
         public void Best_block_is_0_when_no_block_was_suggested()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
-            SyncConfig syncConfig = new()
-            {
-                PivotNumber = "1",
-            };
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
-            blockTree.BestSuggestedBody.ReturnsNull();
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            _blockTree.BestSuggestedBody.ReturnsNull();
             Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Best_block_uses_head_when_no_block_was_suggested()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedBody.ReturnsNull();
+
+            Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(head.Number));
+        }
+
+        [Test]
+        public void Chain_difficulty_uses_head_when_no_block_was_suggested()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).WithTotalDifficulty((UInt256)10).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedBody.ReturnsNull();
+
+            Assert.That(syncProgressResolver.ChainDifficulty, Is.EqualTo(head.TotalDifficulty));
+        }
+
+        [Test]
+        public void Suggested_pointers_behind_head_are_not_hidden()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).WithTotalDifficulty((UInt256)10).TestObject;
+            Block suggested = Build.A.Block.WithNumber(4).WithTotalDifficulty(UInt256.One).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.Returns(suggested.Header);
+            _blockTree.BestSuggestedBody.Returns(suggested);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(suggested.Number));
+                Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(suggested.Number));
+                Assert.That(syncProgressResolver.ChainDifficulty, Is.EqualTo(suggested.TotalDifficulty));
+            }
         }
 
         [Test]
         public void Best_state_is_head_when_there_are_no_suggested_blocks()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
-            SyncConfig syncConfig = new()
-            {
-                PivotNumber = "1",
-            };
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
-            blockTree.Head.Returns(head);
-            blockTree.BestSuggestedHeader.Returns(head.Header);
-            stateReader.HasStateForBlock(head.Header).Returns(true);
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.Returns(head.Header);
+            _stateReader.HasStateForBlock(head.Header).Returns(true);
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 
-        [Test]
-        public void Best_state_is_suggested_if_there_is_suggested_block_with_state()
+        [TestCase(true, 6UL)]
+        [TestCase(false, 5UL)]
+        public void Best_state_depends_on_whether_suggested_block_has_state(bool suggestedHasState, ulong expectedNumber)
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
-            SyncConfig syncConfig = new()
-            {
-                PivotNumber = "1",
-            };
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
-            blockTree.Head.Returns(head);
-            blockTree.BestSuggestedHeader.Returns(suggested);
-            blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
-
-            stateReader.HasStateForBlock(head.Header!).Returns(true);
-            stateReader.HasStateForBlock(suggested).Returns(true);
-            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(suggested.Number));
-        }
-
-        [Test]
-        public void Best_state_is_head_if_there_is_suggested_block_without_state()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
-            SyncConfig syncConfig = new()
-            {
-                PivotNumber = "1",
-            };
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
-            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
-            BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
-            blockTree.Head.Returns(head);
-            blockTree.BestSuggestedHeader.Returns(suggested);
-            blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
-            stateReader.HasStateForBlock(head.Header!).Returns(true);
-            stateReader.HasStateForBlock(suggested).Returns(false);
-            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.Returns(suggested);
+            _blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
+            _stateReader.HasStateForBlock(head.Header!).Returns(true);
+            _stateReader.HasStateForBlock(suggested).Returns(suggestedHasState);
+            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(expectedNumber));
         }
 
         [Test]
         public void Is_fast_block_finished_returns_true_when_no_fast_sync_is_used()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
-            SyncConfig syncConfig = new()
-            {
-                FastSync = false,
-                PivotNumber = "1",
-            };
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { FastSync = false, PivotNumber = 1 });
             Assert.That(syncProgressResolver.IsFastBlocksHeadersFinished(), Is.True);
             Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.True);
             Assert.That(syncProgressResolver.IsFastBlocksReceiptsFinished(), Is.True);
@@ -132,57 +135,50 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Is_fast_block_bodies_finished_returns_false_when_blocks_not_downloaded()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
-            blockTree.SyncPivot.Returns((1, Hash256.Zero));
+            _blockTree.SyncPivot.Returns((1UL, Hash256.Zero));
+            _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, syncConfig);
             Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.False);
         }
 
         [Test]
         public void Is_fast_block_receipts_finished_returns_true_when_receipts_not_downloaded_and_we_do_not_want_to_download_receipts()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = false,
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
+            _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, true, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(true, syncConfig);
             Assert.That(syncProgressResolver.IsFastBlocksReceiptsFinished(), Is.True);
         }
 
 
-        private SyncProgressResolver CreateProgressResolver(IBlockTree blockTree, IStateReader stateReader, bool isReceiptFinished, SyncConfig syncConfig, LimboLogs limboLogs)
+        private SyncProgressResolver CreateProgressResolver(bool isReceiptFinished, SyncConfig syncConfig)
         {
             ISyncFeed<ReceiptsSyncBatch?> receiptFeed = Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>();
             receiptFeed.IsFinished.Returns(isReceiptFinished);
 
             return new SyncProgressResolver(
-                blockTree,
-                new FullStateFinder(blockTree, stateReader),
+                _blockTree,
+                new FullStateFinder(_blockTree, _stateReader),
                 syncConfig,
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
                 receiptFeed,
-                Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
-                limboLogs
+                Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>()
             );
         }
     }

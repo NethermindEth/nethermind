@@ -17,18 +17,15 @@ public static class TestTrieStoreFactory
         DirtyNodeShardBit = 1,
     };
 
-    public static TestRawTrieStore Build(INodeStorage nodeStorage, ILogManager logManager)
-    {
-        return new TestRawTrieStore(nodeStorage);
-    }
+    public static TestRawTrieStore Build(INodeStorage nodeStorage, ILogManager logManager) => new(nodeStorage);
 
-    public static TestRawTrieStore Build(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager)
-    {
-        return Build(new NodeStorage(keyValueStore), logManager);
-    }
+    public static TestRawTrieStore Build(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager) => Build(new NodeStorage(keyValueStore), logManager);
 
     public static TrieStore Build(IKeyValueStoreWithBatching keyValueStore, IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, ILogManager logManager)
     {
-        return new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, _testPruningConfig, logManager);
+        TestFinalizedStateProvider finalizedStateProvider = new(_testPruningConfig.PruningBoundary);
+        TrieStore trieStore = new(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, finalizedStateProvider, _testPruningConfig, logManager);
+        finalizedStateProvider.TrieStore = trieStore;
+        return trieStore;
     }
 }

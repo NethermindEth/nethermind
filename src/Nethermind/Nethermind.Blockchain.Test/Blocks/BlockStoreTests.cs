@@ -2,25 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
-using FluentAssertions.Equivalency;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
-    private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = options => options.Excluding(b => b.EncodedSize);
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Test_can_insert_get_and_remove_blocks(bool cached)
+    [Test]
+    public void Test_can_insert_get_and_remove_blocks([Values] bool cached)
     {
         TestMemDb db = new();
         BlockStore store = new(db);
@@ -29,15 +29,15 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
 
         store.Delete(block.Number, block.Hash!);
 
-        store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached).Should().BeNull();
+        Assert.That(store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached), Is.Null);
     }
 
     [Test]
-    public void Test_insert_would_pass_in_writeflag()
+    public void Test_insert_would_pass_in_write_flag()
     {
         TestMemDb db = new();
         BlockStore store = new(db);
@@ -49,9 +49,8 @@ public class BlockStoreTests
         db.KeyWasWrittenWithFlags(key, WriteFlags.DisableWAL);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Test_can_get_block_that_was_stored_with_hash(bool cached)
+    [Test]
+    public void Test_can_get_block_that_was_stored_with_hash([Values] bool cached)
     {
         TestMemDb db = new();
         BlockStore store = new(db);
@@ -60,7 +59,7 @@ public class BlockStoreTests
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
     [Test]
@@ -73,7 +72,7 @@ public class BlockStoreTests
         byte[] value = [4, 5, 6];
 
         store.SetMetadata(key, value);
-        store.GetMetadata(key).Should().BeEquivalentTo(value);
+        Assert.That(store.GetMetadata(key), Is.EqualTo(value));
     }
 
     [Test]
@@ -86,13 +85,13 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
-        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
 
         db.Clear();
 
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved!.EncodedSize = null;
-        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
     [Test]
@@ -109,13 +108,87 @@ public class BlockStoreTests
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
 
-        retrieved.Header.Should().BeEquivalentTo(block.Header);
-        retrieved.TransactionCount.Should().Be(block.Transactions.Length);
+        Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
+        Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
 
         for (int i = 0; i < retrieved.TransactionCount; i++)
         {
             block.Transactions[i].Data = Array.Empty<byte>();
-            retrieved.GetNextTransaction().Should().BeEquivalentTo(block.Transactions[i]);
+            Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
         }
     }
+
+    [Test]
+    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public void Test_DeleteRanges_takes_every_range_and_keeps_the_heights_between()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block[] blocks = new Block[6];
+        for (ulong number = 1; number <= 5; number++)
+        {
+            blocks[number] = Build.A.Block.WithNumber(number).TestObject;
+            store.Insert(blocks[number]);
+        }
+
+        store.Get(blocks[2].Number, blocks[2].Hash!, RlpBehaviors.None, shouldCache: true);
+
+        store.DeleteRanges([(1, 3), (4, 5)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(blocks[1].Number, blocks[1].Hash!), Is.Null);
+            Assert.That(store.Get(blocks[2].Number, blocks[2].Hash!), Is.Null, "a cached block inside a deleted range must stop being served");
+            Assert.That(store.Get(blocks[3].Number, blocks[3].Hash!), Is.Not.Null, "the height between the ranges survives");
+            Assert.That(store.Get(blocks[4].Number, blocks[4].Hash!), Is.Null);
+            Assert.That(store.Get(blocks[5].Number, blocks[5].Hash!), Is.Not.Null, "the upper bound is exclusive");
+        }
+    }
+
+    [Test]
+    public void Test_DeleteRanges_with_an_empty_range_still_probes_range_delete_support()
+    {
+        BlockStore store = new(Substitute.For<IDb>());
+
+        Assert.That(() => store.DeleteRanges([(0, 0)]), Throws.InstanceOf<NotSupportedException>(),
+            "an empty range is the pruner's capability probe, so it must reach the store instead of being skipped");
+    }
+
+    [Test]
+    public void Test_ClearCache_removes_cached_blocks()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+
+        // Populate cache
+        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+
+        // Clear the DB but block should still be in cache
+        db.Clear();
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        Assert.That(retrieved, Is.Not.Null);
+
+        // Clear the cache - now block should not be retrievable
+        (store as IClearableCache)?.ClearCache();
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        Assert.That(retrieved, Is.Null);
+    }
+
 }

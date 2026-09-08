@@ -15,7 +15,7 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
 {
     public ArrayPoolList<PathWithAccount> Accounts { get; } = new(0);
 
-    public int Collect(in ValueHash256 path, SpanSource value)
+    public int Collect(in ValueHash256 path, CappedArray<byte> value)
     {
         if (value.IsNull)
         {
@@ -23,10 +23,10 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
             return 32 + 1;
         }
 
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(value.Span);
-        Account accnt = AccountDecoder.Instance.Decode(ref ctx);
+        RlpReader ctx = new(value.AsSpan());
+        Account accnt = AccountDecoder.Instance.Decode(ref ctx)
+            ?? throw new TrieException("An account leaf must contain a decodable account value.");
         Accounts.Add(new PathWithAccount(path, accnt));
         return 32 + AccountDecoder.Slim.GetLength(accnt);
     }
 }
-

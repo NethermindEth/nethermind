@@ -9,11 +9,13 @@ using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using Nethermind.Tools.Kute.MessageProvider;
+using Nethermind.Tools.Kute.Replay;
 using Nethermind.Tools.Kute.Metrics;
 using Nethermind.Tools.Kute.ResponseTracer;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 using System.CommandLine;
+using System.Net;
 
 namespace Nethermind.Tools.Kute;
 
@@ -37,6 +39,7 @@ public static class Program
             Config.PrometheusPushGatewayUser,
             Config.PrometheusPushGatewayPassword,
             Config.Labels,
+            ReplayCommand.Create(),
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -56,7 +59,18 @@ public static class Program
 
         collection.AddSingleton<Application>();
         collection.AddSingleton<ISystemClock, RealSystemClock>();
-        collection.AddSingleton<HttpClient>();
+        collection.AddSingleton<HttpClient>(_ =>
+        {
+            // Disable proxy auto-detection to avoid timeout (~2s) on Windows.
+            // Each Kute invocation is a separate process, so the proxy lookup
+            // would otherwise be paid on every single measured request.
+            SocketsHttpHandler handler = new()
+            {
+                UseProxy = false,
+                AutomaticDecompression = DecompressionMethods.None,
+            };
+            return new HttpClient(handler);
+        });
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(parseResult.GetValue(Config.JwtSecretFilePath)!));
         collection.AddSingleton<IAuth>(provider =>
             new TtlAuth(
@@ -70,8 +84,8 @@ public static class Program
         );
         collection.AddSingleton<IMessageProvider<JsonRpc>>(_ =>
         {
-            FileMessageProvider ofStrings = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
-            JsonRpcMessageProvider ofJsonRpc = new JsonRpcMessageProvider(ofStrings);
+            FileMessageProvider ofStrings = new(parseResult.GetValue(Config.MessagesFilePath)!);
+            JsonRpcMessageProvider ofJsonRpc = new(ofStrings);
             IMessageProvider<JsonRpc> provider = parseResult.GetValue(Config.UnwrapBatch)
                 ? new UnwrapBatchJsonRpcMessageProvider(ofJsonRpc)
                 : ofJsonRpc;
@@ -116,13 +130,13 @@ public static class Program
             });
         collection.AddSingleton<IMetricsReporter>(provider =>
         {
-            MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
-            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
+            MemoryMetricsReporter memoryReporter = new();
+            ConsoleTotalReporter consoleReporter = new(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
             IMetricsReporter progressReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
-            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? new();
+            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? [];
             string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
             string? prometheusGatewayUser = parseResult.GetValue(Config.PrometheusPushGatewayUser);
             string? prometheusGatewayPassword = parseResult.GetValue(Config.PrometheusPushGatewayPassword);

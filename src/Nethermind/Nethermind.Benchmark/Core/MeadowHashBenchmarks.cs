@@ -99,16 +99,11 @@ namespace Nethermind.Benchmarks.Core
 
         #region Functions
 
-        public static MeadowHashBenchmarks Create(int size = HASH_SIZE)
-        {
-            return new MeadowHashBenchmarks(size);
-        }
+        public static MeadowHashBenchmarks Create(int size = HASH_SIZE) => new(size);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong ROL(ulong a, int offset)
-        {
-            return (a << (offset % LANE_BITS)) ^ (a >> (LANE_BITS - (offset % LANE_BITS)));
-        }
+        private static ulong ROL(ulong a, int offset) =>
+            (a << (offset % LANE_BITS)) ^ (a >> (LANE_BITS - (offset % LANE_BITS)));
 
         // update the state with given number of rounds
         public static void KeccakF(Span<ulong> st, int rounds)
@@ -155,7 +150,7 @@ namespace Nethermind.Benchmarks.Core
             aso = st[23];
             asu = st[24];
 
-            for (var round = 0; round < ROUNDS; round += 2)
+            for (int round = 0; round < ROUNDS; round += 2)
             {
                 //    prepareTheta
                 bCa = aba ^ aga ^ aka ^ ama ^ asa;
@@ -383,8 +378,8 @@ namespace Nethermind.Benchmarks.Core
         /// <returns></returns>
         public static byte[] FromString(string utf8String)
         {
-            var input = Encoding.UTF8.GetBytes(utf8String);
-            var output = new byte[32];
+            byte[] input = Encoding.UTF8.GetBytes(utf8String);
+            byte[] output = new byte[32];
             ComputeHash(input, output);
             return output;
         }
@@ -398,8 +393,8 @@ namespace Nethermind.Benchmarks.Core
         /// <returns></returns>
         public static byte[] FromString(string inputString, Encoding stringEncoding)
         {
-            var input = stringEncoding.GetBytes(inputString);
-            var output = new byte[32];
+            byte[] input = stringEncoding.GetBytes(inputString);
+            byte[] output = new byte[32];
             ComputeHash(input, output);
             return output;
         }
@@ -411,8 +406,8 @@ namespace Nethermind.Benchmarks.Core
         /// <returns></returns>
         public static byte[] FromHex(string hexString)
         {
-            var input = Bytes.FromHexString(hexString);
-            var output = new byte[32];
+            byte[] input = Bytes.FromHexString(hexString);
+            byte[] output = new byte[32];
             ComputeHash(input, output);
             return output;
         }
@@ -426,7 +421,7 @@ namespace Nethermind.Benchmarks.Core
 
         public static byte[] ComputeHashBytes(Span<byte> input, int size = HASH_SIZE)
         {
-            var output = new byte[HASH_SIZE];
+            byte[] output = new byte[HASH_SIZE];
             ComputeHash(input, output);
             return output;
         }
@@ -456,11 +451,11 @@ namespace Nethermind.Benchmarks.Core
                 int roundSize = STATE_SIZE == output.Length ? HASH_DATA_AREA : STATE_SIZE - (2 * output.Length);
                 int roundSizeU64 = roundSize / 8;
 
-                var inputLength = input.Length;
+                int inputLength = input.Length;
                 int i;
                 for (; inputLength >= roundSize; inputLength -= roundSize, input = input.Slice(roundSize))
                 {
-                    var input64 = MemoryMarshal.Cast<byte, ulong>(input);
+                    Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input);
 
                     for (i = 0; i < roundSizeU64; i++)
                     {
@@ -480,7 +475,7 @@ namespace Nethermind.Benchmarks.Core
                 temp[inputLength++] = 1;
                 temp[roundSize - 1] |= 0x80;
 
-                var tempU64 = MemoryMarshal.Cast<byte, ulong>(temp);
+                Span<ulong> tempU64 = MemoryMarshal.Cast<byte, ulong>(temp);
 
                 for (i = 0; i < roundSizeU64; i++)
                 {
@@ -540,7 +535,7 @@ namespace Nethermind.Benchmarks.Core
             if (_remainderLength != 0)
             {
                 // Copy data to our remainder
-                var remainderAdditive = input.Slice(0, Math.Min(input.Length, _roundSize - _remainderLength));
+                Span<byte> remainderAdditive = input.Slice(0, Math.Min(input.Length, _roundSize - _remainderLength));
                 remainderAdditive.CopyTo(_remainderBuffer.Slice(_remainderLength).Span);
 
                 // Increment the length
@@ -553,7 +548,7 @@ namespace Nethermind.Benchmarks.Core
                 if (_remainderLength == _roundSize)
                 {
                     // Cast our input to ulongs.
-                    var remainderBufferU64 = MemoryMarshal.Cast<byte, ulong>(_remainderBuffer.Span);
+                    Span<ulong> remainderBufferU64 = MemoryMarshal.Cast<byte, ulong>(_remainderBuffer.Span);
 
                     // Loop for each ulong in this remainder, and xor the state with the input.
                     for (i = 0; i < _roundSizeU64; i++)
@@ -574,7 +569,7 @@ namespace Nethermind.Benchmarks.Core
             while (input.Length >= _roundSize)
             {
                 // Cast our input to ulongs.
-                var input64 = MemoryMarshal.Cast<byte, ulong>(input);
+                Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input);
 
                 // Loop for each ulong in this round, and xor the state with the input.
                 for (i = 0; i < _roundSizeU64; i++)
@@ -618,7 +613,7 @@ namespace Nethermind.Benchmarks.Core
             remainderClone.Span[_roundSize - 1] |= 0x80;
 
             // Cast the remainder buffer to ulongs.
-            var temp64 = MemoryMarshal.Cast<byte, ulong>(remainderClone.Span);
+            Span<ulong> temp64 = MemoryMarshal.Cast<byte, ulong>(remainderClone.Span);
 
             // Loop for each ulong in this round, and xor the state with the input.
             for (int i = 0; i < _roundSizeU64; i++)

@@ -1,0 +1,155 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Net;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
+using Nethermind.Network.Discovery.Discv5.Messages;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Enr;
+using Nethermind.Stats.Model;
+using NUnit.Framework;
+
+namespace Nethermind.Network.Discovery.Test.Discv5.Handlers;
+
+public class NodesResponseHandlerTests
+{
+    [TestCase("8.8.8.8", "127.0.0.1", false, 0)]
+    [TestCase("127.0.0.1", "127.0.0.1", false, 1)]
+    [TestCase("127.0.0.1", "192.0.2.1", false, 0)]
+    [TestCase("8.8.8.8", "8.8.4.4", true, 1)]
+    public void ShouldFilterRecordByReceiverAndRecordAddress(string receiverIp, string recordIp, bool includeEth2, int expectedCount)
+    {
+        Node receiver = new(TestItem.PublicKeyA, receiverIp, 30303);
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse(recordIp), includeEth2);
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
+
+        using NodesMsg nodes = new([1], 1, [record]);
+        handler.Handle(nodes);
+
+        Assert.That(handler.GetNodes(), Has.Length.EqualTo(expectedCount));
+    }
+
+    [Test]
+    public void ShouldUseRoutableIpv6WhenIpv4IsPrivate()
+    {
+        Node receiver = new(TestItem.PublicKeyA, "8.8.4.4", 30303);
+        IPAddress ip6 = IPAddress.Parse("2606:4700:4700::1111");
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("10.0.0.1"),
+            tcpPort: null,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(ip6));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
+
+        using NodesMsg nodes = new([1], 1, [record]);
+        handler.Handle(nodes);
+
+        Node[] result = handler.GetNodes();
+        Assert.That(result, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result[0].Host, Is.EqualTo(ip6.ToString()));
+            Assert.That(result[0].DiscoveryPort, Is.EqualTo(30305));
+        }
+    }
+
+    [TestCase("0.0.0.0", "8.8.8.8", 1)]
+    [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
+    [TestCase("::1", "8.8.8.8", 0)]
+    [TestCase("::1", "2001:4860:4860::8888", 1)]
+    [TestCase("::", "8.8.8.8", 1)]
+    [TestCase("::", "2001:4860:4860::8888", 1)]
+    public void ShouldFilterRecordsOutsideLocalListenerAddressFamily(string localIp, string recordIp, int expectedCount)
+    {
+        Node receiver = new(TestItem.PublicKeyA, "8.8.4.4", 30303);
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse(recordIp), includeEth2: true);
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record, IPAddress.Parse(localIp));
+
+        using NodesMsg nodes = new([1], 1, [record]);
+        handler.Handle(nodes);
+
+        Assert.That(handler.GetNodes(), Has.Length.EqualTo(expectedCount));
+    }
+
+    [Test]
+    public void ShouldRejectNodesReadBeforeCompletion()
+    {
+        Node receiver = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
+
+        Assert.That(handler.GetNodes, Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public async Task ShouldCollectConcurrentBatchesOnce()
+    {
+        Node receiver = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        NodeRecord first = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
+        NodeRecord second = CreateEnr(TestItem.PrivateKeyC, IPAddress.Loopback);
+        NodeRecord third = CreateEnr(TestItem.PrivateKeyD, IPAddress.Loopback);
+        NodeRecord fourth = CreateEnr(TestItem.PrivateKeyE, IPAddress.Loopback);
+        using Distances distances = CreateDistances(receiver, first, second, third, fourth);
+        NodesResponseHandler handler = new(receiver, distances, ValueHash256KademliaDistance.Instance, IPAddress.IPv6Any);
+
+        using NodesMsg firstBatch = new([1], 2, [first, second, first]);
+        using NodesMsg secondBatch = new([2], 2, [third, fourth, second]);
+
+        await Task.WhenAll(
+            Task.Run(() => handler.Handle(firstBatch)),
+            Task.Run(() => handler.Handle(secondBatch)));
+        await handler.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Node[] nodes = handler.GetNodes();
+        Assert.That(nodes, Has.Length.EqualTo(4));
+        AssertUniqueNodeIds(nodes);
+    }
+
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, bool includeEth2 = false) =>
+        TestEnrBuilder.BuildSigned(
+            privateKey,
+            ipAddress,
+            tcpPort: null,
+            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
+
+    private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record, IPAddress? localIp = null) =>
+        new(receiver, CreateDistances(receiver, record), ValueHash256KademliaDistance.Instance, localIp ?? IPAddress.IPv6Any);
+
+    private static Distances CreateDistances(Node receiver, params NodeRecord[] records)
+    {
+        int[] distances = new int[records.Length];
+        for (int i = 0; i < records.Length; i++)
+        {
+            distances[i] = GetDistance(receiver, records[i]);
+        }
+
+        return new Distances(distances);
+    }
+
+    private static int GetDistance(Node receiver, NodeRecord record)
+    {
+        PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
+        return ValueHash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash.ValueHash256, nodeId.Hash.ValueHash256);
+    }
+
+    private static void AssertUniqueNodeIds(Node[] nodes)
+    {
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            for (int j = i + 1; j < nodes.Length; j++)
+            {
+                Assert.That(nodes[i].Id.Hash, Is.Not.EqualTo(nodes[j].Id.Hash));
+            }
+        }
+    }
+}

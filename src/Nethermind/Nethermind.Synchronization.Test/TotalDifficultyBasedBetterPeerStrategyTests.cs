@@ -21,7 +21,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns((UInt256)10);
-        syncPeer.HeadNumber.Returns(10);
+        syncPeer.HeadNumber.Returns(10UL);
         BlockHeader header = Build.A.BlockHeader.WithTotalDifficulty(td).TestObject;
 
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
@@ -35,7 +35,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns((UInt256)10);
-        syncPeer.HeadNumber.Returns(10);
+        syncPeer.HeadNumber.Returns(10UL);
 
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
         Assert.That(betterPeerStrategy.Compare(((UInt256)td, 10), syncPeer), Is.EqualTo(expectedResult));
@@ -59,11 +59,11 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
         Assert.That(betterPeerStrategy.IsBetterThanLocalChain(((UInt256)td, 10), ((UInt256)10, 10)), Is.EqualTo(expectedResult));
     }
 
-    [TestCase(3, 4, 5, 2, true)]
-    [TestCase(3, 2, 3, 4, true)]
-    [TestCase(4, 2, 3, 4, false)]
-    [TestCase(3, 4, 3, 2, false)]
-    public void IsDesiredPeer_return_expected_results(long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
+    [TestCase(3, 4UL, 5, 2UL, true)]
+    [TestCase(3, 2UL, 3, 4UL, true)]
+    [TestCase(4, 2UL, 3, 4UL, false)]
+    [TestCase(3, 4UL, 3, 2UL, false)]
+    public void IsDesiredPeer_return_expected_results(long chainDifficulty, ulong bestHeader, long peerTotalDifficulty, ulong peerNumber, bool expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns((UInt256)peerTotalDifficulty);

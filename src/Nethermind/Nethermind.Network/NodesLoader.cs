@@ -10,7 +10,6 @@ using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -19,34 +18,29 @@ namespace Nethermind.Network
     /// <summary>
     /// This class should be split into multiple sources
     /// </summary>
-    public class NodesLoader : INodeSource
-    {
-        private readonly INetworkConfig _networkConfig;
-        private readonly INodeStatsManager _stats;
-        private readonly INetworkStorage _peerStorage;
-        private readonly IRlpxHost _rlpxHost;
-        private readonly ILogger _logger;
+    public sealed record NodesLoaderOptions(bool LoadBootnodesAsPeerCandidates = true);
 
-        public NodesLoader(
-            INetworkConfig networkConfig,
-            INodeStatsManager stats,
-            [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-            IRlpxHost rlpxHost,
-            ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _stats = stats ?? throw new ArgumentNullException(nameof(stats));
-            _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-        }
+    public class NodesLoader(
+        INetworkConfig networkConfig,
+        INodeStatsManager stats,
+        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IEnode enode,
+        ILogManager logManager,
+        NodesLoaderOptions options) : INodeSource
+    {
+        private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+        private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
+        private readonly INetworkStorage _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+        private readonly IEnode _enode = enode ?? throw new ArgumentNullException(nameof(enode));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly NodesLoaderOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
-            List<Node> allPeers = new();
+            List<Node> allPeers = [];
             LoadPeersFromDb(allPeers);
 
-            if (!_networkConfig.OnlyStaticPeers)
+            if (!_networkConfig.OnlyStaticPeers && _options.LoadBootnodesAsPeerCandidates)
             {
                 LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
                 {
@@ -62,7 +56,7 @@ namespace Nethermind.Network
             });
 
             IEnumerable<Node> combined = allPeers
-                .Where(p => p.Id != _rlpxHost.LocalNodeId)
+                .Where(p => p.Id != _enode.PublicKey)
                 .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic);
 
             return combined.ToAsyncEnumerable();
@@ -88,7 +82,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception)
                 {
-                    if (_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    _logger.DebugError($"peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
 
@@ -115,6 +109,11 @@ namespace Nethermind.Network
         {
             foreach (NetworkNode networkNode in networkNodes)
             {
+                if (!networkNode.IsEnode)
+                {
+                    continue;
+                }
+
                 Node node = new(networkNode);
                 nodeUpdate.Invoke(node);
                 peers.Add(node);

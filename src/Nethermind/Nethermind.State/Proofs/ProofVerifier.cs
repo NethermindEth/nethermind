@@ -7,6 +7,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs
 {
@@ -16,11 +17,11 @@ namespace Nethermind.State.Proofs
         /// Verifies one proof - address path from the bottom to the root.
         /// </summary>
         /// <returns>The Value of the bottom most proof node. For example an Account.</returns>
-        public static SpanSource VerifyOneProof(byte[][] proof, Hash256 root)
+        public static CappedArray<byte> VerifyOneProof(byte[][] proof, Hash256 root)
         {
             if (proof.Length == 0)
             {
-                return SpanSource.Null;
+                return default;
             }
 
             for (int i = proof.Length; i > 0; i--)
@@ -43,7 +44,7 @@ namespace Nethermind.State.Proofs
             }
 
             TrieNode trieNode = new(NodeType.Unknown, proof.Last());
-            trieNode.ResolveNode(null, TreePath.Empty);
+            trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
             return trieNode.Value;
         }

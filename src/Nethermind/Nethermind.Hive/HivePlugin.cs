@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Network.Config;
+using Nethermind.TxPool;
 
 namespace Nethermind.Hive;
 
@@ -28,5 +29,16 @@ public class HiveModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<HiveRunner>()
-        .AddStep(typeof(HiveStep));
+        .AddStep(typeof(HiveStep))
+        .AddDecorator<INetworkConfig>((_, networkConfig) =>
+        {
+            networkConfig.FilterPeersByRecentIp = false;
+            return networkConfig;
+        })
+        .AddDecorator<ITxPoolConfig>((_, txPoolConfig) =>
+        {
+            txPoolConfig.ProofsTranslationEnabled = true;
+            return txPoolConfig;
+        })
+        .ClearOrderedComponents<ITxGossipPolicy>();
 }

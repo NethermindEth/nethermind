@@ -3,15 +3,9 @@
 
 namespace Nethermind.Abi
 {
-    public class AbiEncodingInfo
+    public class AbiEncodingInfo(AbiEncodingStyle encodingStyle, AbiSignature signature)
     {
-        public AbiEncodingStyle EncodingStyle { get; }
-        public AbiSignature Signature { get; }
-
-        public AbiEncodingInfo(AbiEncodingStyle encodingStyle, AbiSignature signature)
-        {
-            EncodingStyle = encodingStyle;
-            Signature = signature;
-        }
+        public AbiEncodingStyle EncodingStyle { get; } = encodingStyle;
+        public AbiSignature Signature { get; } = signature;
     }
 }

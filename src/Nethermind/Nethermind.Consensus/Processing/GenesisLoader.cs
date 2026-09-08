@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -18,6 +20,7 @@ namespace Nethermind.Consensus.Processing
         IStateReader stateReader,
         IBlockTree blockTree,
         IWorldState worldState,
+        IWorldStateManager worldStateManager,
         IBlockchainProcessor blockchainProcessor,
         GenesisLoader.Config genesisConfig,
         ILogManager logManager
@@ -30,7 +33,13 @@ namespace Nethermind.Consensus.Processing
 
         public void Load()
         {
-            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+            DoLoad();
+            worldStateManager.FlushCache(CancellationToken.None);
+        }
+
+        private void DoLoad()
+        {
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
 
@@ -56,7 +65,7 @@ namespace Nethermind.Consensus.Processing
             blockTree.NewHeadBlock += GenesisProcessed;
 
             blockTree.SuggestBlock(genesis);
-            bool genesisLoaded = genesisProcessedEvent.Wait(genesisConfig.GenesisTimeout);
+            bool genesisLoaded = genesisProcessedEvent.Wait(Debugger.IsAttached ? TimeSpan.FromMilliseconds(Timeout.Infinite) : genesisConfig.GenesisTimeout);
             if (!genesisLoaded)
             {
                 throw new TimeoutException($"Genesis block was not processed after {genesisConfig.GenesisTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
@@ -76,7 +85,7 @@ namespace Nethermind.Consensus.Processing
         {
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsTrace) _logger.Trace(stateReader.DumpState(genesis.StateRoot!));
+                if (_logger.IsTrace) _logger.Trace(stateReader.DumpState(genesis));
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

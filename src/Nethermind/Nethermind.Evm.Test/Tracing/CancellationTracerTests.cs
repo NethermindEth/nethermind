@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -17,16 +16,11 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
-        [Retry(3)]
-        public async Task Throw_operation_canceled_after_given_timeout()
+        public void Throws_operation_canceled_when_token_is_cancelled()
         {
-            TimeSpan timeout = TimeSpan.FromMilliseconds(10);
-            using CancellationTokenSource cancellationTokenSource = new(timeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) { IsTracingActions = true };
-
-            // ReSharper disable once MethodSupportsCancellation
-            await Task.Delay(100);
+            using CancellationTokenSource cancellationTokenSource = new();
+            cancellationTokenSource.Cancel();
+            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationTokenSource.Token) { IsTracingActions = true };
 
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
         }
@@ -45,9 +39,9 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Creates_inner_tx_cancellation_tracers()
         {
-            CancellationBlockTracer blockTracer = new CancellationBlockTracer(Substitute.For<IBlockTracer>());
+            CancellationBlockTracer blockTracer = new(Substitute.For<IBlockTracer>());
             Transaction transaction = Build.A.Transaction.TestObject;
-            blockTracer.StartNewTxTrace(transaction).Should().BeOfType<CancellationTxTracer>();
+            Assert.That(blockTracer.StartNewTxTrace(transaction), Is.TypeOf<CancellationTxTracer>());
         }
     }
 }

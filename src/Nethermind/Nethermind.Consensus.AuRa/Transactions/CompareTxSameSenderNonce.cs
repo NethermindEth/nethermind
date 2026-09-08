@@ -6,18 +6,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class CompareTxSameSenderNonce : IComparer<Transaction>
+    public class CompareTxSameSenderNonce(
+        IComparer<Transaction> sameSenderNoncePriorityComparer,
+        IComparer<Transaction> differentSenderNoncePriorityComparer) : IComparer<Transaction>
     {
-        private readonly IComparer<Transaction> _sameSenderNoncePriorityComparer;
-        private readonly IComparer<Transaction> _differentSenderNoncePriorityComparer;
-
-        public CompareTxSameSenderNonce(
-            IComparer<Transaction> sameSenderNoncePriorityComparer,
-            IComparer<Transaction> differentSenderNoncePriorityComparer)
-        {
-            _sameSenderNoncePriorityComparer = sameSenderNoncePriorityComparer;
-            _differentSenderNoncePriorityComparer = differentSenderNoncePriorityComparer;
-        }
+        private readonly IComparer<Transaction> _sameSenderNoncePriorityComparer = sameSenderNoncePriorityComparer;
+        private readonly IComparer<Transaction> _differentSenderNoncePriorityComparer = differentSenderNoncePriorityComparer;
 
         public int Compare(Transaction? x, Transaction? y)
         {

@@ -16,7 +16,7 @@ namespace Nethermind.Core.Specs
         /// The merge block number is different from the rest forks because we don't know the merge block before it happens.
         /// This function handles change of the merge block
         /// </summary>
-        void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null);
+        void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null);
 
         /// <summary>
         /// We have two different block numbers for merge transition:
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)
         /// </summary>
-        long? DaoBlockNumber { get; }
+        ulong? DaoBlockNumber { get; }
 
         ulong? BeaconChainGenesisTimestamp { get; }
 
@@ -79,22 +79,26 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        protected internal IReleaseSpec GetSpecInternal(ForkActivation forkActivation);
+        IReleaseSpec GetSpec(ForkActivation forkActivation);
     }
 
     public static class SpecProviderExtensions
     {
-        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, ForkActivation forkActivation) => specProvider.GetSpecInternal(forkActivation);
-        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
-        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
+        /// <summary>Highest timestamp a scheduled fork may use; above it lie the "not yet scheduled" placeholders.</summary>
+        /// <remarks>Wider than one slot because several unscheduled forks need distinct sentinels.</remarks>
+        public const ulong LastScheduledForkTimestamp = ulong.MaxValue - 5;
 
-        /// <summary>
-        /// Resolves a spec for all planned forks applied.
-        /// </summary>
-        /// <returns>A spec for all planned forks applied</returns>
-        /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
-        /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
-        /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
-        public static IReleaseSpec GetFinalSpec(this ISpecProvider specProvider) => specProvider.GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
+        extension(ISpecProvider specProvider)
+        {
+            public IReleaseSpec GetSpec(ulong blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
+            public IReleaseSpec GetSpec(BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
+
+            /// <summary>
+            /// Resolves a spec for all planned forks applied.
+            /// </summary>
+            /// <returns>A spec for all planned forks applied</returns>
+            /// <remarks>Probes below <see cref="LastScheduledForkTimestamp"/>, excluding the placeholders.</remarks>
+            public IReleaseSpec GetFinalSpec() => specProvider.GetSpec(long.MaxValue - 1, LastScheduledForkTimestamp);
+        }
     }
 }

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -52,7 +50,7 @@ public class EciesCipherTests
         Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
         int size = sizeBytes.ReadEthInt32();
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
         Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
@@ -73,7 +71,7 @@ public class EciesCipherTests
                   "0f2c703f851cbf5ac47396d9ca65b6260bd141ac4d53e2de585a73d1750780db4c9ee4cd4d225173" +
                   "a4592ee77e2bd94d0be3691f3b406f9bba9b591fc63facc016bfa8");
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes);
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes));
 
         AuthMessage authMessage = _messageSerializationService.Deserialize<AuthMessage>(deciphered);
         Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
@@ -82,9 +80,9 @@ public class EciesCipherTests
         Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
         Assert.That(authMessage.Signature, Is.Not.Null);
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
+
         Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
@@ -107,7 +105,7 @@ public class EciesCipherTests
 
         ICryptoRandom cryptoRandom = new CryptoRandom();
         EciesCipher cipher = new(cryptoRandom);
-        (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
         Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
@@ -115,10 +113,9 @@ public class EciesCipherTests
         Assert.That(authMessage.Version, Is.EqualTo(4));
         Assert.That(authMessage.Signature, Is.Not.Null);
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
 
         Assert.That(data.Slice(0, 169).ReadAllBytesAsArray(), Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
@@ -131,16 +128,15 @@ public class EciesCipherTests
                   "dca6505b7196532e5f85b259a20c45e1979491683fee108e9660edbf38f3add489ae73e3dda2c71b" +
                   "d1497113d5c755e942d1");
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes);
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes));
 
         AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(deciphered);
         Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
         Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
         Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
         Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
@@ -165,18 +161,17 @@ public class EciesCipherTests
 
         ICryptoRandom cryptoRandom = new CryptoRandom();
         EciesCipher cipher = new(cryptoRandom);
-        (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
         Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
         Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
         Assert.That(ackMessage.Version, Is.EqualTo(4));
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
 
         // TODO: check 102
         Assert.That(data.ReadAllBytesAsArray().Slice(0, 102), Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
@@ -201,7 +196,7 @@ public class EciesCipherTests
 
         ICryptoRandom cryptoRandom = new CryptoRandom();
         EciesCipher cipher = new(cryptoRandom);
-        (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
         Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
@@ -219,7 +214,13 @@ public class EciesCipherTests
         _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
         byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(privateKey, cipherText));
         Assert.That(deciphered, Is.EqualTo(plainText));
+    }
+
+    private static byte[] GetPlainText((bool Success, byte[]? PlainText) result)
+    {
+        Assert.That(result.Success, Is.True);
+        return result.PlainText ?? throw new AssertionException("Successful ECIES decryption returned no plaintext.");
     }
 }

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Nethermind.RpcTests.Generator</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SmartFormat" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+</Project>
