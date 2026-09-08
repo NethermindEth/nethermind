@@ -15,16 +15,14 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        // This fixture used to set EthereumJsonSerializer.StrictHexFormat in SetUp and put it back in TearDown.
-        // That static is process-global: while this fixture held it at false, every other fixture parsing a block
-        // parameter concurrently saw false too, so tests such as "Block number boundary leading zero" and
-        // "leading zero in gasLimit" failed with -32603/-32602 in roughly a third of runs (#13204).
-        // [NonParallelizable] did not help - NUnit only keeps such a test off a worker thread, it does not stop the
-        // rest of the assembly from running alongside it.
-        //
-        // Strictness is a property of the converter now, so these tests name the strictness they want in the
-        // options they parse with and touch no shared state. An options-level converter takes precedence over the
+        // Strictness is a property of the converter, so each test names the strictness it wants in the options it
+        // parses with and touches no shared state. An options-level converter takes precedence over the
         // [JsonConverter] attribute on BlockParameter.
+        //
+        // EthereumJsonSerializer.StrictHexFormat must not be used for this instead: it is process-global, so a
+        // fixture holding it at one value makes every concurrent block-parameter parse in the assembly read that
+        // value, which is #13204. [NonParallelizable] is not a fix - NUnit only keeps such a test off a worker
+        // thread, it does not stop the rest of the assembly from running alongside it.
         /// <summary>
         /// Options whose strictness is pinned on the converter instances rather than read from
         /// <see cref="EthereumJsonSerializer.StrictHexFormat"/>, so these cases do not depend on process state.

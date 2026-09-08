@@ -49,8 +49,8 @@ public class JsonRpcServiceTests
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
-        // StrictHexFormat is pinned for the assembly by StrictHexFormatAssemblySetup. Setting and restoring it here
-        // used to race this fixture's own test methods against each other - see that class and #13204.
+        // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
+        // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
     }
 
     [TearDown]
