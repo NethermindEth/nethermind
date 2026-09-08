@@ -14,7 +14,7 @@ namespace Nethermind.Evm.ZkEvm.Test;
 /// The scalar scan is what a guest build runs: everywhere else <c>CreateJumpDestinationBitmap</c> finds
 /// <c>Vector512</c> or <c>Vector128</c> accelerated and takes one of those instead, so it is never reached
 /// through the real entry point. The bitmap feeds <see cref="JumpDestinationAnalyzer.ValidateJump"/>, so a
-/// wrong bit is wrong execution rather than a slowdown. The guest walks a moving reference and accumulates
+/// wrong bit is wrong execution rather than a slowdown. The guest walks a moving pointer and accumulates
 /// flags per 64-bit segment; it is compared against the obvious indexed reference over the shapes where the
 /// two could diverge: PUSH data truncated by the end of the code, the segment boundary the flags are
 /// flushed on, every opcode value, and random bytecode.

@@ -12,7 +12,7 @@ public sealed partial class JumpDestinationAnalyzer
     /// <summary>The scan's two comparands, in the order it reads them: <c>JUMPDEST</c> then <c>PUSH1</c>.</summary>
     /// <remarks>
     /// ILC re-materialises a compared-against constant at every use inside a loop, and the preinitialiser
-    /// folds `static readonly` scalars straight back into that. An array element is opaque to it, so
+    /// folds <c>static readonly</c> scalars straight back into that. An array element is opaque to it, so
     /// reading these once before the scan keeps them in registers.
     /// </remarks>
     private static readonly int[] _byteScanThresholds = [JUMPDEST, PUSH1];
@@ -30,51 +30,54 @@ public sealed partial class JumpDestinationAnalyzer
     }
 
     /// <remarks>
-    /// Walks a moving reference instead of a base plus an index: ILC recomputes the byte address on
+    /// Walks a moving pointer instead of a base plus an index: ILC recomputes the byte address on
     /// every step of the indexed form, and the position is only needed at the rare JUMPDEST. The
     /// indexed form is the faster one on x64, hence the split.
     /// </remarks>
     [SkipLocalsInit]
-    private static void ProcessJumpDestinationBitmap_Byte(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
+    private static unsafe void ProcessJumpDestinationBitmap_Byte(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
     {
         long currentFlags = 0;
         nuint flagsPosition = 0;
-        ref byte codeRef = ref MemoryMarshal.GetReference(code);
-        ref byte position = ref Unsafe.AddByteOffset(ref codeRef, programCounter);
-        ref byte end = ref Unsafe.AddByteOffset(ref codeRef, (nuint)code.Length);
         ref int thresholds = ref MemoryMarshal.GetArrayDataReference(_byteScanThresholds);
         int jumpDest = thresholds;
         int push1 = Unsafe.Add(ref thresholds, 1);
-        while (Unsafe.IsAddressLessThan(in position, in end))
+        // The PUSH skip below steps up to 32 bytes past the end of the code, so the walk pins and moves
+        // an unmanaged pointer: the same overshoot on a `ref byte` is a managed pointer outside its
+        // object, which a relocating GC may adjust wrongly even though it is only ever compared - and
+        // the differential tests run this scan on CoreCLR, whose GC does relocate.
+        fixed (byte* codeStart = code)
         {
-            // Sign extension folds everything above PUSH32 below JUMPDEST, so one signed comparison
-            // covers the whole [JUMPDEST, PUSH32] window that the rebase-and-range-test needed two for.
-            int op = (sbyte)position;
-            if (op >= jumpDest)
+            byte* position = codeStart + programCounter;
+            byte* end = codeStart + code.Length;
+            while (position < end)
             {
-                if (op >= push1)
+                // Sign extension folds everything above PUSH32 below JUMPDEST, so one signed comparison
+                // covers the whole [JUMPDEST, PUSH32] window that the rebase-and-range-test needed two for.
+                int op = (sbyte)*position;
+                if (op >= jumpDest)
                 {
-                    // One byte short: every path joins the single advance below, so nothing branches over it.
-                    // A PUSH near the tail can leave `position` past `end` - by up to 32 bytes, so outside
-                    // the buffer's object - but it is only ever compared, never dereferenced, and the loop
-                    // exits on the next check.
-                    position = ref Unsafe.Add(ref position, op - PUSH1 + 1);
-                }
-                else if (op == jumpDest)
-                {
-                    nuint jumpDestination = (nuint)Unsafe.ByteOffset(ref codeRef, ref position);
-                    if ((jumpDestination ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
+                    if (op >= push1)
                     {
-                        MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-                        currentFlags = 0;
+                        // One byte short: every path joins the single advance below, so nothing branches over it.
+                        position += op - PUSH1 + 1;
                     }
+                    else if (op == jumpDest)
+                    {
+                        nuint jumpDestination = (nuint)(position - codeStart);
+                        if ((jumpDestination ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
+                        {
+                            MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
+                            currentFlags = 0;
+                        }
 
-                    currentFlags |= 1L << (int)jumpDestination;
-                    flagsPosition = jumpDestination;
+                        currentFlags |= 1L << (int)jumpDestination;
+                        flagsPosition = jumpDestination;
+                    }
                 }
-            }
 
-            position = ref Unsafe.Add(ref position, 1);
+                position++;
+            }
         }
 
         if (currentFlags != 0)
