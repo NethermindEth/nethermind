@@ -26,6 +26,8 @@ public class DepositTransactionBuilderTest
     private static readonly Address SomeAddressB = TestItem.AddressC;
     private static readonly Address SomeAddressC = TestItem.AddressD;
     private static readonly Address SomeAddressD = TestItem.AddressE;
+    private static readonly Hash256 SourceHashLogIndex0 = new("0xa39c0336f8bb13bdeb6cb1a969ee335af770f40048fed5064c1f3becf19ca501");
+    private static readonly Hash256 SourceHashLogIndex1 = new("0xe0afd0f8dec64b119c51723546cd6ff231b37aed016d7a2934eb6caf5d40eae2");
 
     private readonly CLChainSpecEngineParameters _engineParameters;
     private readonly DepositTransactionBuilder _builder;
@@ -729,8 +731,148 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
     }
-    private static readonly Hash256 SourceHashLogIndex0 = new("0xa39c0336f8bb13bdeb6cb1a969ee335af770f40048fed5064c1f3becf19ca501");
-    private static readonly Hash256 SourceHashLogIndex1 = new("0xe0afd0f8dec64b119c51723546cd6ff231b37aed016d7a2934eb6caf5d40eae2");
+
+    /// <summary>EIP-8141: the receipt status is the aggregate over the frames, so a deposit is credited exactly
+    /// when the frame that emitted it succeeded, whatever the other frames or the receipt status say.</summary>
+    [TestCase(TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure, 0L, 1, TestName = "DeriveUserDeposits_FrameTx_CommittedDepositSurvivesUnrelatedFrameRevert")]
+    [TestCase(TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess, 0L, 0, TestName = "DeriveUserDeposits_FrameTx_RevertedFrameDepositIsNotCredited")]
+    [TestCase(TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess, 1L, 0, TestName = "DeriveUserDeposits_FrameTx_RevertedFrameDepositIsNotCreditedWhenStatusContradictsFrames")]
+    [TestCase(TxFrameReceipt.StatusSkipped, TxFrameReceipt.StatusSuccess, 0L, 0, TestName = "DeriveUserDeposits_FrameTx_SkippedFrameDepositIsNotCredited")]
+    public void DeriveUserDeposits_FrameTx_CreditsByEmittingFrameStatus(byte depositFrameStatus, byte otherFrameStatus, long receiptStatus, int expectedDeposits)
+    {
+        DepositLogEventV0 depositEvent = SomeDepositEvent();
+        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
+
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.FrameTx,
+                Status = receiptStatus,
+                Logs = [depositLog],
+                FrameReceipts =
+                [
+                    new FrameReceiptForRpc { Status = depositFrameStatus, Logs = [depositLog.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = otherFrameStatus, Logs = [] },
+                ],
+                BlockHash = SomeHash,
+            },
+        ];
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+
+        Assert.That(depositTransactions.Length, Is.EqualTo(expectedDeposits));
+        if (expectedDeposits == 1)
+        {
+            Assert.That(depositTransactions[0], Is.EqualTo(ExpectedDeposit(SomeAddressA, SomeAddressB, depositEvent, SourceHashLogIndex0)).UsingTransactionComparer());
+        }
+    }
+
+    [Test]
+    public void DeriveUserDeposits_FrameTx_AttributesLogsInFrameOrder()
+    {
+        DepositLogEventV0 depositEvent = SomeDepositEvent();
+        LogEntryForRpc revertedLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
+        LogEntryForRpc committedLog = DepositLog(SomeAddressC, SomeAddressD, depositEvent.ToBytes(), 1);
+
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.FrameTx,
+                Status = 0,
+                Logs = [revertedLog, committedLog],
+                FrameReceipts =
+                [
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [revertedLog.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [committedLog.ToLogEntry()] },
+                ],
+                BlockHash = SomeHash,
+            },
+        ];
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
+        Assert.That(depositTransactions[0], Is.EqualTo(ExpectedDeposit(SomeAddressC, SomeAddressD, depositEvent, SourceHashLogIndex1)).UsingTransactionComparer());
+    }
+
+    /// <summary>The frame log counts can add up while a successful frame's run covers a log another frame
+    /// emitted, so the runs are matched against the logs themselves before any of them credits a deposit.</summary>
+    [Test]
+    public void DeriveUserDeposits_FrameTx_MisplacedFrameLogsAreUnattributable()
+    {
+        DepositLogEventV0 depositEvent = SomeDepositEvent();
+        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
+        LogEntryForRpc unrelatedLog = new()
+        {
+            Address = SomeAddressC,
+            Topics = [SomeHash],
+            Data = [],
+            LogIndex = 1,
+            BlockHash = SomeHash,
+        };
+
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.FrameTx,
+                Status = 0,
+                Logs = [depositLog, unrelatedLog],
+                FrameReceipts =
+                [
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [unrelatedLog.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [depositLog.ToLogEntry()] },
+                ],
+                BlockHash = SomeHash,
+            },
+        ];
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+
+        Assert.That(depositTransactions, Is.Empty);
+    }
+
+    /// <summary>Frames that do not account for exactly the receipt's logs cannot be attributed, so the
+    /// aggregate status keeps gating.</summary>
+    [TestCase(0L, 0)]
+    [TestCase(1L, 1)]
+    public void DeriveUserDeposits_FrameTx_UnattributableFramesFallBackToAggregateStatus(long receiptStatus, int expectedDeposits)
+    {
+        DepositLogEventV0 depositEvent = SomeDepositEvent();
+        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
+
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.FrameTx,
+                Status = receiptStatus,
+                Logs = [depositLog],
+                FrameReceipts = [new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [] }],
+                BlockHash = SomeHash,
+            },
+        ];
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+
+        Assert.That(depositTransactions.Length, Is.EqualTo(expectedDeposits));
+    }
+
+    /// <summary>The element annotation does not bind the deserializer, so an L1 endpoint can send
+    /// <c>"logs": [null]</c>.</summary>
+    [Test]
+    public void DeriveUserDeposits_NullLogEntryIsRejected()
+    {
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Status = 1,
+                Logs = [null!],
+                BlockHash = SomeHash,
+            },
+        ];
+
+        Assert.That(() => _builder.BuildUserDepositTransactions(receipts), Throws.TypeOf<ArgumentException>());
+    }
 
     private static DepositLogEventV0 SomeDepositEvent() => new()
     {
@@ -769,136 +911,4 @@ public class DepositTransactionBuilderTest
         .WithIsOPSystemTransaction(false)
         .WithData(depositEvent.Data.ToArray())
         .TestObject;
-
-    /// <summary>EIP-8141: the receipt status is the aggregate over the frames, so an unrelated frame reverting
-    /// must not discard a deposit a successful frame committed.</summary>
-    [Test]
-    public void DeriveUserDeposits_FrameTx_CommittedDepositSurvivesUnrelatedFrameRevert()
-    {
-        DepositLogEventV0 depositEvent = SomeDepositEvent();
-        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
-
-        ReceiptForRpc[] receipts =
-        [
-            new()
-            {
-                Type = TxType.FrameTx,
-                Status = 0, // Aggregate: the second frame reverted
-                Logs = [depositLog],
-                FrameReceipts =
-                [
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [depositLog.ToLogEntry()] },
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [] },
-                ],
-                BlockHash = SomeHash,
-            },
-        ];
-        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
-
-        Assert.That(depositTransactions.Length, Is.EqualTo(1));
-        Assert.That(depositTransactions[0], Is.EqualTo(ExpectedDeposit(SomeAddressA, SomeAddressB, depositEvent, SourceHashLogIndex0)).UsingTransactionComparer());
-    }
-
-    [TestCase(0L, TestName = "DeriveUserDeposits_FrameTx_RevertedFrameDepositIsNotCredited(aggregate failure)")]
-    [TestCase(1L, TestName = "DeriveUserDeposits_FrameTx_RevertedFrameDepositIsNotCredited(status contradicts frames)")]
-    public void DeriveUserDeposits_FrameTx_RevertedFrameDepositIsNotCredited(long receiptStatus)
-    {
-        DepositLogEventV0 depositEvent = SomeDepositEvent();
-        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
-
-        ReceiptForRpc[] receipts =
-        [
-            new()
-            {
-                Type = TxType.FrameTx,
-                Status = receiptStatus,
-                Logs = [depositLog],
-                FrameReceipts =
-                [
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [depositLog.ToLogEntry()] },
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [] },
-                ],
-                BlockHash = SomeHash,
-            },
-        ];
-        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
-
-        Assert.That(depositTransactions.Length, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void DeriveUserDeposits_FrameTx_AttributesLogsInFrameOrder()
-    {
-        DepositLogEventV0 revertedEvent = SomeDepositEvent();
-        DepositLogEventV0 committedEvent = SomeDepositEvent();
-        LogEntryForRpc revertedLog = DepositLog(SomeAddressA, SomeAddressB, revertedEvent.ToBytes(), 0);
-        LogEntryForRpc committedLog = DepositLog(SomeAddressC, SomeAddressD, committedEvent.ToBytes(), 1);
-
-        ReceiptForRpc[] receipts =
-        [
-            new()
-            {
-                Type = TxType.FrameTx,
-                Status = 0,
-                Logs = [revertedLog, committedLog],
-                FrameReceipts =
-                [
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [revertedLog.ToLogEntry()] },
-                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [committedLog.ToLogEntry()] },
-                ],
-                BlockHash = SomeHash,
-            },
-        ];
-        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
-
-        Assert.That(depositTransactions.Length, Is.EqualTo(1));
-        Assert.That(depositTransactions[0], Is.EqualTo(ExpectedDeposit(SomeAddressC, SomeAddressD, committedEvent, SourceHashLogIndex1)).UsingTransactionComparer());
-    }
-
-    [Test]
-    public void DeriveUserDeposits_FrameTx_SkippedFrameDepositIsNotCredited()
-    {
-        DepositLogEventV0 depositEvent = SomeDepositEvent();
-        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
-
-        ReceiptForRpc[] receipts =
-        [
-            new()
-            {
-                Type = TxType.FrameTx,
-                Status = 0,
-                Logs = [depositLog],
-                FrameReceipts = [new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSkipped, Logs = [depositLog.ToLogEntry()] }],
-                BlockHash = SomeHash,
-            },
-        ];
-        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
-
-        Assert.That(depositTransactions.Length, Is.EqualTo(0));
-    }
-
-    /// <summary>Frames that do not account for exactly the receipt's logs cannot be attributed, so the
-    /// aggregate status keeps gating.</summary>
-    [TestCase(0L, 0)]
-    [TestCase(1L, 1)]
-    public void DeriveUserDeposits_FrameTx_UnattributableFramesFallBackToAggregateStatus(long receiptStatus, int expectedDeposits)
-    {
-        DepositLogEventV0 depositEvent = SomeDepositEvent();
-        LogEntryForRpc depositLog = DepositLog(SomeAddressA, SomeAddressB, depositEvent.ToBytes(), 0);
-
-        ReceiptForRpc[] receipts =
-        [
-            new()
-            {
-                Type = TxType.FrameTx,
-                Status = receiptStatus,
-                Logs = [depositLog],
-                FrameReceipts = [new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = [] }],
-                BlockHash = SomeHash,
-            },
-        ];
-        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
-
-        Assert.That(depositTransactions.Length, Is.EqualTo(expectedDeposits));
-    }
 }

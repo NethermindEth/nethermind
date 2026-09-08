@@ -5,12 +5,10 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
@@ -78,70 +76,23 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         List<Transaction> result = [];
         foreach (ReceiptForRpc receipt in receipts)
         {
-            // An L1 node omits "logs" or sends null for a receipt with no logs.
-            LogEntryForRpc[] logs = receipt.Logs ?? [];
-            if (TryGetAttributableFrames(receipt, logs.Length, out FrameReceiptForRpc[]? frames))
+            foreach (LogEntryForRpc log in CommittedLogs.Of(receipt))
             {
-                int start = 0;
-                foreach (FrameReceiptForRpc frame in frames)
-                {
-                    int count = frame.Logs?.Length ?? 0;
-                    if (frame.Status == TxFrameReceipt.StatusSuccess)
-                    {
-                        AddDeposits(result, logs, start, count);
-                    }
+                if (log.Address != engineParameters.OptimismPortalProxy) continue;
+                if (log.Topics is not { Length: > 0 } topics || topics[0] != DepositEvent.ABIHash) continue;
 
-                    start += count;
+                try
+                {
+                    Transaction tx = DecodeDepositTransactionFromLogEvent(log);
+                    result.Add(tx);
                 }
-            }
-            else if (receipt.Status == StatusCode.Success)
-            {
-                AddDeposits(result, logs, 0, logs.Length);
+                catch (Exception e)
+                {
+                    throw new ArgumentException($"Failed to decode {nameof(Transaction)} from {nameof(LogEntryForRpc)}", e);
+                }
             }
         }
         return result;
-    }
-
-    /// <summary>Matches a frame transaction's per-frame receipts to the run of receipt logs each frame committed.</summary>
-    /// <remarks>
-    /// EIP-8141 carries no transaction-level status: the receipt status is the aggregate over the frames, so
-    /// gating on it discards a deposit an independent frame committed. The transaction's log set is the frame
-    /// logs concatenated in frame order, so each frame claims the next run of its own length. Frames that do
-    /// not account for exactly the logs the receipt carries are unattributable, leaving the caller the aggregate.
-    /// </remarks>
-    private static bool TryGetAttributableFrames(ReceiptForRpc receipt, int logCount, [NotNullWhen(true)] out FrameReceiptForRpc[]? frames)
-    {
-        frames = receipt.FrameReceipts;
-        if (receipt.Type != TxType.FrameTx || frames is not { Length: > 0 }) return false;
-
-        int total = 0;
-        foreach (FrameReceiptForRpc frame in frames)
-        {
-            if (frame is null) return false;
-            total += frame.Logs?.Length ?? 0;
-        }
-
-        return total == logCount;
-    }
-
-    private void AddDeposits(List<Transaction> result, LogEntryForRpc[] logs, int start, int count)
-    {
-        for (int i = start; i < start + count; i++)
-        {
-            LogEntryForRpc log = logs[i];
-            if (log.Address != engineParameters.OptimismPortalProxy) continue;
-            if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
-
-            try
-            {
-                Transaction tx = DecodeDepositTransactionFromLogEvent(log);
-                result.Add(tx);
-            }
-            catch (Exception e)
-            {
-                throw new ArgumentException($"Failed to decode {nameof(Transaction)} from {nameof(LogEntryForRpc)}", e);
-            }
-        }
     }
 
     /*
