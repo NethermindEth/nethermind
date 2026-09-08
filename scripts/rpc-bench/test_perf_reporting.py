@@ -873,7 +873,12 @@ case "$1 $2" in
   "image inspect") [[ -f "$FAKE_STATE/images/${3//:/_}" ]] ;;
   "run --rm"|"run --name")
     n=$(( $(cat "$FAKE_STATE/runs" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$FAKE_STATE/runs"
-    for a in "$@"; do [[ "$a" == *:/io ]] && printf 'run %s\n' "$n" > "${a%:/io}/out/results.csv"; done
+    for a in "$@"; do
+      [[ "$a" == *:/io ]] || continue
+      io_mount="${a%:/io}"
+      printf 'run %s\n' "$n" > "$io_mount/out/results.csv"
+      [[ -f "$io_mount/clients.yaml" ]] && cp "$io_mount/clients.yaml" "$FAKE_STATE/client-registry-$n.yaml"
+    done
     true ;;
 esac
 """
@@ -963,6 +968,19 @@ esac
         self.assertEqual(preparations(), (1, 1))
         self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
         self.assertEqual((self.directory / "out2" / "results.csv").read_text(encoding="utf-8"), "run 2\n")
+
+        # The CV sweep keeps its dashed public label in output paths but passes the mapped
+        # underscore-only name to both registry and benchmark configuration.
+        environment["LABEL"] = "auto-cv-0.2"
+        environment["CLIENT_TYPE"] = "nethermind"
+        environment["REGISTRY_LABEL"] = "account_auto_cv_02"
+        labeled = self.run_jsonbench(environment, self.directory / "labeled")
+        self.assertEqual(labeled.returncode, 0, f"{labeled.stdout}\n{labeled.stderr}")
+        registry = (state / "client-registry-3.yaml").read_text(encoding="utf-8")
+        self.assertIn('name: "account_auto_cv_02"', registry)
+        self.assertNotIn('name: "auto-cv-0.2"', registry)
+        benchmark = (self.directory / "scratch" / "jsonbench" / "io" / "benchmark.yaml").read_text(encoding="utf-8")
+        self.assertIn("- account_auto_cv_02", benchmark)
 
         # Default (the sweep, a run without warm-up): wiped and prepared afresh as before.
         environment["JB_REUSE_PREPARED"] = "false"

@@ -66,8 +66,9 @@ def helper_report(mode="auto", threshold=0.2):
 
 class AccountIndexSweepTests(unittest.TestCase):
     def test_fixed_arm_order_and_boolean_opt_in(self):
+        public_labels = [arm["label"] for arm in account_index_sweep.arms()]
         self.assertEqual(
-            [arm["label"] for arm in account_index_sweep.arms()],
+            public_labels,
             [
                 "master", "forced-interpolation", "auto-cv-0.2", "auto-cv-0.05", "auto-cv-0.1",
                 "auto-cv-0.15", "auto-cv-0.25", "auto-cv-0.35", "auto-cv-0.5",
@@ -76,6 +77,18 @@ class AccountIndexSweepTests(unittest.TestCase):
         self.assertTrue(account_index_sweep.validate_opt_in(True))
         with self.assertRaises(account_index_sweep.ContractError):
             account_index_sweep.validate_opt_in("true")
+
+        registry_labels = [account_index_sweep.registry_label(label) for label in public_labels]
+        self.assertEqual(
+            registry_labels,
+            [
+                "account_master", "account_forced_interpolation", "account_auto_cv_02",
+                "account_auto_cv_005", "account_auto_cv_01", "account_auto_cv_015",
+                "account_auto_cv_025", "account_auto_cv_035", "account_auto_cv_05",
+            ],
+        )
+        self.assertEqual(len(registry_labels), len(set(registry_labels)))
+        self.assertTrue(all(label.isidentifier() for label in registry_labels))
 
     def test_helper_is_sanitized_without_private_paths_or_metadata(self):
         safe = account_index_sweep.validate_preparation(helper_report(), "auto", 0.2)
@@ -105,7 +118,6 @@ class AccountIndexSweepTests(unittest.TestCase):
         safe["private_path"] = "/work/mainnet/flat"
         with self.assertRaises(account_index_sweep.ContractError):
             account_index_sweep.validate_sanitized_preparation(safe)
-
 
 if __name__ == "__main__":
     unittest.main()

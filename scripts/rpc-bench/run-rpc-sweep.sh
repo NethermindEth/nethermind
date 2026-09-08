@@ -173,8 +173,15 @@ DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
 run_cell() {
   local cfg="$1" rps="$2" dur="$3" cell="$4" ctype="$5" label="$6" corpus="${7:-}" node="${8:-}"
+  local registry_label="$label"
   local is_corpus="false" deep="true"
   [[ -n "$corpus" ]] && { is_corpus="true"; deep="false"; }
+  if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+    if ! registry_label="$(python3 "$here/account_index_sweep.py" registry-label "$label")"; then
+      echo "::error::no internal json-bench registry label for Account arm '$label'" >&2
+      return 1
+    fi
+  fi
   mkdir -p "$cell"
   # run-jsonbench.sh owns the sampling window so it covers container execution only, and it
   # normalizes against the request count k6 reports rather than one derived from the duration.
@@ -183,6 +190,7 @@ run_cell() {
     sampler_container="$node"; sampler_out="$cell/resources.json"
   fi
   OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$ctype" LABEL="$label" \
+    REGISTRY_LABEL="$registry_label" \
     SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
     JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
     JB_DEEP_CHECK="$deep" JB_HTML_REPORT="false" \
@@ -504,6 +512,11 @@ PY
 
   LABELS+=("$label")
 
+  # Account CV arms stop after the first failed warm-up or measurement. The common teardown
+  # below still runs for this node, while the outer arm loop is prevented from preparing another
+  # isolated view after a known-bad run.
+  cv_abort=0
+
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     # One latency cell per corpus per rps, then one full-corpus parity replay per corpus
     # while the node is still up. The first started client is the parity baseline.
@@ -565,10 +578,12 @@ PY
               WARMED_SECONDS=0
               WARMED_RPS=0
               warmup_fail=1
+              [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
               echo "::warning::warmup for ${label}: usable aggregate delivered ${warm_got} of ${warm_want} requests; measured cells are not a valid warm-up result"
             fi
           else
             warmup_fail=1
+            [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
             echo "::warning::warmup for ${label} failed — measured cells are not a valid warm-up result (recorded warmup_seconds=0)"
           fi
           report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
@@ -577,6 +592,7 @@ PY
           # so this is defensive). A wrong guess would multiply by the real count inside
           # timings() and run for hours; skipping states the truth: not warmed.
           warmup_fail=1
+          [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
           echo "::warning::no record count for $(corpus_label "$corpus") — skipping warmup (recorded warmup_seconds=0)"
         else
           # Fixture-free mode: an empty rps_list exists so a large corpus never materializes the
@@ -613,13 +629,20 @@ PY
               WARMED_SECONDS=0
               WARMED_RPS=0
               warmup_fail=1
+              [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
               echo "::warning::warmup replay for ${label}: usable aggregate delivered ${warm_got} of ${warm_want} requests; measured cells are not a valid warm-up result"
             fi
           else
             warmup_fail=1
+            [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
             echo "::warning::warmup replay for ${label} failed — measured cells are not a valid warm-up result (recorded warmup_seconds=0)"
           fi
         fi
+      fi
+
+      if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "$cv_abort" -eq 1 ]]; then
+        echo "::error::${label}: Account CV warm-up failed; stopping this node before the next arm"
+        break
       fi
 
       # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
@@ -641,12 +664,19 @@ PY
         fi
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
         echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
-        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname" \
-          || { echo "::warning::corpus ${clabel}/${label}/${slot} failed"; cell_fail=$((cell_fail + 1)); }
+        if ! run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname"; then
+          echo "::warning::corpus ${clabel}/${label}/${slot} failed"
+          cell_fail=$((cell_fail + 1))
+          [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
+        fi
         report_fail_rate "$cell" "${clabel}/${label}/${slot}"
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${slot}=$cell/jsonbench-summary.md")
       done
       unset RPS_SEEN
+      if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "$cv_abort" -eq 1 ]]; then
+        echo "::error::${label}: Account CV measurement failed; stopping this node before the next arm"
+        break
+      fi
       if [[ -z "$BASELINE_LABEL" ]]; then
         echo "-- PARITY ${clabel}: capturing baseline (${label}) --"
         if ! python3 "$here/corpus_parity.py" baseline \
@@ -682,10 +712,12 @@ PY
             --warmup-seconds "$WARMED_SECONDS" --warmup-rps "$WARMED_RPS"; then
           echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
           cell_fail=$((cell_fail + 1))
+          [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] && cv_abort=1
         fi
       fi
+      [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "$cv_abort" -eq 1 ]] && break
     done
-    [[ -z "$BASELINE_LABEL" ]] && BASELINE_LABEL="$label"
+    [[ "$cv_abort" -eq 0 && -z "$BASELINE_LABEL" ]] && BASELINE_LABEL="$label"
   else
   for rps in $RPS_LIST; do
     # ISOLATED: each scenario alone
@@ -789,6 +821,11 @@ with open(path, "w", encoding="utf-8") as handle:
     json.dump(data, handle, sort_keys=True, separators=(",", ":"))
     handle.write("\n")
 PY
+  fi
+  if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "$cv_abort" -eq 1 ]]; then
+    echo "::error::${label}: Account CV sweep aborted after a warm-up or measurement failure"
+    echo "::endgroup::"
+    break
   fi
   echo "::endgroup::"
 done

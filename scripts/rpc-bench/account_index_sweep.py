@@ -32,6 +32,20 @@ ARMS: tuple[dict[str, Any], ...] = (
     {"label": "auto-cv-0.5", "mode": "auto", "threshold": 0.5},
 )
 
+# json-bench exposes these names to its client registry, which rejects dashes.  Keep this
+# mapping separate from the public labels: the latter are part of the result and parity schema.
+REGISTRY_LABELS = {
+    "master": "account_master",
+    "forced-interpolation": "account_forced_interpolation",
+    "auto-cv-0.2": "account_auto_cv_02",
+    "auto-cv-0.05": "account_auto_cv_005",
+    "auto-cv-0.1": "account_auto_cv_01",
+    "auto-cv-0.15": "account_auto_cv_015",
+    "auto-cv-0.25": "account_auto_cv_025",
+    "auto-cv-0.35": "account_auto_cv_035",
+    "auto-cv-0.5": "account_auto_cv_05",
+}
+
 REPORT_KEYS = frozenset(
     {"SchemaVersion", "DbPath", "ScratchRoot", "Mode", "Threshold", "Options", "Content", "Tables", "Ssts", "Timing", "Layout"}
 )
@@ -65,6 +79,15 @@ def arms() -> list[dict[str, Any]]:
     """Return a copy of the fixed ordered arm list."""
 
     return [dict(arm) for arm in ARMS]
+
+
+def registry_label(public_label: str) -> str:
+    """Return the fixed json-bench registry name for a public Account arm label."""
+
+    try:
+        return REGISTRY_LABELS[public_label]
+    except KeyError:
+        raise ContractError(f"unknown Account arm label {public_label!r}") from None
 
 
 def validate_opt_in(value: Any) -> bool:
@@ -273,6 +296,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result_parser.add_argument("--mode", required=True, choices=("binary", "interpolation", "auto"))
     result_parser.add_argument("--threshold", required=True, type=float)
     result_parser.add_argument("--helper-sha256", required=True)
+    registry_parser = subparsers.add_parser("registry-label", help="print an internal registry label")
+    registry_parser.add_argument("label", choices=tuple(REGISTRY_LABELS))
     args = parser.parse_args(argv)
     try:
         if args.command == "validate":
@@ -283,6 +308,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(f"{arm['label']}\t{arm['mode']}\t{arm['threshold']:g}")
             else:
                 print(json.dumps(ARMS, separators=(",", ":")))
+        elif args.command == "registry-label":
+            print(registry_label(args.label))
         else:
             validate_result_file(args.raw, args.output, args.mode, args.threshold, args.helper_sha256)
             print(f"validated helper aggregate for mode={args.mode} threshold={args.threshold:g}")

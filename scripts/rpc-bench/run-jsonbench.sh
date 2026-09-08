@@ -21,6 +21,18 @@ REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT_TYPE:-$REFERENCE_LABEL}"
 # json-bench addresses nodes by registry name — keep them distinct (NM-vs-NM).
 # Underscore, not dash: the registry validator rejects dashes in client names.
 [[ -n "$REFERENCE_RPC_URL" && "$REFERENCE_LABEL" == "$LABEL" ]] && REFERENCE_LABEL="${REFERENCE_LABEL}_ref"
+# The public label is used for output paths, parity rows and summaries. json-bench's client
+# registry has a separate name contract, so callers such as the fixed Account sweep can supply
+# an underscore-only internal name without changing those public labels.
+REGISTRY_LABEL="${REGISTRY_LABEL:-$LABEL}"
+REGISTRY_REFERENCE_LABEL="${REGISTRY_REFERENCE_LABEL:-$REFERENCE_LABEL}"
+[[ "$REGISTRY_LABEL" =~ ^[A-Za-z0-9_]+$ ]] \
+  || die "registry client label must contain only ASCII letters, digits and underscores: '$REGISTRY_LABEL'"
+if [[ -n "$REFERENCE_RPC_URL" ]]; then
+  [[ "$REGISTRY_REFERENCE_LABEL" =~ ^[A-Za-z0-9_]+$ ]] \
+    || die "registry reference label must contain only ASCII letters, digits and underscores: '$REGISTRY_REFERENCE_LABEL'"
+  [[ "$REGISTRY_REFERENCE_LABEL" == "$REGISTRY_LABEL" ]] && REGISTRY_REFERENCE_LABEL="${REGISTRY_REFERENCE_LABEL}_ref"
+fi
 
 JB_REPO="${JB_REPO:-https://github.com/NethermindEth/json-bench.git}"
 # Pin the commit so a default-branch push can't change results or run unreviewed
@@ -147,13 +159,13 @@ fi
 clients_yaml="$work/io/clients.yaml"
 {
   echo "clients:"
-  echo "  - name: \"$LABEL\""
+  echo "  - name: \"$REGISTRY_LABEL\""
   echo "    type: \"$CLIENT_TYPE\""
   echo "    url: \"$RPC_URL\""
   echo "    timeout: \"60s\""
   echo "    max_retries: 3"
   if [[ -n "$REFERENCE_RPC_URL" ]]; then
-    echo "  - name: \"$REFERENCE_LABEL\""
+    echo "  - name: \"$REGISTRY_REFERENCE_LABEL\""
     echo "    type: \"$REFERENCE_CLIENT_TYPE\""
     echo "    url: \"$REFERENCE_RPC_URL\""
     echo "    timeout: \"60s\""
@@ -184,8 +196,8 @@ if [[ "$JB_MODE" == "benchmark" && -z "$JB_BENCHMARK_CONFIG" ]]; then
     echo "test_name: \"RPC read benchmark ($LABEL${REFERENCE_RPC_URL:+ vs $REFERENCE_LABEL})\""
     echo "description: \"Snapshot-backed read-path benchmark on the self-hosted benchmark runner\""
     echo "clients:"
-    echo "  - $LABEL"
-    [[ -n "$REFERENCE_RPC_URL" ]] && echo "  - $REFERENCE_LABEL"
+    echo "  - $REGISTRY_LABEL"
+    [[ -n "$REFERENCE_RPC_URL" ]] && echo "  - $REGISTRY_REFERENCE_LABEL"
     echo "duration: \"${JB_DURATION:-60s}\""
     echo "rps: ${JB_RPS:-100}"
     echo "vus: ${JB_VUS:-10}"
@@ -243,8 +255,12 @@ elif [[ "$JB_MODE" == "benchmark" ]]; then
     || die "PyYAML is required to adapt the benchmark config and could not be installed"
 
   ref_label=""
-  [[ -n "$REFERENCE_RPC_URL" ]] && ref_label="$REFERENCE_LABEL"
-  JB_PRIMARY_LABEL="$LABEL" JB_REF_LABEL="$ref_label" \
+  ref_public_label=""
+  if [[ -n "$REFERENCE_RPC_URL" ]]; then
+    ref_label="$REGISTRY_REFERENCE_LABEL"
+    ref_public_label="$REFERENCE_LABEL"
+  fi
+  JB_PRIMARY_LABEL="$REGISTRY_LABEL" JB_REF_LABEL="$ref_label" \
   JB_RPS="$JB_RPS" JB_VUS="$JB_VUS" JB_DURATION="$JB_DURATION" \
   python3 - "$src_bench" "$work/io/benchmark.yaml" <<'PY'
 import os, sys, yaml
@@ -275,7 +291,7 @@ for call in cfg.get("calls", []) or []:
 with open(out, "w") as f:
     yaml.safe_dump(cfg, f, sort_keys=False, default_flow_style=False)
 PY
-  log "Adapted benchmark_config '$JB_BENCHMARK_CONFIG' -> clients=[$LABEL${ref_label:+, $ref_label}]"
+  log "Adapted benchmark_config '$JB_BENCHMARK_CONFIG' -> clients=[$LABEL${ref_public_label:+, $ref_public_label}]"
   bench_cfg="/io/benchmark.yaml"
 fi
 
@@ -380,7 +396,7 @@ if [[ "$JB_MODE" == "compare" ]]; then
     compare \
     --config "$compare_cfg" \
     --clients /io/clients.yaml \
-    --client-refs "$LABEL,$REFERENCE_LABEL" \
+    --client-refs "$REGISTRY_LABEL,$REGISTRY_REFERENCE_LABEL" \
     --concurrency "$JB_CONCURRENCY" \
     --timeout "$JB_TIMEOUT" \
     --output /io/out \
