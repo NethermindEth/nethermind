@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -225,7 +226,12 @@ namespace Nethermind.Serialization.Rlp
         }
 
         /// <summary>Decodes an account hash, taking the slim format's empty byte string as <paramref name="slimEmpty"/>.</summary>
+        /// <remarks>
+        /// Force-inlined so the caller's read of <paramref name="slimEmpty"/> sinks back into the slim
+        /// branch that uses it, rather than being paid on every account.
+        /// </remarks>
         /// <returns>The position past the item.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int DecodeHash(ReadOnlySpan<byte> data, int position, Hash256 slimEmpty, out Hash256 hash)
         {
             if (IsSlimEmpty(data, position))
@@ -238,6 +244,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         /// <inheritdoc cref="DecodeHash"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int DecodeValueHash(ReadOnlySpan<byte> data, int position, in ValueHash256 slimEmpty, out ValueHash256 hash)
         {
             if (IsSlimEmpty(data, position))

@@ -67,28 +67,17 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(0UL)]
-        [TestCase(1UL)]
-        [TestCase(127UL)]
-        [TestCase(128UL)]
-        [TestCase(255UL)]
-        [TestCase(256UL)]
-        [TestCase(ulong.MaxValue)]
-        public void Decodes_ulong_of_every_payload_length(ulong value) =>
-            Assert.That(Rlp.Decode<ulong>(Rlp.Encode(value).Bytes), Is.EqualTo(value));
-
+        // The first row is the boundaries of the length prefix. The second is one value per byte width,
+        // each distinct per position behind a non-zero leading byte, so the encoding stays canonical at
+        // that width and a word assembled from the wrong offset cannot still match.
         [Test]
-        public void Decodes_ulong_of_every_byte_width([Range(1, 8)] int byteWidth)
-        {
-            // Distinct per position, leading byte non-zero so the encoding is canonical at this width.
-            ulong value = 0xab;
-            for (int i = 1; i < byteWidth; i++)
-            {
-                value = (value << 8) | (byte)(i + 1);
-            }
-
+        public void Decodes_ulong_round_trip(
+            [Values(
+                0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue,
+                0xabUL, 0xab02UL, 0xab0203UL, 0xab020304UL,
+                0xab02030405UL, 0xab0203040506UL, 0xab020304050607UL, 0xab02030405060708UL)]
+            ulong value) =>
             Assert.That(Rlp.Decode<ulong>(Rlp.Encode(value).Bytes), Is.EqualTo(value));
-        }
 
         [Test]
         public void DecodeArray_rejects_more_items_than_the_limit()
