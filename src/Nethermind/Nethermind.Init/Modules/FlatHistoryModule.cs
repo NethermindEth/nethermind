@@ -56,7 +56,7 @@ public class FlatHistoryModule : Module
             .AddSingleton<SlicedReceiptRetention>()
             .Bind<IPrunedReceiptRetention, SlicedReceiptRetention>()
             .Bind<IPrunedLogsRetention, SlicedReceiptRetention>()
-            .AddSingleton<CommitmentDepthPolicy>(ctx => CommitmentDepthPolicy.FromConfig(ctx.Resolve<IFlatDbConfig>()))
+            .AddSingleton<CommitmentDepthPolicy>()
             .AddSingleton<CommitmentMetadata>()
             .AddSingleton<ArchiveProofSettings>()
             .AddSingleton<CommitmentReclaimer>()

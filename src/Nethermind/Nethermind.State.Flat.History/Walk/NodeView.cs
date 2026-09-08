@@ -39,8 +39,6 @@ internal readonly struct NodeView
 
     public ValueHash256 Hash { get; }
 
-    public bool IsInline => _rlp is not null && _length < Hash256.Size;
-
     public void WriteReference(ChildVector vector, int index)
     {
         if (_rlp is null) vector.Clear(index);

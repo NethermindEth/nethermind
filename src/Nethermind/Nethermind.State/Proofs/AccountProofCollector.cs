@@ -12,6 +12,9 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Nethermind.State.Flat.History")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
+
 namespace Nethermind.State.Proofs
 {
     /// <summary>
@@ -33,11 +36,11 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]>[] _storageProofItems;
         private readonly CancellationToken _cancellationToken;
 
-        public CancellationToken CancellationToken => _cancellationToken;
+        internal CancellationToken CancellationToken => _cancellationToken;
 
-        public ValueHash256 HashedAddress => Pack(_fullAccountPath);
+        internal ValueHash256 HashedAddress => Pack(_fullAccountPath);
 
-        public ValueHash256[] GetHashedStorageKeys()
+        internal ValueHash256[] GetHashedStorageKeys()
         {
             ValueHash256[] keys = new ValueHash256[_fullStoragePaths.Length];
             for (int i = 0; i < keys.Length; i++) keys[i] = Pack(_fullStoragePaths[i]);

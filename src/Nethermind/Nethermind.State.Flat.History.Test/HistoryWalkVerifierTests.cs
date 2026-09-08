@@ -51,7 +51,7 @@ public class HistoryWalkVerifierTests
             Action? hook = OnFirstRead;
             OnFirstRead = null;
             hook?.Invoke();
-            return Roots.TryGetValue(block, out ValueHash256 root) ? root : null;
+            return Roots.TryGetValue(block, out ValueHash256 root) ? root : (ValueHash256?)null;
         }
     }
 
@@ -131,6 +131,32 @@ public class HistoryWalkVerifierTests
                 "an honest history must reproduce the header root at every block, through storage changes and a self-destruct alike");
             Assert.That(verdict.Verified, Is.True);
             Assert.That(verdict.BlocksCompared, Is.EqualTo(4UL), "every block in the range must actually be compared, not sampled");
+        }
+    }
+
+    [Test]
+    public void A_block_whose_header_is_missing_is_reported_as_a_mismatch_not_skipped()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 2, a0);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0));
+        headers.Roots[1] = StateRootOf((AddrA, a1));
+        headers.Roots[2] = StateRootOf((AddrA, a0));
+        MarkAll(headers);
+        headers.Roots.Remove(2);
+        Assert.That(headers.TryGetStateRoot(2), Is.Null, "precondition: the fake must be able to say a header is missing at all, which a null converted to the struct never did");
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 2, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.False, "a range the walk could not check against a header is not verified");
+            Assert.That(verdict.Mismatches, Has.Exactly(1).Matches<HistoryWalkMismatch>(static m => m.Block == 2 && m.Kind == HistoryWalkMismatchKind.MissingHeader));
         }
     }
 

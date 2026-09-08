@@ -29,6 +29,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly CommitmentStore _storages;
     private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
+    private const int MaxSpareWindows = 1 << 14;
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
     private readonly bool _respectFloors;
@@ -340,6 +341,12 @@ public sealed class CommitmentEmitter : IDisposable
 
         foreach (KeyValuePair<NodePathKey, WindowState> entry in pending)
         {
+            if (_spareWindows.Count >= MaxSpareWindows)
+            {
+                entry.Value.Release();
+                continue;
+            }
+
             entry.Value.Recycle();
             _spareWindows.Push(entry.Value);
         }
@@ -363,11 +370,9 @@ public sealed class CommitmentEmitter : IDisposable
                 return;
             }
 
-            if (existing.Length > 0 && ParentRowCodec.IsValid(existing) && ParentRowCodec.LastBlock(existing) > state.LastBlock)
-            {
-                store.Write(prefix[..prefixLength], window, existing, batch);
-                return;
-            }
+            if (existing.Length > 0 && ParentRowCodec.IsValid(existing) && ParentRowCodec.LastBlock(existing) > state.LastBlock) return;
+
+            if (existing.Length > 0 && state.Kind == WindowKind.Branch && ParentRowCodec.IsValid(existing) && !ParentRowCodec.IsBranchRow(existing)) state.Changed |= state.Presence;
         }
         finally
         {
@@ -547,6 +552,8 @@ public sealed class CommitmentEmitter : IDisposable
             Changed = 0;
             WholeLength = 0;
             Latest.Clear();
+            if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
+            _whole = null;
         }
 
         public void Release()

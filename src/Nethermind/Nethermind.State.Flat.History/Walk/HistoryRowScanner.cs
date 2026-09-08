@@ -21,6 +21,7 @@ internal sealed class HistoryRowScanner(
     public const int StorageRowKeyLength = BaseFlatPersistence.StorageKeyLength + sizeof(ulong);
     public const int ClearRowKeyLength = Hash256.Size + sizeof(ulong);
     public const int IdentityLength = BaseFlatPersistence.AccountKeyLength;
+    public const uint StorageScanSpan = 1u << 24;
     public const int StoragePrefixLength = BasePersistence.StoragePrefixPortion;
     public const int SlotOffset = StoragePrefixLength;
     public const int IdentitySuffixOffset = SlotOffset + Hash256.Size;

@@ -46,7 +46,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Rebuild the state root from flat history rows at every covered block and compare against this node's own headers, once, in the background. Unwindowed archives only. Memory is bounded by FlatDb.HistoryVerifyMaxRows per worker, not by state size.", DefaultValue = "false")]
     bool HistoryVerifyEveryBlock { get; set; }
 
-    [ConfigItem(Description = "Concurrent workers of the every-block history verification. Each worker replays one trie subtree at a time from its own contiguous rows, so workers share nothing but the read-only columns; the count changes memory and wall clock, never the result. 0 sizes it from the machine: the processor count minus two cores kept for block processing, capped so the walk takes at most half of the memory and never more than the headroom free when it starts.", DefaultValue = "0")]
+    [ConfigItem(Description = "Concurrent workers of the every-block history verification; the key keeps the name it shipped under, the value is a worker count. Each worker replays one trie subtree at a time from its own contiguous rows, so workers share nothing but the read-only columns; the count changes memory and wall clock, never the result. 0 sizes it from the machine: the processor count minus two cores kept for block processing, capped so the walk takes at most half of the memory and never more than the headroom free when it starts.", DefaultValue = "0")]
     int HistoryVerifySegments { get; set; }
 
     [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Sized so that one mainnet depth-2 account subtree fits without splitting; each worker holds about 400 bytes per row plus its replayed trie. 0 uses the built-in default of 5 million.", DefaultValue = "0")]
@@ -61,7 +61,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Concurrent child resolutions inside a single historical proof. Each of a node's 16 children is an independent read, so this is the per-request fan-out; 0 uses the processor count. The number of concurrent proofs is capped by the JSON-RPC module pool, not here.", DefaultValue = "8")]
     int ArchiveProofFanOut { get; set; }
 
-    [ConfigItem(Description = "History rows one historical proof may read before it is refused. A proof that has to scan beyond this is resolving from raw history rather than from commitments, which means the commitment column does not really cover that height. 0 uses the built-in ceiling.", DefaultValue = "0")]
+    [ConfigItem(Description = "History rows one historical proof may read before it is refused. A proof that has to scan beyond this is resolving from raw history rather than from commitments, which means the commitment column does not really cover that height. 0 uses the built-in ceiling of 250000 rows.", DefaultValue = "0")]
     long ArchiveProofMaxScannedRows { get; set; }
 
     [ConfigItem(Description = "Checkpoint interval for the archive proof commitments, as a power of two blocks, the same at every trie depth. Smaller means faster cold proofs and more disk. Accepted range 6..12. Changing it invalidates commitments already built. 0 uses the built-in default of 2^9.", DefaultValue = "0")]

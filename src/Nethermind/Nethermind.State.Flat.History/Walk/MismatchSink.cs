@@ -92,6 +92,20 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded, Mism
         }
     }
 
+    public byte[] Encode(MismatchSink? pending)
+    {
+        List<HistoryWalkMismatch>? copy = null;
+        if (pending is not null)
+        {
+            lock (pending._mismatches)
+            {
+                copy = [.. pending._mismatches];
+            }
+        }
+
+        return Encode(copy);
+    }
+
     public byte[] Encode(List<HistoryWalkMismatch>? pending = null)
     {
         lock (_mismatches)

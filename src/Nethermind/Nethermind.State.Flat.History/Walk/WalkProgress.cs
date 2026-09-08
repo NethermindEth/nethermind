@@ -79,7 +79,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
 
     public void Replaying(int item, ulong block)
     {
-        if (item < 256) _units[item] = (int)((_base[item] + Fraction(block) * Scale(item)) * UnitsPerItem);
+        if (item < HistoryWalkRun.AccountPartitions) _units[item] = (int)((_base[item] + Fraction(block) * Scale(item)) * UnitsPerItem);
         _phases[item] = "replay";
     }
 
@@ -160,7 +160,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         return $"{"History walk",ProgressLogger.PrefixAlignment}{Volatile.Read(ref _completed),ProgressLogger.BlockPaddingLength:N0} / {items,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {stepsPerSecond,ProgressLogger.SpeedPaddingLength:N0} subtree steps/s (~{blocksPerSecond:N0} per subtree) | ETA {eta} | {GC.GetTotalMemory(false) >> 20:N0} MB managed{inFlight}";
     }
 
-    private static string Name(int item) => item < 256 ? $"accounts 0x{item:x2}" : $"storage 0x{item - 256:x2}";
+    private static string Name(int item) => item < HistoryWalkRun.AccountPartitions ? $"accounts 0x{item:x2}" : $"storage 0x{item - HistoryWalkRun.AccountPartitions:x2}";
 
     private static string Format(TimeSpan span) => span.TotalDays >= 1 ? $"{(int)span.TotalDays}d {span.Hours:D2}h" : $"{(int)span.TotalHours}h {span.Minutes:D2}m";
 

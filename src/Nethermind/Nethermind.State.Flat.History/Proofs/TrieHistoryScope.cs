@@ -131,6 +131,7 @@ internal abstract class TrieHistoryScope(
         if (!rows.TryGetCeiling(from, bound, key, out keyLength, value, out valueLength)) return false;
 
         budget.ChargeRow();
+        if (keyLength > key.Length) throw new StateUnavailableException($"A history row key of {keyLength} bytes exceeds the {key.Length} bytes any row of this column may have.");
         if (valueLength > value.Length) throw new StateUnavailableException($"A history row value of {valueLength} bytes exceeds the {value.Length} bytes a leaf can carry.");
 
         return true;

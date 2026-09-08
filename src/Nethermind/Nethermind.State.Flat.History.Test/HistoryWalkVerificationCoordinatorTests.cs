@@ -42,7 +42,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         public Dictionary<ulong, ValueHash256> Roots { get; } = [];
 
-        public ValueHash256? TryGetStateRoot(ulong block) => Roots.TryGetValue(block, out ValueHash256 root) ? root : null;
+        public ValueHash256? TryGetStateRoot(ulong block) => Roots.TryGetValue(block, out ValueHash256 root) ? root : (ValueHash256?)null;
     }
 
     private (HistoryAvailability Availability, HistoryRowFormat RowFormat) CreateShared(FlatDbConfig config)

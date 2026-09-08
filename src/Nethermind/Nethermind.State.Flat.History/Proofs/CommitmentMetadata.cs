@@ -25,7 +25,9 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private static ReadOnlySpan<byte> DroppedThroughEpochKey => [Marker, 0x09];
     private static ReadOnlySpan<byte> DemotedThroughEpochKey => [Marker, 0x0A];
     private static ReadOnlySpan<byte> WalkVerifiedKey => [Marker, 0x0B];
+    private static ReadOnlySpan<byte> CarriedEpochKey => [Marker, 0x0C];
     private const byte WalkItemMarker = 0x05;
+    private const int WalkItemKeyLength = 4;
     private const byte WalkItemProgressMarker = 0x06;
     public const int MaxWalkItems = 1 << 16;
 
@@ -163,6 +165,30 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     public ulong DroppedThroughEpoch => ReadMirroredEpoch(ref _droppedThroughEpoch, DroppedThroughEpochKey);
 
     public bool TryRaiseDroppedThroughEpoch(ulong epoch) => TryRaiseMirroredEpoch(ref _droppedThroughEpoch, DroppedThroughEpochKey, epoch);
+
+    public bool IsCarried(ulong epoch) => ReadEpoch(CarriedEpochKey) == epoch + 1;
+
+    public void MarkCarried(ulong epoch) => WriteEpoch(CarriedEpochKey, epoch + 1);
+
+    public bool TryCompleteDrop(ulong epoch)
+    {
+        lock (_lock)
+        {
+            ulong dropped = epoch + 1;
+            if (dropped <= ReadMirroredEpoch(ref _droppedThroughEpoch, DroppedThroughEpochKey)) return false;
+
+            Span<byte> value = stackalloc byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(value, dropped);
+            using (IWriteBatch batch = _column.StartWriteBatch())
+            {
+                batch.PutSpan(DroppedThroughEpochKey, value);
+                batch.Remove(CarriedEpochKey);
+            }
+
+            Volatile.Write(ref _droppedThroughEpoch, (long)dropped);
+            return true;
+        }
+    }
 
     public ulong DemotedThroughEpoch => ReadMirroredEpoch(ref _demotedThroughEpoch, DemotedThroughEpochKey);
 
@@ -331,16 +357,16 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool IsWalkItemDone(int item)
     {
-        Span<byte> key = stackalloc byte[4];
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
         WriteWalkItemKey(key, item);
         return _column.KeyExists(key);
     }
 
     public void MarkWalkItemDone(int item, ReadOnlySpan<byte> mismatches)
     {
-        Span<byte> key = stackalloc byte[4];
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
         WriteWalkItemKey(key, item);
-        Span<byte> progressKey = stackalloc byte[4];
+        Span<byte> progressKey = stackalloc byte[WalkItemKeyLength];
         WriteWalkItemKey(progressKey, item, WalkItemProgressMarker);
         byte[] value = new byte[1 + mismatches.Length];
         value[0] = 1;
@@ -354,7 +380,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public ReadOnlySpan<byte> WalkItemMismatches(int item)
     {
-        Span<byte> key = stackalloc byte[4];
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
         WriteWalkItemKey(key, item);
         byte[]? value = _column.Get(key);
         return value is { Length: > 1 } ? value.AsSpan(1) : [];
@@ -364,7 +390,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryGetWalkItemProgress(int item, out ulong progress, out ReadOnlySpan<byte> mismatches)
     {
-        Span<byte> key = stackalloc byte[4];
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
         WriteWalkItemKey(key, item, WalkItemProgressMarker);
         byte[]? value = _column.Get(key);
         if (value is not { Length: >= sizeof(ulong) })
@@ -381,7 +407,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public void MarkWalkItemProgress(int item, ulong progress, ReadOnlySpan<byte> mismatches)
     {
-        Span<byte> key = stackalloc byte[4];
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
         WriteWalkItemKey(key, item, WalkItemProgressMarker);
         byte[] value = new byte[sizeof(ulong) + mismatches.Length];
         BinaryPrimitives.WriteUInt64BigEndian(value, progress);
@@ -403,7 +429,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     private void ClearWalkItems(int items)
     {
-        Span<byte> key = stackalloc byte[4];
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
         for (int item = 0; item < items; item++)
         {
             WriteWalkItemKey(key, item);

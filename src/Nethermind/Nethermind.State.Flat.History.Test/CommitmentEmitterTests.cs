@@ -184,6 +184,33 @@ public class CommitmentEmitterTests
     }
 
     [Test]
+    public void A_branch_written_over_a_whole_row_of_the_same_window_marks_every_present_child_changed()
+    {
+        using CommitmentEmitter tip = CommitmentEmitter.ForTip(_historyColumns, Policy, _metadata);
+        tip.BeginBlock(1);
+        tip.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(Children(0, 1)));
+        tip.CompleteBlock();
+        tip.FlushOpenWindows();
+        tip.BeginBlock(2);
+        tip.RecordAccountNode(CheckpointedPath, LeafRlp());
+        tip.CompleteBlock();
+        tip.FlushOpenWindows();
+        tip.BeginBlock(3);
+        tip.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(Children(0, 1)));
+        tip.RecordAccountNode(CheckpointedPath.Append(1), LeafRlp());
+        tip.CompleteBlock();
+        tip.FlushOpenWindows();
+
+        byte[] row = WindowRow(CheckpointedPath, Policy.WindowClosingAt(3))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ParentRowCodec.Presence(row) & 0b11, Is.EqualTo(0b11));
+            Assert.That(ParentRowCodec.Changed(row) & 0b11, Is.EqualTo(0b11),
+                "the row on disk was a whole node when this branch was flushed over it, so every child the branch presents moved relative to the window anchor; a mask that names only child 1 would send child 0's readers to a checkpoint chain that predates the leaf");
+        }
+    }
+
+    [Test]
     public void A_storage_trie_that_once_reached_the_signal_depth_stays_large_for_a_later_emitter()
     {
         using (CommitmentEmitter first = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
