@@ -1165,28 +1165,46 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public void Prepared_prefix_replacement_and_conflict_preserve_terminal_semantics(bool shorterReplacement, bool conflict)
+    [Test]
+    public void Prepared_prefix_replacement_and_conflict_preserve_terminal_semantics(
+        [Values(false, true)] bool shorterReplacement,
+        [Values(false, true)] bool conflict,
+        [Values(false, true)] bool persisted,
+        [Values(false, true)] bool sibling)
     {
         byte[] shortKey = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000000001");
         byte[] longKey = new byte[shortKey.Length + 1];
         shortKey.CopyTo(longKey, 0);
         PbtStorageFullKey original = new(shorterReplacement ? longKey : shortKey);
         PbtStorageFullKey replacement = new(shorterReplacement ? shortKey : longKey);
+        byte[] siblingBytes = original.Bytes.ToArray();
+        siblingBytes[^1] ^= 1;
+        PbtStorageFullKey siblingKey = new(siblingBytes);
         using PbtWriteBatchBuilder<PbtStorageFullKey> initial = new(0);
-        initial.Set(original, new ValueHash256(Value(1)));
+        if (persisted)
+        {
+            initial.Set(original, new ValueHash256(Value(1)));
+            if (sibling) initial.Set(siblingKey, new ValueHash256(Value(3)));
+        }
         using PbtNodeGroupStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, initial.Build());
         using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
-        if (!conflict) changes.Delete(original);
+        if (!conflict)
+        {
+            changes.Delete(original);
+            if (sibling) changes.Delete(siblingKey);
+        }
+        else if (!persisted)
+        {
+            changes.Set(original, new ValueHash256(Value(1)));
+            if (sibling) changes.Set(siblingKey, new ValueHash256(Value(3)));
+        }
         changes.Set(replacement, new ValueHash256(Value(2)));
         if (conflict)
         {
             TrackingMemoryProvider memoryProvider = new();
             Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, PbtWriteBatchSet<PbtStorageFullKey>.Create(changes.Build()), memoryProvider: memoryProvider));
+            store.Dispose();
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
             return;
         }

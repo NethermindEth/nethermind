@@ -220,17 +220,7 @@ internal static class TrieUpdater<TKey, TPath>
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = table;
-        if (changes.ShardNibbleIndex == 0)
-            return UpdateRoot(store, currentRoot, operations.AsSpan(), plan, metrics, memoryProvider);
-
-        int deleteCount = 0;
-        for (int index = 0; index < operations.Count; index++)
-        {
-            if (operations[index].Kind != PbtWriteOperationKind.Delete) continue;
-            (operations[deleteCount], operations[index]) = (operations[index], operations[deleteCount]);
-            deleteCount++;
-        }
-        return UpdateRoot(store, currentRoot, operations.AsSpan(), default, metrics, memoryProvider);
+        return UpdateRoot(store, currentRoot, operations.AsSpan(), changes.ShardNibbleIndex == 0 ? plan : default, metrics, memoryProvider);
     }
 
     internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet<TKey> changes, TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null)
@@ -283,66 +273,58 @@ internal static class TrieUpdater<TKey, TPath>
         ownerGroup.Resolve(ref current);
         if (operations.IsEmpty) return Subtree.Move(ref current);
 
-        if (current.IsEmpty || current.IsLeaf)
+        if (current.IsEmpty)
         {
-            bool hasLeaf = !current.IsEmpty;
-            TKey leafKey = hasLeaf ? current.Key : default;
-            int setCount = 0;
-            for (int index = 0; index < operations.Length; index++)
-            {
-                PbtWriteOperation<TKey> operation = operations[index];
-                if (hasLeaf && operation.Key.Equals(leafKey))
-                {
-                    if (operation.Kind == PbtWriteOperationKind.Delete)
-                    {
-                        current.Dispose();
-                    }
-                    else
-                    {
-                        Subtree replacement = new(operation, current.Path);
-                        current.Dispose();
-                        current = Subtree.Move(ref replacement);
-                    }
-                }
-                else if (operation.Kind == PbtWriteOperationKind.Set)
-                {
-                    (operations[setCount], operations[index]) = (operations[index], operations[setCount]);
-                    setCount++;
-                }
-            }
-
-            if (setCount != operations.Length) plan = plan.AfterFiltering(preservesOrder: true);
-            operations = operations[..setCount];
-            if (operations.IsEmpty) return Subtree.Move(ref current);
-            if (current.IsEmpty && operations.Length == 1)
-                return new Subtree(operations[0]);
+            if (operations.Length == 1)
+                return operations[0].Kind == PbtWriteOperationKind.Delete ? default : new Subtree(operations[0]);
         }
-        else
+        else if (current.IsLeaf)
         {
-            // A shorter replacement can become valid when this same batch deletes the entire subtree.
-            PbtWriteOperation<TKey>? terminalSet = null;
-            int remainingCount = 0;
+            if (operations.Length == 1)
+            {
+                PbtWriteOperation<TKey> operation = operations[0];
+                if (operation.Key.Equals(current.Key))
+                    return operation.Kind == PbtWriteOperationKind.Delete ? default : new Subtree(operation, current.Path);
+                if (operation.Kind == PbtWriteOperationKind.Delete) return Subtree.Move(ref current);
+            }
+        }
+
+        if (depth > 0 && (depth & 7) == 0)
+        {
+            int terminalIndex = -1;
             for (int index = 0; index < operations.Length; index++)
             {
-                PbtWriteOperation<TKey> operation = operations[index];
-                if (operation.Key.BitLength == depth)
-                {
-                    if (operation.Kind == PbtWriteOperationKind.Set) terminalSet = operation;
-                    continue;
-                }
-                (operations[remainingCount], operations[index]) = (operations[index], operations[remainingCount]);
-                remainingCount++;
+                if (operations[index].Key.BitLength != depth) continue;
+                terminalIndex = index;
+                break;
             }
-            if (remainingCount != operations.Length)
+            bool hasTerminalLeaf = current.IsLeaf && current.Key.BitLength == depth;
+            if (terminalIndex >= 0 || hasTerminalLeaf)
             {
-                Subtree remaining = FoldMutations(store, metrics, ownerGroup, ref current, operations[..remainingCount], plan.AfterFiltering(preservesOrder: true));
+                // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
+                Subtree terminal = hasTerminalLeaf ? Subtree.Move(ref current) : default;
+                Subtree descendants = default;
                 try
                 {
-                    if (terminalSet is not { } replacement) return Subtree.Move(ref remaining);
-                    if (!remaining.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                    return new Subtree(replacement);
+                    if (terminalIndex >= 0)
+                    {
+                        PbtWriteOperation<TKey> operation = operations[terminalIndex];
+                        operations[..terminalIndex].CopyTo(operations[1..]);
+                        operations[0] = operation;
+                        terminal = FoldMutations(store, metrics, ownerGroup, ref terminal, operations[..1], plan);
+                        operations = operations[1..];
+                        plan = plan.AfterFiltering(preservesOrder: true);
+                    }
+                    descendants = FoldMutations(store, metrics, ownerGroup, ref current, operations, plan);
+                    if (terminal.IsEmpty) return Subtree.Move(ref descendants);
+                    if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+                    return Subtree.Move(ref terminal);
                 }
-                finally { remaining.Dispose(); }
+                finally
+                {
+                    terminal.Dispose();
+                    descendants.Dispose();
+                }
             }
         }
 
@@ -581,8 +563,6 @@ internal static class TrieUpdater<TKey, TPath>
         {
             TKey leafKey = current.Key;
             int difference = leafKey.FirstDifferingBit(firstKey, plan.Depth);
-            if (difference == Math.Min(leafKey.BitLength, firstKey.BitLength))
-                throw new ArgumentException("Tree keys must be prefix-free.", "operations");
             branchDepth = Math.Min(branchDepth, difference);
         }
         else if (!current.IsEmpty)
@@ -600,6 +580,7 @@ internal static class TrieUpdater<TKey, TPath>
         TKey firstKey = operations[0].Key;
         int branchDepth = firstKey.BitLength;
         bool equalLengths = true;
+        bool hasPrefix = false;
         if (isSorted && !validatePrefixes && operations.Length > 1)
         {
             metrics?.IncrementOperationPrefixComparisons();
@@ -611,14 +592,13 @@ internal static class TrieUpdater<TKey, TPath>
             TKey reference = isSorted ? operations[index - 1].Key : firstKey;
             metrics?.IncrementOperationPrefixComparisons();
             int difference = reference.FirstDifferingBit(key, depth);
-            if (validatePrefixes && difference == Math.Min(reference.BitLength, key.BitLength))
-                throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+            hasPrefix |= difference == Math.Min(reference.BitLength, key.BitLength);
             branchDepth = Math.Min(branchDepth, difference);
             equalLengths &= key.BitLength == firstKey.BitLength;
         }
 
         // A single reference does not prove prefix freedom for a variable-length child subset.
-        prefixesValidated = validatePrefixes && (isSorted || equalLengths || operations.Length <= 2);
+        prefixesValidated = validatePrefixes && !hasPrefix && (isSorted || equalLengths || operations.Length <= 2);
         return branchDepth;
     }
 
