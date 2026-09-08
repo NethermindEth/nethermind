@@ -3717,6 +3717,41 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        /// <summary>
+        /// The bucket is judged on whether anything in it is includable, not on its lowest entry: a keyed frame
+        /// transaction sorts ahead of the sender's ordinary ones and says nothing about their domain, so its own
+        /// fee must not delete an ordinary transaction that can pay.
+        /// </summary>
+        [Test]
+        public void Keyed_frame_tx_below_the_base_fee_does_not_hide_an_ordinary_tx_that_can_pay()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sender, UInt256.MaxValue, AccountNonceAheadOfKeyedSequences);
+
+            const int baseFee = 2;
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: baseFee - 1);
+            Transaction atAccountNonce = Build.A.Transaction
+                .WithNonce(AccountNonceAheadOfKeyedSequences)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(atAccountNonce, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee: baseFee);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyed.CanPayBaseFee(baseFee), Is.False, "the keyed entry must be the one below the base fee, or this pins nothing");
+                Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True);
+                Assert.That(readyForSender, Does.Contain(atAccountNonce));
+            }
+        }
+
         /// <summary>An account nonce past the keyed sequences, which is the ordinary shape once a sender has sent anything.</summary>
         private const ulong AccountNonceAheadOfKeyedSequences = 100;
 

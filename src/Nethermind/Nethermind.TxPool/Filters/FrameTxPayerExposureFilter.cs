@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -43,32 +44,19 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        // A snapshot; AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
-        UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
-        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
+        // AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
+        Hash256? replaced = exposure.GetReserved(payer).IsZero ? null : PendingReplacement.Find(tx, standardPool, blobPool)?.Hash;
+        if (!exposure.TryReserve(payer, tx.Hash!, maxCost, balance, out UInt256 reserved, replaced))
         {
-            // Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.
+            // Concurrent submissions share the pool's head read lock, so the ledger is what serialises them.
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPayerExposureExceeded);
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
             return AcceptTxResult.FrameTxPayerExposureExceeded;
         }
 
-        // Held so the release subtracts exactly this, whatever the transaction still carries by then.
+        // Recorded for the restart-time restore; the ledger owns what a removal releases.
         tx.PayerExposure = maxCost;
         return AcceptTxResult.Accepted;
     }
-
-    /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
-    /// set instead.</summary>
-    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
-    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.
-    /// Read from what the incumbent recorded at admission, so the discount cannot drift from what its removal
-    /// releases.</remarks>
-    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer) =>
-        PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
-        && replaced.PayerAddress == payer
-        && replaced.PayerExposure is { } cost
-            ? cost
-            : UInt256.Zero;
 }

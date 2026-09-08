@@ -3,12 +3,14 @@
 
 #nullable enable
 
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -41,7 +43,7 @@ public class FrameTxPayerExposureFilterTests
     {
         TestReadOnlyStateProvider state = StateWithPayerBalance(balance);
         PayerExposureCache cache = new();
-        if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue, out _);
+        if (reserved > 0) cache.TryReserve(Payer, HashFor(1), (UInt256)reserved, UInt256.MaxValue, out _);
 
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(TestCost));
 
@@ -90,13 +92,44 @@ public class FrameTxPayerExposureFilterTests
         bump.Hash = TestItem.KeccakB;
 
         // The two summed exceed the balance, so only discounting the displaced incumbent admits the bump.
-        // Case three's reservation is synthetic: admission cannot leave Payer reserved with nothing pending.
+        // Case three's reservation sits with the incumbent's own payer, and Payer's comes from elsewhere.
         PayerExposureCache cache = new();
-        cache.TryReserve(Payer, incumbentCost, balance: balance, out _);
+        cache.TryReserve(incumbent.PayerAddress!, incumbent.Hash!, incumbentCost, balance: balance, out _);
+        if (incumbentPaidByAnother) cache.TryReserve(Payer, HashFor(9), incumbentCost, balance: balance, out _);
 
         AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: false, incumbent));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+    }
+
+    [Test]
+    public void Accept_DoesNotDiscountAnIncumbentWhoseReservationWasAlreadyReleased()
+    {
+        // Find and the reservation are two operations. Pinned here at the point between them: the incumbent
+        // is still what the walk returns, but its reservation has gone and another transaction took the room.
+        // Discounting it a second time would leave the payer holding twice its balance.
+        const int cost = TestCost;
+        const int balance = TestCost;
+
+        Transaction incumbent = FrameTxCostingExactly(cost);
+        incumbent.Hash = TestItem.KeccakA;
+        incumbent.PayerExposure = cost;
+        Transaction bump = FrameTxCostingExactly(cost);
+        bump.Hash = TestItem.KeccakB;
+
+        PayerExposureCache cache = new();
+        cache.TryReserve(Payer, incumbent.Hash, cost, balance: balance, out _);
+        cache.Subtract(incumbent.Hash);
+        cache.TryReserve(Payer, TestItem.KeccakC, cost, balance: balance, out _);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: false, incumbent));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)cost), "the payer never holds more than its balance");
+            Assert.That(bump.PayerExposure, Is.Null, "a rejected tx must not claim a reservation it never took");
+        }
     }
 
     [Test]
@@ -120,7 +153,7 @@ public class FrameTxPayerExposureFilterTests
         bump.Hash = TestItem.KeccakB;
 
         PayerExposureCache cache = new();
-        cache.TryReserve(Payer, incumbentCost, balance: balance, out _);
+        cache.TryReserve(Payer, record.Hash!, incumbentCost, balance: balance, out _);
 
         AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: true, record));
 
@@ -216,17 +249,20 @@ public class FrameTxPayerExposureFilterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.TryReserve(Payer, 1000, balance: 1500, out _), Is.True);
-            Assert.That(cache.TryReserve(Payer, 500, balance: 1500, out _), Is.True, "reserved 1000 + 500 == balance is admitted");
-            Assert.That(cache.TryReserve(Payer, 1, balance: 1500, out _), Is.False, "one wei over the balance is rejected");
+            Assert.That(cache.TryReserve(Payer, HashFor(1), 1000, balance: 1500, out _), Is.True);
+            Assert.That(cache.TryReserve(Payer, HashFor(2), 500, balance: 1500, out _), Is.True, "reserved 1000 + 500 == balance is admitted");
+            Assert.That(cache.TryReserve(Payer, HashFor(3), 1, balance: 1500, out _), Is.False, "one wei over the balance is rejected");
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1500), "a rejected reservation adds nothing");
         }
 
-        cache.Subtract(Payer, 1000);
+        cache.Subtract(HashFor(1));
         Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)500));
 
-        // Over-release clamps at zero rather than wrapping, so the gate can never be disabled.
-        cache.Subtract(Payer, 1000);
+        // Releases are keyed by transaction, so a repeated one releases nothing rather than another 1000.
+        cache.Subtract(HashFor(1));
+        Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)500));
+
+        cache.Subtract(HashFor(2));
         Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
     }
 
@@ -248,8 +284,8 @@ public class FrameTxPayerExposureFilterTests
         // Pins the drain only: its paired gauge decrement is a shared static, so asserting that would race
         // the parallel fixtures.
         PayerExposureCache cache = new();
-        cache.TryReserve(Payer, 1000, balance: 1000, out _);
-        cache.TryReserve(TestItem.AddressC, 500, balance: 500, out _);
+        cache.TryReserve(Payer, HashFor(1), 1000, balance: 1000, out _);
+        cache.TryReserve(TestItem.AddressC, HashFor(2), 500, balance: 500, out _);
 
         cache.Clear();
 
@@ -265,11 +301,11 @@ public class FrameTxPayerExposureFilterTests
     {
         // Overflow is checked before the balance compare: a wrapped total would silently re-open the gate.
         PayerExposureCache cache = new();
-        Assert.That(cache.TryReserve(Payer, UInt256.MaxValue, UInt256.MaxValue, out _), Is.True);
+        Assert.That(cache.TryReserve(Payer, HashFor(1), UInt256.MaxValue, UInt256.MaxValue, out _), Is.True);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.TryReserve(Payer, 1, UInt256.MaxValue, out _), Is.False);
+            Assert.That(cache.TryReserve(Payer, HashFor(2), 1, UInt256.MaxValue, out _), Is.False);
             Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.MaxValue));
         }
     }
@@ -280,7 +316,7 @@ public class FrameTxPayerExposureFilterTests
         // Subtract early-returns on zero, so a zero reservation would leave an entry nothing reclaims.
         PayerExposureCache cache = new();
 
-        Assert.That(cache.TryReserve(Payer, UInt256.Zero, balance: 1000, out _), Is.True);
+        Assert.That(cache.TryReserve(Payer, HashFor(1), UInt256.Zero, balance: 1000, out _), Is.True);
         Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
     }
 
@@ -294,7 +330,7 @@ public class FrameTxPayerExposureFilterTests
 
         Parallel.For(0, 64, i =>
         {
-            if (cache.TryReserve(Payer, 1000, balance: fits * 1000, out UInt256 _)) Interlocked.Increment(ref accepted);
+            if (cache.TryReserve(Payer, HashFor(i), 1000, balance: fits * 1000, out UInt256 _)) Interlocked.Increment(ref accepted);
         });
 
         using (Assert.EnterMultipleScope())
@@ -302,6 +338,14 @@ public class FrameTxPayerExposureFilterTests
             Assert.That(accepted, Is.EqualTo(fits));
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(fits * 1000)));
         }
+    }
+
+    /// <summary>A distinct transaction hash per reservation: the ledger keys live reservations by hash.</summary>
+    private static Hash256 HashFor(int seed)
+    {
+        byte[] bytes = new byte[Hash256.Size];
+        BinaryPrimitives.WriteInt32BigEndian(bytes, seed);
+        return new Hash256(bytes);
     }
 
     private static TestReadOnlyStateProvider StateWithPayerBalance(long wei)

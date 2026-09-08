@@ -231,7 +231,7 @@ namespace Nethermind.TxPool
                     // The same predicate the release reads, so the two ends of a ledger entry cannot drift.
                     if (TryGetPayerReservation(restored, out Address? payer, out UInt256 reserved))
                     {
-                        _payerExposure.Restore(payer, reserved);
+                        _payerExposure.Restore(payer, restored.Hash!, reserved);
                     }
 
                     // Re-taken rather than re-gated for the same reason, and through the key the release reads.
@@ -281,7 +281,7 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after MalformedTxFilter as it uses the recovered sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
-                new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider), // the three above skip keyed sets, this one owns them
+                new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider, txPoolConfig, _transactions, _blobTransactions), // the three above skip keyed sets, this one owns them
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
@@ -336,7 +336,7 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             _transactions.GetBucketSnapshot(filterToReadyTx ?
-                (data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)) :
+                (data => HasReadyTransaction(data.bucket, data.key, baseFee)) :
                 null);
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
@@ -346,12 +346,26 @@ namespace Nethermind.TxPool
                 ? IsKeyedNonceCurrent(tx)
                 : tx.Nonce == _accounts.GetNonce(sender);
 
+        /// <summary>Whether a sender's bucket holds anything includable in the next block.</summary>
+        /// <remarks>Scanned rather than judged on the bucket's lowest entry: an EIP-8250 keyed transaction is
+        /// ordered by its own sequence, so it can sort ahead of an eligible account-nonce transaction whose
+        /// domain it says nothing about. Buckets are bounded per sender, and the scan stops at the first hit.</remarks>
+        private bool HasReadyTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
+        {
+            foreach (Transaction tx in bucket)
+            {
+                if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, sender)) return true;
+            }
+
+            return false;
+        }
+
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
             _blobTransactions.GetBucketSnapshot(filterToReadyTx
-                ? data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)
+                ? data => HasReadyTransaction(data.bucket, data.key, baseFee)
                 : null);
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -1541,9 +1555,10 @@ namespace Nethermind.TxPool
         /// </remarks>
         private void ReleaseFrameTxReservations(Transaction tx)
         {
-            if (TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost))
+            // Guarded so an ordinary transaction's removal never reaches the ledger's lock.
+            if (TryGetPayerReservation(tx, out _, out _))
             {
-                _payerExposure.Subtract(payer, maxCost);
+                _payerExposure.Subtract(tx.Hash!);
             }
 
             if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)

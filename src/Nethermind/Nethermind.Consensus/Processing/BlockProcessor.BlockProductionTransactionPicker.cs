@@ -44,10 +44,12 @@ namespace Nethermind.Consensus.Processing
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-                // No more gas available in block for any transactions,
-                // the only case we have to really stop
-                if (GasCostOf.Transaction > gasRemaining)
+                // No more gas available in block for any transactions, the only case we have to really stop.
+                // An EIP-8141 frame transaction reserves from its own intrinsic cost, below the legacy floor.
+                ulong smallestTxGas = spec.IsEip8141Enabled ? (ulong)Eip8141Constants.IntrinsicGasCost : GasCostOf.Transaction;
+                if (smallestTxGas > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
                 }
@@ -64,8 +66,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(TxAction.Skip, "Null sender");
                 }
-
-                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
