@@ -48,6 +48,7 @@ TOTAL                     49687273981 100.00%
 # Copied out of the measurement job for block 25526356 (actions/runs/34105317341). The pinned image
 # groups digits even though the recipe passes `--no-thousands-sep`, which is why both parsers have to
 # accept separators; before they did, the very first block failed with "no STEPS line in the log".
+# cspell:ignore FROPS
 ZISKEMU_LOG_WITH_SEPARATORS = """018cc34e1eb14c42412dc26aeca8e7e1bf540f216753c7431568985b66ecca1f0101000000000000000100
 
 REPORT\x20
