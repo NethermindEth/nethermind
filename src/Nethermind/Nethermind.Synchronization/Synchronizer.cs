@@ -53,9 +53,30 @@ namespace Nethermind.Synchronization
     {
         private const int FeedsTerminationTimeout = 5_000;
 
+        /// <remarks>
+        /// The state sync drain is a memory-safety barrier, not a tidy-shutdown courtesy like the feed tasks: the
+        /// databases are disposed the moment this returns, and a dispatcher worker still inside HandleResponse then
+        /// writes to a freed native handle (#13154). It gets a budget of its own rather than the feeds' advisory one,
+        /// and it stays bounded because the runner sets ProcessTerminationTimeout to infinite - a wait with no ceiling
+        /// here is a node that never exits.
+        ///
+        /// Settable rather than <c>const</c> so the give-up branch can be exercised in milliseconds; nothing outside
+        /// the tests sets it.
+        /// </remarks>
+        internal const int DefaultStateSyncTerminationTimeout = 60_000;
+
+        internal int StateSyncTerminationTimeout { get; init; } = DefaultStateSyncTerminationTimeout;
+
         private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
         private CancellationTokenSource? _syncCancellation = new();
+
+        /// <remarks>
+        /// <see cref="Start"/> publishes <see cref="_stateSyncTask"/> and <see cref="DisposeAsync"/> joins it, from
+        /// different threads and with no ordering between them. Guarding both with one lock also makes a dispose that
+        /// wins the race safe, by refusing to start after it.
+        /// </remarks>
+        private readonly Lock _startStopLock = new();
 
         private Task _stateSyncTask = Task.CompletedTask;
 
@@ -73,15 +94,23 @@ namespace Nethermind.Synchronization
                 return;
             }
 
-            StartFullSyncComponents();
-
-            if (syncConfig.FastSync)
+            lock (_startStopLock)
             {
-                StartFastBlocksComponents();
+                if (_disposed)
+                {
+                    return;
+                }
 
-                StartFastSyncComponents();
+                StartFullSyncComponents();
 
-                StartSnapAndStateSyncComponents();
+                if (syncConfig.FastSync)
+                {
+                    StartFastBlocksComponents();
+
+                    StartFastSyncComponents();
+
+                    StartSnapAndStateSyncComponents();
+                }
             }
 
             if (syncConfig.ExitOnSynced)
@@ -269,38 +298,48 @@ namespace Nethermind.Synchronization
 
         public async ValueTask DisposeAsync()
         {
-            // Container teardown can dispose this more than once, and a repeat run would wait on
-            // the feed tasks again - the full termination timeout when any feed failed to finish.
-            if (Interlocked.CompareExchange(ref _disposed, true, false))
+            Task stateSyncTask;
+            lock (_startStopLock)
             {
-                return;
+                // Container teardown can dispose this more than once, and a repeat run would wait on
+                // the feed tasks again - the full termination timeout when any feed failed to finish.
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                stateSyncTask = _stateSyncTask;
             }
 
             _syncCancellation?.Cancel();
 
             using CancellationTokenSource timeoutCts = new();
-            Task timeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
-            // The state sync runner is joined here too: the databases are disposed right after this
-            // returns, so its dispatcher must have drained its in-flight workers by then.
+            // Both budgets start here so they run concurrently rather than back to back.
+            Task feedsTimeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
+            Task stateSyncTimeout = Task.Delay(StateSyncTerminationTimeout, timeoutCts.Token);
+
             Task feedsTask = Task.WhenAll(
                 fullSyncComponent.Feed.FeedTask,
                 fastSyncComponent.Feed.FeedTask,
                 fastHeaderComponent.Feed.FeedTask,
                 oldBodiesComponent.Feed.FeedTask,
                 oldReceiptsComponent.Feed.FeedTask,
-                oldBlockAccessListsComponent.Feed.FeedTask,
-                _stateSyncTask);
-            Task completedFirst = await Task.WhenAny(timeout, feedsTask);
+                oldBlockAccessListsComponent.Feed.FeedTask);
 
-            if (completedFirst == timeout)
+            if (await Task.WhenAny(feedsTimeout, feedsTask) == feedsTimeout && _logger.IsWarn)
             {
-                if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
-                if (!_stateSyncTask.IsCompleted && _logger.IsWarn) _logger.Warn($"State sync did not stop within {FeedsTerminationTimeout}ms, databases are disposed under in-flight sync work");
+                _logger.Warn("Sync feeds dispose timeout");
             }
-            else
+
+            // The state sync runner is joined separately: the databases are disposed right after this returns, so
+            // its dispatcher must have drained its in-flight workers by then.
+            if (await Task.WhenAny(stateSyncTimeout, stateSyncTask) == stateSyncTimeout && _logger.IsWarn)
             {
-                timeoutCts.Cancel();
+                _logger.Warn($"State sync did not stop within {StateSyncTerminationTimeout}ms, databases are disposed under in-flight sync work");
             }
+
+            timeoutCts.Cancel();
 
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }

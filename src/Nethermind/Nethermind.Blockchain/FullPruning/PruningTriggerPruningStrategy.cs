@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using Nethermind.Trie.Pruning;
 
@@ -23,7 +22,7 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
     public PruningTriggerPruningStrategy(
         IFullPruningDb fullPruningDb,
         IPruningStrategy basePruningStrategy,
-        ulong? pruningBoundary = null)
+        ulong pruningBoundary)
     {
         _fullPruningDb = fullPruningDb;
         _basePruningStrategy = basePruningStrategy;
@@ -31,10 +30,10 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
         // wrapped in the same "last persisted block is too old" trigger the dirty-cache path already uses. Only
         // blocks older than the pruning boundary can be persisted, and that helper measures from the boundary
         // rather than from the head - a head-relative comparison is always true during a full prune, because the
-        // head is by construction at least `pruningBoundary` (>= 64) ahead of the last persisted block, so it
-        // forces a snapshot on every single block.
+        // head is by construction at least `pruningBoundary` ahead of the last persisted block, so it forces a
+        // snapshot on every single block.
         _duringFullPruningStrategy = basePruningStrategy.WhenLastPersistedBlockIsTooOld(
-            SnapshotIntervalDuringFullPruning, pruningBoundary ?? Reorganization.MaxDepth);
+            SnapshotIntervalDuringFullPruning, pruningBoundary);
         _fullPruningDb.PruningFinished += OnPruningFinished;
         _fullPruningDb.PruningStarted += OnPruningStarted;
     }

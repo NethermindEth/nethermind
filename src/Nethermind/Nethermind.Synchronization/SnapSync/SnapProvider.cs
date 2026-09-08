@@ -31,7 +31,11 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
         // How many consecutive empty storage-range responses for one account are treated as "this account really has
-        // no storage at the pivot" rather than "this peer is behind". The scale is taken from
+        // no storage at the pivot" rather than "this peer is behind". The streak is per account, not per queued
+        // range: with EnableSnapSyncStorageRangeSplit the partitions of one large account share this counter, so the
+        // account is promoted after this many empty responses in total and any one partition being served ends the
+        // streak for all of them. That matches the question the promotion answers - whether the account still has
+        // storage at the pivot - which is answered once, for the account. The scale is taken from
         // SnapSyncFeed.AllowedInvalidResponses only to stay in step with the feed's own notion of a failure streak;
         // do NOT read it as a guarantee that a fresh pivot has been seen by the time it trips. SnapSyncFeed does ask
         // for a pivot update on a streak (both ProgressTracker.UpdatePivot branches of its AnalyzeResponsePerPeer),
@@ -220,6 +224,14 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _progressTracker.RequeueStorageRange(request.Copy());
                 }
+                else
+                {
+                    // The counter only ever rises, so without this the account is past the threshold for good: a
+                    // refresh that re-enqueues its storage is followed by one promotion per empty response instead
+                    // of one per streak, which is what fills the refresh queue. Reset on promotion, not inside
+                    // TryRefreshAfterEmptyStreak - its queue-full early return must keep the streak.
+                    Interlocked.Exchange(ref account.EmptyStorageResponses, 0);
+                }
 
                 return;
             }
@@ -233,6 +245,10 @@ namespace Nethermind.Synchronization.SnapSync
                     || !TryRefreshAfterEmptyStreak(account, null, null, request.BlockNumber, warn: false))
                 {
                     _progressTracker.EnqueueAccountStorage(account);
+                }
+                else
+                {
+                    Interlocked.Exchange(ref account.EmptyStorageResponses, 0);
                 }
             }
         }
@@ -269,8 +285,10 @@ namespace Nethermind.Synchronization.SnapSync
         {
             ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
             PathWithAccount pathWithAccount = accounts[accountIndex];
-            // Peers are serving this account's storage again, so the empty streak is over.
-            pathWithAccount.EmptyStorageResponses = 0;
+            // Peers are serving this account's storage again, so the empty streak is over. Interlocked because the
+            // split path in EnqueueNextSlot queues both halves with the same PathWithAccount instance, so another
+            // worker can be incrementing this very field in RequeueAfterEmptyResponse right now.
+            Interlocked.Exchange(ref pathWithAccount.EmptyStorageResponses, 0);
 
             try
             {
@@ -337,13 +355,15 @@ namespace Nethermind.Synchronization.SnapSync
                 case RefreshVerifyResult.Verified:
                     result = AddRangeResult.OK;
                     requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
-                    requestedPath.PathAndAccount.EmptyStorageResponses = 0;
+                    // Read and reset in one step, for the same reason as above.
+                    int emptyResponses = Interlocked.Exchange(ref requestedPath.PathAndAccount.EmptyStorageResponses, 0);
 
                     if (!account.HasStorage)
                     {
                         // The storage was emptied after the account was discovered. There is nothing left to fetch, and
                         // asking for it would only draw more empty responses; the account stays tracked for healing.
-                        if (_logger.IsInfo) _logger.Info($"Snap - account {path} has no storage at the current pivot anymore, dropping its storage range.");
+                        // The streak count ties this back to the operator warning that promoted the account.
+                        if (_logger.IsInfo) _logger.Info($"Snap - account {path} has no storage at the current pivot anymore (empty responses: {emptyResponses}, start: {requestedPath.StorageStartingHash}), dropping its storage range.");
                         _progressTracker.OnCompletedLargeStorage(requestedPath.PathAndAccount);
                         break;
                     }
@@ -490,7 +510,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
-        public void UpdatePivot() => _progressTracker.UpdatePivot();
+        public bool UpdatePivot() => _progressTracker.UpdatePivot();
 
         public void Dispose() => _codeExistKeyCache.Clear();
 

@@ -217,10 +217,17 @@ namespace Nethermind.Synchronization.SnapSync
                                     {
                                         PublicKey? peerNodeId = peer.SyncPeer?.Node?.Id;
                                         bool repeatOffender = peerNodeId is not null && peerNodeId.Equals(_stalePivotUpdateTrigger);
-                                        _stalePivotUpdateTrigger = peerNodeId;
-                                        _snapProvider.UpdatePivot();
+                                        bool pivotMoved = _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
+
+                                        // A declined update leaves the peer answering the same root it has been
+                                        // answering all along, so it never failed "across a pivot update": neither
+                                        // arm the guard against it nor escalate. Any trigger from an earlier real
+                                        // move still stands, so an offender is not let off, only deferred.
+                                        if (!pivotMoved) break;
+
+                                        _stalePivotUpdateTrigger = peerNodeId;
 
                                         if (repeatOffender)
                                         {
@@ -239,7 +246,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                                     if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
                                     {
-                                        _snapProvider.UpdatePivot();
+                                        _ = _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
 

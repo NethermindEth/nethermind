@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -13,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -104,9 +106,91 @@ public class SynchronizerModuleTests
         // databases right after DisposeAsync returns, so DisposeAsync must join that task the same way
         // it joins the feed tasks. The runner is gated to model in-flight snap/state sync work.
         TaskCompletionSource runnerGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken runnerToken = default;
+        IStateSyncRunner stateSyncRunner = Substitute.For<IStateSyncRunner>();
+        stateSyncRunner.Run(Arg.Any<CancellationToken>()).Returns(ci =>
+        {
+            runnerToken = ci.Arg<CancellationToken>();
+            return runnerGate.Task;
+        });
+
+        Synchronizer synchronizer = BuildStartableSynchronizer(stateSyncRunner);
+
+        synchronizer.Start();
+        _ = stateSyncRunner.Received(1).Run(Arg.Any<CancellationToken>());
+
+        Task disposeTask = synchronizer.DisposeAsync().AsTask();
+
+        // Production invariant: container teardown disposes the databases the moment DisposeAsync returns, so the
+        // runner must have finished by then. Sampling in a synchronous continuation states that as an ordering fact
+        // rather than as a deadline the test runner has to beat.
+        Task<bool> runnerDoneWhenDisposeReturned = disposeTask.ContinueWith(
+            _ => runnerGate.Task.IsCompleted,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        try
+        {
+            // DisposeAsync cancels the sync token before it joins anything, so once the runner has seen the
+            // cancellation, everything left is the join itself.
+            await WaitForCancellation(runnerToken, cancellationToken);
+            Assert.That(disposeTask.IsCompleted, Is.False, "DisposeAsync must wait for the state sync runner");
+        }
+        finally
+        {
+            // Unconditional: a failed assertion above must not leave DisposeAsync blocked on a gate nobody will open.
+            runnerGate.TrySetResult();
+        }
+
+        await disposeTask.WaitAsync(cancellationToken);
+        Assert.That(await runnerDoneWhenDisposeReturned, Is.True);
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Synchronizer_dispose_gives_up_on_a_state_sync_runner_that_outlives_its_budget(CancellationToken cancellationToken)
+    {
+        // The join is bounded on purpose: the runner sets ProcessTerminationTimeout to infinite, so a wait with no
+        // ceiling here is a node that hangs on SIGTERM instead of one that crashes. What the operator gets instead is
+        // a line naming the consequence, because the databases are disposed the moment DisposeAsync returns.
+        TaskCompletionSource runnerGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IStateSyncRunner stateSyncRunner = Substitute.For<IStateSyncRunner>();
         stateSyncRunner.Run(Arg.Any<CancellationToken>()).Returns(runnerGate.Task);
 
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        const int budgetMs = 50;
+        Synchronizer synchronizer = BuildStartableSynchronizer(
+            stateSyncRunner,
+            new OneLoggerLogManager(new(logger)),
+            budgetMs);
+
+        synchronizer.Start();
+
+        try
+        {
+            // The runner never completes, so this returning at all is the assertion: DisposeAsync gave up.
+            await synchronizer.DisposeAsync().AsTask().WaitAsync(cancellationToken);
+
+            Assert.That(
+                logger.LogList.Where(static l => l.Contains($"State sync did not stop within {budgetMs}ms")),
+                Is.Not.Empty,
+                $"WARN/ERROR lines: {string.Join(" | ", logger.LogList)}");
+        }
+        finally
+        {
+            // Unconditional: nothing else will ever release a runner substituted as a gate.
+            runnerGate.TrySetResult();
+        }
+    }
+
+    // The full rig, as opposed to BuildSynchronizer's bare construction: Start() drives the feed components, so
+    // these tests need real dispatchers behind the substituted feeds rather than the null! placeholders.
+    private static Synchronizer BuildStartableSynchronizer(
+        IStateSyncRunner stateSyncRunner,
+        ILogManager? logManager = null,
+        int stateSyncTerminationTimeout = Synchronizer.DefaultStateSyncTerminationTimeout)
+    {
+        logManager ??= LimboLogs.Instance;
         TestSyncConfig syncConfig = new() { FastSync = true };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.CanAcceptNewBlocks.Returns(true);
@@ -134,7 +218,7 @@ public class SynchronizerModuleTests
             return new SyncFeedComponent<T>(feed, dispatcher, downloader, new Lazy<BlockDownloader>(() => blockDownloader), Substitute.For<ILifetimeScope>());
         }
 
-        Synchronizer synchronizer = BuildSynchronizer(
+        return BuildSynchronizer(
             syncConfig,
             blockTree,
             stateSyncRunner,
@@ -143,20 +227,18 @@ public class SynchronizerModuleTests
             Component<HeadersSyncBatch>(),
             Component<BodiesSyncBatch>(),
             Component<ReceiptsSyncBatch>(),
-            Component<BlockAccessListsSyncBatch>());
+            Component<BlockAccessListsSyncBatch>(),
+            logManager,
+            stateSyncTerminationTimeout);
+    }
 
-        synchronizer.Start();
-        _ = stateSyncRunner.Received(1).Run(Arg.Any<CancellationToken>());
-
-        Task disposeTask = synchronizer.DisposeAsync().AsTask();
-
-        // Production invariant: DisposeAsync must remain blocked while the state sync runner is running.
-        // WaitAsync throws TimeoutException iff disposeTask is still running after the window.
-        Func<Task> waitForDisposeToEscape = () => disposeTask.WaitAsync(TimeSpan.FromMilliseconds(200));
-        Assert.That(async () => await waitForDisposeToEscape(), Throws.TypeOf<TimeoutException>(), "DisposeAsync must wait for the state sync runner");
-
-        runnerGate.SetResult();
-        await disposeTask.WaitAsync(cancellationToken);
+    private static async Task WaitForCancellation(CancellationToken watched, CancellationToken cancellationToken)
+    {
+        TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (watched.Register(() => cancelled.TrySetResult()))
+        {
+            await cancelled.Task.WaitAsync(cancellationToken);
+        }
     }
 
     // Both dispose tests construct the class under test directly: the asserts need substituted feeds, and
@@ -172,13 +254,15 @@ public class SynchronizerModuleTests
         SyncFeedComponent<HeadersSyncBatch> fastHeaders,
         SyncFeedComponent<BodiesSyncBatch> oldBodies,
         SyncFeedComponent<ReceiptsSyncBatch> oldReceipts,
-        SyncFeedComponent<BlockAccessListsSyncBatch> oldBlockAccessLists) =>
+        SyncFeedComponent<BlockAccessListsSyncBatch> oldBlockAccessLists,
+        ILogManager? logManager = null,
+        int stateSyncTerminationTimeout = Synchronizer.DefaultStateSyncTerminationTimeout) =>
         new(Substitute.For<ISyncModeSelector>(),
             Substitute.For<ISyncReport>(),
             syncConfig,
             blockTree,
             Substitute.For<ISyncPivotResolver>(),
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             Substitute.For<INodeStatsManager>(),
             fullSync,
             fastSync,
@@ -189,5 +273,8 @@ public class SynchronizerModuleTests
             oldBlockAccessLists,
             null!,
             null!,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>())
+        {
+            StateSyncTerminationTimeout = stateSyncTerminationTimeout,
+        };
 }

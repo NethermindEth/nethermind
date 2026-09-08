@@ -28,6 +28,15 @@ namespace Nethermind.Synchronization.SnapSync
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
 
+        /// <remarks>
+        /// This queue is served ahead of every other request type, and a refresh answered with an expired root
+        /// re-queues itself before its worker is released. Unthrottled, that hands every dispatcher slot to a queue
+        /// that cannot drain until the pivot moves, while code and storage requests - which are keyed by hash and
+        /// succeed against a peer behind the pivot - get none. The fallback below the priority chain restores full
+        /// concurrency once refreshes are the only work left.
+        /// </remarks>
+        internal const int MAX_CONCURRENT_ACCOUNT_REFRESHES = 4;
+
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
         // In any case, all partition will be touched when calculating progress, so we can't really put like 1024 for this.
@@ -62,8 +71,10 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
         /// <remarks>
-        /// <see cref="IsFinished"/> serves this queue ahead of every other request type, so a caller that enqueues
-        /// speculatively has to keep it short. See <see cref="SnapProvider.MaxQueuedEmptyStreakRefreshes"/>.
+        /// <see cref="IsFinished"/> serves this queue ahead of every other request type up to
+        /// <see cref="MAX_CONCURRENT_ACCOUNT_REFRESHES"/> in flight, so a caller that enqueues speculatively still has
+        /// to keep it short: over that cap the queue is only served once nothing else is queued. See
+        /// <see cref="SnapProvider.MaxQueuedEmptyStreakRefreshes"/>.
         /// </remarks>
         internal int AccountsToRefreshCount => AccountsToRefresh.Count;
 
@@ -163,16 +174,21 @@ namespace Nethermind.Synchronization.SnapSync
         /// the pivot reads 0 and is suppressed rather than wrapping into a large distance.
         /// </para>
         /// </remarks>
-        public void UpdatePivot()
+        /// <returns>
+        /// <c>true</c> if the move was requested of the pivot; <c>false</c> if the rate limit declined it, in which
+        /// case the peers are still answering the state root they were already answering.
+        /// </returns>
+        public bool UpdatePivot()
         {
             if (_pivot.Diff < _stateMinDistanceFromHead)
             {
-                Metrics.ForcedStatePivotUpdatesSuppressed++;
-                return;
+                Interlocked.Increment(ref Metrics.ForcedStatePivotUpdatesSuppressed);
+                return false;
             }
 
-            Metrics.ForcedStatePivotUpdates++;
+            Interlocked.Increment(ref Metrics.ForcedStatePivotUpdates);
             _pivot.UpdateHeaderForcefully();
+            return true;
         }
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
@@ -189,7 +205,7 @@ namespace Nethermind.Synchronization.SnapSync
             Hash256 rootHash = pivotHeader!.StateRoot!;
             ulong blockNumber = pivotHeader.Number;
 
-            if (!AccountsToRefresh.IsEmpty)
+            if (!AccountsToRefresh.IsEmpty && _activeAccRefreshRequests < MAX_CONCURRENT_ACCOUNT_REFRESHES)
             {
                 nextBatch = DequeAccountToRefresh(rootHash);
             }
@@ -216,6 +232,11 @@ namespace Nethermind.Synchronization.SnapSync
             else if (!CodesToRetrieve.IsEmpty)
             {
                 nextBatch = DequeCodeRequest();
+            }
+            else if (!AccountsToRefresh.IsEmpty)
+            {
+                // Over the cap, but nothing else is queued: the tail of the sync must not run at four requests.
+                nextBatch = DequeAccountToRefresh(rootHash);
             }
             else
             {

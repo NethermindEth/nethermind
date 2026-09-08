@@ -268,6 +268,58 @@ public class SnapProviderTests
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "no storage range may be left queued behind the refreshes");
     }
 
+    // The counter only ever rises, so a promotion has to put it back: otherwise the account stays past the threshold
+    // for good and, once a refresh has put its storage back on the queue, every single empty response promotes it
+    // again - one refresh per response instead of one per streak, which is what fills the refresh queue.
+    [Test]
+    public void AddStorageRange_EmptyResponseStreak_StartsOverAfterEachPromotion()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        progressTracker.EnqueueAccountStorage(account);
+        DrainAccountRangePartition(progressTracker);
+
+        for (int attempt = 0; attempt < SnapProvider.MaxConsecutiveEmptyStorageResponses; attempt++)
+        {
+            AnswerNextStorageRangeWithAnEmptyResponse(snapProvider, progressTracker);
+        }
+
+        progressTracker.IsFinished(out SnapSyncBatch? refresh);
+        Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null, "the streak promotes the account once");
+        progressTracker.ReportAccountRefreshFinished();
+        refresh.Dispose();
+
+        // A refresh that finds the account still has storage puts its range back on the queue.
+        progressTracker.EnqueueAccountStorage(account);
+        AnswerNextStorageRangeWithAnEmptyResponse(snapProvider, progressTracker);
+
+        Assert.That(progressTracker.AccountsToRefreshCount, Is.Zero,
+            "one empty response after a promotion must not promote the account again - a fresh streak has to build up first");
+
+        progressTracker.IsFinished(out SnapSyncBatch? retried);
+        using (retried)
+        {
+            Assert.That(retried!.StorageRangeRequest, Is.Not.Null, "the range goes back to the ordinary storage queue");
+        }
+    }
+
+    private static void AnswerNextStorageRangeWithAnEmptyResponse(SnapProvider snapProvider, ProgressTracker progressTracker)
+    {
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        Assert.That(batch!.StorageRangeRequest, Is.Not.Null);
+
+        batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
+        Assert.That(snapProvider.AddStorageRange(batch.StorageRangeRequest!, batch.StorageRangeResponse), Is.EqualTo(AddRangeResult.ExpiredRootHash));
+        snapProvider.ReleaseRequest(batch, responseHandled: true);
+        batch.Dispose();
+    }
+
     // The promotion above is speculative: an empty response is also what a peer that has fallen behind the pivot
     // sends, and under a genuinely stale root every storage response is empty, so one response can push a whole
     // STORAGE_BATCH_SIZE batch over the streak limit at once. ProgressTracker.IsFinished serves the refresh queue

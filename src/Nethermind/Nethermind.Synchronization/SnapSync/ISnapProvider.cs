@@ -27,7 +27,13 @@ namespace Nethermind.Synchronization.SnapSync
         void ReleaseRequest(SnapSyncBatch batch, bool responseHandled);
 
         bool IsSnapGetRangesFinished();
-        void UpdatePivot();
+
+        /// <summary>Asks the state sync pivot to move in response to a streak of unusable range responses.</summary>
+        /// <returns>
+        /// <c>true</c> if the move was requested of the pivot; <c>false</c> if it was declined, in which case the
+        /// peers have not been handed a new state root and cannot be judged on the old one.
+        /// </returns>
+        bool UpdatePivot();
         void Dispose();
     }
 }

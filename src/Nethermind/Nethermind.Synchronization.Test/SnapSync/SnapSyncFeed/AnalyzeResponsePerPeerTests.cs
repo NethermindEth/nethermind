@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo peer1 = CreatePeer(TestItem.PublicKeyA);
             PeerInfo peer2 = CreatePeer(TestItem.PublicKeyB);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo peer1 = CreatePeer(TestItem.PublicKeyA);
             PeerInfo peer2 = CreatePeer(TestItem.PublicKeyB);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo peer1 = CreatePeer(TestItem.PublicKeyA);
             PeerInfo peer2 = CreatePeer(TestItem.PublicKeyB);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         {
             PeerInfo peer1 = CreatePeer(TestItem.PublicKeyA);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         {
             PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         {
             PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -177,7 +177,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo healthyPeer = CreatePeer(TestItem.PublicKeyA);
             PeerInfo newPeer = CreatePeer(TestItem.PublicKeyB);
 
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
 
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
@@ -200,7 +200,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         public void Punishes_the_only_peer_once_it_keeps_failing_across_a_pivot_update()
         {
             PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
@@ -236,7 +236,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         {
             PeerInfo peerA = CreatePeer(TestItem.PublicKeyA);
             PeerInfo peerB = CreatePeer(TestItem.PublicKeyB);
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             for (int i = 0; i <= AllowedInvalidResponses; i++)
@@ -260,7 +260,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         [Test]
         public void Punishes_the_reconnected_peer_that_keeps_failing_across_a_pivot_update()
         {
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             PeerInfo firstSession = CreatePeer(TestItem.PublicKeyA);
@@ -287,7 +287,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         public void Code_response_does_not_clear_the_repeat_offender_guard()
         {
             PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
-            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            ISnapProvider snapProvider = CreateSnapProvider();
             Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             for (int i = 0; i <= AllowedInvalidResponses; i++)
@@ -308,7 +308,74 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
                 "an unmatched code reply between two streaks must not buy the peer another benefit of the doubt");
         }
 
+        // ProgressTracker.UpdatePivot rate-limits the move until the head is StateMinDistanceFromHead blocks past the
+        // pivot, so on a chain that is not advancing every request is declined. The guard reads a declined move as
+        // "the peer failed across a pivot update", which would punish the only usable peer for a pivot that never
+        // moved - and on a slow chain it would do so for every streak, forever.
+        [Test]
+        public void Does_not_punish_the_only_peer_when_the_pivot_declined_to_move()
+        {
+            PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            snapProvider.UpdatePivot().Returns(false);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            for (int streak = 0; streak < 3; streak++)
+            {
+                for (int i = 0; i <= AllowedInvalidResponses; i++)
+                {
+                    result = feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peer);
+                }
+
+                Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK),
+                    $"streak {streak}: the peer is still answering the root it was given, so it has not failed across anything");
+            }
+
+            snapProvider.Received(3).UpdatePivot();
+        }
+
+        // The trigger an earlier accepted move armed is not spent by a declined one in between.
+        [Test]
+        public void Still_punishes_the_offender_armed_before_the_pivot_started_declining()
+        {
+            PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
+            ISnapProvider snapProvider = CreateSnapProvider();
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            for (int i = 0; i <= AllowedInvalidResponses; i++)
+            {
+                feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peer);
+            }
+
+            snapProvider.UpdatePivot().Returns(false);
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            for (int i = 0; i <= AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peer);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK), "no move landed for this streak to be measured against");
+
+            snapProvider.UpdatePivot().Returns(true);
+            for (int i = 0; i <= AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peer);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality),
+                "the peer has still not succeeded since the move that armed the guard, so a declined move in between must not clear it");
+        }
+
         private const int AllowedInvalidResponses = Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses;
+
+        /// <summary>A provider whose pivot accepts the move, which is the case every test here but one is about.</summary>
+        private static ISnapProvider CreateSnapProvider()
+        {
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            snapProvider.UpdatePivot().Returns(true);
+            return snapProvider;
+        }
 
         private static PeerInfo CreatePeer(PublicKey nodeId)
         {

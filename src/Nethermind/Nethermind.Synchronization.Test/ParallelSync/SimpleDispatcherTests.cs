@@ -28,7 +28,13 @@ public class SimpleDispatcherTests
         private int _prepared;
 
         public TaskCompletionSource HandleResponseEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public ManualResetEventSlim ReleaseHandleResponse { get; } = new(false);
+
+        /// <summary>Released to let the blocked worker finish. A TCS so it needs no disposal while a worker is inside it.</summary>
+        public TaskCompletionSource ReleaseHandleResponse { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Set once the loop has observed cancellation and left <see cref="PrepareRequest"/>.</summary>
+        public TaskCompletionSource PrepareRequestCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public int HandleResponseCompleted => Volatile.Read(ref _completed);
         private int _completed;
 
@@ -36,14 +42,23 @@ public class SimpleDispatcherTests
         {
             if (Interlocked.Increment(ref _prepared) == 1) return new TestRequest();
 
-            await Task.Delay(Timeout.Infinite, token);
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            catch (OperationCanceledException)
+            {
+                PrepareRequestCancelled.TrySetResult();
+                throw;
+            }
+
             return null;
         }
 
         public SyncResponseHandlingResult HandleResponse(TestRequest response, PeerInfo? peer = null)
         {
             HandleResponseEntered.TrySetResult();
-            ReleaseHandleResponse.Wait();
+            ReleaseHandleResponse.Task.GetAwaiter().GetResult();
             Interlocked.Increment(ref _completed);
             return SyncResponseHandlingResult.OK;
         }
@@ -73,20 +88,41 @@ public class SimpleDispatcherTests
         using CancellationTokenSource cts = new();
 
         Task runTask = dispatcher.Run(cts.Token);
-        await feed.HandleResponseEntered.Task.WaitAsync(cancellationToken);
 
-        // Shutdown: the loop is cancelled while a dispatched worker is still inside HandleResponse
-        // (in production: writing state-sync nodes into RocksDB).
-        cts.Cancel();
+        // Production invariant: the caller (Synchronizer -> Autofac) disposes the databases the moment Run returns,
+        // so no worker may still be inside HandleResponse at that instant. Sampling the counter in a synchronous
+        // continuation states that as an ordering fact rather than as a deadline the runner has to beat.
+        Task<int> completedWhenRunReturned = runTask.ContinueWith(
+            _ => feed.HandleResponseCompleted,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
-        // Production invariant: Run must not return while a worker it spawned is still running -
-        // the caller (Synchronizer -> Autofac) disposes the databases right after it returns.
-        Func<Task> waitForRunToEscape = () => runTask.WaitAsync(TimeSpan.FromMilliseconds(200));
-        Assert.That(async () => await waitForRunToEscape(), Throws.TypeOf<TimeoutException>(), "Run must wait for in-flight HandleResponse");
-        Assert.That(feed.HandleResponseCompleted, Is.EqualTo(0));
+        try
+        {
+            await feed.HandleResponseEntered.Task.WaitAsync(cancellationToken);
 
-        feed.ReleaseHandleResponse.Set();
-        Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(cancellationToken));
-        Assert.That(feed.HandleResponseCompleted, Is.EqualTo(1));
+            // Shutdown: the loop is cancelled while a dispatched worker is still inside HandleResponse
+            // (in production: writing state-sync nodes into RocksDB).
+            cts.Cancel();
+
+            // The loop has left PrepareRequest with the cancellation, so everything Run does from here is its drain
+            // path and releasing the gate below cannot be mistaken for a normal second lap.
+            await feed.PrepareRequestCancelled.Task.WaitAsync(cancellationToken);
+
+            Assert.That(feed.HandleResponseCompleted, Is.EqualTo(0));
+        }
+        finally
+        {
+            // Unconditional: a failed assertion above must not leave the worker blocked on a gate nobody will open.
+            feed.ReleaseHandleResponse.TrySetResult();
+        }
+
+        Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await completedWhenRunReturned, Is.EqualTo(1), "Run must wait for in-flight HandleResponse");
+            Assert.That(feed.HandleResponseCompleted, Is.EqualTo(1));
+        }
     }
 }
