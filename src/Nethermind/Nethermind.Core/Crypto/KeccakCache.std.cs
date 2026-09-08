@@ -13,15 +13,15 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
+// The client's cache: 64 MB of native memory holding 512k entries. Everything is aligned both to
+// cache lines and to its own boundaries, so there are no misaligned or torn reads. Reads are
+// lock-free through a seqlock — read the sequence, speculatively read the entry, then verify the
+// sequence has not moved — and a write takes a single CAS to lock plus a Volatile.Write to unlock.
+// A failed CAS just moves on rather than waiting: a skipped cache write costs one keccak, nothing
+// more. Everything sizing or indexing this cache lives here rather than in the shared partial,
+// which compiles into the zkEVM guest image too.
 public static unsafe partial class KeccakCache
 {
-    // The client's cache: 64 MB of native memory holding 512k entries. Everything is aligned both to
-    // cache lines and to its own boundaries, so there are no misaligned or torn reads. Reads are
-    // lock-free through a seqlock — read the sequence, speculatively read the entry, then verify the
-    // sequence has not moved — and a write takes a single CAS to lock plus a Volatile.Write to unlock.
-    // A failed CAS just moves on rather than waiting: a skipped cache write costs one keccak, nothing
-    // more. Everything sizing or indexing this cache lives here rather than in the shared partial,
-    // which compiles into the zkEVM guest image too.
     /// <summary>
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
