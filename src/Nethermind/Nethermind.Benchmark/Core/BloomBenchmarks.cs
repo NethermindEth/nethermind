@@ -47,7 +47,7 @@ namespace Nethermind.Benchmarks.Core
         [GlobalSetup]
         public void Setup()
         {
-            _logs = BuildLogs(recurringSignature: true);
+            _logs = BuildLogs(recurring: true);
             _blockBloom = new Bloom();
             PopulateKeccakCache();
         }
@@ -59,7 +59,7 @@ namespace Nethermind.Benchmarks.Core
         /// it for the presence or absence of a large regression, not for a few percent.
         /// </remarks>
         [IterationSetup(Target = nameof(BuildCold))]
-        public void SetupCold() => _coldLogs = BuildLogs(recurringSignature: false);
+        public void SetupCold() => _coldLogs = BuildLogs(recurring: false);
 
         /// <remarks>
         /// The host cache is 64 MB of lazily paged memory, so a miss on an untouched page also pays a
@@ -79,27 +79,30 @@ namespace Nethermind.Benchmarks.Core
             }
         }
 
-        private LogEntry[] BuildLogs(bool recurringSignature)
+        /// <param name="recurring">
+        /// Whether the logs repeat a pool of emitting contracts and one event signature, as a block's
+        /// receipts do. When false every address and topic is fresh, so nothing repeats within the array
+        /// either and every sequence in it is a miss.
+        /// </param>
+        private LogEntry[] BuildLogs(bool recurring)
         {
-            Address[] addresses = new Address[Contracts];
+            Address[] addresses = new Address[recurring ? Contracts : Logs];
             for (int i = 0; i < addresses.Length; i++)
             {
                 addresses[i] = TestItem.GetRandomAddress();
             }
 
-            Hash256 signature = recurringSignature ? TestItem.KeccakA : TestItem.GetRandomKeccak();
-
             LogEntry[] logs = new LogEntry[Logs];
             for (int i = 0; i < logs.Length; i++)
             {
                 Hash256[] topics = new Hash256[TopicsPerLog];
-                topics[0] = recurringSignature ? signature : TestItem.GetRandomKeccak();
+                topics[0] = recurring ? TestItem.KeccakA : TestItem.GetRandomKeccak();
                 for (int j = 1; j < topics.Length; j++)
                 {
                     topics[j] = TestItem.GetRandomKeccak();
                 }
 
-                logs[i] = new LogEntry(addresses[i % Contracts], [], topics);
+                logs[i] = new LogEntry(addresses[i % addresses.Length], [], topics);
             }
 
             return logs;
