@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -82,16 +83,16 @@ internal sealed class FrameTxPayerExposureFilter(
             balance = stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
         }
 
-        // A snapshot; AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
-        UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
-        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
+        // AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
+        Hash256? replaced = exposure.GetReserved(payer).IsZero ? null : PendingReplacement.Find(tx, standardPool, blobPool)?.Hash;
+        if (!exposure.TryReserve(payer, tx.Hash!, maxCost, balance, out UInt256 reserved, replaced))
         {
             return payer == tx.SenderAddress
                 ? RejectUnderfundedSender(tx, reserved, maxCost, balance, txHandlingOptions)
                 : RejectOverExposed(tx, payer, reserved, maxCost, balance);
         }
 
-        // Held so the release subtracts exactly this, whatever the transaction still carries by then.
+        // Recorded for the restart-time restore; the ledger owns what a removal releases.
         tx.PayerExposure = maxCost;
         return AcceptTxResult.Accepted;
     }
@@ -126,28 +127,13 @@ internal sealed class FrameTxPayerExposureFilter(
     /// <remarks>The bucket walk skips every transaction with a resolved payer, and this ledger covers that set —
     /// the sender's own self-paid prefixes among them. It carries no nonce, so it also counts reservations
     /// outside the walk's window and what the sender owes as another account's payer; both over-reject rather
-    /// than admit. Netted like the reserving branch, so a replacement is not measured against the incumbent
-    /// it evicts.</remarks>
+    /// than admit. The ledger nets the displaced reservation off, on the same terms the reserving branch gets
+    /// it: only while that reservation is still live, or a replacement would be discounted room already reused.</remarks>
     private UInt256 SenderReservedAsPayer(Transaction tx)
     {
         Address sender = tx.SenderAddress!;
-        UInt256 reserved = exposure.GetReserved(sender);
-        if (reserved.IsZero) return UInt256.Zero;
-
-        UInt256 replaced = ReplacedPendingReservation(tx, sender);
-        return reserved > replaced ? reserved - replaced : UInt256.Zero;
+        return exposure.GetReserved(sender).IsZero
+            ? UInt256.Zero
+            : exposure.GetReservedNetOf(sender, PendingReplacement.Find(tx, standardPool, blobPool)?.Hash);
     }
-
-    /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
-    /// set instead.</summary>
-    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
-    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.
-    /// Read from what the incumbent recorded at admission, so the discount cannot drift from what its removal
-    /// releases.</remarks>
-    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer) =>
-        PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
-        && replaced.PayerAddress == payer
-        && replaced.PayerExposure is { } cost
-            ? cost
-            : UInt256.Zero;
 }

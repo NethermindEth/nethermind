@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -120,6 +121,44 @@ public class FrameTxBlockProductionPickerTests
             cumulativeStateGas);
 
         Assert.That(args.Action, Is.EqualTo(expectedAction));
+    }
+
+    /// <remarks>21,000 is the smallest an ordinary transaction can be, not the smallest a block can still fit:
+    /// an EIP-8141 frame transaction reserves from its own 12,000 intrinsic cost.</remarks>
+    [TestCase(20_000UL, BlockProcessor.TxAction.Add, null,
+        TestName = "A frame transaction reserving below the legacy floor is still selected")]
+    [TestCase(10_000UL, BlockProcessor.TxAction.Stop, "Block full",
+        TestName = "Below the smallest frame transaction the enumeration stops")]
+    public void Selection_does_not_stop_at_the_legacy_intrinsic_floor(
+        ulong gasRemaining,
+        BlockProcessor.TxAction expectedAction,
+        string? expectedReason)
+    {
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker();
+
+        // A funded contract sender, which only a frame transaction can pay for.
+        IReadOnlyStateProvider state = StateWithAccountNonce();
+        state.HasCode(TestItem.AddressA).Returns(true);
+        state.GetCode(TestItem.AddressA).Returns(new byte[] { 0x60, 0x00 });
+
+        Transaction tx = FrameTx(AccountNonce, nonceKeys: null, executionGasLimit: 1_000, stateGasLimit: 0);
+        Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
+
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
+            block,
+            tx,
+            new HashSet<Transaction>(),
+            state,
+            cumulativeBlockExecutionGas: (ulong)block.Header.GasLimit - gasRemaining,
+            cumulativeBlockStateGas: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Eip8141Prototype.Instance, out ulong reservation, out _), Is.True);
+            Assert.That(reservation, Is.LessThan(GasCostOf.Transaction), "the fixture must reserve below the legacy floor, or this pins nothing");
+            Assert.That(args.Action, Is.EqualTo(expectedAction));
+            Assert.That(args.Reason, expectedReason is null ? Is.Empty.Or.Null : Is.EqualTo(expectedReason));
+        }
     }
 
     [Test]
