@@ -182,6 +182,50 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task ShouldValidateAnUnmatchedBodyOnceRegardlessOfRequestedHeaderCount()
+    {
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator
+            .ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(false);
+        using BodiesSyncFeed feed = new(
+            MainnetSpecProvider.Instance,
+            _syncingToBlockTree,
+            blockValidator,
+            _syncPointers,
+            _syncPeerPool,
+            _syncConfig,
+            new NullSyncReport(),
+            _historyPruner,
+            _blocksDb,
+            _metadataDb,
+            LimboLogs.Instance,
+            flushDbInterval: 10
+        );
+        feed.InitializeFeed();
+
+        using BodiesSyncBatch req = (await feed.PrepareRequest())!;
+        int requestedHeaders = req.Infos.Count(static (info) => info is not null);
+        Assert.That(requestedHeaders, Is.GreaterThan(1), "the batch must span several headers for this to assert anything");
+
+        // A body that matches none of the requested headers keeps the response index pinned, so it is
+        // offered to every one of them.
+        req.Response = new OwnedBlockBodies([new BlockBody([Build.A.Transaction.WithNonce(12345).TestObject], [])]);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        feed.HandleResponse(req);
+
+        Assert.That(
+            blockValidator.ReceivedCalls().Count(static (call) => call.GetMethodInfo().Name == nameof(IBlockValidator.ValidateBodyAgainstHeader)),
+            Is.LessThanOrEqualTo(1),
+            "an unmatched body must not be revalidated once per requested header");
+        _syncPeerPool.Received(1).ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            DisconnectReason.InvalidTxOrUncle,
+            Arg.Any<string>());
+    }
+
+    [Test]
     public async Task ShouldRecoverOnInsertFailure()
     {
         _feed.InitializeFeed();
