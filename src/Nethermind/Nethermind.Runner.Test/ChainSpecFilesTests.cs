@@ -42,10 +42,11 @@ namespace Nethermind.Runner.Test
 
         // SpecProviderBase.LoadTransitions refuses a transition list in which a block-number transition could
         // never activate (#13202), so every shipped chainspec has to be proven to construct a provider - not just
-        // the handful Nethermind.Specs.Test names one by one. This project is the only test project referencing
-        // Nethermind.Runner, and TypeDiscovery walks the output directory, so it is the only place the plugin
-        // chains' engine parameters resolve at all: Taiko, Linea, JOC and Surge otherwise fail to load with "No
-        // seal engine in chain spec".
+        // the handful Nethermind.Specs.Test names one by one. It lives here because TypeDiscovery resolves plugin
+        // types through the reference closure - loaded assemblies plus what they reference - and referencing
+        // Nethermind.Runner is what pulls every plugin assembly into it. Without that reference the plugin chains'
+        // engine parameters do not resolve at all and Taiko, Linea, JOC and Surge fail with "No seal engine in
+        // chain spec".
         [TestCaseSource(nameof(ShippedChainSpecs))]
         public void Every_shipped_chainspec_builds_a_spec_provider(string chainSpecPath)
         {
