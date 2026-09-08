@@ -14,9 +14,6 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
     public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
-        // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
-
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -57,8 +54,9 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-            int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, LogsRlpLimit.Limit + 1);
-            ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
+            RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
+            int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, logsRlpLimit.Limit + 1);
+            ctx.GuardLimit(numberOfReceipts, logsRlpLimit);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {

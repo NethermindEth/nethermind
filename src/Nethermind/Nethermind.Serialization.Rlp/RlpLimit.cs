@@ -26,6 +26,15 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     public static ulong MaxBlockGas { get; private set; } = 1_000_000_000;
     public static void InitMaxBlockGas(ulong maxBlockGas) => MaxBlockGas = maxBlockGas;
 
+    /// <summary>Logs a single receipt may carry.</summary>
+    /// <remarks>
+    /// A log costs at least <see cref="GasCostOf.Log"/>, so <see cref="MaxBlockGas"/> bounds how many one
+    /// transaction can emit. Clamped because the configured ceiling is unbounded.
+    /// </remarks>
+    public static RlpLimit ReceiptLogs => For<TxReceipt>(
+        (int)ulong.Min(MaxBlockGas / GasCostOf.Log + 1, int.MaxValue),
+        nameof(TxReceipt.Logs));
+
     public RlpLimit() : this((int)4.MiB) { }
 
     public string CollectionExpression
