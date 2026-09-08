@@ -30,6 +30,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -39,6 +40,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Trie;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -1285,6 +1287,33 @@ public class TraceRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ConcurrentStreamingCases()
+    {
+        yield return new TestCaseData("trace_replayBlockTransactions", new object?[] { "latest", new[] { "trace" } })
+            .SetName("trace_replayBlockTransactions under concurrency");
+
+        yield return new TestCaseData("trace_block", new object?[] { "latest" })
+            .SetName("trace_block under concurrency");
+    }
+
+    [TestCaseSource(nameof(ConcurrentStreamingCases))]
+    public async Task Streaming_traces_survive_concurrent_requests(string method, object?[] parameters)
+    {
+        // Production capacity of the trace module pool; concurrency well above it forces rentals to be recycled.
+        const int poolCapacity = 2;
+        const int concurrency = 8;
+
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        string[] responses = await RpcTest.TestSerializedRequestsConcurrently(
+            () => context.Blockchain.TraceRpcModule, poolCapacity, concurrency, method, parameters);
+
+        Assert.That(responses, Has.All.EqualTo(expected));
+    }
+
     [Test]
     public async Task Streaming_vmTrace_matches_buffered_with_real_opcodes()
     {
@@ -1363,6 +1392,44 @@ public class TraceRpcModuleTests
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]
     public void Streaming_resource_safety(Func<Task> scenario) =>
         Assert.DoesNotThrowAsync(() => scenario());
+
+    [Test]
+    public async Task trace_block_streamed_over_a_pruned_subtree_returns_a_framed_error()
+    {
+        Context context = new();
+        await context.Build();
+
+        // HasStateForBlock only checks the root node, so a subtree pruned under a live root (#13153) is first
+        // noticed by the tracer -- inside the streamed result, after trace_block has already returned.
+        ITracer tracer = Substitute.For<ITracer>();
+        tracer.When(t => t.Execute(Arg.Any<Block>(), Arg.Any<IBlockTracer>()))
+            .Do(_ => throw new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
+        IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
+        tracerEnv.BuildAndOverride(Arg.Any<BlockHeader?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<IReleaseSpec?>(), Arg.Any<BlockOverride?>())
+            .Returns(_ => new Scope<ITracer>(tracer, Substitute.For<IDisposable>()));
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
+
+        ITraceRpcModule module = new TraceRpcModule(
+            context.Blockchain.ReceiptStorage,
+            tracerEnv,
+            context.Blockchain.BlockTree,
+            new JsonRpcConfig { EnableTracingStreamMode = true },
+            blockchainBridge,
+            context.Blockchain.SpecProvider,
+            Substitute.For<IBlocksConfig>(),
+            LimboLogs.Instance);
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_block", "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("Node missing"));
+            Assert.That(document.RootElement.TryGetProperty("id", out _), Is.True);
+        }
+    }
 
     private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
     {

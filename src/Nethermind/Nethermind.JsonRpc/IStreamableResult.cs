@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,6 +20,20 @@ public interface IStreamableResult
 internal interface IBatchAwareStreamableResult : IStreamableResult
 {
     ValueTask WriteToAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Implemented by streamable results that write their own JSON-RPC response envelope.
+/// </summary>
+/// <remarks>
+/// The envelope head is buffered rather than pushed to the transport up front, so a result that fails before its
+/// first flush can still be replaced by a JSON-RPC error instead of a torn success body. Implementers must not also
+/// implement <see cref="IStreamableResultWithStatus"/> or <see cref="IBatchAwareStreamableResult"/>: those are served
+/// by the incremental path, which needs the head on the wire before the result runs.
+/// </remarks>
+internal interface IEnvelopeOwningStreamableResult : IStreamableResult
+{
+    ValueTask WriteResponseAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken);
 }
 
 public enum StreamableResultStatus

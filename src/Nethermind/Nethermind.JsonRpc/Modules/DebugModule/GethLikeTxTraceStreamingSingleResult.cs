@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// struct-log entries are streamed and never accumulated on the heap.
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingSingleResultConverter))]
-public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStreamableResult
+public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IEnvelopeOwningStreamableResult
 {
     private readonly Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> _runTrace;
     private readonly CancellationToken _timeoutToken;
@@ -43,6 +43,13 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStr
 
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
         StreamingResultBase.WriteJsonToAsync(_timeoutToken, _logger, writer, EmitContent, cancellationToken);
+
+    // debug_trace* streams through this type the same way trace_* streams through
+    // ParityTxTraceFromReplayStreamingResult, and a pruned subtree tears it the same way. Without the envelope-owning
+    // marker the two surfaces disagree on the same underlying failure: -32000 in an error envelope on trace_*, and
+    // -32603 inside a *success* result on debug_*.
+    ValueTask IEnvelopeOwningStreamableResult.WriteResponseAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken) =>
+        StreamingResultBase.WriteJsonResponseToAsync(_timeoutToken, _logger, writer, response, options, EmitContent, cancellationToken);
 
     /// <summary>
     /// Synchronous emission for the fallback path (test infrastructure and batch responses

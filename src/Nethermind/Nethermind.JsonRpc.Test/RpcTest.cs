@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
@@ -75,7 +76,34 @@ public static class RpcTest
     {
         await using IContainer container = CreateContainerForModule<T>(module);
 
+        return await SendAndSerializeAsync(container.Resolve<IJsonRpcService>(), module, method, parameters);
+    }
+
+    /// <summary>
+    /// Sends <paramref name="concurrency"/> copies of the same request at the same time through a bounded
+    /// pool of <paramref name="poolCapacity"/> modules built by <paramref name="moduleFactory"/>, returning
+    /// every serialized response.
+    /// </summary>
+    /// <remarks>
+    /// A streamed result runs while its response is written, after the module method has returned, so this
+    /// exercises the rental lifetime that keeps concurrent callers off one module's mutable state.
+    /// </remarks>
+    public static async Task<string[]> TestSerializedRequestsConcurrently<T>(Func<T> moduleFactory, int poolCapacity, int concurrency, string method, params object?[]? parameters) where T : class, IRpcModule
+    {
+        await using IContainer container = CreateContainer<T>(builder => builder.AddScoped<T>(_ => moduleFactory()), poolCapacity);
+
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        Task<string>[] requests = new Task<string>[concurrency];
+        for (int i = 0; i < concurrency; i++)
+        {
+            requests[i] = Task.Run(() => SendAndSerializeAsync<T>(service, module: null, method, parameters));
+        }
+
+        return await Task.WhenAll(requests);
+    }
+
+    private static async Task<string> SendAndSerializeAsync<T>(IJsonRpcService service, T? module, string method, object?[]? parameters) where T : class, IRpcModule
+    {
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
         using JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
@@ -107,14 +135,20 @@ public static class RpcTest
         return serialized;
     }
 
-    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule => new ContainerBuilder()
+    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule =>
+        CreateContainer<T>(builder => builder.AddScoped<T>(module), poolCapacity: 1);
+
+    private static IContainer CreateContainer<T>(Action<ContainerBuilder> registerModule, int poolCapacity) where T : class, IRpcModule
+    {
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()
             {
                 EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
             }))
-            .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
-            .AddScoped<T>(module)
-            .Build();
+            .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(poolCapacity, new JsonRpcConfig().Timeout);
+        registerModule(builder);
+        return builder.Build();
+    }
 
     public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {

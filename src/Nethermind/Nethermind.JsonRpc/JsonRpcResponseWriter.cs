@@ -53,7 +53,11 @@ public static class JsonRpcResponseWriter
     {
         if (response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
-            return WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+            // Envelope-owning results buffer the head, so a failure before their first flush can still be reported as
+            // a JSON-RPC error instead of a torn success body (#13153).
+            return streamable is IEnvelopeOwningStreamableResult envelopeOwner
+                ? envelopeOwner.WriteResponseAsync(writer, response, options, cancellationToken)
+                : WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
         }
 
         Write(writer, response, options);
@@ -94,22 +98,40 @@ public static class JsonRpcResponseWriter
     {
         writer.Write(SuccessEnvelopeStart);
         StreamableResultStatus? status = null;
-        if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
+        try
         {
-            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
+            {
+                status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+            }
+            else if (streamable is IStreamableResultWithStatus statusStreamable)
+            {
+                status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            }
+            else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
+            {
+                await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
+            }
+            else
+            {
+                await streamable.WriteToAsync(writer, cancellationToken);
+            }
         }
-        else if (streamable is IStreamableResultWithStatus statusStreamable)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+            // The result member is already on the wire, so the envelope can no longer be replaced with a
+            // JSON-RPC error object; close it and flag the failure rather than leave a body no client can
+            // parse. Cancellation is excluded deliberately: a truncated body is how a caller that gave up
+            // mid-stream learns its response is incomplete. The exception still propagates for logging.
+            WriteEnvelopeTail(writer, response, StreamableResultStatus.Failed);
+            throw;
         }
-        else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
-        {
-            await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
-        }
-        else
-        {
-            await streamable.WriteToAsync(writer, cancellationToken);
-        }
+
+        WriteEnvelopeTail(writer, response, status);
+    }
+
+    private static void WriteEnvelopeTail(PipeWriter writer, JsonRpcResponse response, StreamableResultStatus? status)
+    {
         if (status is not null)
         {
             writer.Write(StreamStatusSeparator);
@@ -143,6 +165,33 @@ public static class JsonRpcResponseWriter
         writer.WritePropertyName("id"u8);
         id.WriteTo(writer);
         writer.WriteEndObject();
+    }
+
+    /// <summary>Writes the success envelope up to the <c>result</c> property name, leaving <paramref name="writer"/> positioned for the streamed value.</summary>
+    internal static void WriteStreamedResultStart(Utf8JsonWriter writer)
+    {
+        WriteEnvelopeStart(writer);
+        writer.WritePropertyName("result"u8);
+    }
+
+    /// <summary>Closes a success envelope opened by <see cref="WriteStreamedResultStart"/>, flagging the stream <paramref name="status"/> when one is reported.</summary>
+    internal static void WriteStreamedResultEnd(Utf8JsonWriter writer, StreamableResultStatus? status, in JsonRpcId id)
+    {
+        if (status is not null)
+        {
+            writer.WriteString("_streamStatus"u8, GetStreamStatusBytes(status.GetValueOrDefault()));
+        }
+
+        WriteEnvelopeEnd(writer, in id);
+    }
+
+    /// <summary>Writes a complete JSON-RPC error envelope, byte-identical to a non-streamed <see cref="JsonRpcErrorResponse"/>.</summary>
+    internal static void WriteErrorEnvelope(Utf8JsonWriter writer, Error error, JsonSerializerOptions options, in JsonRpcId id)
+    {
+        WriteEnvelopeStart(writer);
+        writer.WritePropertyName("error"u8);
+        WriteErrorObject(writer, error, options);
+        WriteEnvelopeEnd(writer, in id);
     }
 
     internal static void WriteRawSuccess(IBufferWriter<byte> writer, ReadOnlySpan<byte> rawResult, in JsonRpcId id)

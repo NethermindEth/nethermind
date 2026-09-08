@@ -16,7 +16,7 @@ using Nethermind.Logging;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 [JsonConverter(typeof(ParityTxTraceFromReplayStreamingResultConverter))]
-public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromReplay, IStreamableResult, IDisposable
+public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromReplay, IEnvelopeOwningStreamableResult, IDisposable
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
     private readonly CancellationTokenSource _timeoutCts;
@@ -41,6 +41,9 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
 
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         => StreamingResultBase.WriteJsonToAsync(_timeoutToken, _logger, writer, _runExecution, cancellationToken);
+
+    ValueTask IEnvelopeOwningStreamableResult.WriteResponseAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken)
+        => StreamingResultBase.WriteJsonResponseToAsync(_timeoutToken, _logger, writer, response, options, _runExecution, cancellationToken);
 
     internal void WriteAsJson(Utf8JsonWriter writer) => _runExecution(writer, null, _timeoutToken);
 
