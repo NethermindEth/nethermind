@@ -163,6 +163,15 @@ public class RecoveryTests
     }
 
     [Test]
+    public async Task cannot_recover_eth67_unassemblable_proofs()
+    {
+        // Proofs that hash to nothing on the queried path leave the assembled node list empty.
+        _returnedRlp = [5, 6, 7];
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
     public async Task cannot_recover_eth67_hash_mismatch()
     {
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Tasks;
@@ -17,6 +18,13 @@ public static class Wait
     /// <param name="tasks"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
+    /// <remarks>
+    /// Only the forwarded result reaches the caller; every other result stays owned by this method.
+    /// When <typeparamref name="T"/> is <see cref="IDisposable"/> those results are disposed — one
+    /// rejected by <paramref name="cond"/> as soon as it is seen, and the results of the tasks still
+    /// in flight once a result is forwarded once they complete. Forwarding does not wait for those,
+    /// so their disposal happens after this method returns.
+    /// </remarks>
     public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
     {
         HashSet<Task<T>> taskSet = [.. tasks];
@@ -30,6 +38,7 @@ public static class Wait
             if (cond(result))
             {
                 // Its ok, then immediately return.
+                DiscardRemaining(taskSet);
                 return result;
             }
 
@@ -39,9 +48,31 @@ public static class Wait
                 return result;
             }
 
+            Discard(result);
+
             // Otherwise, we try WhenAny again.
         }
 
         throw new UnreachableException();
+    }
+
+    private static void Discard<T>(T result)
+    {
+        if (result is IDisposable disposable) disposable.Dispose();
+    }
+
+    private static void DiscardRemaining<T>(HashSet<Task<T>> tasks)
+    {
+        if (!typeof(IDisposable).IsAssignableFrom(typeof(T))) return;
+
+        foreach (Task<T> task in tasks)
+        {
+            _ = task.ContinueWith(static abandoned =>
+            {
+                if (abandoned.IsCompletedSuccessfully) Discard(abandoned.Result);
+                // Observe a failure too, so abandoning it does not raise UnobservedTaskException.
+                else _ = abandoned.Exception;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 }
