@@ -49,7 +49,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "1000", Description = "The total time, in milliseconds, spent simulating EIP-8141 validation prefixes per chain head. Once spent, opaque frame transactions are rejected until the next head. `0` to lift the limit.")]
     int FrameTxSimulationBudgetPerHeadMs { get; set; }
 
-    [ConfigItem(DefaultValue = "3", Description = "EIP-8141: the number of consecutive block-production attempts a frame transaction may fail to approve any payment before the pool evicts it. Some of those failures turn on head state that can change within a few blocks (an out-of-range recent-root reference, a SENDER frame reached before its approval), so a budget above `1` keeps a transiently-failing transaction instead of dropping it on the first attempt. `1` evicts on the first failed attempt.")]
+    [ConfigItem(DefaultValue = "1", Description = "EIP-8141: the number of distinct chain heads a frame transaction may fail to approve any payment across, during block production, before the pool evicts it. Some failures turn on head state that only a new head can clear (an out-of-range recent-root reference, a SENDER frame reached before its approval), so the budget is counted per head: repeated production passes against the same head spend a single unit. A value above `1` keeps a transiently-failing transaction for that many heads at the cost of re-simulating its validation prefix once per head; `1` (or below) evicts on the first failed attempt, the pre-budget behaviour.")]
     int FrameTxEvictionRetryBudget { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]

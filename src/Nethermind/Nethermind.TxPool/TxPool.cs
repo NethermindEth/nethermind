@@ -72,7 +72,7 @@ namespace Nethermind.TxPool
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
-        private readonly ConcurrentDictionary<Hash256, int> _frameEvictionAttempts = new();
+        private readonly ConcurrentDictionary<ValueHash256, (long Head, int Heads)> _frameEvictionAttempts = new();
 
         // Candidate filter for the shed pass, calibrated on a 12s slot; on a faster chain it simply admits
         // more transactions to the deadline order, which is the order the spec asks for anyway.
@@ -441,7 +441,11 @@ namespace Nethermind.TxPool
             }
 
             ReleaseFrameTxReservations(args.Value);
-            if (args.Value.SupportsFrames) _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
+            if (args.Value.SupportsFrames)
+            {
+                _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
+                if (!_frameEvictionAttempts.IsEmpty) _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _);
+            }
         }
 
         /// <summary>
@@ -2291,8 +2295,6 @@ namespace Nethermind.TxPool
 
             _broadcaster.StopBroadcast(hash);
 
-            if (!_frameEvictionAttempts.IsEmpty) _frameEvictionAttempts.TryRemove(hash, out _);
-
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
             return true;
@@ -2303,10 +2305,16 @@ namespace Nethermind.TxPool
         public bool EvictTransaction(Transaction tx)
         {
             int budget = _txPoolConfig.FrameTxEvictionRetryBudget;
-            if (tx.SupportsFrames && budget > 1
-                && _frameEvictionAttempts.AddOrUpdate(tx.Hash!, 1, static (_, attempts) => attempts + 1) < budget)
+            if (budget > 1 && tx.SupportsFrames && _transactions.ContainsKey(tx.Hash!.ValueHash256))
             {
-                return false;
+                long generation = Volatile.Read(ref _headGeneration);
+                (long Head, int Heads) attempts = _frameEvictionAttempts.AddOrUpdate(
+                    tx.Hash!.ValueHash256,
+                    static (_, gen) => (gen, 1),
+                    static (_, prev, gen) => prev.Head == gen ? prev : (gen, prev.Heads + 1),
+                    generation);
+
+                if (attempts.Heads < budget) return false;
             }
 
             if (!RemoveTransaction(tx.Hash)) return false;

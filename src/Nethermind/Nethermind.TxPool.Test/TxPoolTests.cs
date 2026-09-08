@@ -3007,10 +3007,9 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void EvictTransaction_keeps_a_frame_tx_until_its_retry_budget_is_spent()
+        public void EvictTransaction_drops_a_frame_tx_on_the_first_failure_under_the_default_budget()
         {
-            const int budget = 3;
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
             Transaction frameTx = new()
             {
                 Type = TxType.FrameTx,
@@ -3028,20 +3027,43 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
 
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "the default budget evicts on the first failed attempt");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the frame transaction leaves the pool at once");
+            }
+        }
+
+        [Test]
+        public async Task EvictTransaction_spends_one_retry_budget_unit_per_head()
+        {
+            const int budget = 2;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction frameTx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
             int evicted = 0;
             _txPool.EvictedPending += (_, _) => evicted++;
 
             using (Assert.EnterMultipleScope())
             {
-                for (int attempt = 1; attempt < budget; attempt++)
-                {
-                    Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "a transiently-failing frame tx is kept below its retry budget");
-                    Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction stays pending below the budget");
-                }
+                Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "the first production failure on a head is kept");
+                Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "a second failure on the same head spends no further unit");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction stays pending while its budget lasts");
+            }
 
-                Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "the frame tx is evicted once its retry budget is spent");
-                Assert.That(evicted, Is.EqualTo(1), "eviction is surfaced exactly once, on the budget-th attempt");
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the frame transaction leaves the pool on the budget-th attempt");
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "failing on a second head spends the last unit and evicts");
+                Assert.That(evicted, Is.EqualTo(1), "eviction is surfaced exactly once");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the frame transaction leaves the pool once its budget is spent");
             }
         }
 
