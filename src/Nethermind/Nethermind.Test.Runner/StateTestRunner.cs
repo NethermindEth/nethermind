@@ -117,6 +117,11 @@ namespace Nethermind.Test.Runner
 
         private EthereumTestResult ExecuteWithOptionalTrace(GeneralStateTest test)
         {
+            // A fixture that failed to parse carries no transaction to execute; reporting it here
+            // mirrors BlockchainTestsRunner and keeps it out of RunTest, which asserts on it.
+            if (test.LoadFailure is not null)
+                return new EthereumTestResult(test.Name, test.LoadFailure);
+
             EthereumTestResult? result = null;
             if (_whenTrace != WhenTrace.Always)
             {
