@@ -545,7 +545,7 @@ public partial class EthRpcModuleTests
     {
         // A block with no state must fail with -32002 "No state available", matching eth_getBalance/getCode/
         // getTransactionCount/call — not surface a backend exception through the generic -32603 handler.
-        using Context ctx = await Context.Create(useFlatDb: false);
+        using Context ctx = await Context.CreateWithTrieDb();
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
@@ -3003,8 +3003,20 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null,
             int estimateErrorMargin = 0)
+            => Create(specProvider, blockchainBridge, configurer, estimateErrorMargin, useTrieDb: false);
+
+        public static Task<Context> CreateWithTrieDb(ISpecProvider? specProvider = null,
+            IBlockchainBridge? blockchainBridge = null,
+            Action<ContainerBuilder>? configurer = null,
+            int estimateErrorMargin = 0)
+            => Create(specProvider, blockchainBridge, configurer, estimateErrorMargin, useTrieDb: true);
+
+        private static Task<Context> Create(ISpecProvider? specProvider,
+            IBlockchainBridge? blockchainBridge,
+            Action<ContainerBuilder>? configurer,
+            int estimateErrorMargin,
+            bool useTrieDb)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -3012,15 +3024,19 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
+            TestRpcBlockchain.Builder<TestRpcBlockchain> testBlockchainBuilder = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockchainBridge(blockchainBridge!)
+                .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
+                .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
+
+            if (useTrieDb)
+            {
+                testBlockchainBuilder.WithTrieDb();
+            }
+
             return Task.FromResult(new Context
             {
-                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                    .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
-                    .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb)
-                    .Build(wrappedConfigurer).Result,
-
+                TestFactory = () => testBlockchainBuilder.Build(wrappedConfigurer).Result,
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(wrappedConfigurer).Result
             });

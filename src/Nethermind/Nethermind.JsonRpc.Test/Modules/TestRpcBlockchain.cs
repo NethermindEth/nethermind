@@ -138,13 +138,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Builder<T> WithFlatDb(bool? useFlatDb)
+            public Builder<T> WithFlatDb(bool useFlatDb)
             {
-                if (useFlatDb is bool enabled)
-                {
-                    _blockchain.UseFlatDb = enabled;
-                }
+                _blockchain.UseFlatDb = useFlatDb;
+                return this;
+            }
 
+            public Builder<T> WithTrieDb()
+            {
+                _blockchain.UseFlatDb = false;
                 return this;
             }
 
