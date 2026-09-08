@@ -99,6 +99,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             request,
             methodName,
             method,
+            context,
             out object?[]? parameters,
             out int parameterCount,
             out bool returnParametersToPool);
@@ -201,6 +202,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonRpcRequest request,
         string methodName,
         ResolvedMethodInfo method,
+        JsonRpcContext context,
         out object?[]? parameters,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -230,6 +232,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 useUtf8Parameters,
                 providedParametersUtf8,
                 providedParameters,
+                context,
                 out parameters,
                 out parameterCount,
                 out returnParametersToPool);
@@ -259,6 +262,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool useUtf8Parameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         JsonElement providedParameters,
+        JsonRpcContext context,
         out object?[]? parameters,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -290,7 +294,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         catch (Exception e)
         {
             ReturnParameters(parameters, returnParametersToPool);
-            if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
+            if (!context.IsAuthenticated)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
+            }
+
             string message = GetSafePublicMessage(e) ?? "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }

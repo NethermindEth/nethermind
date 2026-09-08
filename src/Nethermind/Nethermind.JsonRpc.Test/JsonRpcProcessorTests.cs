@@ -17,6 +17,8 @@ using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -63,10 +65,32 @@ public class JsonRpcProcessorTests
     private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null, bool returnErrors = false) =>
         CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
-    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
-        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
+    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null, ILogManager? logManager = null) =>
+        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), logManager ?? LimboLogs.Instance, processExitSource);
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
+
+    private static TestLogger CreateWarnCapturingLogger(bool captureErrors = false) =>
+        new() { IsInfo = false, IsWarn = true, IsDebug = false, IsTrace = false, IsError = captureErrors };
+
+    private static IJsonRpcService CreateRealService(IJsonRpcConfig config, ILogManager logManager)
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        RpcModuleProvider moduleProvider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), logManager);
+        moduleProvider.Register(pool);
+        return new JsonRpcService(moduleProvider, logManager, config);
+    }
+
+    private static void AssertInvalidParamsAndLogCount(JsonRpcResponse? response, TestLogger logger, int expectedLogCount, string logCountMessage)
+    {
+        Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(logger.LogList, Has.Count.EqualTo(expectedLogCount), logCountMessage);
+        }
+    }
 
     [Test]
     public async Task Http_engine_newPayloadV4_keeps_envelope_and_params_on_direct_utf8_path()
@@ -208,11 +232,52 @@ public class JsonRpcProcessorTests
             Id = request.Id,
             Error = new Error { Code = errorCode, Message = "some failure" }
         });
-        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig(), logManager: new OneLoggerLogManager(new(logger)));
 
-        using CollectedJsonRpcResponses responses = await ProcessAsync(processor, CreateRequest("1", "eth_getBalance"), new JsonRpcContext(endpoint));
+        using JsonRpcContext context = new(endpoint);
+        using CollectedJsonRpcResponses responses = await ProcessAsync(processor, CreateRequest("1", "eth_getBalance"), context);
 
         Assert.That(logger.LogList, Has.Count.EqualTo(expectedWarnings), $"only Warn is enabled, so every captured line is one the operator would see for {errorCode}");
+    }
+
+    [TestCase(RpcEndpoint.Http, false, TestName = "Unauthenticated caller over HTTP")]
+    [TestCase(RpcEndpoint.IPC, true, TestName = "Authenticated caller over IPC")]
+    public async Task Real_JsonRpcService_only_warns_on_malformed_params_for_authenticated_callers(RpcEndpoint endpoint, bool expectedAuthenticated)
+    {
+        TestLogger logger = CreateWarnCapturingLogger();
+        OneLoggerLogManager logManager = new(new(logger));
+        IJsonRpcService realService = CreateRealService(new JsonRpcConfig(), logManager);
+
+        using JsonRpcContext context = new(endpoint);
+        Assert.That(context.IsAuthenticated, Is.EqualTo(expectedAuthenticated), "test setup sanity check");
+
+        JsonRpcRequest badParamsRequest = RpcTest.BuildJsonRequest("eth_getBalance", "0x01", "latest");
+        using JsonRpcResponse response = await realService.SendRequestAsync(badParamsRequest, context);
+
+        AssertInvalidParamsAndLogCount(response, logger, expectedAuthenticated ? 1 : 0,
+            "JsonRpcService.PrepareNonEmptyParameters's catch block must gate its own Warn on caller authentication");
+    }
+
+    [TestCase(false, 0, TestName = "Unauthenticated caller over HTTP")]
+    [TestCase(true, 2, TestName = "Authenticated caller over HTTP")]
+    public async Task Composed_processor_and_real_service_are_silent_for_the_issue_13156_repro_unless_authenticated(bool isAuthenticated, int expectedLogCount)
+    {
+        TestLogger logger = CreateWarnCapturingLogger(captureErrors: true);
+        OneLoggerLogManager logManager = new(new(logger));
+        JsonRpcConfig config = new();
+        IJsonRpcService realService = CreateRealService(config, logManager);
+        JsonRpcProcessor processor = CreateProcessor(realService, config, logManager: logManager);
+
+        using JsonRpcContext context = isAuthenticated
+            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, [ModuleType.Eth]))
+            : CreateHttpContext();
+        Assert.That(context.IsAuthenticated, Is.EqualTo(isAuthenticated), "test setup sanity check");
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", "eth_getBalance", "[\"0x01\",\"latest\"]"), context);
+
+        CollectedJsonRpcResult single = AssertSingleResponse(result);
+        AssertInvalidParamsAndLogCount(single.Response, logger, expectedLogCount,
+            "issue #13156's repro must be silent through the whole composed stack for unauthenticated callers, and log once per warn site once authenticated");
     }
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null, bool returnErrors = false) =>
