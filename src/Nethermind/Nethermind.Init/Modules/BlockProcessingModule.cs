@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -74,6 +75,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
+            .AddSingleton<IIndexTableStore, IndexTableStore>()
+            .AddScoped<IIndexTableHandler, IndexTableHandler>()
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))

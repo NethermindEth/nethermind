@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -45,7 +46,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    IIndexTableHandler? indexTableHandler = null)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
@@ -58,10 +60,11 @@ public partial class BlockProcessor(
         new(
             beaconBlockRootHandler,
             blockHashStore,
-            balManager
+            balManager,
+            indexTableHandler ?? NullIndexTableHandler.Instance
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, indexTableHandler ?? NullIndexTableHandler.Instance));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -204,6 +207,8 @@ public partial class BlockProcessor(
             CommitState(spec);
 
             _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+            _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
 
             ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
 

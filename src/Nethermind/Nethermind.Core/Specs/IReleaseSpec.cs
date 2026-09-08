@@ -459,6 +459,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-8304: Trustless log and transaction index
+        /// </summary>
+        bool IsEip8304Enabled { get; }
+        Address? Eip8304ContractAddress { get; }
+
+        /// <summary>
         /// EIP-7805: Inclusion lists
         /// </summary>
         bool IsEip7805Enabled { get; }
