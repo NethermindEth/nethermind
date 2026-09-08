@@ -7,13 +7,16 @@ using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -42,9 +45,26 @@ public class ZeroNettyP2PHandlerTests
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session(bool isStatic)
+    [TestCaseSource(nameof(ExpectedCommunicationExceptions))]
+    public void Expected_communication_exception_is_logged_at_trace(Exception exception)
+    {
+        TestLogger logger = new() { IsDebug = false };
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, new OneLoggerLogManager(new ILogger(logger)));
+
+        handler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), exception);
+
+        Assert.That(logger.LogList, Has.Some.Contains(exception.GetType().Name));
+    }
+
+    private static IEnumerable<TestCaseData> ExpectedCommunicationExceptions()
+    {
+        yield return new TestCaseData(new RlpException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
+        yield return new TestCaseData(ReadTimeoutException.Instance).SetName("Read_timeout_is_logged_at_trace");
+    }
+
+    [Test]
+    public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session([Values] bool isStatic)
     {
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
         {

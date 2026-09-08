@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Kademlia;
 
@@ -82,6 +83,9 @@ public class KBucket<TNode, TKadKey>(int k)
     public bool ContainsNode(in TKadKey hash) => _items.Contains(hash);
 
     public TNode? GetByHash(TKadKey hash) => _items.GetByKey(hash);
+
+    internal bool TryGetStored(in TKadKey hash, [MaybeNullWhen(false)] out TNode node)
+        => _items.TryGetValue(hash, out node) || _replacement.TryGetValue(hash, out node);
 
     private static bool ShouldUpdateCachedArray(TNode? previous, TNode item)
         => previous is not null &&

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using DotNetty.Buffers;
 using System.Net;
 using Nethermind.Config;
 using Nethermind.Crypto;
@@ -9,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Bootnode.Test;
@@ -16,6 +18,32 @@ namespace Nethermind.Bootnode.Test;
 [TestFixture]
 public class DiscoveryContainerTests
 {
+    [Test]
+    public void ConfigureNetworkBuffers_uses_single_small_shared_arena()
+    {
+        IByteBufferAllocator originalDefault = NethermindBuffers.Default;
+        IByteBufferAllocator originalDiscovery = NethermindBuffers.DiscoveryAllocator;
+
+        try
+        {
+            DiscoveryContainer.ConfigureNetworkBuffers();
+
+            PooledByteBufferAllocator allocator = (PooledByteBufferAllocator)NethermindBuffers.DiscoveryAllocator;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(NethermindBuffers.Default, Is.SameAs(allocator));
+                Assert.That(allocator.Metric.HeapArenas(), Has.Count.EqualTo(1));
+                Assert.That(allocator.Metric.DirectArenas(), Has.Count.EqualTo(1));
+                Assert.That(allocator.Metric.ChunkSize, Is.EqualTo(2 * 1024 * 1024));
+            }
+        }
+        finally
+        {
+            NethermindBuffers.Default = originalDefault;
+            NethermindBuffers.DiscoveryAllocator = originalDiscovery;
+        }
+    }
+
     [Test]
     public async Task Build_registers_bucket_sources_for_enabled_protocols()
     {
@@ -96,7 +124,7 @@ public class DiscoveryContainerTests
             BucketSize = 16,
             Concurrency = 3,
             DiscoveryIntervalMs = 30000,
-            LocalIp = "127.0.0.1",
+            LocalIp = "::",
             ExternalIp = null,
             ExternalIpV4 = "192.0.2.1",
             ExternalIpV6 = "2001:db8::1",

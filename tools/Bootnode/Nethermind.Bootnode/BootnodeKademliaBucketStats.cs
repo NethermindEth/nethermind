@@ -14,12 +14,12 @@ internal interface IBootnodeKademliaBucketSource
 
 internal sealed class BootnodeKademliaBucketSource(
     string protocol,
-    IRoutingTable<Node, Hash256> routingTable) : IBootnodeKademliaBucketSource
+    IRoutingTable<Node, ValueHash256> routingTable) : IBootnodeKademliaBucketSource
 {
     public void AppendSnapshot(List<BootnodeKademliaBucketSnapshot> snapshot)
     {
         int bucketIndex = 0;
-        foreach (RoutingTableBucket<Node, Hash256> bucket in routingTable.IterateBuckets())
+        foreach (RoutingTableBucket<Node, ValueHash256> bucket in routingTable.IterateBuckets())
         {
             snapshot.Add(new BootnodeKademliaBucketSnapshot(protocol, bucketIndex, bucket.Distance, bucket.Prefix.ToString(), bucket.Count));
             bucketIndex++;

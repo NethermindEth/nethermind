@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -55,17 +55,44 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
         IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
 
+        // ExternalIpV6 must not become the primary address: IPv4-only consumers would break, and an
+        // IPv6-only override would suppress IPv4 auto-detection. ExternalIp can still select IPv6 explicitly.
         IPAddress externalIp = configuredExternalIp
             ?? configuredExternalIpV4
-            ?? configuredExternalIpV6
             ?? await ResolveExternalIp(cancellationToken);
 
-        if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
+        WarnIfPrimaryAndFamilyOverrideDisagree(
+            configuredExternalIp,
+            configuredExternalIpV4,
+            AddressFamily.InterNetwork,
+            nameof(NetworkConfig.ExternalIpV4));
+        WarnIfPrimaryAndFamilyOverrideDisagree(
+            configuredExternalIp,
+            configuredExternalIpV6,
+            AddressFamily.InterNetworkV6,
+            nameof(NetworkConfig.ExternalIpV6));
+
+        if (!externalIp.IsWildcardOrNone)
         {
             ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
         }
 
         return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
+    }
+
+    private void WarnIfPrimaryAndFamilyOverrideDisagree(
+        IPAddress? configuredExternalIp,
+        IPAddress? configuredFamilyIp,
+        AddressFamily addressFamily,
+        string familyConfigName)
+    {
+        if (configuredExternalIp?.AddressFamily == addressFamily &&
+            configuredFamilyIp is not null &&
+            !configuredExternalIp.Equals(configuredFamilyIp) &&
+            _logger.IsWarn)
+        {
+            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {familyConfigName} = {configuredFamilyIp}. {familyConfigName} takes precedence when that address family is advertised in the ENR, while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
+        }
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
@@ -147,6 +174,11 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         {
             if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} cannot be used as an external IP.");
             return null;
+        }
+
+        if (normalizedIp.IsLoopbackOrPrivateOrLinkLocal || normalizedIp.IsMulticast || normalizedIp.IsSpecialUseAddress)
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} is not a routable public address and may be discarded by peers.");
         }
 
         if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");

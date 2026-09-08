@@ -34,8 +34,16 @@ public class SnapFlatStateServer(
             return false;
         }
 
-        bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
-        return true;
+        try
+        {
+            bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+            return true;
+        }
+        catch (StateUnavailableException)
+        {
+            bundle = null!;
+            return false;
+        }
     }
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>

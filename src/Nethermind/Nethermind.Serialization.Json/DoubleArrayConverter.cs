@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Json
         {
             if (reader.TokenType == JsonTokenType.String)
             {
-                string s = reader.GetString();
+                string? s = reader.GetString();
                 if (s is null) ThrowExpectedArrayString();
                 return JsonSerializer.Deserialize<double[]>(s)
                     ?? throw new JsonException($"Could not deserialize double array from string: {s}");

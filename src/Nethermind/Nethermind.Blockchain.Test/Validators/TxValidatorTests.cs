@@ -125,9 +125,8 @@ public class TxValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
+    [Test]
+    public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden([Values] bool validateChainId)
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
@@ -317,7 +316,7 @@ public class TxValidatorTests
     {
         try
         {
-            Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping)!;
             TxValidator txValidator = new(BlockchainIds.Mainnet);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
@@ -379,16 +378,21 @@ public class TxValidatorTests
 
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
     [TestCaseSource(nameof(BlobVersionedHashValidTestCases))]
-    public bool BlobVersionedHash_should_be_correct(byte[] hash)
+    public bool BlobVersionedHash_should_be_correct(byte[]? hash)
     {
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Blob)
             .WithTimestamp(ulong.MaxValue)
             .WithMaxFeePerGas(1)
             .WithMaxFeePerBlobGas(1)
-            .WithBlobVersionedHashes(new[] { hash })
+            .WithBlobVersionedHashes(new[] { hash ?? MakeArray(Hash256.Size, KzgPolynomialCommitments.KzgBlobHashVersionV1) })
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
+
+        if (hash is null)
+        {
+            tx.BlobVersionedHashes = [null!];
+        }
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         return txValidator.IsWellFormed(tx, Cancun.Instance);

@@ -262,7 +262,7 @@ public class Eth72ProtocolHandler(
                     ClaimedCellsResponse response = new(cellsMessage, sentRequest);
                     // Cell proof verification is too expensive for the network thread;
                     // failures disconnect the peer via the background task wrapper.
-                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(response, _handleCells!, nameof(CellsMessage72)))
+                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(response, _handleCells!))
                     {
                         // Scheduler saturated or shutting down: release the in-flight reservation and
                         // park the request for a later retry.
@@ -834,8 +834,7 @@ public class Eth72ProtocolHandler(
 
                     if (BackgroundTaskScheduler.TryScheduleBackgroundTask(
                         new TransactionsRequest(transactions, currentIdx),
-                        HandleSlow,
-                        "Transactions"))
+                        HandleSlow))
                     {
                         isTransferred = true;
                     }
@@ -1055,16 +1054,17 @@ public class Eth72ProtocolHandler(
 
     private void SendGetCells(Hash256 hash, BlobCellMask requestMask)
     {
-        if (Logger.IsDebug)
-        {
-            Logger.Debug($"{Node:c} requesting blob cells for {hash} with mask {requestMask}.");
-        }
+        if (Logger.IsTrace) TraceRequestingBlobCells(hash, requestMask);
 
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask sentMask = GetSentCellRequestMask(key, requestMask);
         GetCellsMessage72 message = new([hash], sentMask.ToBytes());
         AddSentCellRequest(key, sentMask, message.RequestId);
         Send(message);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceRequestingBlobCells(Hash256 transactionHash, BlobCellMask cellMask) =>
+            Logger.Trace($"{Node:c} requesting blob cells for {transactionHash} with mask {cellMask}.");
     }
 
     bool ISparseBlobPoolPeer.IsClosing => Session.IsClosing;

@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Nullable>annotations</Nullable>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
+    <PackageReference Include="Fody" PrivateAssets="all" />
+    <PackageReference Include="InlineIL.Fody" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

@@ -96,9 +96,8 @@ public class LightTxDecoderTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void should_decode_legacy_entry_without_mask_as_full(bool includeProofVersion)
+    [Test]
+    public void should_decode_legacy_entry_without_mask_as_full([Values] bool includeProofVersion)
     {
         Transaction tx = BuildBlobTx();
 

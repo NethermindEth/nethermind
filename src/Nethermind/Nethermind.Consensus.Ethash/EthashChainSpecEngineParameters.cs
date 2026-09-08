@@ -14,8 +14,8 @@ namespace Nethermind.Consensus.Ethash;
 
 public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => SealEngineType;
-    public string? SealEngineType => Core.SealEngineType.Ethash;
+    public string EngineName => SealEngineType;
+    public string SealEngineType => Core.SealEngineType.Ethash;
 
     public ulong HomesteadTransition { get; set; } = 0;
     public ulong? DaoHardforkTransition { get; set; }

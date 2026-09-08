@@ -112,12 +112,12 @@ Option<string?> externalIpOption = new("--external-ip")
 
 Option<string?> externalIpV4Option = new("--external-ip-v4")
 {
-    Description = "Advertised external IPv4 address. Use with --external-ip-v6 to publish a dual-stack ENR."
+    Description = "External IPv4 address advertised when the listener enables IPv4. Use with --external-ip-v6 and --local-ip :: for a dual-stack ENR."
 };
 
 Option<string?> externalIpV6Option = new("--external-ip-v6")
 {
-    Description = "Advertised external IPv6 address. Use with --external-ip-v4 to publish a dual-stack ENR."
+    Description = "External IPv6 address advertised when the listener enables IPv6. Use --external-ip on IPv6-only hosts, or use with --external-ip-v4 and --local-ip :: for a dual-stack ENR."
 };
 
 Option<string[]> bootnodesOption = new("--bootnode", "--bootnodes")

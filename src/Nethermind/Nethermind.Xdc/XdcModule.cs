@@ -142,7 +142,8 @@ public class XdcModule : Module
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
-            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>();
+            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
+            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>();
 
         RegisterRewardCalculatorSource(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();

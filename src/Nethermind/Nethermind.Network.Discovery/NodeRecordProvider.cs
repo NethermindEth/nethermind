@@ -76,7 +76,8 @@ public sealed class NodeRecordProvider(
         LocalNodeRecord current = await currentTask;
         try
         {
-            LocalNodeRecordState state = await CreateState(head, CancellationToken.None);
+            IIPResolver.NethermindIp ip = await ipResolver.Resolve(CancellationToken.None);
+            LocalNodeRecordState state = CreateState(head, ip);
             if (current.State == state)
             {
                 return current;
@@ -93,17 +94,46 @@ public sealed class NodeRecordProvider(
 
     private async Task<LocalNodeRecord> PrepareNodeRecord(BlockHeader? effectiveHeader, ulong previousSequence, CancellationToken cancellationToken)
     {
-        LocalNodeRecordState state = await CreateState(effectiveHeader, cancellationToken);
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
+        LocalNodeRecordState state = CreateState(effectiveHeader, ip);
+        LogEndpointIssues(ip, state);
         return CreateSignedRecord(state, NextSequence(previousSequence));
     }
 
-    private async ValueTask<LocalNodeRecordState> CreateState(BlockHeader? effectiveHeader, CancellationToken cancellationToken)
+    private LocalNodeRecordState CreateState(BlockHeader? effectiveHeader, IIPResolver.NethermindIp ip)
     {
-        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        return new LocalNodeRecordState(ip.ExternalIpV4, ip.ExternalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        (IPAddress? externalIpV4, IPAddress? externalIpV6) = DiscoveryAddressSupport.SelectAdvertised(
+            ip.LocalIp,
+            ip.ExternalIpV4,
+            ip.ExternalIpV6);
+
+        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+    }
+
+    private void LogEndpointIssues(IIPResolver.NethermindIp ip, LocalNodeRecordState state)
+    {
+        if (!_logger.IsWarn)
+        {
+            return;
+        }
+
+        if (ip.ExternalIpV4 is not null && state.ExternalIpV4 is null)
+        {
+            _logger.Warn("External IPv4 address is available but not advertised because the node does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+        }
+
+        if (ip.ExternalIpV6 is not null && state.ExternalIpV6 is null)
+        {
+            _logger.Warn("External IPv6 address is available but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
+        }
+
+        if (state.ExternalIpV4 is null && state.ExternalIpV6 is null)
+        {
+            _logger.Warn("No external IP address is advertised; the node will not be discoverable by peers.");
+        }
     }
 
     private BlockHeader? GetEffectiveHeader(BlockHeader? preferredHeader) => preferredHeader ?? blockTree.Head?.Header ?? blockTree.Genesis;
@@ -122,6 +152,7 @@ public sealed class NodeRecordProvider(
         if (state.ExternalIpV6 is not null)
         {
             selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIpV6));
+            // Some ENR consumers do not implement EIP-778's fallback from tcp6/udp6 to tcp/udp.
             selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
             selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
         }
@@ -144,5 +175,10 @@ public sealed class NodeRecordProvider(
 
     private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State);
 
-    private readonly record struct LocalNodeRecordState(IPAddress? ExternalIpV4, IPAddress? ExternalIpV6, int TcpPort, int UdpPort, NetworkForkId ForkId);
+    private readonly record struct LocalNodeRecordState(
+        IPAddress? ExternalIpV4,
+        IPAddress? ExternalIpV6,
+        int TcpPort,
+        int UdpPort,
+        NetworkForkId ForkId);
 }

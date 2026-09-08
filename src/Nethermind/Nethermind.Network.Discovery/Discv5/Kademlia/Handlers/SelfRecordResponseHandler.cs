@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Network.Discovery.Discv5.Messages;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
@@ -13,7 +14,6 @@ internal sealed class SelfRecordResponseHandler(Node receiver, ulong minimumSequ
     private const int MaxNodesResponseMessages = 16;
 
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly bool _allowNonRoutableRelays = receiver.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal;
     private readonly Lock _lock = new();
     private bool _done;
     private int _totalMessages;
@@ -87,8 +87,10 @@ internal sealed class SelfRecordResponseHandler(Node receiver, ulong minimumSequ
         {
             NodeRecord record = nodes.Records[i];
             if (record.EnrSequence >= minimumSequence &&
-                KademliaAdapter.IsAcceptableNodeRecord(record, receiver.Id.Hash, _allowNonRoutableRelays))
+                KademliaAdapterBase.HasExpectedNodeId(record, receiver.Id.Hash.ValueHash256))
             {
+                // NodesMsgSerializer verified the signature. A valid distance-zero response is
+                // still useful for its sequence when this listener cannot use its endpoint.
                 _record = record;
                 return;
             }

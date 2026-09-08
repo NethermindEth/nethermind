@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
@@ -16,9 +15,11 @@ public static class EvmWordExtensions
         /// <summary>
         /// Reverses the byte order of a 32-byte word (big-endian &lt;-&gt; little-endian).
         /// AVX-512 VBMI: single PermuteVar32x8. AVX2: Permute4x64 lane-swap + per-lane PSHUFB.
-        /// AdvSimd (ARM64): 2x REV64 + 2x EXT #8 half-rotate.
+        /// AdvSimd (ARM64): one TBL per 128-bit half. REV64 + EXT reverses a half too, but as two
+        /// dependent operations; the index vector TBL needs is independent of the word.
         /// Scalar fallback: 4x ReverseEndianness with ulong reorder.
         /// </summary>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public EvmWord ByteSwap()
         {
@@ -33,20 +34,28 @@ public static class EvmWordExtensions
             }
             if (AdvSimd.Arm64.IsSupported)
             {
-                Vector128<ulong> reversedUpper = AdvSimd.ReverseElement8(word.GetUpper().AsUInt64());
-                Vector128<ulong> reversedLower = AdvSimd.ReverseElement8(word.GetLower().AsUInt64());
-                Vector128<ulong> lower = AdvSimd.ExtractVector128(reversedUpper, reversedUpper, 1);
-                Vector128<ulong> upper = AdvSimd.ExtractVector128(reversedLower, reversedLower, 1);
-                return Vector256.Create(lower, upper).AsByte();
+                Vector128<byte> reverse = ReverseBytes128Mask;
+                return Vector256.Create(
+                    AdvSimd.Arm64.VectorTableLookup(word.GetUpper(), reverse),
+                    AdvSimd.Arm64.VectorTableLookup(word.GetLower(), reverse));
             }
 
-            Vector256<ulong> u = word.AsUInt64();
-            ulong out0 = BinaryPrimitives.ReverseEndianness(u.GetElement(3));
-            ulong out1 = BinaryPrimitives.ReverseEndianness(u.GetElement(2));
-            ulong out2 = BinaryPrimitives.ReverseEndianness(u.GetElement(1));
-            ulong out3 = BinaryPrimitives.ReverseEndianness(u.GetElement(0));
-            return Vector256.Create(out0, out1, out2, out3).AsByte();
+            Unsafe.SkipInit(out EvmWord result);
+            ref ulong source = ref Unsafe.As<EvmWord, ulong>(ref word);
+            ref ulong destination = ref Unsafe.As<EvmWord, ulong>(ref result);
+            destination = Bytes.Bswap64(Unsafe.Add(ref source, 3));
+            Unsafe.Add(ref destination, 1) = Bytes.Bswap64(Unsafe.Add(ref source, 2));
+            Unsafe.Add(ref destination, 2) = Bytes.Bswap64(Unsafe.Add(ref source, 1));
+            Unsafe.Add(ref destination, 3) = Bytes.Bswap64(source);
+            return result;
         }
+    }
+
+    // TBL index vector that byte-reverses one 128-bit half.
+    private static Vector128<byte> ReverseBytes128Mask
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Vector128.Create((byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
     }
 
     // PSHUFB / PermuteVar32x8 mask that byte-reverses a 256-bit word.

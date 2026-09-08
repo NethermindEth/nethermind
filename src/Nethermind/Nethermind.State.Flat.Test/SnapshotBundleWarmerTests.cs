@@ -117,9 +117,8 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Unresolved_warmer_miss_does_not_reach_trie_node_cache(bool storage)
+    [Test]
+    public void Unresolved_warmer_miss_does_not_reach_trie_node_cache([Values] bool storage)
     {
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -149,9 +148,8 @@ public class SnapshotBundleWarmerTests
     }
 
     // A repeated warmer miss is served by the owned placeholder, not by another persistence lookup.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Repeated_warmer_miss_is_served_from_the_negative_cache(bool storage)
+    [Test]
+    public void Repeated_warmer_miss_is_served_from_the_negative_cache([Values] bool storage)
     {
         NullTrieNodeCache cache = new();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -170,9 +168,8 @@ public class SnapshotBundleWarmerTests
         Assert.That(cache.TryGetCount, Is.EqualTo(1));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Returned_transient_resource_clears_warmer_nodes(bool storage)
+    [Test]
+    public void Returned_transient_resource_clears_warmer_nodes([Values] bool storage)
     {
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         TreePath path = TreePath.FromHexString("12");
@@ -216,9 +213,8 @@ public class SnapshotBundleWarmerTests
     }
 
     // Live reads see the warmer's instance only once resolved; retirement promotes a detached copy of it.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Resolved_warmer_node_is_reused_by_live_reads_and_promoted_detached(bool storage)
+    [Test]
+    public void Resolved_warmer_node_is_reused_by_live_reads_and_promoted_detached([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");
@@ -262,9 +258,8 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Concurrent_owned_warmer_resolution_loads_once(bool storage)
+    [Test]
+    public void Concurrent_owned_warmer_resolution_loads_once([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");
@@ -408,9 +403,8 @@ public class SnapshotBundleWarmerTests
 
     // The warmer's persistence read is path-keyed, so it can return another node; reader guards compare the node's
     // own claimed Keccak, so publishing those bytes under the requested hash would poison live reads and the cache.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads(bool storage)
+    [Test]
+    public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");

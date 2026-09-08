@@ -3,8 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -24,6 +27,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -101,6 +105,18 @@ public class JsonRpcServiceTests
             "Invalid params",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Required argument marked missing before another");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false,"extra"]""",
+            "Invalid params",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Extra argument alongside a missing marker");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
@@ -329,9 +345,8 @@ public class JsonRpcServiceTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"Nethermind/test\",\"id\":67}"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Admin_peers_is_working_with_empty_or_null_params(bool useNullParams)
+    [Test]
+    public async Task Admin_peers_is_working_with_empty_or_null_params([Values] bool useNullParams)
     {
         IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
         PeerInfo[] expectedPeers = [new PeerInfo { Enode = "enode://expected-peer" }];
@@ -396,6 +411,28 @@ public class JsonRpcServiceTests
 
         response.Dispose();
         pool.Received().ReturnModule(rpcModule);
+    }
+
+    // A streamed trace executes while the response is written, on the module's own overridable env; the module must
+    // therefore stay rented until the response is disposed, or the next rental races it on that env.
+    [Test]
+    public void Returns_module_to_pool_only_after_a_streamed_result_is_disposed([Values] bool streamed)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        using CancellationTokenSource timeoutCts = new();
+        IEnumerable<ParityTxTraceFromReplay> traces = streamed
+            ? new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(static (_, _, _) => { }, timeoutCts, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())
+            : [];
+        rpcModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces));
+
+        JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayBlockTransactions", "latest", new[] { "trace" });
+
+        pool.Received(streamed ? 0 : 1).ReturnModule(rpcModule);
+        response.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
     }
 
     [Test]
@@ -476,6 +513,22 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Missing_marker_on_an_optional_argument_binds_its_default([Values(false, true)] bool rawUtf8)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        ethRpcModule
+            .eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())
+            .ReturnsForAnyArgs(_ => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
+
+        RpcTest.AssertSuccess<BlockForRpc>(rawUtf8
+            ? TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """["0x1b4",""]""")
+            : TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", ""));
+
+        ethRpcModule.Received().eth_getBlockByNumber(Arg.Any<BlockParameter>(), false);
+    }
+
+    [Test]
     public void Eth_getTransactionReceipt_properly_fails_given_wrong_parameters()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -485,6 +538,11 @@ public class JsonRpcServiceTests
 
     [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
     [TestCase("eth_feeHistory", new object?[] { "0x1", "latest" }, "missing value for required argument 2", TestName = "LaterArgOmitted")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "FirstArgMarkedMissingBeforeAnother")]
+    [TestCase("eth_getProof", new object?[] { "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842", "", "latest" }, "missing value for required argument 1", TestName = "LaterArgMarkedMissingBeforeAnother")]
+    [TestCase("eth_feeHistory", new object?[] { "", "latest" }, "missing value for required argument 0", TestName = "MarkedMissingArgIsNamedAheadOfOmittedTrailingOnes")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false, "" }, "Invalid params", TestName = "ExtraArgumentWinsOverAMarkedMissingOne")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "0x1", false, "" }, "Invalid params", TestName = "ExtraTrailingMarkerIsAnExtraArgument")]
     public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -621,6 +679,40 @@ public class JsonRpcServiceTests
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         AssertJsonRpcError(response, ErrorCodes.InternalError);
+    }
+
+    private static IEnumerable<TestCaseData> OutOfMemoryPools()
+    {
+        static IRpcModulePool<IEthRpcModule> Throwing(Exception ex)
+        {
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter>()).Throws(ex);
+            return new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true);
+        }
+
+        static IRpcModulePool<IEthRpcModule> FaultedRental()
+        {
+            IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+            pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
+            return pool;
+        }
+
+        yield return new TestCaseData(Throwing(new OutOfMemoryException())).SetName("{m}(module throws)");
+        yield return new TestCaseData(Throwing(new TargetInvocationException(new OutOfMemoryException()))).SetName("{m}(module throws wrapped)");
+        yield return new TestCaseData(FaultedRental()).SetName("{m}(module rental faults)");
+    }
+
+    [TestCaseSource(nameof(OutOfMemoryPools))]
+    public void OutOfMemory_logs_without_request_parameters(IRpcModulePool<IEthRpcModule> pool)
+    {
+        const string marker = "0x00000000000000000000000000000000deadbeef";
+        TestErrorLogManager logManager = new();
+        _logManager = logManager;
+
+        AssertJsonRpcError(TestRequestWithPool(pool, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
+
+        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException or { InnerException: OutOfMemoryException });
+        Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
     }
 
     [Test]

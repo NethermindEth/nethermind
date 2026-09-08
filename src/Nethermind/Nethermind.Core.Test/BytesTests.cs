@@ -110,10 +110,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        public void FromHexString_large_even_length_matches_expected_bytes(int byteLength)
+        [Test]
+        public void FromHexString_large_even_length_matches_expected_bytes([Values(32, 64, 128)] int byteLength)
         {
             string hex = CreateHexString(byteLength);
 
@@ -401,17 +399,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(4)]
-        [TestCase(8)]
-        [TestCase(16)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(512)]
-        public void Invalid_utf8_hex_conversion_fails(int length)
+        [Test]
+        public void Invalid_utf8_hex_conversion_fails([Values(1, 2, 4, 8, 16, 32, 64, 128, 256, 512)] int length)
         {
             byte[] input = new byte[length];
             byte[] hex = new byte[length * 2];
@@ -792,13 +781,32 @@ namespace Nethermind.Core.Test
         }
 #endif
 
-        [Test]
-        public void FastHash_ShortPaddingIncludesLength()
+        /// <remarks>
+        /// Covers the widths that have their own paths, not just a pair that shares one. 20 against 32
+        /// is the case that matters: both are dominant key widths with dedicated handling, and a
+        /// shorter key's tail read is the zero-extension of the longer one's, so a mixer whose
+        /// constants do not vary with width maps the two forms to the same value.
+        /// </remarks>
+        [TestCase(8, 9)]
+        [TestCase(20, 21)]
+        [TestCase(20, 32)]
+        [TestCase(31, 32)]
+        [TestCase(32, 33)]
+        [TestCase(32, 64)]
+        [TestCase(64, 65)]
+        public void FastHash_ShortPaddingIncludesLength(int length, int paddedLength)
         {
-            byte[] input = [1, 2, 3, 4, 5, 6, 7, 8];
-            byte[] extended = [1, 2, 3, 4, 5, 6, 7, 8, 0];
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                input[i] = (byte)(i + 1);
+            }
 
-            Assert.That(input.FastHash(), Is.Not.EqualTo(extended.FastHash()));
+            byte[] padded = new byte[paddedLength];
+            input.CopyTo(padded, 0);
+
+            Assert.That(input.FastHash(), Is.Not.EqualTo(padded.FastHash()),
+                $"{length} bytes and the same bytes zero-padded to {paddedLength}");
         }
 
         private const int HashDistributionSampleCount = 4096;
@@ -903,6 +911,47 @@ namespace Nethermind.Core.Test
                 Assert.That(inconsistentHashWidths, Is.Zero, "32-bit hashes");
                 AssertIntHashesAreDistributed(value => intHashes[value], "paired storage cells");
                 AssertHash64WindowsAreDistributed(hashes, "paired storage cells");
+            }
+        }
+
+        [TestCase(0, TestName = "StorageCell_VaryingOnlyTheAddressHeadIsDistributed")]
+        [TestCase(1, TestName = "StorageCell_VaryingOnlyTheLowSlotBytesIsDistributed")]
+        [TestCase(2, TestName = "StorageCell_VaryingOnlyTheHighSlotBytesIsDistributed")]
+        [TestCase(3, TestName = "StorageCell_VaryingOnlyTheAddressTailIsDistributed")]
+        public void StorageCell_EveryPartOfTheKeyReachesTheHash(int varying)
+        {
+            // One chain hashes the address and both halves of the slot, so a part that never reached the mixer
+            // would still leave the paired test above passing. Holding everything else fixed is what catches that.
+            byte[] addressBytes = new byte[Address.Size];
+            byte[] slotBytes = new byte[32];
+            long[] hashes = new long[HashDistributionSampleCount];
+
+            for (int value = 0; value < HashDistributionSampleCount; value++)
+            {
+                Span<byte> target = varying switch
+                {
+                    0 => addressBytes.AsSpan(0, sizeof(int)),
+                    1 => slotBytes.AsSpan(0, sizeof(int)),
+                    2 => slotBytes.AsSpan(24, sizeof(int)),
+                    // The address tail is read separately from the head, so only this case catches it being dropped.
+                    _ => addressBytes.AsSpan(16, sizeof(int))
+                };
+                BinaryPrimitives.WriteInt32LittleEndian(target, value);
+                StorageCell cell = new(new Address(addressBytes), new UInt256(slotBytes, isBigEndian: false));
+                hashes[value] = cell.GetHashCode64();
+            }
+
+            string context = varying switch
+            {
+                0 => "address heads over one slot",
+                1 => "low slot bytes under one address",
+                2 => "high slot bytes under one address",
+                _ => "address tails over one slot"
+            };
+            using (Assert.EnterMultipleScope())
+            {
+                AssertIntHashesAreDistributed(value => (int)hashes[value], context);
+                AssertHash64WindowsAreDistributed(hashes, context);
             }
         }
 
@@ -1026,9 +1075,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(20)]
-        [TestCase(32)]
-        public void FastHash64_CacheBitWindowsAreDistributed(int length)
+        [Test]
+        public void FastHash64_CacheBitWindowsAreDistributed([Values(20, 32)] int length)
         {
             const int count = 4096;
             byte[] input = new byte[length];
@@ -1166,13 +1214,8 @@ namespace Nethermind.Core.Test
         /// All-zero input at exact vector-width boundaries — every byte should be counted.
         /// Catches off-by-one bugs where the last SIMD chunk is skipped.
         /// </summary>
-        [TestCase(16)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(512)]
-        public void CountZeros_all_zeros_exact_vector_multiples(int length)
+        [Test]
+        public void CountZeros_all_zeros_exact_vector_multiples([Values(16, 32, 64, 128, 256, 512)] int length)
         {
             byte[] data = new byte[length];
             Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(length));
@@ -1182,13 +1225,8 @@ namespace Nethermind.Core.Test
         /// All non-zero input — result should be zero. Ensures no false positives
         /// from SIMD comparison logic.
         /// </summary>
-        [TestCase(16)]
-        [TestCase(32)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(512)]
-        public void CountZeros_no_zeros(int length)
+        [Test]
+        public void CountZeros_no_zeros([Values(16, 32, 64, 128, 256, 512)] int length)
         {
             byte[] data = new byte[length];
             Array.Fill(data, (byte)0xFF);

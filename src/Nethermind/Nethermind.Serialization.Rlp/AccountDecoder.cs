@@ -25,8 +25,7 @@ namespace Nethermind.Serialization.Rlp
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref RlpReader context)
         {
             context.SkipLength();
-            context.SkipItem();
-            context.SkipItem();
+            context.SkipItems(2);
 
             Hash256 storageRoot = DecodeStorageRoot(ref context);
             Hash256 codeHash = DecodeCodeHash(ref context);
@@ -37,8 +36,7 @@ namespace Nethermind.Serialization.Rlp
         public Hash256 DecodeStorageRootOnly(ref RlpReader context)
         {
             context.SkipLength();
-            context.SkipItem();
-            context.SkipItem();
+            context.SkipItems(2);
             Hash256 storageRoot = DecodeStorageRoot(ref context);
             return storageRoot;
         }
@@ -220,7 +218,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                storageRoot = reader.DecodeValueKeccak()!.Value;
+                storageRoot = reader.DecodeValueKeccakNonNull();
             }
 
             return storageRoot;
@@ -236,7 +234,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                codeHash = reader.DecodeValueKeccak()!.Value;
+                codeHash = reader.DecodeValueKeccakNonNull();
             }
 
             return codeHash;

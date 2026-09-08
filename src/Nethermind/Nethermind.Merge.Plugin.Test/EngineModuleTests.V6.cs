@@ -60,7 +60,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -86,7 +86,7 @@ public partial class EngineModuleTests
         object?[] parameters = [chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)];
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", parameters!);
-        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,7 +145,7 @@ public partial class EngineModuleTests
         GetPayloadV6Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV6", payloadId);
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -160,7 +160,7 @@ public partial class EngineModuleTests
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -186,7 +186,7 @@ public partial class EngineModuleTests
         parameters = [chain.JsonSerializer.Serialize(fcuState), null];
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", parameters!);
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -445,7 +445,7 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -551,7 +551,7 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
-        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList))!;
 
         BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -929,16 +929,45 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker()
+    // Every forkchoice version that accepts custody columns must handle them identically (execution-apis#793).
+    private static IEnumerable<int> CustodyColumnFcuVersions()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        yield return EngineApiVersions.Fcu.V4;
+        yield return EngineApiVersions.Fcu.V5;
+    }
+
+    private static IReleaseSpec CustodyColumnFcuSpec(int version) => version switch
+    {
+        EngineApiVersions.Fcu.V4 => Amsterdam.Instance,
+        EngineApiVersions.Fcu.V5 => Bogota.Instance,
+        _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unhandled forkchoice version")
+    };
+
+    private static string CustodyColumnFcuMethodName(int version) => version switch
+    {
+        EngineApiVersions.Fcu.V4 => nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4),
+        EngineApiVersions.Fcu.V5 => nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5),
+        _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unhandled forkchoice version")
+    };
+
+    private static async Task<IResultWrapper> ForkchoiceUpdatedWithCustodyColumns(
+        IEngineRpcModule rpcModule, int version, ForkchoiceStateV1 forkchoiceState, BitArray custodyColumns) => version switch
+        {
+            EngineApiVersions.Fcu.V4 => await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns),
+            EngineApiVersions.Fcu.V5 => await rpcModule.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null, custodyColumns),
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unhandled forkchoice version")
+        };
+
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_update_blob_custody_tracker(int version)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         BlobCellMask custodyMask = BlobCellMask.FromIndices([1, 4, 9]);
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
+        IResultWrapper result = await ForkchoiceUpdatedWithCustodyColumns(rpcModule, version, forkchoiceState, ToBitArray(custodyMask));
 
         using (Assert.EnterMultipleScope())
         {
@@ -947,16 +976,16 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker_even_when_forkchoice_fails()
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_update_blob_custody_tracker_even_when_forkchoice_fails(int version)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         BlobCellMask custodyMask = BlobCellMask.FromIndices([2, 7]);
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, TestItem.KeccakF, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
+        IResultWrapper result = await ForkchoiceUpdatedWithCustodyColumns(rpcModule, version, forkchoiceState, ToBitArray(custodyMask));
 
         using (Assert.EnterMultipleScope())
         {
@@ -966,15 +995,15 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_reject_invalid_custody_columns_bitarray()
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_reject_invalid_custody_columns_bitarray(int version)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: new BitArray(0));
+        IResultWrapper result = await ForkchoiceUpdatedWithCustodyColumns(rpcModule, version, forkchoiceState, new BitArray(0));
 
         using (Assert.EnterMultipleScope())
         {
@@ -984,10 +1013,10 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_accept_hex_custody_columns_bitarray_over_json_rpc()
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_accept_hex_custody_columns_bitarray_over_json_rpc(int version)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
@@ -1000,7 +1029,7 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(
             rpcModule,
-            "engine_forkchoiceUpdatedV4",
+            CustodyColumnFcuMethodName(version),
             chain.JsonSerializer.Serialize(forkchoiceState),
             null,
             "0x00000000000000500000000010000400");
@@ -1016,11 +1045,24 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_reject_invalid_hex_custody_columns_over_json_rpc()
+    // The prefix-less case only rejects if the version declares the strict BlobCellBitArrayConverter:
+    // the lenient fallback converter decodes it into a well-formed 128-bit mask, which then passes the
+    // length check behind it. So this is what holds the two versions' parameter binding together.
+    private static IEnumerable<TestCaseData> MalformedCustodyColumnsOverJsonRpc()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        foreach (int version in CustodyColumnFcuVersions())
+        {
+            yield return new TestCaseData(version, "0x");
+            yield return new TestCaseData(version, "00000000000000500000000010000400");
+        }
+    }
+
+    [TestCaseSource(nameof(MalformedCustodyColumnsOverJsonRpc))]
+    public async Task ForkchoiceUpdated_should_reject_invalid_hex_custody_columns_over_json_rpc(int version, string custodyColumns)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
         var forkchoiceState = new
         {
             headBlockHash = chain.BlockTree.HeadHash.ToString(true),
@@ -1030,12 +1072,16 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(
             rpcModule,
-            "engine_forkchoiceUpdatedV4",
+            CustodyColumnFcuMethodName(version),
             chain.JsonSerializer.Serialize(forkchoiceState),
             null,
-            "0x");
+            custodyColumns);
 
-        Assert.That(JsonNode.Parse(response)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonNode.Parse(response)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Empty));
+        }
     }
 
     [Test]
@@ -1091,10 +1137,10 @@ public partial class EngineModuleTests
             SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
             TargetGasLimit = chain.BlockTree.Head!.GasLimit
         };
-        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash!;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
-        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash);
+        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash, txs.Length);
 
         string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes)).Data.PayloadId!;
 
@@ -1108,10 +1154,17 @@ public partial class EngineModuleTests
         }
 
         GetPayloadV6Result payload = payloadResult.Data;
-        await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => (Hash256?)new Hash256(h)), TestItem.KeccakE, []);
+        await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => new Hash256(h)), TestItem.KeccakE, []);
 
-        ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
-        await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+        ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash!, payload.ExecutionPayload.BlockHash!, payload.ExecutionPayload.BlockHash!);
+
+        // Without this, the next call's transactions are still unselectable when the one improvement
+        // scheduled for their pool bump runs.
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.ExecutionPayload.BlockHash!);
+        ResultWrapper<ForkchoiceUpdatedV1Result> newFcuResult = await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+        Assert.That(newFcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
+        await txPoolHeadWait;
 
         return payload.ExecutionPayload;
     }
@@ -1179,7 +1232,7 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         if (expectedError is null)
         {
@@ -1303,7 +1356,7 @@ public partial class EngineModuleTests
             {
                 string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
                     chain.JsonSerializer.Serialize(payload), "[]", Keccak.Zero.ToString(true), "[]");
-                JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+                JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
                 Assert.That(successResponse, Is.Not.Null);
 
                 if (expectedError is null)
@@ -1421,7 +1474,7 @@ public partial class EngineModuleTests
         Assert.That(chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        Hash256 parentHash = chain.BlockTree.HeadHash;
+        Hash256 parentHash = chain.BlockTree.HeadHash!;
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,

@@ -572,13 +572,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 
-    [TestCase(false, false, TestName = "TopLevelCreate_Success")]
-    [TestCase(true, false, TestName = "TopLevelCreate_Revert")]
-    [TestCase(false, true, TestName = "TopLevelCreate_AddressCollision")]
-    public void Test_CallTrace_TopLevelCreate(bool revert, bool addressCollision)
+    public enum CreateOutcome { Success, Revert, InvalidOpcode, AddressCollision }
+
+    [TestCase(CreateOutcome.Success, TestName = "TopLevelCreate_Success")]
+    [TestCase(CreateOutcome.Revert, TestName = "TopLevelCreate_Revert")]
+    [TestCase(CreateOutcome.InvalidOpcode, TestName = "TopLevelCreate_InvalidOpcode")]
+    [TestCase(CreateOutcome.AddressCollision, TestName = "TopLevelCreate_AddressCollision")]
+    public void Test_CallTrace_TopLevelCreate(CreateOutcome outcome)
     {
         byte[] initCode;
-        if (addressCollision)
+        if (outcome == CreateOutcome.AddressCollision)
         {
             initCode = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done;
             Address deploymentAddress = ContractAddress.From(Sender, TestState.GetNonce(Sender));
@@ -588,9 +591,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
         else
         {
-            initCode = revert
-                ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
-                : Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+            initCode = outcome switch
+            {
+                CreateOutcome.Revert => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+                CreateOutcome.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+                _ => Prepare.EvmCode.ForInitOf(new byte[3]).Done
+            };
         }
 
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
@@ -598,7 +604,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (addressCollision)
+        if (outcome == CreateOutcome.AddressCollision)
         {
             Assert.That(trace.CustomTracerResult, Is.Null,
                 "address-collision path never enters the EVM; no call frame should be produced");
@@ -608,12 +614,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (revert)
-            Assert.That(frame.Error, Is.Not.Null, "expected error description on reverted CREATE");
-        else
+        if (outcome == CreateOutcome.Success)
         {
             Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
             Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+        }
+        else
+        {
+            Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
+            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
         }
     }
 

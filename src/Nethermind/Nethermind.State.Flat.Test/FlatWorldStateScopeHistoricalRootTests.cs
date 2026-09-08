@@ -57,9 +57,8 @@ public class FlatWorldStateScopeHistoricalRootTests
         Assert.That(scope.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void IsHistorical_FlowsFromReadOnlyBundleToBundle(bool isHistorical)
+    [Test]
+    public void IsHistorical_FlowsFromReadOnlyBundleToBundle([Values] bool isHistorical)
     {
         using SnapshotBundle bundle = BuildBundle(isHistorical);
 
