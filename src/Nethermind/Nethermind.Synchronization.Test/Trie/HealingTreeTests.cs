@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -160,6 +161,79 @@ public class HealingTreeTests
             thread.Start();
             return (thread, completion.Task);
         }
+    }
+
+    /// <summary>The read members of <see cref="IKeyValueStoreWithBatching"/> a code DB can be asked through.</summary>
+    public enum CodeRead { Get, Indexer, GetSpan, GetIntoSpan, GetOwnedMemory, KeyExists }
+
+    [Test]
+    public void code_recovery_reaches_every_read_member([Values] CodeRead read)
+    {
+        using TestMemDb db = new();
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>()).Returns(Task.FromResult<byte[]?>(_rlp));
+
+        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadThrough(codeDb, db, read), Is.EqualTo(_rlp), "recovered");
+            Assert.That(ReadThrough(codeDb, db, read), Is.EqualTo(_rlp), "served locally afterwards");
+        }
+
+        recovery.Received(1).Recover(_key.ValueHash256, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void code_key_exists_that_hits_skips_the_allocating_get()
+    {
+        using TestMemDb db = new() { [_key.Bytes] = _rlp };
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+
+        Assert.That(codeDb.KeyExists(_key.Bytes), Is.True);
+
+        // MemDb answers KeyExists from its own map, while the `byte[] Get` this would otherwise fall
+        // back through is the only member TestMemDb records - so no recorded read is the proof.
+        db.KeyWasRead(_key.BytesToArray(), times: 0);
+        recovery.DidNotReceiveWithAnyArgs().Recover(default, default);
+    }
+
+    private static byte[]? ReadThrough(HealingCodeDb codeDb, TestMemDb db, CodeRead read) => read switch
+    {
+        CodeRead.Get => codeDb.Get(_key.Bytes),
+        CodeRead.Indexer => ((IKeyValueStore)codeDb)[_key.Bytes],
+        CodeRead.GetSpan => ReadSpan(codeDb),
+        CodeRead.GetIntoSpan => ReadIntoSpan(codeDb),
+        CodeRead.GetOwnedMemory => ReadOwnedMemory(codeDb),
+        CodeRead.KeyExists => codeDb.KeyExists(_key.Bytes) ? db[_key.Bytes] : null,
+        _ => throw new ArgumentOutOfRangeException(nameof(read), read, null)
+    };
+
+    private static byte[]? ReadSpan(HealingCodeDb codeDb)
+    {
+        Span<byte> span = codeDb.GetSpan(_key.Bytes);
+        try
+        {
+            return span.IsNull() ? null : span.ToArray();
+        }
+        finally
+        {
+            codeDb.DangerousReleaseMemory(span);
+        }
+    }
+
+    private static byte[]? ReadIntoSpan(HealingCodeDb codeDb)
+    {
+        byte[] output = new byte[_rlp.Length];
+        int length = codeDb.Get(_key.Bytes, output);
+        return length == 0 ? null : output[..length];
+    }
+
+    private static byte[]? ReadOwnedMemory(HealingCodeDb codeDb)
+    {
+        using MemoryManager<byte>? memory = codeDb.GetOwnedMemory(_key.Bytes);
+        return memory?.Memory.ToArray();
     }
 
     [Test]
