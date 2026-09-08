@@ -76,8 +76,10 @@ internal sealed class MethodCloner(MethodDefinition source)
                 if (instruction.Offset != point.Offset) continue;
                 _target.DebugInformation.SequencePoints.Add(new SequencePoint(instructions[instruction], point.Document)
                 {
-                    StartLine = point.StartLine, StartColumn = point.StartColumn,
-                    EndLine = point.EndLine, EndColumn = point.EndColumn
+                    StartLine = point.StartLine,
+                    StartColumn = point.StartColumn,
+                    EndLine = point.EndLine,
+                    EndColumn = point.EndColumn
                 });
                 break;
             }
@@ -119,8 +121,10 @@ internal sealed class MethodCloner(MethodDefinition source)
     {
         FunctionPointerType result = new()
         {
-            ReturnType = MapType(pointer.ReturnType), CallingConvention = pointer.CallingConvention,
-            HasThis = pointer.HasThis, ExplicitThis = pointer.ExplicitThis
+            ReturnType = MapType(pointer.ReturnType),
+            CallingConvention = pointer.CallingConvention,
+            HasThis = pointer.HasThis,
+            ExplicitThis = pointer.ExplicitThis
         };
         foreach (ParameterDefinition parameter in pointer.Parameters)
             result.Parameters.Add(new ParameterDefinition(MapType(parameter.ParameterType)));
@@ -137,7 +141,9 @@ internal sealed class MethodCloner(MethodDefinition source)
         }
         MethodReference reference = new(method.Name, MapType(method.ReturnType), MapType(method.DeclaringType))
         {
-            HasThis = method.HasThis, ExplicitThis = method.ExplicitThis, CallingConvention = method.CallingConvention
+            HasThis = method.HasThis,
+            ExplicitThis = method.ExplicitThis,
+            CallingConvention = method.CallingConvention
         };
         foreach (GenericParameter parameter in method.GenericParameters)
             reference.GenericParameters.Add(new GenericParameter(parameter.Name, reference));
@@ -150,7 +156,9 @@ internal sealed class MethodCloner(MethodDefinition source)
     {
         CallSite result = new(MapType(site.ReturnType))
         {
-            HasThis = site.HasThis, ExplicitThis = site.ExplicitThis, CallingConvention = site.CallingConvention
+            HasThis = site.HasThis,
+            ExplicitThis = site.ExplicitThis,
+            CallingConvention = site.CallingConvention
         };
         foreach (ParameterDefinition parameter in site.Parameters)
             result.Parameters.Add(new ParameterDefinition(MapType(parameter.ParameterType)));
