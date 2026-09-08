@@ -157,16 +157,11 @@ public class TrieNodeTests
         TreePath path = TreePath.Empty;
         if (resolved) child.ResolveNode(NullTrieNodeResolver.Instance, path);
 
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, child);
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
-        parent.ResolveNode(NullTrieNodeResolver.Instance, path);
-        parent.AppendChildPath(ref path, 0);
+        TrieNode parent = CreateParent(child, ref path);
 
         TrieNode? ReadChild(ITrieNodeResolver resolver) => iterator
             ? parent.CreateChildIterator().GetChildWithChildPath(resolver, ref path, 0)
-            : parent.GetChildWithChildPath(resolver, ref path, 0, keepChildRef: true);
+            : parent.GetChildWithChildPath(resolver, ref path, 0);
 
         ITrieNodeResolver firstResolver = Substitute.For<ITrieNodeResolver>();
         firstResolver.FindCachedOrUnknown(path, hash).Returns(child);
@@ -181,6 +176,7 @@ public class TrieNodeTests
 
         Assert.That(second, Is.SameAs(warmerOwned && !resolved ? replacement : child));
 
+        // Only an initially unresolved warmer child leaves a hash slot for this transition to upgrade.
         second!.ResolveNode(NullTrieNodeResolver.Instance, path);
         secondResolver.FindCachedOrUnknown(path, hash).Returns(second);
         Assert.That(ReadChild(secondResolver), Is.SameAs(second));
@@ -188,6 +184,91 @@ public class TrieNodeTests
 
         Assert.That(ReadChild(secondResolver), Is.SameAs(second));
         secondResolver.DidNotReceive().FindCachedOrUnknown(path, hash);
+    }
+
+    [Test]
+    public void Pruned_child_of_non_persisted_parent_is_not_retained([Values] bool iterator)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode child = new(NodeType.Unknown, hash, rlp);
+        TreePath path = TreePath.Empty;
+        TrieNode parent = CreateParent(child, ref path);
+        parent.IsPersisted = false;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(path, hash).Returns(child);
+        parent.GetChildWithChildPath(resolver, ref path, 0);
+        parent.PrunePersistedRecursively(1);
+        resolver.ClearReceivedCalls();
+
+        for (int i = 0; i < 2; i++)
+        {
+            TrieNode? actual = iterator
+                ? parent.CreateChildIterator().GetChildWithChildPath(resolver, ref path, 0)
+                : parent.GetChildWithChildPath(resolver, ref path, 0);
+            Assert.That(actual, Is.SameAs(child));
+        }
+
+        resolver.Received(2).FindCachedOrUnknown(path, hash);
+    }
+
+    [Test]
+    public void Hash_child_slot_does_not_retain_live_miss([Values] bool iterator)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode warmer = new(NodeType.Unknown, hash);
+        warmer.MarkWarmerOwned();
+        TrieNode available = new(NodeType.Unknown, hash, rlp);
+        TreePath path = TreePath.Empty;
+        TrieNode parent = CreateParent(available, ref path);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        TrieNode missing = new(NodeType.Unknown, hash);
+        resolver.FindCachedOrUnknown(path, hash).Returns(warmer, missing, available);
+        TrieNode? ReadChild() => iterator
+            ? parent.CreateChildIterator().GetChildWithChildPath(resolver, ref path, 0)
+            : parent.GetChildWithChildPath(resolver, ref path, 0);
+
+        Assert.That(ReadChild(), Is.SameAs(warmer));
+        Assert.That(ReadChild(), Is.SameAs(missing));
+        Assert.That(ReadChild(), Is.SameAs(available));
+        resolver.ClearReceivedCalls();
+        Assert.That(ReadChild(), Is.SameAs(available));
+        resolver.DidNotReceive().FindCachedOrUnknown(path, hash);
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void Deep_persisted_child_retention_respects_pruning(bool iterator, bool keepChildRef)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode child = new(NodeType.Unknown, hash, rlp);
+        child.MarkWarmerOwned();
+        TreePath path = TreePath.FromHexString("00000");
+        TrieNode parent = CreateParent(child, ref path);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(path, hash).Returns(child);
+        TrieNode? ReadChild() => iterator
+            ? parent.CreateChildIterator().GetChildWithChildPath(resolver, ref path, 0)
+            : parent.GetChildWithChildPath(resolver, ref path, 0, keepChildRef);
+
+        Assert.That(ReadChild(), Is.SameAs(child));
+        child.ResolveNode(NullTrieNodeResolver.Instance, path);
+        Assert.That(ReadChild(), Is.SameAs(child));
+        resolver.ClearReceivedCalls();
+
+        Assert.That(ReadChild(), Is.SameAs(child));
+        resolver.Received(keepChildRef ? 0 : 1).FindCachedOrUnknown(path, hash);
+    }
+
+    private static TrieNode CreateParent(TrieNode child, ref TreePath path)
+    {
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, child);
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        parent.ResolveNode(NullTrieNodeResolver.Instance, path);
+        parent.AppendChildPath(ref path, 0);
+        return parent;
     }
 
     [Test]

@@ -927,7 +927,7 @@ namespace Nethermind.Trie
             else if (childOrRef is Hash256 reference)
             {
                 child = tree.FindCachedOrUnknown(childPath, reference);
-                if (!child.IsUnresolvedWarmerOwned) _nodeData![childIndex] = child;
+                if (CanRetainResolvedChild(child)) _nodeData![childIndex] = child;
             }
             else
             {
@@ -957,6 +957,12 @@ namespace Nethermind.Trie
                     $"Unexpected type found at position {childIndex} of {this} with {nameof(_nodeData)} of length {_nodeData?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
         }
+
+        /// <summary>Whether a hash slot can retain the child returned by its resolver.</summary>
+        /// <remarks>Non-persisted parents keep hashes after memory pruning. Bare misses must keep using the resolver,
+        /// whose snapshot lookup can be broader than the child's later RLP load.</remarks>
+        private bool CanRetainResolvedChild(TrieNode child) =>
+            IsPersisted && !child.IsUnresolvedWarmerOwned && (child.NodeType != NodeType.Unknown || child.HasRlp);
 
         public void ReplaceChildRef(int i, TrieNode child)
         {
@@ -1682,7 +1688,7 @@ namespace Nethermind.Trie
                 else if (childOrRef is Hash256 reference)
                 {
                     child = tree.FindCachedOrUnknown(childPath, reference);
-                    if (!child.IsUnresolvedWarmerOwned) node._nodeData![childIndex] = child;
+                    if (node.CanRetainResolvedChild(child)) node._nodeData![childIndex] = child;
                 }
                 else
                 {
