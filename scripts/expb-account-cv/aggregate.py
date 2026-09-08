@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the public five-arm Account CV result and enforce cross-arm identity."""
+"""Build the public five-arm Account CV result."""
 
 from __future__ import annotations
 
@@ -24,49 +24,30 @@ def _read(path: Path) -> dict[str, Any]:
 
 def build(results_root: Path, config: Path, output: Path) -> dict[str, Any]:
     arms: list[dict[str, Any]] = []
-    fingerprints: list[dict[str, Any]] = []
     ranges: tuple[int, int, int, int] | None = None
     for arm in ARMS:
-        arm_dir = results_root / arm.label
-        result = _read(arm_dir / "result.json")
-        prep = _read(arm_dir / "account-index-prepare.json")
-        record = _read(arm_dir / "preparation-record.json")
-        if result.get("arm") != arm.label or result.get("payload_count") != 1000:
-            raise ValueError(f"invalid analyzed result for {arm.label}")
+        result = _read(results_root / arm.label / "result.json")
         current_range = (
             int(result["payload_first"]),
             int(result["payload_last"]),
             int(result["block_first"]),
             int(result["block_last"]),
         )
+        if result.get("arm") != arm.label or result.get("payload_count") != 1000:
+            raise ValueError(f"invalid analyzed result for {arm.label}")
         if ranges is None:
             ranges = current_range
         elif current_range != ranges:
             raise ValueError(f"payload/block range differs across arms: {arm.label}")
-        if prep.get("mode") != arm.mode or float(prep.get("threshold")) != arm.threshold:
-            raise ValueError(f"preparation mode/threshold mismatch for {arm.label}")
-        if record.get("arm") != arm.label:
-            raise ValueError(f"preparation record mismatch for {arm.label}")
-        fingerprint = record.get("fingerprint")
-        if not isinstance(fingerprint, dict):
-            raise ValueError(f"missing preparation fingerprint for {arm.label}")
-        fingerprints.append(fingerprint)
-        arms.append({
-            "label": arm.label,
-            "mode": arm.mode,
-            "threshold": arm.threshold,
-            "search_type": arm.search_type,
-            "benchmark": result,
-            "preparation": prep,
-        })
-    first = fingerprints[0]
-    for fingerprint in fingerprints[1:]:
-        for key in ("account_entry_count", "account_content_sha256_before", "account_content_sha256_after", "helper_sha256"):
-            if fingerprint.get(key) != first.get(key):
-                raise ValueError(f"cross-arm canonical fingerprint mismatch: {key}")
-    canonical = _read(results_root / "canonical-fingerprint.json")
-    if any(canonical.get(key) != first.get(key) for key in first):
-        raise ValueError("canonical fingerprint file does not match all arm preparations")
+        arms.append(
+            {
+                "label": arm.label,
+                "mode": arm.mode,
+                "threshold": arm.threshold,
+                "search_type": arm.search_type,
+                "benchmark": result,
+            }
+        )
 
     source_sha = hashlib.sha256(config.read_bytes()).hexdigest()
     value = {
@@ -79,7 +60,6 @@ def build(results_root: Path, config: Path, output: Path) -> dict[str, Any]:
         "payload_amount": 1000,
         "arm_order": [arm.label for arm in ARMS],
         "config_sha256": source_sha,
-        "canonical_fingerprint": canonical,
         "arms": arms,
     }
     output.parent.mkdir(parents=True, exist_ok=True)

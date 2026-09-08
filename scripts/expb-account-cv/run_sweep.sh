@@ -6,7 +6,6 @@ set -euo pipefail
 : "${EXPB_RUN_ROOT:?EXPB_RUN_ROOT is required}"
 : "${EXPB_RESULTS_ROOT:?EXPB_RESULTS_ROOT is required}"
 : "${EXPB_SAMPLES_ROOT:?EXPB_SAMPLES_ROOT is required}"
-: "${EXPB_ACCOUNT_HELPER_PATH:?EXPB_ACCOUNT_HELPER_PATH is required}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "${EXPB_RUN_ROOT}" "${EXPB_RESULTS_ROOT}" "${EXPB_SAMPLES_ROOT}"
@@ -14,12 +13,11 @@ unset EXPB_EVM_WARMUP DOTTRACE PERF DOTNET_TRACE NETHERMIND_PROFILE_BLOCKS || tr
 
 labels=(master forced-interpolation auto-cv-0.1 auto-cv-0.2 auto-cv-0.5)
 for label in "${labels[@]}"; do
-  for name in "expb-executor-${label//./-}" "expb-executor-${label//./-}-nethermind"; do
-    if docker inspect "${name}" >/dev/null 2>&1; then
-      echo "refusing to reuse pre-existing unowned container ${name}" >&2
-      exit 2
-    fi
-  done
+  container="expb-executor-${label//./-}-nethermind"
+  if docker inspect "${container}" >/dev/null 2>&1; then
+    echo "refusing to reuse pre-existing unowned container ${container}" >&2
+    exit 2
+  fi
 done
 
 sampler_args=(
@@ -47,11 +45,8 @@ for label in "${labels[@]}"; do
   arm_dir="${EXPB_RESULTS_ROOT}/${label}"
   mkdir -p "${arm_dir}"
   log_path="${arm_dir}/expb.log"
-  export EXPB_ACCOUNT_ARM="${label}"
-  export EXPB_ACCOUNT_SCRATCH_ROOT="${EXPB_RUN_ROOT}"
-  export EXPB_ACCOUNT_RESULTS_ROOT="${EXPB_RESULTS_ROOT}"
   set +e
-  "${EXPB_PYTHON}" "${HERE}/expb_account_cv.py" execute-scenarios \
+  "${EXPB_PYTHON}" -c 'from expb import app; app()' execute-scenarios \
     --config-file "${EXPB_CONFIG}" \
     --filter "^${label}$" \
     --per-payload-metrics \

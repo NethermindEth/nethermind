@@ -83,10 +83,10 @@ def build_config(
         flags = scenario.get("extra_flags", [])
         if not isinstance(flags, list) or not all(isinstance(flag, str) for flag in flags):
             raise ValueError(f"source extra_flags for {arm.label} is not a string list")
-        scenario["extra_flags"] = _without_account_overrides(flags) + [
-            WRITE_BUFFER_FLOOR,
-            account_extra_flag(arm),
-        ]
+        account_flag = account_extra_flag(arm)
+        scenario["extra_flags"] = _without_account_overrides(flags) + [WRITE_BUFFER_FLOOR]
+        if account_flag is not None:
+            scenario["extra_flags"].append(account_flag)
         scenarios[arm.label] = scenario
     document["scenarios"] = scenarios
     if work_root is not None:

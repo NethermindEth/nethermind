@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sample only the exact EXPB Nethermind containers for the five CV arms.
 
-The helper container has a different name and is never selected.  Samples are
+Only the exact client container names are selected.  Samples are
 written as raw cgroup counters so lifecycle and measured-window costs can be
 computed independently after the public EXPB logs have been validated.
 """

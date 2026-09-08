@@ -18,14 +18,14 @@ env:
   EXPB_REVISION: 9609a1b66aba5b67c6accc1930cb3e50748ca72f
   EXPB_DATA_DIR: /mnt/sda/expb-data
   EXPB_CONFIG_SOURCE: /mnt/sda/expb-data/github-action-mainnet-fusaka-flat.yaml
-  HELPER_CPUSET: 2-7,10-15
-  HELPER_MEMORY: 64g
+  CLIENT_CPUSET: 2-7,10-15
+  CLIENT_MEMORY: 64g
 
 jobs:
-  build-account-helper:
-    name: Build Account helper
+  contract-tests:
+    name: Validate bounded sweep contract
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -35,57 +35,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Run harness contract tests
+      - name: Run Python contract tests
         shell: bash
         run: |
           set -euo pipefail
           python3 -m pip install --user --disable-pip-version-check PyYAML
           python3 -m unittest discover -s scripts/expb-account-cv -p 'test_*.py'
-
-      - name: Publish helper directory
-        shell: bash
-        run: |
-          set -euo pipefail
-          output="${RUNNER_TEMP}/account-index-prepare"
-          rm -rf -- "${output}"
-          dotnet publish tools/AccountIndexPrepare/AccountIndexPrepare.csproj \
-            --configuration Release \
-            --runtime linux-x64 \
-            --self-contained true \
-            --output "${output}" \
-            -p:PublishSingleFile=false
-          test -x "${output}/AccountIndexPrepare"
-          "${output}/AccountIndexPrepare" --self-test
-
-      - name: Upload helper directory
-        uses: actions/upload-artifact@v4
-        with:
-          name: account-index-prepare-linux-x64
-          path: ${{ runner.temp }}/account-index-prepare
-          include-hidden-files: true
-          retention-days: 3
+          python3 scripts/expb-account-cv/expb_account_cv.py --self-test
 
   run-account-cv:
     name: Run sequential Fusaka Account CV arms
-    needs: build-account-helper
+    needs: contract-tests
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 210
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Download complete helper directory
-        uses: actions/download-artifact@v4
-        with:
-          name: account-index-prepare-linux-x64
-          path: ${{ runner.temp }}/account-index-prepare
-
-      - name: Prepare runner and install pinned EXPB
+      - name: Install pinned EXPB
         shell: bash
         run: |
           set -euo pipefail
@@ -102,39 +69,30 @@ jobs:
           test -x "${expb_python}"
           "${expb_python}" -c 'from expb import app; print("pinned expb console entrypoint: expb:app")'
           echo "EXPB_PYTHON=${expb_python}" >> "${GITHUB_ENV}"
-          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Render exact five-arm config
         shell: bash
         run: |
           set -euo pipefail
-          source_config="${EXPB_CONFIG_SOURCE}"
-          test -f "${source_config}"
+          test -f "${EXPB_CONFIG_SOURCE}"
           run_root="${EXPB_DATA_DIR}/account-cv-fusaka/${GITHUB_RUN_ID}"
           mkdir -p "${run_root}/work" "${run_root}/results" "${run_root}/samples" "${run_root}/outputs"
           "${EXPB_PYTHON}" scripts/expb-account-cv/render_config.py \
-            "${source_config}" "${run_root}/config.yaml" \
+            "${EXPB_CONFIG_SOURCE}" "${run_root}/config.yaml" \
             --work-root "${run_root}/work" \
             --output-root "${run_root}/outputs" \
             --image "${ACCOUNT_IMAGE}" \
             --expected-snapshot-source /mnt/sda/nethermind-flat-25490000 \
-            --expected-cpuset "${HELPER_CPUSET}" \
-            --expected-memory "${HELPER_MEMORY}"
+            --expected-cpuset "${CLIENT_CPUSET}" \
+            --expected-memory "${CLIENT_MEMORY}"
           {
             echo "EXPB_RUN_ROOT=${run_root}"
             echo "EXPB_CONFIG=${run_root}/config.yaml"
             echo "EXPB_RESULTS_ROOT=${run_root}/results"
             echo "EXPB_SAMPLES_ROOT=${run_root}/samples"
-            echo "EXPB_ACCOUNT_IMAGE=${ACCOUNT_IMAGE}"
-            echo "EXPB_ACCOUNT_HELPER_CPUSET=${HELPER_CPUSET}"
-            echo "EXPB_ACCOUNT_HELPER_MEMORY=${HELPER_MEMORY}"
           } >> "${GITHUB_ENV}"
-          helper="$(find "${RUNNER_TEMP}/account-index-prepare" -type f -name AccountIndexPrepare -print -quit)"
-          test -n "${helper}"
-          chmod +x "${helper}"
-          echo "EXPB_ACCOUNT_HELPER_PATH=${helper}" >> "${GITHUB_ENV}"
           printf '%s\n' \
-            '{"image":"'"${ACCOUNT_IMAGE}"'","source_revision":"d66cfd50e0b6f492d8bc5d6b99be22e1821a55e4","expb_revision":"'"${EXPB_REVISION}"'","runner":"reproducible-benchmarks","layout":"flat","payload_set":"fusaka","amount":1000}' \
+            '{"image":"'"${ACCOUNT_IMAGE}"'","source_revision":"d66cfd50e0b6f492d8bc5d6b99be22e1821a55e4","expb_revision":"'"${EXPB_REVISION}"'","runner":"reproducible-benchmarks","layout":"flat","payload_set":"fusaka","amount":1000,"preparation":"none"}' \
             > "${run_root}/provenance.json"
 
       - name: Run fixed sequential five-arm sweep
@@ -143,7 +101,7 @@ jobs:
           set -euo pipefail
           bash scripts/expb-account-cv/run_sweep.sh
 
-      - name: Upload complete sweep artifacts
+      - name: Upload sweep artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
