@@ -38,8 +38,9 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
     [TestCaseSource(nameof(LoadWitnessTests))]
     public async Task WitnessMatchesFixture(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
-    // Decoding installs the process-wide hash seed; this fixture is ParallelScope.All, so the
-    // reseed would otherwise land while a WitnessMatchesFixture case is hashing.
+    // Execute publishes the process-wide StatelessExecutor.FailureOutput, and this fixture inherits
+    // ParallelScope.All, so concurrent cases would otherwise overwrite each other's sentinel. (The
+    // hash seed the decode installs is a no-op here: this assembly builds without EnableZkEvm.)
     [NonParallelizable]
     [TestCaseSource(nameof(LoadStatelessTests))]
     public void StatelessExecutorOutputMatchesFixture(string inputBytes, string expectedOutputBytes)
