@@ -153,7 +153,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     return currentContext;
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
+                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
                 if (!cts.IsCancellationRequested)
                 {
                     currentContext.Dispose();
@@ -180,7 +180,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             {
                 if (!token.IsCancellationRequested)
                 {
-                    LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
+                    LogProductionResult(b, currentBestBlock, blockImprovementContext.Best.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
                 }
             },
             TaskContinuationOptions.RunContinuationsAsynchronously);
@@ -211,8 +211,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
-                Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, cts);
+                BlockProductionSnapshot best = blockImprovementContext.Best;
+                ImproveBlock(payloadId, parentHeader, payloadAttributes, best.CurrentBestBlock ?? currentBestBlock, startDateTime, best.BlockFees, cts);
             }
             else
             {
@@ -321,7 +321,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Best.CurrentBestBlock?.Timestamp}");
 
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
@@ -387,7 +387,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             try
             {
-                bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
+                bool currentBestBlockIsEmpty = blockContext.Best.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
                     // Inform current improvement that we need results now
@@ -409,7 +409,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
-                return blockContext;
+                return blockContext.Best;
             }
             finally
             {

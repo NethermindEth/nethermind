@@ -26,8 +26,7 @@ public partial class EngineModuleTests
         public void CancelOngoingImprovements() { }
 
         public Task<Block?> ImprovementTask { get; } = Task.FromResult((Block?)currentBestBlock);
-        public Block? CurrentBestBlock { get; } = currentBestBlock;
-        public UInt256 BlockFees { get; }
+        public BlockProductionSnapshot Best { get; } = new(currentBestBlock, UInt256.Zero);
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; } = startDateTime;
     }

@@ -33,8 +33,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         VirtualMachine<TGasPolicy> vm = new(hashProvider, specProvider, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
-        byte[] bytecode = new byte[64];
-        bytecode.AsSpan().Fill((byte)Instruction.JUMPDEST);
         byte[] address = new byte[20];
         address[^1] = 0x1;
         Address addressOne = new(address);
@@ -47,26 +45,13 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
-            codeInfo: new CodeInfo(bytecode),
-            executingAccount: addressOne,
-            caller: addressOne,
-            codeSource: addressOne,
-            callDepth: 0,
-            value: 0,
-            inputData: default);
+        vm._worldState = state;
+        vm._codeInfoRepository = codeInfoRepository;
 
-        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
-        {
-            vm.VmState = vmState;
-            vm._worldState = state;
-            vm._codeInfoRepository = codeInfoRepository;
-
-            WarmUpOpcodeHandlers<OffFlag, OffFlag>(vm, state, vmState);
-            WarmUpOpcodeHandlers<OffFlag, OnFlag>(vm, state, vmState);
-            WarmUpOpcodeHandlers<OnFlag, OffFlag>(vm, state, vmState);
-            WarmUpOpcodeHandlers<OnFlag, OnFlag>(vm, state, vmState);
-        }
+        WarmUpOpcodeHandlers<OffFlag, OffFlag>(vm, state, addressOne);
+        WarmUpOpcodeHandlers<OffFlag, OnFlag>(vm, state, addressOne);
+        WarmUpOpcodeHandlers<OnFlag, OffFlag>(vm, state, addressOne);
+        WarmUpOpcodeHandlers<OnFlag, OnFlag>(vm, state, addressOne);
 
         TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
@@ -163,7 +148,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static void WarmUpOpcodeHandlers<TTracingInst, TCancelable>(
         VirtualMachine<TGasPolicy> vm,
         IWorldState state,
-        VmState<TGasPolicy> vmState)
+        Address address)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -173,33 +158,43 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         vm._txTracer = txTracer;
         // This drives RunByteCode directly, so it resolves the table itself rather than through a transaction.
         vm.PrepareOpcodes<TTracingInst, TCancelable>();
-        byte[] code = new byte[EvmStack.WordSize + 2];
-        vmState.InitializeStacks(txTracer, code, out EvmStack stack);
+        CodeInfo[] codeInfos = new CodeInfo[byte.MaxValue + 1];
+        for (int i = 0; i < codeInfos.Length; i++)
+            codeInfos[i] = CreateWarmUpCodeInfo((Instruction)i);
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {
             for (int i = 0; i <= byte.MaxValue; i++)
             {
-                code.AsSpan().Clear();
-                Instruction instruction = (Instruction)i;
-                code[0] = (byte)instruction;
-                if (instruction is Instruction.JUMP or Instruction.JUMPI)
-                    code[1] = (byte)Instruction.JUMPDEST;
-                else if (instruction is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
-                    code[1] = 0x80;
+                CodeInfo codeInfo = codeInfos[i];
+                using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+                    codeInfo, address, address, address, 0, 0, default);
+                using StackAccessTracker accessTracker = new();
+                using VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(
+                    TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, accessTracker, state.TakeSnapshot());
+                vm.VmState = vmState;
+                vmState.InitializeStacks(txTracer, codeInfo.CodeSpan, out EvmStack stack);
 
                 for (int stackItem = 0; stackItem < 20; stackItem++)
                     stack.PushOne<TTracingInst>();
 
-                vmState.ProgramCounter = 0;
-                vmState.Gas = TGasPolicy.FromULong(ulong.MaxValue);
                 CallResult callResult = vm.RunByteCode<TTracingInst, TCancelable>(ref stack, ref vmState.Gas);
                 callResult.StateToExecute?.Dispose();
 
                 state.Reset(resetBlockChanges: true);
-                stack.Head = 0;
             }
         }
+    }
+
+    private static CodeInfo CreateWarmUpCodeInfo(Instruction instruction)
+    {
+        byte[] code = new byte[EvmStack.WordSize + 2];
+        code[0] = (byte)instruction;
+        if (instruction is Instruction.JUMP or Instruction.JUMPI)
+            code[1] = (byte)Instruction.JUMPDEST;
+        else if (instruction is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
+            code[1] = 0x80;
+        return new CodeInfo(code);
     }
 
     private class WarmupBlockhashProvider(ISpecProvider specProvider) : IBlockhashProvider
