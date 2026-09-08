@@ -97,7 +97,9 @@ public sealed class ModuleWeaver : BaseModuleWeaver
             if (!visited.Add(method) || !method.HasBody) continue;
             foreach (Instruction instruction in method.Body.Instructions)
             {
-                if (instruction.Operand is not MethodReference reference || reference.DeclaringType.Resolve() != vm) continue;
+                if (instruction.Operand is not MethodReference reference
+                    || reference.DeclaringType.GetElementType().FullName != vm.FullName
+                    || reference.DeclaringType.Resolve() != vm) continue;
                 MethodDefinition target = Resolve(reference);
                 if (instruction.OpCode == OpCodes.Ldftn)
                 {

@@ -49,7 +49,7 @@ Validation:
 
 ```sh
 dotnet build src/Nethermind/Nethermind.Evm.Test/Nethermind.Evm.Test.csproj -c Release -nr:false
-dotnet test --project src/Nethermind/Nethermind.Evm.Test/Nethermind.Evm.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~VirtualMachineTests
+dotnet test --project src/Nethermind/Nethermind.Evm.Test/Nethermind.Evm.Test.csproj -c Release --no-build -- --filter "FullyQualifiedName~VirtualMachineTests|FullyQualifiedName~OpcodeWeaverTests"
 ```
 
 When editing the weaver itself, disable MSBuild node reuse as above so a node

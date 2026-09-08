@@ -12,7 +12,7 @@ using CilInstruction = Mono.Cecil.Cil.Instruction;
 
 namespace Nethermind.Evm.Test;
 
-[TestFixture]
+[TestFixture, Parallelizable(ParallelScope.All)]
 public class OpcodeWeaverTests
 {
     [Test]
@@ -113,10 +113,10 @@ public class OpcodeWeaverTests
     }
 
     [Test]
-    public void Opcode_factory_removal_ignores_unrelated_unresolved_calls_but_rejects_factory_calls([Values] bool factoryCall)
+    public void Opcode_validation_ignores_unrelated_unresolved_calls_but_rejects_factory_calls([Values] bool factoryCall, [Values] bool inTable)
     {
         using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
-        MethodDefinition factory = SetUpOpcodeTable(module, ["BadInstructionOpcode"]);
+        (MethodDefinition factory, MethodDefinition table) = SetUpOpcodeTable(module, ["BadInstructionOpcode"]);
         module.Types.Add(new TypeDefinition("Nethermind.Evm", "Instruction", TypeAttributes.Class, module.TypeSystem.Object));
         TypeDefinition unrelated = new("Test", "Unrelated", TypeAttributes.Class, module.TypeSystem.Object);
         module.Types.Add(unrelated);
@@ -124,7 +124,8 @@ public class OpcodeWeaverTests
         unrelated.Methods.Add(caller);
         AssemblyNameReference missing = new("MissingAssembly", new Version(1, 0));
         TypeReference external = new("Missing", "External", module, missing);
-        caller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Call, new MethodReference("UnrelatedCall", module.TypeSystem.Void, external)));
+        MethodDefinition externalCaller = inTable ? table : caller;
+        externalCaller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Call, new MethodReference("UnrelatedCall", module.TypeSystem.Void, external)));
         TypeDefinition vm = module.GetType("Nethermind.Evm.VirtualMachine`1");
         if (factoryCall)
             caller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Call, factory));
@@ -141,7 +142,7 @@ public class OpcodeWeaverTests
         }
     }
 
-    private static MethodDefinition SetUpOpcodeTable(ModuleDefinition module, string[] opcodeNames)
+    private static (MethodDefinition Factory, MethodDefinition Table) SetUpOpcodeTable(ModuleDefinition module, string[] opcodeNames)
     {
         MethodDefinition handler = CreateWeaverMethod(module, "ExecuteOpcode");
         TypeDefinition vm = handler.DeclaringType;
@@ -161,7 +162,7 @@ public class OpcodeWeaverTests
             call.GenericArguments.Add(opcode);
             table.Body.Instructions.Add(CilInstruction.Create(OpCodes.Call, call));
         }
-        return factory;
+        return (factory, table);
     }
 
     private static MethodDefinition CreateWeaverMethod(ModuleDefinition module, string name)
