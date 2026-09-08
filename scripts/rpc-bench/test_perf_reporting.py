@@ -871,7 +871,7 @@ printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
 case "$1 $2" in
   "build -q") prev=""; for a in "$@"; do [[ "$prev" == "-t" ]] && : > "$FAKE_STATE/images/${a//:/_}"; prev="$a"; done ;;
   "image inspect") [[ -f "$FAKE_STATE/images/${3//:/_}" ]] ;;
-  "run --rm")
+  "run --rm"|"run --name")
     n=$(( $(cat "$FAKE_STATE/runs" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$FAKE_STATE/runs"
     for a in "$@"; do [[ "$a" == *:/io ]] && printf 'run %s\n' "$n" > "${a%:/io}/out/results.csv"; done
     true ;;
@@ -1139,6 +1139,70 @@ esac
         self.assertIn("exit 1", warmup)
         # The unprofiled path must still only warn.
         self.assertIn("::warning::warm-up failed", warmup)
+
+    def test_corpus_sweep_requires_a_usable_warmup_but_continues_to_the_next_client(self) -> None:
+        sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
+        self.assertTrue(sweep.startswith("#!/usr/bin/env bash\n" "# SPDX-FileCopyrightText:"))
+        self.assertIn("set -uo pipefail", "\n".join(sweep.splitlines()[:12]))
+        self.assertNotIn("\nset -e", sweep)
+        self.assertIn("warmup_fail=0", sweep)
+        self.assertIn("delivered * 10 >= requested * 8", sweep)
+        self.assertIn("usable aggregate delivered", sweep)
+        self.assertIn("one or more requested warm-up(s) failed the usable-aggregate/80%-delivery contract", sweep)
+        self.assertIn("if (( health_exception_count > 0 )); then", sweep)
+        self.assertIn("node log is missing; cannot confirm clean shutdown", sweep)
+        # The per-client loop remains unconditional after the warm-up branch; the final gate is
+        # deliberately after all node/cell/parity work so a failed arm does not suppress its pair.
+        self.assertLess(sweep.index('for entry in $CLIENTS'), sweep.index('if [[ "$warmup_fail" -gt 0 ]]'))
+
+    def test_jsonbench_records_tool_and_tee_status_for_logged_pipelines(self) -> None:
+        run_jsonbench = RUN_JSONBENCH.read_text(encoding="utf-8")
+        self.assertEqual(run_jsonbench.count('pipeline_status=("${PIPESTATUS[@]}")'), 2)
+        self.assertEqual(run_jsonbench.count('tee_exit_code="${pipeline_status[1]:--1}"'), 2)
+        self.assertEqual(run_jsonbench.count("tool_exit_code != 0 || tee_exit_code != 0"), 2)
+
+    def test_corpus_warmup_predicate_and_final_gate_behavior(self) -> None:
+        """Exercise the extracted delivery predicate and final gate under no-errexit shell rules."""
+        sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
+        start = sweep.index("warmup_delivery_is_valid()")
+        end = sweep.index("\n}", start) + 2
+        predicate = sweep[start:end]
+        gate_start = sweep.index('if [[ "$warmup_fail" -gt 0 ]]')
+        gate_end = sweep.index("\nfi", gate_start) + 3
+        final_gate = sweep[gate_start:gate_end]
+        harness = f"""set -uo pipefail
+{predicate}
+run_case() {{
+  local mode="$1" delivered="$2" requested="$3" expected="$4"
+  local warmup_fail=0 next_client_ran=0
+  for client in A B; do
+    if [[ "$client" == A ]]; then
+      case "$mode" in
+        failed) warmup_fail=1 ;;
+        missing|aggregate) warmup_delivery_is_valid "$delivered" "$requested" || warmup_fail=1 ;;
+      esac
+    else
+      next_client_ran=1
+    fi
+  done
+  [[ "$next_client_ran" -eq 1 ]] || return 1
+  if [[ "$expected" -eq 1 ]]; then
+    [[ "$warmup_fail" -gt 0 ]]
+  else
+    [[ "$warmup_fail" -eq 0 ]]
+  fi
+}}
+run_case aggregate 80 100 0 || exit 1
+run_case aggregate 79 100 1 || exit 1
+run_case failed 0 100 1 || exit 1
+run_case missing 0 100 1 || exit 1
+warmup_fail=1
+fail=0
+{final_gate}
+[[ "$fail" -eq 1 ]]
+"""
+        result = subprocess.run([BASH, "-c", harness], check=False, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
 
     def test_dotnet_trace_sidecar_is_stopped_before_the_node_and_shipped_as_its_own_artifact(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")

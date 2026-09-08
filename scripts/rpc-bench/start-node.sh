@@ -69,6 +69,11 @@ ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
 NODE_ENV_VARS="${NODE_ENV_VARS:-}"                 # extra docker -e assignments, e.g. "DOTNET_TieredCompilation=0"
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
+ACCOUNT_INDEX_SWEEP="${ACCOUNT_INDEX_SWEEP:-false}"
+ACCOUNT_INDEX_PREPARE_MODE="${ACCOUNT_INDEX_PREPARE_MODE:-}"
+ACCOUNT_INDEX_PREPARE_THRESHOLD="${ACCOUNT_INDEX_PREPARE_THRESHOLD:-}"
+ACCOUNT_INDEX_HELPER_PATH="${ACCOUNT_INDEX_HELPER_PATH:-}"
+ACCOUNT_INDEX_PREPARE_OUTPUT="${ACCOUNT_INDEX_PREPARE_OUTPUT:-$STATE_DIR/account-index-prepare.json}"
 
 if [[ "$DOTTRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "dottrace profiling requires CLIENT=nethermind (dotTrace is .NET-specific)"
@@ -82,6 +87,34 @@ case "$DOTNET_TRACE" in
 esac
 if [[ "$DOTNET_TRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "dotnet-trace requires CLIENT=nethermind (EventPipe is .NET-specific)"
+fi
+case "$ACCOUNT_INDEX_SWEEP" in
+  true|false) ;;
+  *) die "ACCOUNT_INDEX_SWEEP must be true or false (got '$ACCOUNT_INDEX_SWEEP')" ;;
+esac
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+  [[ "$CLIENT" == "nethermind" ]] || die "Account index sweep requires CLIENT=nethermind"
+  [[ "$DB_ISOLATION" == "overlay" ]] || die "Account index sweep requires DB_ISOLATION=overlay"
+  [[ -x "$ACCOUNT_INDEX_HELPER_PATH" ]] || die "Account index helper is missing or not executable: $ACCOUNT_INDEX_HELPER_PATH"
+  case "$ACCOUNT_INDEX_PREPARE_MODE" in
+    binary|interpolation)
+      [[ "$ACCOUNT_INDEX_PREPARE_THRESHOLD" == "-1" ]] \
+        || die "${ACCOUNT_INDEX_PREPARE_MODE} preparation requires threshold=-1"
+      ;;
+    auto)
+      if [[ ! "$ACCOUNT_INDEX_PREPARE_THRESHOLD" =~ ^(0|0\.[0-9]+|1(\.0+)?)$ ]]; then
+        die "auto preparation threshold must be a finite value in [0,1]"
+      fi
+      ;;
+    *) die "unknown Account index preparation mode '$ACCOUNT_INDEX_PREPARE_MODE'" ;;
+  esac
+  [[ -z "$ADDITIONAL_FLAGS" ]] \
+    || die "ACCOUNT_INDEX_SWEEP does not accept generic ADDITIONAL_FLAGS"
+  [[ -z "$NODE_ENV_VARS" ]] \
+    || die "ACCOUNT_INDEX_SWEEP does not accept generic NODE_ENV_VARS"
+  if [[ "${ARCH:-}" == "arm64" ]]; then
+    ARCH=arm64 SCRATCH_ROOT="$SCRATCH_ROOT" "$HERE/check-storage-space.sh" pre-account-index
+  fi
 fi
 case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
@@ -156,7 +189,7 @@ fi
 # Reap stale containers (old overlay mount + ports 8545/8546) before touching scratch.
 # Only primary reaps — reference starts second and must not kill this run's primary.
 if [[ "$INSTANCE" == "primary" ]]; then
-  reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-"
+  reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-" "account-index-prepare-"
 fi
 
 RUN_SCRATCH="$SCRATCH_ROOT/run$SUFFIX"
@@ -238,7 +271,103 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "DOTNET_TRACE=$DOTNET_TRACE"
   echo "PROFILE_AFTER_WARMUP=$PROFILE_AFTER_WARMUP"
   echo "RPC_PORT=$RPC_PORT"
+  echo "ACCOUNT_INDEX_SWEEP=$ACCOUNT_INDEX_SWEEP"
+  echo "ACCOUNT_INDEX_PREPARE_MODE=$ACCOUNT_INDEX_PREPARE_MODE"
+  echo "ACCOUNT_INDEX_PREPARE_THRESHOLD=$ACCOUNT_INDEX_PREPARE_THRESHOLD"
+  echo "ACCOUNT_INDEX_PREPARE_OUTPUT=$ACCOUNT_INDEX_PREPARE_OUTPUT"
 } > "$STATE_DIR/node$SUFFIX.env"
+
+cleanup_failed_start() {
+  local status="${1:-$?}"
+  if [[ "$status" -ne 0 && "$ACCOUNT_INDEX_SWEEP" == "true" && -f "$STATE_DIR/node$SUFFIX.env" ]]; then
+    log "Account preparation/start failed; invoking stop-node.sh for fingerprint verification and isolated-view teardown"
+    if STATE_DIR="$STATE_DIR" NODE_ENV_FILE="$STATE_DIR/node$SUFFIX.env" LOG_OUT="$STATE_DIR/node$SUFFIX.log" \
+        "$HERE/stop-node.sh"; then
+      : > "$STATE_DIR/account-index-start-cleaned"
+    else
+      log "ERROR: stop-node.sh failed while cleaning up the failed Account preparation"
+    fi
+  fi
+  exit "$status"
+}
+trap cleanup_failed_start EXIT
+
+account_index_node_option() {
+  local search_type
+  case "$ACCOUNT_INDEX_PREPARE_MODE" in
+    binary) search_type="kBinary" ;;
+    interpolation) search_type="kInterpolation" ;;
+    auto) search_type="kAuto" ;;
+    *) die "cannot construct Account index option for mode '$ACCOUNT_INDEX_PREPARE_MODE'" ;;
+  esac
+  printf '%s\n' "--Db.FlatAccountDbAdditionalRocksDbOptions=block_based_table_factory.index_block_search_type=${search_type};block_based_table_factory.uniform_cv_threshold=${ACCOUNT_INDEX_PREPARE_THRESHOLD};"
+}
+
+prepare_account_index() {
+  [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]] || return 0
+  local account_db="$DATA_DIR_SOURCE/mainnet/flat"
+  local result_dir="$STATE_DIR/account-index-prepare"
+  local helper_dir prep_container prep_status helper_output
+  local -a prep_docker_args
+  helper_dir="$(dirname -- "$ACCOUNT_INDEX_HELPER_PATH")"
+  prep_container="${CONTAINER_NAME}-account-index-prepare"
+  helper_output="$result_dir/helper.json"
+
+  [[ -d "$account_db" ]] || die "Account index preparation path '$account_db' is missing; refusing to guess the snapshot layout"
+  [[ -f "$account_db/CURRENT" ]] || die "Account index preparation path '$account_db/CURRENT' is missing; refusing to guess the snapshot layout"
+  mkdir -p "$result_dir"
+  rm -f "$helper_output" "$ACCOUNT_INDEX_PREPARE_OUTPUT"
+  # The marker belongs to the mounted view root (/work in the helper), never to the canonical
+  # snapshot. It lets the helper prove that it owns this isolated view before rewriting it.
+  printf 'createdbyharness\n' > "$DATA_DIR_SOURCE/.account-index-prepare-owned"
+  [[ -f "$DATA_DIR_SOURCE/.account-index-prepare-owned" ]] \
+    || die "could not create .account-index-prepare-owned inside the isolated Account view"
+
+  cleanup_prepare() {
+    docker rm -fv "$prep_container" >/dev/null 2>&1 || true
+  }
+  trap 'status=$?; cleanup_prepare; cleanup_failed_start "$status"' EXIT
+
+  log "Preparing isolated Account view: mode=$ACCOUNT_INDEX_PREPARE_MODE threshold=$ACCOUNT_INDEX_PREPARE_THRESHOLD"
+  docker rm -fv "$prep_container" >/dev/null 2>&1 || true
+  prep_docker_args=(
+    run -d --name "$prep_container" --restart no
+    --entrypoint /opt/account-index-prepare/AccountIndexPrepare
+    -v "$DATA_DIR_SOURCE:/work:rw"
+    -v "$helper_dir:/opt/account-index-prepare:ro"
+    -v "$result_dir:/work/result:rw"
+  )
+  [[ -n "$NODE_CPUSET" ]] && prep_docker_args+=(--cpuset-cpus "$NODE_CPUSET")
+  [[ -n "$NODE_MEMORY" ]] && prep_docker_args+=(--memory "$NODE_MEMORY")
+  prep_docker_args+=(
+    "$NODE_IMAGE"
+    --db-path /work/mainnet/flat
+    --scratch-root /work
+    --mode "$ACCOUNT_INDEX_PREPARE_MODE"
+    --threshold "$ACCOUNT_INDEX_PREPARE_THRESHOLD"
+    --output /work/result/helper.json
+  )
+  docker "${prep_docker_args[@]}" >/dev/null \
+    || die "could not start Account index preparation container"
+
+  prep_status="$(docker wait "$prep_container" 2>/dev/null || echo 125)"
+  docker logs "$prep_container" > "$result_dir/helper.log" 2>&1 || true
+  if [[ "$prep_status" != "0" ]]; then
+    die "Account index preparation failed (helper exit ${prep_status}); aggregate diagnostics were retained in runner scratch"
+  fi
+  [[ -s "$helper_output" ]] || die "Account index helper produced no aggregate result"
+  helper_sha256="$(sha256sum "$ACCOUNT_INDEX_HELPER_PATH" | awk '{print $1}')"
+  python3 "$HERE/account_index_sweep.py" validate-result "$helper_output" "$ACCOUNT_INDEX_PREPARE_OUTPUT" \
+    --mode "$ACCOUNT_INDEX_PREPARE_MODE" --threshold "$ACCOUNT_INDEX_PREPARE_THRESHOLD" \
+    --helper-sha256 "$helper_sha256" \
+    || die "Account index helper result failed the fixed aggregate schema"
+  [[ -f "$DATA_DIR_SOURCE/.account-index-prepare-owned" ]] \
+    || die "Account index ownership marker disappeared from the isolated view"
+  log "Account preparation aggregate validated: $(basename "$ACCOUNT_INDEX_PREPARE_OUTPUT")"
+  cleanup_prepare
+  trap - EXIT
+  trap cleanup_failed_start EXIT
+}
 
 # 3) Assemble the node command.
 case "$CLIENT" in
@@ -295,6 +424,13 @@ case "$CLIENT" in
 esac
 # shellcheck disable=SC2206
 node_args+=($ADDITIONAL_FLAGS)
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+  node_args+=("$(account_index_node_option)")
+fi
+
+# The helper rewrites the same overlay view that the node will open. It must complete before the
+# node container is created, otherwise the node can open stale Account SSTs while the rewrite runs.
+prepare_account_index
 
 docker_args=(
   -d --name "$CONTAINER_NAME"

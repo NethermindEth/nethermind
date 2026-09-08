@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AccountIndexPrepare</AssemblyName>
+    <RootNamespace>Nethermind.Tools.AccountIndexPrepare</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
+  </ItemGroup>
+
+</Project>

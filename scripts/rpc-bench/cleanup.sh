@@ -13,7 +13,7 @@ source "$HERE/lib.sh"
 : "${SCRATCH_ROOT:?scratch root to clean}"
 DB_SOURCE="${DB_SOURCE:-}"
 
-reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-"
+reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-" "account-index-prepare-"
 
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || { log "cannot canonicalize SCRATCH_ROOT — skipping scratch wipe"; exit 0; }
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"

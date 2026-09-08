@@ -67,6 +67,8 @@ CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"
 # the target, so treat the count as an upper bound.
 CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
+ACCOUNT_INDEX_SWEEP="${ACCOUNT_INDEX_SWEEP:-false}"
+ACCOUNT_INDEX_HELPER_PATH="${ACCOUNT_INDEX_HELPER_PATH:-}"
 
 # Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
 # "250k" silently yields an empty duration and the cell quietly falls back to the workload default.
@@ -99,6 +101,31 @@ if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
   echo "::error::corpus_warmup_duration must be integer seconds (optional 's' suffix), got '${CORPUS_WARMUP_DURATION}'"; exit 1
 fi
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
+
+case "$ACCOUNT_INDEX_SWEEP" in
+  true|false) ;;
+  *) echo "::error::ACCOUNT_INDEX_SWEEP must be true or false"; exit 1 ;;
+esac
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+  [[ "$JB_ETH_CALL_CORPUS" == "true" ]] \
+    || { echo "::error::Account index sweep requires private eth_call corpus mode"; exit 1; }
+  [[ "$STATE_LAYOUT" == "flat" ]] \
+    || { echo "::error::Account index sweep requires the flat state layout"; exit 1; }
+  [[ "$DB_ISOLATION_ALL" == "" || "$DB_ISOLATION_ALL" == "overlay" ]] \
+    || { echo "::error::Account index sweep requires overlay isolation"; exit 1; }
+  [[ -x "$ACCOUNT_INDEX_HELPER_PATH" ]] \
+    || { echo "::error::Account index helper is missing or not executable"; exit 1; }
+  [[ "$RPS_LIST" == "100" ]] \
+    || { echo "::error::Account index sweep requires exactly rps_list=100"; exit 1; }
+  [[ "$CORPUS_WARMUP_DURATION" == "120" || "$CORPUS_WARMUP_DURATION" == "120s" ]] \
+    || { echo "::error::Account index sweep requires a 120s warm-up"; exit 1; }
+  [[ "$CORPUS_WARMUP_RPS" == "100" ]] \
+    || { echo "::error::Account index sweep requires warm-up rps=100"; exit 1; }
+  [[ "$JB_DURATION" == "60s" ]] \
+    || { echo "::error::Account index sweep requires a 60s measurement"; exit 1; }
+  [[ "$CORPUS_GLOB" == "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz" ]] \
+    || { echo "::error::Account index sweep requires the pinned 497-record corpus"; exit 1; }
+fi
 
 # Sweep mode resolves ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — and varies only
 # the image, so a geth/reth entry would reach start-node.sh with a DB_SOURCE that does not exist. That
@@ -204,6 +231,15 @@ print(int(c) if isinstance(c, (int, float)) and not isinstance(c, bool) and c > 
 PY
 }
 
+# A requested warm-up is valid only when its aggregate exists and at least 80% of the requested
+# load reached the node. Keep this decision as a small shell contract so the continue-to-the-next-
+# client behavior can be exercised without starting Docker nodes.
+warmup_delivery_is_valid() {
+  local delivered="$1" requested="$2"
+  [[ "$delivered" =~ ^[0-9]+$ && "$requested" =~ ^[1-9][0-9]*$ ]] || return 1
+  (( delivered > 0 && delivered * 10 >= requested * 8 ))
+}
+
 # achieved_rps from a replay's own meta sidecar — measured, unlike the pace it was asked for.
 warm_replay_rps() {
   [[ -s "$1" ]] || { echo ""; return 0; }
@@ -214,6 +250,20 @@ try:
 except Exception:
     v = None
 print(v if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else "")
+PY
+}
+
+# Requests actually replayed by the fixture-free warm-up. A missing/invalid sidecar means the
+# replay did not produce a usable aggregate and must not silently certify a cold measured cell.
+warm_replay_requests() {
+  [[ -s "$1" ]] || { echo 0; return 0; }
+  python3 - "$1" <<'PY' 2>/dev/null || echo 0
+import json, sys
+try:
+    value = (json.load(open(sys.argv[1])) or {}).get("requests")
+except Exception:
+    value = None
+print(int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else 0)
 PY
 }
 
@@ -258,7 +308,12 @@ node_issue=0
 cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
+warmup_fail=0 # requested warm-up missing a usable aggregate or delivering under 80% of its target
+preparation_fail=0 # helper aggregate missing, inconsistent across arms, or not safely torn down
 BASELINE_LABEL=""  # first successfully started client; all later clients diff against it
+ACCOUNT_BASE_COUNT=""
+ACCOUNT_BASE_DIGEST=""
+ACCOUNT_BASE_HELPER_SHA=""
 
 case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
@@ -300,16 +355,53 @@ fi
 # same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
 # Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
 # distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
-# and the sweep would silently report fewer results than it ran.
+# and the sweep would silently report fewer results than it ran. The Account CV opt-in replaces this
+# free-form list with the fixed, validated nine-arm contract below.
+declare -a ACCOUNT_INDEX_ARM_LINES=()
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+  mapfile -t ACCOUNT_INDEX_ARM_LINES < <(python3 "$here/account_index_sweep.py" arms --tsv)
+  expected_labels=(
+    master forced-interpolation auto-cv-0.2 auto-cv-0.05 auto-cv-0.1
+    auto-cv-0.15 auto-cv-0.25 auto-cv-0.35 auto-cv-0.5
+  )
+  expected_modes=(binary interpolation auto auto auto auto auto auto auto)
+  expected_thresholds=(-1 -1 0.2 0.05 0.1 0.15 0.25 0.35 0.5)
+  [[ "${#ACCOUNT_INDEX_ARM_LINES[@]}" -eq "${#expected_labels[@]}" ]] \
+    || { echo "::error::Account index arm count is not the fixed nine"; exit 1; }
+  for ((arm_index = 0; arm_index < ${#expected_labels[@]}; arm_index++)); do
+    IFS=$'\t' read -r arm_label arm_mode arm_threshold <<< "${ACCOUNT_INDEX_ARM_LINES[$arm_index]}"
+    [[ "$arm_label" == "${expected_labels[$arm_index]}" ]] \
+      || { echo "::error::Account index arm order/label mismatch at position $arm_index"; exit 1; }
+    [[ "$arm_mode" == "${expected_modes[$arm_index]}" && "$arm_threshold" == "${expected_thresholds[$arm_index]}" ]] \
+      || { echo "::error::Account index arm mode/threshold mismatch for $arm_label"; exit 1; }
+    [[ "$arm_mode" =~ ^(binary|interpolation|auto)$ ]] \
+      || { echo "::error::Account index arm mode is invalid for $arm_label"; exit 1; }
+    [[ "$arm_threshold" =~ ^(-1|0|0\.[0-9]+|1(\.0+)?)$ ]] \
+      || { echo "::error::Account index arm threshold is not finite for $arm_label"; exit 1; }
+  done
+fi
 log_system_provenance
 
 declare -A LABEL_SEEN=()
-for entry in $CLIENTS; do
-  ctype="${entry%%@*}"
-  if [[ "$entry" == *@* ]]; then
-    img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+  SWEEP_ENTRIES="master forced-interpolation auto-cv-0.2 auto-cv-0.05 auto-cv-0.1 auto-cv-0.15 auto-cv-0.25 auto-cv-0.35 auto-cv-0.5"
+else
+  SWEEP_ENTRIES="$CLIENTS"
+fi
+arm_index=0
+for entry in $SWEEP_ENTRIES; do
+  if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+    IFS=$'\t' read -r label arm_mode arm_threshold <<< "${ACCOUNT_INDEX_ARM_LINES[$arm_index]}"
+    ctype="nethermind"
+    img="$NM_IMAGE"
+    arm_index=$((arm_index + 1))
   else
-    img="$NM_IMAGE"; label="$ctype"
+    ctype="${entry%%@*}"
+    if [[ "$entry" == *@* ]]; then
+      img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+    else
+      img="$NM_IMAGE"; label="$ctype"
+    fi
   fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
@@ -320,13 +412,96 @@ for entry in $CLIENTS; do
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
        DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
-       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
-       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
-       RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
-       DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
-       "$here/start-node.sh"; then
-    echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
+        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
+        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
+        ACCOUNT_INDEX_SWEEP="$ACCOUNT_INDEX_SWEEP" \
+        ACCOUNT_INDEX_PREPARE_MODE="${arm_mode:-}" ACCOUNT_INDEX_PREPARE_THRESHOLD="${arm_threshold:-}" \
+        ACCOUNT_INDEX_HELPER_PATH="$ACCOUNT_INDEX_HELPER_PATH" \
+        ACCOUNT_INDEX_PREPARE_OUTPUT="$cst/account-index-prepare.json" \
+        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
+        "$here/start-node.sh"; then
+    echo "::warning::${label} failed to start — cleaning its isolated view before skipping cells"
+    if [[ -f "$cst/account-index-start-cleaned" ]]; then
+      rm -f "$cst/account-index-start-cleaned"
+      echo "   start-node.sh already verified and tore down the failed isolated view"
+    elif ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
+           "$here/stop-node.sh"; then
+      echo "::error::${label}: cleanup after start failure failed"
+      stop_fail=1
+    fi
+    if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+      echo "::error::${label}: Account CV sweep cannot continue after an arm failed to start"
+      preparation_fail=1
+      echo "::endgroup::"
+      break
+    fi
+    echo "::endgroup::"
+    continue
   fi
+  if [[ "$ACCOUNT_INDEX_SWEEP" == "true" ]]; then
+    prep_identity="$(python3 - "$cst/account-index-prepare.json" <<'PY'
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        value = json.load(handle)
+    if set(value) != {"schema_version", "mode", "threshold", "resolved_index_search_type",
+                      "resolved_uniform_cv_threshold", "automatic_compactions_disabled",
+                      "account_entry_count", "account_sst_count", "uniform_index_count",
+                      "persisted_index_bytes", "filter_bytes", "table_reader_memory_bytes",
+                      "account_content_sha256", "preparation_cpu_seconds", "preparation_wall_seconds",
+                      "preparation_working_set_before_bytes", "preparation_working_set_after_bytes",
+                      "preparation_peak_memory_bytes", "preparation_private_bytes_before",
+                      "preparation_private_bytes_after", "helper_sha256"}:
+        raise ValueError("schema")
+    if not isinstance(value["account_entry_count"], int) or value["account_entry_count"] < 1:
+        raise ValueError("entry count")
+    if not re.fullmatch(r"[0-9a-f]{64}", value["account_content_sha256"]):
+        raise ValueError("content digest")
+    if not re.fullmatch(r"[0-9a-f]{64}", value["helper_sha256"]):
+        raise ValueError("helper digest")
+    print(value["account_entry_count"], value["account_content_sha256"], value["helper_sha256"])
+except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, KeyError) as error:
+    print(f"invalid preparation aggregate: {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+    )"
+    if [[ "$?" -ne 0 ]]; then
+      echo "::error::${label}: Account preparation aggregate is missing or invalid"
+      if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
+           "$here/stop-node.sh"; then stop_fail=1; fi
+      preparation_fail=1
+      echo "::endgroup::"
+      break
+    fi
+    read -r account_count account_digest helper_sha <<< "$prep_identity"
+    if [[ -z "$ACCOUNT_BASE_COUNT" ]]; then
+      ACCOUNT_BASE_COUNT="$account_count"
+      ACCOUNT_BASE_DIGEST="$account_digest"
+      ACCOUNT_BASE_HELPER_SHA="$helper_sha"
+    elif [[ "$account_count" != "$ACCOUNT_BASE_COUNT" || "$account_digest" != "$ACCOUNT_BASE_DIGEST" ]]; then
+      echo "::error::${label}: Account content count/digest differs from the first arm; refusing a cross-arm comparison"
+      if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
+           "$here/stop-node.sh"; then stop_fail=1; fi
+      preparation_fail=1
+      echo "::endgroup::"
+      break
+    elif [[ "$helper_sha" != "$ACCOUNT_BASE_HELPER_SHA" ]]; then
+      echo "::error::${label}: Account helper SHA differs from the first arm"
+      if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
+           "$here/stop-node.sh"; then stop_fail=1; fi
+      preparation_fail=1
+      echo "::endgroup::"
+      break
+    fi
+    prep_public="$OUT_DIR/account-index-preparation/$label"
+    mkdir -p "$prep_public"
+    cp "$cst/account-index-prepare.json" "$prep_public/account-index-prepare.json"
+  fi
+
   LABELS+=("$label")
 
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
@@ -345,6 +520,7 @@ for entry in $CLIENTS; do
       # purpose: different corpora can touch disjoint state.
       WARMED_SECONDS=0
       WARMED_RPS=0
+      warm_cell=""
       if (( WARMUP_SECONDS > 0 )); then
         # Warm at CORPUS_WARMUP_RPS, which sizes the warm-up by the requests it delivers rather
         # than by the rate the cells are measured at — a short window at a high rate reaches the
@@ -375,32 +551,32 @@ for entry in $CLIENTS; do
           # status (a warm-up that did its job would report failure).
           if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
               "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS="$WARMUP_SECONDS"
             # The (seconds, rps) pair is read as the count the node absorbed, so the rate has to
             # be the delivered one. A short delivery is the failure mode this change can have —
             # 400 rps is above the 300 rps that already drove a 1.22% fail rate on arm64 — and
             # the warm-up's own fail gate is lifted, so nothing else would report it.
             warm_got="$(warm_delivered "$warm_cell/summary.json")"
             warm_want=$(( warm_rps * WARMUP_SECONDS ))
-            if (( warm_got > 0 )); then
+            if warmup_delivery_is_valid "$warm_got" "$warm_want"; then
+              WARMED_SECONDS="$WARMUP_SECONDS"
               WARMED_RPS=$(( warm_got / WARMUP_SECONDS ))
-              if (( warm_got * 10 < warm_want * 8 )); then
-                echo "::warning::warmup for ${label} delivered ${warm_got} of ${warm_want} requests (${WARMED_RPS} of ${warm_rps} rps) — measured cells may be under-warmed"
-              else
-                echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
-              fi
+              echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
             else
-              WARMED_RPS="$warm_rps"
-              echo "::warning::warmup for ${label}: no usable http_reqs count — recorded warmup_rps is the requested pace, not the delivered one"
+              WARMED_SECONDS=0
+              WARMED_RPS=0
+              warmup_fail=1
+              echo "::warning::warmup for ${label}: usable aggregate delivered ${warm_got} of ${warm_want} requests; measured cells are not a valid warm-up result"
             fi
           else
-            echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
+            warmup_fail=1
+            echo "::warning::warmup for ${label} failed — measured cells are not a valid warm-up result (recorded warmup_seconds=0)"
           fi
           report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
         elif [[ -z "${CORPUS_RECORDS[$corpus]:-}" ]]; then
           # Cannot size the replay without the record count (validate fills it for every corpus,
           # so this is defensive). A wrong guess would multiply by the real count inside
           # timings() and run for hours; skipping states the truth: not warmed.
+          warmup_fail=1
           echo "::warning::no record count for $(corpus_label "$corpus") — skipping warmup (recorded warmup_seconds=0)"
         else
           # Fixture-free mode: an empty rps_list exists so a large corpus never materializes the
@@ -423,17 +599,25 @@ for entry in $CLIENTS; do
           warm_status=$?
           # 124 = the timeout fired: the node still absorbed warm load for the whole window.
           if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
-            WARMED_SECONDS=$(( SECONDS - warm_started ))
+            warm_got="$(warm_replay_requests "$warm_cell/timings.meta.json")"
+            warm_want=$(( warm_rps * WARMUP_SECONDS ))
             # The replay writes its own meta beside the CSV, and achieved_rps there is measured.
-            # A fired timeout kills it before that write, so fall back to the pace it was asked
-            # for and say so rather than pairing measured seconds with a silent target.
-            WARMED_RPS="$(warm_replay_rps "$warm_cell/timings.meta.json")"
-            if [[ -z "$WARMED_RPS" ]]; then
-              WARMED_RPS="$warm_rps"
-              echo "::warning::warmup replay for ${label}: no achieved rate recorded — warmup_rps is the requested pace, not the delivered one"
+            # A fired timeout can kill it before that write; without the aggregate, the warm-up is
+            # invalid even though the next client is still allowed to run.
+            if warmup_delivery_is_valid "$warm_got" "$warm_want"; then
+              WARMED_SECONDS=$(( SECONDS - warm_started ))
+              warmup_replay_rps="$(warm_replay_rps "$warm_cell/timings.meta.json")"
+              WARMED_RPS="${warmup_replay_rps:-$warm_rps}"
+              echo "   warmup ${clabel}/${label}: replay delivered ${warm_got}/${warm_want} requests"
+            else
+              WARMED_SECONDS=0
+              WARMED_RPS=0
+              warmup_fail=1
+              echo "::warning::warmup replay for ${label}: usable aggregate delivered ${warm_got} of ${warm_want} requests; measured cells are not a valid warm-up result"
             fi
           else
-            echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
+            warmup_fail=1
+            echo "::warning::warmup replay for ${label} failed — measured cells are not a valid warm-up result (recorded warmup_seconds=0)"
           fi
         fi
       fi
@@ -448,6 +632,13 @@ for entry in $CLIENTS; do
         slot="$rps"
         (( ${RPS_SEEN["$rps"]} > 1 )) && slot="${rps}_r${RPS_SEEN["$rps"]}"
         cell="$OUT_DIR/corpus/${clabel}/${label}/${slot}"
+        # Keep the discarded load's fixed diagnostic beside every measured cell. The warm-up
+        # directory is scratch-only, so this is the aggregate evidence that a published result
+        # was warmed (or why it was not) without copying its raw corpus/tool output.
+        mkdir -p "$cell"
+        if [[ -n "$warm_cell" && -s "$warm_cell/diagnostic.json" ]]; then
+          cp "$warm_cell/diagnostic.json" "$cell/warmup-diagnostic.json"
+        fi
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
         echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
         run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname" \
@@ -522,21 +713,38 @@ for entry in $CLIENTS; do
   fi
   # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here with the same four checks.
   # Corpus mode prints COUNTS only (log lines could quote private call data) and deletes the log afterwards.
+  health_exception_count=0
+  health_gated_exception_count=0
+  health_invalid_block_count=0
+  health_clean_shutdown=true
+  [[ "$ctype" == "nethermind" ]] && health_clean_shutdown=false
+  health_unhandled_count=0
+  health_fatal_count=0
+  health_error_count=0
   if [[ -f "$cst/node.log" ]]; then
     clean="$cst/node.clean.log"
     sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$cst/node.log" > "$clean"
     grep -in "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' > "$cst/node.exc" || true
     exc_count="$(wc -l < "$cst/node.exc" | tr -d ' ')"
+    health_exception_count="$(grep -ci 'Exception' "$clean" || true)"
+    health_gated_exception_count="$exc_count"
+    health_invalid_block_count="$(grep -ciE 'invalid[[:space:]_-]*block' "$clean" || true)"
+    health_unhandled_count="$(grep -ci 'Unhandled' "$clean" || true)"
+    health_fatal_count="$(grep -ci 'Fatal' "$clean" || true)"
+    health_error_count="$(grep -ci 'ERROR' "$clean" || true)"
     if [[ "$ctype" == "nethermind" ]]; then
       # Exception / invalid-block / shutdown-marker wording is Nethermind-specific — gate only on NM cells.
-      if [[ -s "$cst/node.exc" ]]; then
-        echo "::warning::${label}: ${exc_count} Exception line(s) in node log"
+      if (( health_exception_count > 0 )); then
+        echo "::warning::${label}: ${health_exception_count} Exception line(s) in node log"
         [[ "$JB_ETH_CALL_CORPUS" != "true" ]] && head -20 "$cst/node.exc"
         node_issue=1
       fi
       if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${label}: invalid block in node log"; node_issue=1; fi
       # A missing marker means docker SIGKILLed a hung node or shutdown crashed — run untrustworthy.
-      if ! grep -q "Nethermind is shut down" "$clean"; then
+      if grep -q "Nethermind is shut down" "$clean"; then
+        health_clean_shutdown=true
+      else
+        health_clean_shutdown=false
         echo "::warning::${label}: 'Nethermind is shut down' marker not found — node did not shut down cleanly"; node_issue=1
       fi
     elif [[ -s "$cst/node.exc" ]]; then
@@ -554,6 +762,33 @@ for entry in $CLIENTS; do
     if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
       rm -f "$cst/node.log" "$clean" "$cst/node.exc"
     fi
+  elif [[ "$ctype" == "nethermind" ]]; then
+    health_clean_shutdown=false
+    echo "::warning::${label}: node log is missing; cannot confirm clean shutdown"
+    node_issue=1
+  fi
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    mkdir -p "$OUT_DIR/node-health/${label}"
+    python3 - "$OUT_DIR/node-health/${label}/node-health.json" \
+      "$health_exception_count" "$health_gated_exception_count" "$health_invalid_block_count" "$health_clean_shutdown" \
+      "$health_unhandled_count" "$health_fatal_count" "$health_error_count" <<'PY'
+import json
+import sys
+
+path, exception_count, gated_exception_count, invalid_block_count, clean_shutdown, unhandled_count, fatal_count, error_count = sys.argv[1:]
+data = {
+    "exception_count": int(exception_count),
+    "gated_exception_count": int(gated_exception_count),
+    "invalid_block_count": int(invalid_block_count),
+    "clean_shutdown": clean_shutdown == "true",
+    "unhandled_count": int(unhandled_count),
+    "fatal_count": int(fatal_count),
+    "error_count": int(error_count),
+}
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
+PY
   fi
   echo "::endgroup::"
 done
@@ -614,6 +849,12 @@ if [[ "${#LABELS[@]}" -ge 2 ]]; then
   done
 fi
 fail=0
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "${#LABELS[@]}" -ne 9 ]]; then
+  echo "::error::Account CV sweep completed ${#LABELS[@]} of the fixed nine arms"; preparation_fail=1
+fi
+if [[ "$ACCOUNT_INDEX_SWEEP" == "true" && "${#SUMMARIES[@]}" -ne 9 ]]; then
+  echo "::error::Account CV sweep produced ${#SUMMARIES[@]} of the fixed nine measured summaries"; cell_fail=1
+fi
 if [[ "$node_issue" -eq 1 ]]; then
   echo "::error::node health issue (Exception / invalid block / missing shutdown marker) in a sweep node log — failing"; fail=1
 fi
@@ -625,5 +866,11 @@ if [[ "$stop_fail" -eq 1 ]]; then
 fi
 if [[ "$parity_fail" -gt 0 ]]; then
   echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline client or a replay failed"; fail=1
+fi
+if [[ "$warmup_fail" -gt 0 ]]; then
+  echo "::error::one or more requested warm-up(s) failed the usable-aggregate/80%-delivery contract — measured results are invalid"; fail=1
+fi
+if [[ "$preparation_fail" -gt 0 ]]; then
+  echo "::error::one or more Account preparation aggregates failed validation or cross-arm identity checks"; fail=1
 fi
 exit "$fail"

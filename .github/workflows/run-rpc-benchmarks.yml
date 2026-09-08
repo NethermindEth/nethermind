@@ -127,6 +127,7 @@ on:
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
+          Account CV sweep opt-in: {"account_index_sweep":true} selects the fixed nine-arm, sequential Account preparation sweep; it is only accepted with jsonbench-sweep and enforces the pinned image, ARM flat snapshot, overlay isolation and the private 497-record corpus.
           All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
@@ -155,6 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
+      arch: ${{ steps.resolve.outputs.arch }}
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       benchmark_tool: ${{ steps.resolve.outputs.benchmark_tool }}
@@ -190,6 +192,7 @@ jobs:
       warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
       warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
+      account_index_sweep: ${{ steps.resolve.outputs.account_index_sweep }}
     steps:
       - name: Resolve configuration
         id: resolve
@@ -340,6 +343,37 @@ jobs:
           if ! echo "${tool_config}" | jq -e 'type == "object"' >/dev/null 2>&1; then
             echo "tool_config must be a JSON object."
             exit 1
+          fi
+          account_index_sweep="false"
+          account_index_raw_type="$(echo "${tool_config}" | jq -r 'if has("account_index_sweep") then (.account_index_sweep|type) else "absent" end')"
+          case "${account_index_raw_type}" in
+            absent) ;;
+            boolean) account_index_sweep="$(echo "${tool_config}" | jq -r 'if .account_index_sweep then "true" else "false" end')" ;;
+            *) echo "account_index_sweep must be a JSON boolean (true selects the fixed nine-arm sweep)."; exit 1 ;;
+          esac
+          if [[ "${account_index_sweep}" == "true" ]]; then
+            ACCOUNT_INDEX_IMAGE="nethermindeth/nethermind:rocksdb-auto-base-d66cfd50e0"
+            [[ "${benchmark_tool}" == "jsonbench-sweep" ]] \
+              || { echo "account_index_sweep requires benchmark_tool=jsonbench-sweep"; exit 1; }
+            [[ "${arch}" == "arm64" ]] \
+              || { echo "account_index_sweep requires arch=arm64 so the flat ARM snapshot is explicit"; exit 1; }
+            [[ "${client}" == "nethermind" && "${reference_client}" == "none" ]] \
+              || { echo "account_index_sweep requires a single Nethermind client"; exit 1; }
+            [[ "${state_layout}" == "flat" ]] \
+              || { echo "account_index_sweep requires state_layout=flat"; exit 1; }
+            [[ -z "${docker_image}" || "${docker_image}" == "${ACCOUNT_INDEX_IMAGE}" ]] \
+              || { echo "account_index_sweep requires pinned image ${ACCOUNT_INDEX_IMAGE}"; exit 1; }
+            [[ -z "${additional_flags}" ]] \
+              || { echo "account_index_sweep does not accept additional_nethermind_flags"; exit 1; }
+            [[ "$(echo "${tool_config}" | jq -r 'has("node_env_vars")')" == "false" ]] \
+              || { echo "account_index_sweep does not accept generic node_env_vars"; exit 1; }
+            docker_image="${ACCOUNT_INDEX_IMAGE}"
+            corpus_value_type="$(echo "${tool_config}" | jq -r 'if has("eth_call_corpus") then (.eth_call_corpus|type) else "absent" end')"
+            [[ "${corpus_value_type}" == "absent" || "${corpus_value_type}" == "boolean" ]] \
+              || { echo "account_index_sweep eth_call_corpus must be a JSON boolean"; exit 1; }
+            [[ "$(echo "${tool_config}" | jq -r '.eth_call_corpus // true')" == "true" ]] \
+              || { echo "account_index_sweep requires eth_call_corpus=true"; exit 1; }
+            tool_config="$(echo "${tool_config}" | jq -c '. + {eth_call_corpus:true}')"
           fi
           # Private eth_call corpus mode (jsonbench/jsonbench-sweep benchmark only): call contents
           # stay on the runner; the artifact carries aggregate summaries and parity counts only.
@@ -597,6 +631,7 @@ jobs:
 
           {
             echo "should_run=true"
+            echo "arch=${arch}"
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "benchmark_tool=${benchmark_tool}"
@@ -631,6 +666,7 @@ jobs:
             echo "eth_call_corpus=${eth_call_corpus}"
             echo "warmup_seconds=${warmup_seconds}"
             echo "warmup_rps=${warmup_rps}"
+            echo "account_index_sweep=${account_index_sweep}"
             echo "tool_config<<TOOLCFG"
             echo "${tool_config}"
             echo "TOOLCFG"
@@ -638,10 +674,50 @@ jobs:
 
           echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} warmup=${warmup_seconds}s@${warmup_rps}rps"
 
+  # Build the isolated Account preparation helper on hosted runners before reserving the scarce
+  # snapshot runner. Both runtime identifiers are built so an ARM dispatch never falls back to a
+  # framework-dependent or host-architecture binary.
+  build-account-index-helper:
+    needs: [resolve]
+    if: always() && needs.resolve.outputs.account_index_sweep == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        rid: [linux-x64, linux-arm64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Publish self-contained helper
+        env:
+          RID: ${{ matrix.rid }}
+        run: >-
+          dotnet publish tools/AccountIndexPrepare/AccountIndexPrepare.csproj
+          --configuration Release --runtime "${RID}" --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None --output "${RUNNER_TEMP}/account-index-prepare"
+
+      - name: Smoke-test Linux x64 helper
+        if: matrix.rid == 'linux-x64'
+        run: |
+          "${RUNNER_TEMP}/account-index-prepare/AccountIndexPrepare" --self-test
+
+      - name: Upload helper
+        uses: actions/upload-artifact@v7
+        with:
+          name: account-index-helper-${{ matrix.rid }}
+          path: ${{ runner.temp }}/account-index-prepare/
+          if-no-files-found: error
+          retention-days: 2
+
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
   benchmark:
-    needs: [resolve]
-    if: needs.resolve.outputs.should_run == 'true'
+    needs: [resolve, build-account-index-helper]
+    if: always() && needs.resolve.outputs.should_run == 'true' && (needs.build-account-index-helper.result == 'success' || needs.build-account-index-helper.result == 'skipped')
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
     env:
@@ -660,6 +736,25 @@ jobs:
 
       - name: Make scripts executable
         run: chmod +x scripts/rpc-bench/*.sh
+
+      - name: Download Account preparation helper
+        if: needs.resolve.outputs.account_index_sweep == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: account-index-helper-${{ needs.resolve.outputs.arch == 'arm64' && 'linux-arm64' || 'linux-x64' }}
+          path: ${{ runner.temp }}/account-index-prepare
+
+      - name: Verify Account preparation helper
+        if: needs.resolve.outputs.account_index_sweep == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          helper="${RUNNER_TEMP}/account-index-prepare/AccountIndexPrepare"
+          [[ -f "${helper}" ]] || { echo "::error::AccountIndexPrepare artifact is missing"; exit 1; }
+          chmod +x "${helper}"
+          file "${helper}"
+          sha256sum "${helper}"
+          echo "ACCOUNT_INDEX_HELPER_PATH=${helper}" >> "${GITHUB_ENV}"
 
       - name: Verify perf profiling prerequisites
         if: needs.resolve.outputs.perf == 'true'
@@ -711,72 +806,13 @@ jobs:
       - name: Prepare scratch and output dirs
         run: mkdir -p "${OUT_DIR}" "${STATE_DIR}"
 
-      - name: Reclaim root disk before pulling
-        # Only the ARM box has the ~19G root disk this protects; see its rationale below.
+      - name: Check ARM storage before pulling
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
-        # The box has a ~19G root disk. A pull that runs it out of space kills the docker daemon and the
-        # runner with it, so reclaim first and only refuse to start if the disk is still tight afterwards.
         env:
-          KEEP_IMAGES: |
-            ${{ needs.resolve.outputs.image_ref }}
-            ${{ needs.resolve.outputs.ref_image_ref }}
-          KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
-        run: |
-          set -uo pipefail
-          MIN_FREE_GB=6
-          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
-          report() { df -h /; du -xsh /var/lib/containerd /var/lib/docker 2>/dev/null || true; }
-
-          echo "== before =="; report
-          echo "Free before reclaim: $(avail_gb)G"
-
-          # Cheap, always-safe garbage first.
-          docker container prune -f || true
-          docker network prune -f || true
-          docker builder prune -af || true
-          docker image prune -f || true
-          # 'volume prune' only removes anonymous volumes; named expb volumes outlive their output dirs
-          # and later fail mounts with a 500.
-          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
-          apt-get clean 2>/dev/null || true
-          journalctl --vacuum-size=200M 2>/dev/null || true
-
-          # Stale benchmark images are the monotonic consumer: every campaign pushes multi-GB tags and
-          # nothing retires them. Docker here uses the CONTAINERD image store, so that content lands in
-          # /var/lib/containerd and `docker image prune -a --filter until=<age>` reports 0B against it
-          # (`docker system df` even reports a negative reclaimable) — an explicit `docker rmi` is the
-          # only thing that frees it. Drop unused tags oldest-first, and only as many as needed, so
-          # pinned A/B images survive whenever there is already room.
-          if (( $(avail_gb) < MIN_FREE_GB )); then
-            # Sweep arms come from tool_config.clients as `ctype@image`, and run-rpc-sweep.sh treats a
-            # failed pull as "probably local" — so dropping one of those yields a silently partial matrix
-            # rather than an error. Keep them too.
-            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null \
-              | tr ' ' '\n' | sed 's/.*@//' | grep -v '^$' || true)"
-            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
-            echo "Reclaiming stale images (keeping: ${keep_re:-none})"
-            while IFS= read -r img; do
-              (( $(avail_gb) >= MIN_FREE_GB )) && break
-              [[ -z "${img}" || "${img}" == *'<none>'* ]] && continue
-              [[ -n "${keep_re}" ]] && [[ "${img}" =~ ^(${keep_re})$ ]] && continue
-              # Never touch an image a container still references (another queued job may be mid-run).
-              [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
-              if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi
-            done < <(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' | sort | cut -f2-)
-          fi
-
-          free="$(avail_gb)"
-          echo "== after =="; report
-          echo "Free after reclaim: ${free}G (need ${MIN_FREE_GB}G)"
-          if (( free < MIN_FREE_GB )); then
-            echo "::error::Only ${free}G free on / after reclaim — refusing to start rather than risk killing the runner daemon."
-            echo "Everything reclaimable is already gone; the remaining usage needs a look over SSH."
-            du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
-            exit 1
-          fi
+          ARCH: ${{ needs.resolve.outputs.arch }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+        run: ./scripts/rpc-bench/check-storage-space.sh pre-pull
 
       - name: Prepare Docker image
         env:
@@ -1057,6 +1093,8 @@ jobs:
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
+          ARCH: ${{ needs.resolve.outputs.arch }}
+          ACCOUNT_INDEX_SWEEP: ${{ needs.resolve.outputs.account_index_sweep }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1109,6 +1147,17 @@ jobs:
           # Extra docker -e assignments for every swept node (start-node.sh reads NODE_ENV_VARS from
           # the environment), e.g. opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1.
           node_env="$(get '.node_env_vars')"; [[ -n "${node_env}" ]] && export NODE_ENV_VARS="${node_env}"
+          if [[ "${ACCOUNT_INDEX_SWEEP}" == "true" ]]; then
+            export ACCOUNT_INDEX_SWEEP=true
+            export JB_ETH_CALL_CORPUS=true
+            export CLIENTS=nethermind
+            export RPS_LIST=100
+            export CORPUS_GLOB=eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz
+            export CORPUS_WARMUP_DURATION=120s
+            export CORPUS_WARMUP_RPS=100
+            export JB_DURATION=60s
+            export DB_ISOLATION_ALL=overlay
+          fi
           export STATE_ROOT="${STATE_DIR}/sweep"
           ./scripts/rpc-bench/run-rpc-sweep.sh
 
@@ -1358,21 +1407,13 @@ jobs:
         # start-node.sh, so it can never reach the snapshot. Never fails the job.
         run: ./scripts/rpc-bench/cleanup.sh || true
 
-      - name: Reclaim root disk after the run
+      - name: Check ARM storage after the run
         if: always() && needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
-        # Leave / no fuller than we found it, so disk pressure cannot accumulate run over run into the
-        # daemon death this workflow used to cause. Tagged images survive; only garbage is dropped.
-        run: |
-          set -uo pipefail
-          docker container prune -f || true
-          docker network prune -f || true
-          docker builder prune -af || true
-          docker image prune -f || true
-          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
-          df -h / || true
-          docker system df || true
+        env:
+          ARCH: ${{ needs.resolve.outputs.arch }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+        run: ./scripts/rpc-bench/check-storage-space.sh post-run
 
       - name: Enforce quality gates
         if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'

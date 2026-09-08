@@ -32,6 +32,7 @@ class FakeCgroup:
         self.cpu_usec = 0
         self.throttled_usec = 0
         self.memory_current = 0
+        self.memory_stat = "anon 0\nfile 0\n"
         self.read_bytes = 0
         self.write_bytes = 0
         self.write()
@@ -40,6 +41,7 @@ class FakeCgroup:
         (self.root / "cpu.stat").write_text(
             f"usage_usec {self.cpu_usec}\nthrottled_usec {self.throttled_usec}\n", encoding="utf-8")
         (self.root / "memory.current").write_text(f"{self.memory_current}\n", encoding="utf-8")
+        (self.root / "memory.stat").write_text(self.memory_stat, encoding="utf-8")
         (self.root / "memory.peak").write_text("999999999999\n", encoding="utf-8")
         (self.root / "io.stat").write_text(
             f"8:0 rbytes={self.read_bytes} wbytes={self.write_bytes}\n", encoding="utf-8")
@@ -98,6 +100,30 @@ class SamplerArithmeticTests(unittest.TestCase):
         ])
         self.assertEqual(summary["memory_peak_bytes"], 700)
         self.assertEqual(summary["memory_avg_bytes"], (100 + 700 + 300) // 3)
+
+    def test_memory_breakdown_keeps_valid_samples_and_leaves_bad_counters_unavailable(self):
+        summary = self._run([
+            lambda c: setattr(c, "memory_stat", "anon 100\n"),
+            lambda c: setattr(c, "memory_stat", "anon 200\nfile 200\n"),
+            lambda c: setattr(c, "memory_stat", "anon invalid\nfile 300\n"),
+            lambda c: setattr(c, "memory_stat", "anon 300\nfile -2\n"),
+            lambda c: setattr(c, "memory_stat", "anon -1\nfile 400\n"),
+        ])
+        self.assertEqual(summary["memory_anon_samples"], 3)
+        self.assertEqual(summary["memory_anon_avg_bytes"], 200)
+        self.assertEqual(summary["memory_anon_peak_bytes"], 300)
+        self.assertEqual(summary["memory_file_samples"], 3)
+        self.assertEqual(summary["memory_file_avg_bytes"], 300)
+        self.assertEqual(summary["memory_file_peak_bytes"], 400)
+
+    def test_memory_breakdown_is_unavailable_when_all_counters_are_invalid(self):
+        summary = self._run([lambda c: setattr(c, "memory_stat", "anon -1\nfile invalid\n")])
+        self.assertEqual(summary["memory_anon_samples"], 0)
+        self.assertIsNone(summary["memory_anon_avg_bytes"])
+        self.assertIsNone(summary["memory_anon_peak_bytes"])
+        self.assertEqual(summary["memory_file_samples"], 0)
+        self.assertIsNone(summary["memory_file_avg_bytes"])
+        self.assertIsNone(summary["memory_file_peak_bytes"])
 
     def test_sampler_leaves_per_request_costs_to_normalize(self):
         summary = self._run([lambda c: setattr(c, "cpu_usec", 1000)])

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from corpus_parity import PARITY_COUNTER_FIELDS, PARITY_LABEL_FIELDS
+from account_index_sweep import ContractError as AccountIndexContractError, validate_sanitized_preparation
 
 # metric name -> aggregate fields copied into the sanitized summary
 METRIC_FIELDS: dict[str, tuple[str, ...]] = {
@@ -37,7 +38,8 @@ STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
                     "timings.csv", "parity-diffs.json", "timings.meta.json",
-                    "resources.json")
+                    "resources.json", "diagnostic.json", "warmup-diagnostic.json",
+                    "node-health.json", "account-index-prepare.json")
 
 
 class CorpusResultsError(Exception):
@@ -248,7 +250,13 @@ RESOURCE_FIELDS = {
     "wall_seconds", "samples", "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores",
     "cpu_throttled_usec", "memory_avg_bytes", "memory_peak_bytes", "io_read_bytes",
     "io_write_bytes", "stall_cpu_usec", "stall_io_usec", "stall_memory_usec", "requests",
-    "cpu_ms_per_request", "io_read_bytes_per_request",
+    "cpu_ms_per_request", "io_read_bytes_per_request", "memory_anon_samples",
+    "memory_anon_avg_bytes", "memory_anon_peak_bytes", "memory_file_samples",
+    "memory_file_avg_bytes", "memory_file_peak_bytes",
+}
+MEMORY_BREAKDOWN_FIELDS = {
+    "memory_anon_samples", "memory_anon_avg_bytes", "memory_anon_peak_bytes",
+    "memory_file_samples", "memory_file_avg_bytes", "memory_file_peak_bytes",
 }
 
 
@@ -263,6 +271,251 @@ def _validate_resources(path: Path) -> None:
             continue  # PSI is absent on kernels without pressure accounting
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise CorpusResultsError(f"{path.name}: {key} is not numeric")
+        if key in MEMORY_BREAKDOWN_FIELDS and (not math.isfinite(float(value)) or value < 0):
+            raise CorpusResultsError(f"{path.name}: {key} is not a finite non-negative number")
+
+
+DIAGNOSTIC_FIELDS = {
+    "schema_version", "tool_exit_code", "summary_present", "summary_valid", "summary_error",
+    "summary_bytes", "summary_request_count", "summary_fail_rate", "requested_duration_seconds",
+    "container_present", "container_status", "container_exit_code", "container_oom_killed",
+    "container_error", "tool_log_present", "tool_log_lines", "tool_log_k6_errors",
+    "tool_log_summary_read_errors", "tool_log_summary_parse_errors", "tool_log_oom_signals",
+    "output_files", "output_bytes",
+    "resource_sample_present", "resource_sample_valid", "resource_sample_wall_seconds",
+    "resource_sample_count", "resource_sample_requests", "resource_sample_normalized",
+}
+DIAGNOSTIC_SUMMARY_ERRORS = {"none", "missing", "invalid_json", "invalid_schema", "unreadable"}
+DIAGNOSTIC_CONTAINER_STATUSES = {"missing", "unknown", "created", "running", "exited", "dead"}
+
+
+def _validate_diagnostic(path: Path) -> None:
+    """Validate the counts-only failure diagnostic; no tool or RPC text may cross staging."""
+    with path.open("r", encoding="utf-8") as source:
+        data = json.load(source)
+    if not isinstance(data, dict) or set(data) != DIAGNOSTIC_FIELDS:
+        raise CorpusResultsError(f"{path.name} does not match the diagnostic schema")
+    if data["schema_version"] != 1:
+        raise CorpusResultsError(f"{path.name}: unsupported schema version")
+    for key in ("summary_present", "summary_valid", "container_present", "container_error",
+                "container_oom_killed",
+                "tool_log_present", "resource_sample_present", "resource_sample_valid",
+                "resource_sample_normalized"):
+        if not isinstance(data[key], bool):
+            raise CorpusResultsError(f"{path.name}: {key} is not a boolean")
+    for key in ("summary_bytes", "tool_log_lines", "tool_log_k6_errors",
+                "tool_log_summary_read_errors", "tool_log_summary_parse_errors", "tool_log_oom_signals",
+                "output_files", "output_bytes", "resource_sample_count"):
+        if isinstance(data[key], bool) or not isinstance(data[key], int) or data[key] < 0:
+            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
+    for key in ("resource_sample_wall_seconds",):
+        _number(data[key], f"{path.name}: {key}")
+    for key in ("summary_fail_rate", "requested_duration_seconds"):
+        value = data[key]
+        if value is not None:
+            _number(value, f"{path.name}: {key}")
+    if data["summary_fail_rate"] is not None and data["summary_fail_rate"] > 1:
+        raise CorpusResultsError(f"{path.name}: summary_fail_rate is greater than one")
+    value = data["summary_request_count"]
+    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+        raise CorpusResultsError(f"{path.name}: summary_request_count is not a non-negative integer or null")
+    for key in ("tool_exit_code", "container_exit_code", "resource_sample_requests"):
+        value = data[key]
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer or null")
+    if data["summary_error"] not in DIAGNOSTIC_SUMMARY_ERRORS:
+        raise CorpusResultsError(f"{path.name}: unknown summary error")
+    if data["container_status"] not in DIAGNOSTIC_CONTAINER_STATUSES:
+        raise CorpusResultsError(f"{path.name}: unknown container status")
+
+
+NODE_HEALTH_FIELDS = {
+    "exception_count", "gated_exception_count", "invalid_block_count", "clean_shutdown",
+    "unhandled_count", "fatal_count", "error_count",
+}
+
+
+def _validate_node_health(path: Path) -> None:
+    """Validate fixed log-scan counts without publishing any log lines."""
+    with path.open("r", encoding="utf-8") as source:
+        data = json.load(source)
+    if not isinstance(data, dict) or set(data) != NODE_HEALTH_FIELDS:
+        raise CorpusResultsError(f"{path.name} does not match the node health schema")
+    if not isinstance(data["clean_shutdown"], bool):
+        raise CorpusResultsError(f"{path.name}: clean_shutdown is not a boolean")
+    for key in NODE_HEALTH_FIELDS - {"clean_shutdown"}:
+        if isinstance(data[key], bool) or not isinstance(data[key], int) or data[key] < 0:
+            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
+
+
+def _validate_account_preparation(path: Path) -> None:
+    """Validate the helper's aggregate-only report; raw paths and SST metadata never stage."""
+    with path.open("r", encoding="utf-8") as source:
+        data = json.load(source)
+    try:
+        validate_sanitized_preparation(data)
+    except AccountIndexContractError as error:
+        raise CorpusResultsError(f"{path.name}: invalid Account preparation aggregate") from error
+
+
+def _safe_summary_state(path: Path) -> tuple[bool, bool, str, int, int | None, float | None]:
+    """Inspect a raw summary without returning or logging any request-derived data."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False, False, "missing", 0, None, None
+    try:
+        with path.open("r", encoding="utf-8") as source:
+            raw = json.load(source)
+    except UnicodeDecodeError:
+        return True, False, "invalid_json", size, None, None
+    except json.JSONDecodeError:
+        return True, False, "invalid_json", size, None, None
+    except OSError:
+        return True, False, "unreadable", size, None, None
+    try:
+        sanitized = sanitize_data(raw)
+    except CorpusResultsError:
+        return True, False, "invalid_schema", size, None, None
+    metrics = sanitized["metrics"]
+    request_count = metrics["http_reqs"]["values"]["count"]
+    fail_rate = metrics["http_req_failed"]["values"]["rate"]
+    return True, True, "none", size, int(request_count), float(fail_rate)
+
+
+def _duration_seconds(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*([smh])\s*", value)
+    if not match:
+        return None
+    amount = float(match.group(1))
+    multiplier = {"s": 1.0, "m": 60.0, "h": 3600.0}[match.group(2)]
+    return amount * multiplier
+
+
+def diagnose(raw_summary: str, out_path: str, state_path: str, tool_exit_code: int | None,
+             output_root: str, resources_path: str = "", requested_duration: str = "",
+             tool_log_path: str = "") -> None:
+    """Write a fixed, aggregate-only diagnostic for a corpus load container."""
+    raw_path = Path(raw_summary)
+    present, valid, summary_error, summary_bytes, summary_requests, summary_fail_rate = _safe_summary_state(raw_path)
+
+    container_present = False
+    container_status = "missing"
+    container_exit_code: int | None = None
+    container_oom_killed = False
+    container_error = False
+    state = Path(state_path)
+    try:
+        with state.open("r", encoding="utf-8") as source:
+            value = json.load(source)
+        if isinstance(value, dict):
+            container_present = True
+            candidate_status = value.get("Status")
+            container_status = candidate_status if candidate_status in DIAGNOSTIC_CONTAINER_STATUSES else "unknown"
+            candidate_exit = value.get("ExitCode")
+            if isinstance(candidate_exit, int) and candidate_exit >= 0:
+                container_exit_code = candidate_exit
+            container_oom_killed = value.get("OOMKilled") is True
+            container_error = bool(value.get("Error"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        pass
+
+    output_files = 0
+    output_bytes = 0
+    output = Path(output_root)
+    if output.is_dir():
+        for path in output.rglob("*"):
+            if path.is_file() and not path.is_symlink():
+                output_files += 1
+                try:
+                    output_bytes += path.stat().st_size
+                except OSError:
+                    pass
+
+    tool_log_present = False
+    tool_log_lines = 0
+    tool_log_k6_errors = 0
+    tool_log_summary_read_errors = 0
+    tool_log_summary_parse_errors = 0
+    tool_log_oom_signals = 0
+    if tool_log_path:
+        tool_log = Path(tool_log_path)
+        tool_log_present = tool_log.is_file()
+        if tool_log_present:
+            try:
+                with tool_log.open("r", encoding="utf-8", errors="replace") as source:
+                    for line in source:
+                        lowered = line.lower()
+                        tool_log_lines += 1
+                        tool_log_k6_errors += "k6 command execution completed with errors" in lowered
+                        tool_log_summary_read_errors += "failed to read k6 summary" in lowered
+                        tool_log_summary_parse_errors += "failed to unmarshal k6 summary" in lowered
+                        tool_log_oom_signals += any(signal in lowered for signal in (
+                            "out of memory", "oomkilled", "signal: killed", "exit status 137"))
+            except OSError:
+                pass
+
+    resource_present = False
+    resource_valid = False
+    resource_wall = 0.0
+    resource_samples = 0
+    resource_requests: int | None = None
+    resource_normalized = False
+    if resources_path:
+        resource = Path(resources_path)
+        resource_present = resource.is_file()
+        if resource_present:
+            try:
+                with resource.open("r", encoding="utf-8") as source:
+                    value = json.load(source)
+                _validate_resources(resource)
+                resource_valid = True
+                resource_wall = float(value.get("wall_seconds", 0.0))
+                resource_samples = int(value.get("samples", 0))
+                requests = value.get("requests", 0)
+                if isinstance(requests, int) and requests > 0:
+                    resource_requests = requests
+                    resource_normalized = True
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError, CorpusResultsError, ValueError, TypeError):
+                pass
+
+    data = {
+        "schema_version": 1,
+        "tool_exit_code": tool_exit_code,
+        "summary_present": present,
+        "summary_valid": valid,
+        "summary_error": summary_error,
+        "summary_bytes": summary_bytes,
+        "summary_request_count": summary_requests,
+        "summary_fail_rate": summary_fail_rate,
+        "requested_duration_seconds": _duration_seconds(requested_duration),
+        "container_present": container_present,
+        "container_status": container_status,
+        "container_exit_code": container_exit_code,
+        "container_oom_killed": container_oom_killed,
+        "container_error": container_error,
+        "tool_log_present": tool_log_present,
+        "tool_log_lines": tool_log_lines,
+        "tool_log_k6_errors": tool_log_k6_errors,
+        "tool_log_summary_read_errors": tool_log_summary_read_errors,
+        "tool_log_summary_parse_errors": tool_log_summary_parse_errors,
+        "tool_log_oom_signals": tool_log_oom_signals,
+        "output_files": output_files,
+        "output_bytes": output_bytes,
+        "resource_sample_present": resource_present,
+        "resource_sample_valid": resource_valid,
+        "resource_sample_wall_seconds": round(resource_wall, 3),
+        "resource_sample_count": resource_samples,
+        "resource_sample_requests": resource_requests,
+        "resource_sample_normalized": resource_normalized,
+    }
+    target = Path(out_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as destination:
+        json.dump(data, destination, sort_keys=True, separators=(",", ":"))
+        destination.write("\n")
 
 
 # Arity matches the one consumer exactly: percat-matrix.py unpacks 4 fields for iso| and
@@ -336,6 +589,12 @@ def stage(output_root: str, stage_root: str) -> None:
                 _validate_timings_meta(path)
             elif path.name == "resources.json":
                 _validate_resources(path)
+            elif path.name == "account-index-prepare.json":
+                _validate_account_preparation(path)
+            elif path.name in ("diagnostic.json", "warmup-diagnostic.json"):
+                _validate_diagnostic(path)
+            elif path.name == "node-health.json":
+                _validate_node_health(path)
             elif path.name == "summaries.manifest":
                 target = destination_root / path.relative_to(source_root)
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -428,6 +687,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     sanitize_parser.add_argument("raw")
     sanitize_parser.add_argument("out")
 
+    diagnose_parser = subparsers.add_parser("diagnose", help="write a counts-only corpus run diagnostic")
+    diagnose_parser.add_argument("raw_summary")
+    diagnose_parser.add_argument("out")
+    diagnose_parser.add_argument("--state", required=True, help="docker State JSON on the runner")
+    diagnose_parser.add_argument("--tool-exit-code", type=int)
+    diagnose_parser.add_argument("--output-root", required=True)
+    diagnose_parser.add_argument("--resources", default="")
+    diagnose_parser.add_argument("--requested-duration", default="")
+    diagnose_parser.add_argument("--tool-log", default="")
+
     stage_parser = subparsers.add_parser("stage", help="stage only validated aggregate files")
     stage_parser.add_argument("output_root")
     stage_parser.add_argument("stage_root")
@@ -441,6 +710,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.command == "sanitize":
             sanitize(arguments.raw, arguments.out)
+        elif arguments.command == "diagnose":
+            diagnose(arguments.raw_summary, arguments.out, arguments.state,
+                     arguments.tool_exit_code, arguments.output_root, arguments.resources,
+                     arguments.requested_duration, arguments.tool_log)
         elif arguments.command == "stage":
             stage(arguments.output_root, arguments.stage_root)
         else:

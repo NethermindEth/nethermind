@@ -100,6 +100,137 @@ class CorpusResultsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(SENTINEL, result.stderr)
 
+    def test_diagnose_records_missing_summary_and_container_oom_without_private_data(self):
+        state = self.write_json(self.dir / "state.json", {
+            "Status": "exited", "ExitCode": 137, "OOMKilled": True, "Error": "",
+        })
+        out = self.dir / "diagnostic.json"
+        corpus_results.diagnose(str(self.dir / "missing-summary.json"), str(out), str(state),
+                                137, str(self.dir / "raw-output"))
+        data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(data["summary_error"], "missing")
+        self.assertFalse(data["summary_valid"])
+        self.assertIsNone(data["summary_request_count"])
+        self.assertTrue(data["container_oom_killed"])
+        self.assertEqual(data["container_exit_code"], 137)
+        self.assertNotIn(SENTINEL, out.read_text(encoding="utf-8"))
+        corpus_results._validate_diagnostic(out)
+
+    def test_diagnose_records_resource_window_and_valid_summary_as_aggregates(self):
+        raw = self.write_json(self.dir / "summary.json", raw_summary())
+        state = self.write_json(self.dir / "state.json", {
+            "Status": "exited", "ExitCode": 0, "OOMKilled": False, "Error": "",
+        })
+        resources = self.write_json(self.dir / "resources.json", {
+            "wall_seconds": 60.5, "samples": 242, "cpu_seconds": 12.0,
+            "cpu_avg_cores": 0.2, "cpu_peak_cores": 1.0, "cpu_throttled_usec": 0,
+            "memory_avg_bytes": 100, "memory_peak_bytes": 200, "io_read_bytes": 3,
+            "io_write_bytes": 4, "stall_cpu_usec": None, "stall_io_usec": None,
+            "stall_memory_usec": None, "requests": 90, "cpu_ms_per_request": 133.3,
+            "io_read_bytes_per_request": 0.0, "memory_anon_samples": 242,
+            "memory_anon_avg_bytes": 70, "memory_anon_peak_bytes": 100,
+            "memory_file_samples": 242, "memory_file_avg_bytes": 30,
+            "memory_file_peak_bytes": 50,
+        })
+        tool_log = self.dir / "jsonbench-tool.log"
+        tool_log.write_text(
+            "K6 command execution completed with errors\n"
+            "Failed to read k6 summary\n"
+            "Failed to unmarshal k6 summary\n"
+            "out of memory while processing SENTINEL_PRIVATE_DATA\n",
+            encoding="utf-8",
+        )
+        out = self.dir / "diagnostic.json"
+        corpus_results.diagnose(str(raw), str(out), str(state), 0, str(self.dir), str(resources), "60s",
+                                str(tool_log))
+        data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertTrue(data["summary_valid"])
+        self.assertEqual(data["summary_error"], "none")
+        self.assertEqual(data["summary_request_count"], 90)
+        self.assertEqual(data["summary_fail_rate"], 0.0)
+        self.assertEqual(data["requested_duration_seconds"], 60.0)
+        self.assertEqual(data["resource_sample_wall_seconds"], 60.5)
+        self.assertEqual(data["resource_sample_count"], 242)
+        self.assertEqual(data["resource_sample_requests"], 90)
+        self.assertTrue(data["resource_sample_normalized"])
+        self.assertTrue(data["tool_log_present"])
+        self.assertEqual(data["tool_log_lines"], 4)
+        self.assertEqual(data["tool_log_k6_errors"], 1)
+        self.assertEqual(data["tool_log_summary_read_errors"], 1)
+        self.assertEqual(data["tool_log_summary_parse_errors"], 1)
+        self.assertEqual(data["tool_log_oom_signals"], 1)
+        self.assertNotIn("SENTINEL_PRIVATE_DATA", out.read_text(encoding="utf-8"))
+        corpus_results._validate_diagnostic(out)
+
+    def test_resources_reject_negative_or_non_numeric_memory_breakdown(self):
+        valid = {
+            "memory_anon_samples": 0, "memory_anon_avg_bytes": None,
+            "memory_anon_peak_bytes": None, "memory_file_samples": 0,
+            "memory_file_avg_bytes": None, "memory_file_peak_bytes": None,
+        }
+        path = self.write_json(self.dir / "resources.json", valid)
+        corpus_results._validate_resources(path)
+        for key, value in (("memory_anon_samples", -1), ("memory_file_peak_bytes", "unknown"),
+                           ("memory_anon_avg_bytes", float("nan")),
+                           ("memory_file_samples", float("inf"))):
+            with self.subTest(key=key):
+                invalid = self.write_json(self.dir / f"{key}.json", {**valid, key: value})
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results._validate_resources(invalid)
+
+    def test_stage_accepts_diagnostics_and_node_health(self):
+        out_root = self.dir / "diagnostic-tree"
+        cell = out_root / "corpus" / "a" / "nm" / "100"
+        cell.mkdir(parents=True)
+        diagnostic = {
+            "schema_version": 1, "tool_exit_code": 137, "summary_present": False,
+            "summary_valid": False, "summary_error": "missing", "summary_bytes": 0,
+            "summary_request_count": None, "summary_fail_rate": None,
+            "requested_duration_seconds": 60.0,
+            "container_present": True, "container_status": "exited", "container_exit_code": 137,
+            "container_oom_killed": True, "container_error": False, "output_files": 0,
+            "output_bytes": 0, "resource_sample_present": False, "resource_sample_valid": False,
+            "resource_sample_wall_seconds": 0.0, "resource_sample_count": 0,
+            "resource_sample_requests": None, "resource_sample_normalized": False,
+            "tool_log_present": False, "tool_log_lines": 0, "tool_log_k6_errors": 0,
+            "tool_log_summary_read_errors": 0, "tool_log_summary_parse_errors": 0,
+            "tool_log_oom_signals": 0,
+        }
+        self.write_json(cell / "warmup-diagnostic.json", diagnostic)
+        self.write_json(out_root / "node-health" / "nethermind" / "node-health.json", {
+            "exception_count": 0, "gated_exception_count": 0, "invalid_block_count": 0, "clean_shutdown": True,
+            "unhandled_count": 0, "fatal_count": 0, "error_count": 0,
+        })
+        stage_root = self.dir / "diagnostic-stage"
+        corpus_results.stage(str(out_root), str(stage_root))
+        self.assertTrue((stage_root / "corpus" / "a" / "nm" / "100" / "warmup-diagnostic.json").is_file())
+        self.assertTrue((stage_root / "node-health" / "nethermind" / "node-health.json").is_file())
+
+    def test_diagnostic_rejects_poisoned_types_and_non_finite_numbers(self):
+        base = {
+            "schema_version": 1, "tool_exit_code": 0, "summary_present": True,
+            "summary_valid": True, "summary_error": "none", "summary_bytes": 1,
+            "summary_request_count": 1, "summary_fail_rate": 0.0,
+            "requested_duration_seconds": 1.0, "container_present": True,
+            "container_status": "exited", "container_exit_code": 0,
+            "container_oom_killed": False, "container_error": False,
+            "tool_log_present": False, "tool_log_lines": 0, "tool_log_k6_errors": 0,
+            "tool_log_summary_read_errors": 0, "tool_log_summary_parse_errors": 0,
+            "tool_log_oom_signals": 0, "output_files": 0, "output_bytes": 0,
+            "resource_sample_present": True, "resource_sample_valid": True,
+            "resource_sample_wall_seconds": 1.0, "resource_sample_count": 1,
+            "resource_sample_requests": 1, "resource_sample_normalized": True,
+        }
+        for name, changes in (
+            ("oom type", {"container_oom_killed": "false"}),
+            ("wall NaN", {"resource_sample_wall_seconds": float("nan")}),
+            ("duration infinity", {"requested_duration_seconds": float("inf")}),
+        ):
+            with self.subTest(name=name):
+                path = self.write_json(self.dir / name / "diagnostic.json", {**base, **changes})
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results._validate_diagnostic(path)
+
     def test_stage_copies_only_validated_allowlisted_files(self):
         out_root = self.dir / "out"
         sanitized = corpus_results.sanitize_data(raw_summary())
@@ -303,4 +434,3 @@ class CommentRenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

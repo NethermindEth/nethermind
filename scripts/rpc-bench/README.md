@@ -339,6 +339,24 @@ Read it correctly: a parity divergence is a correctness regression regardless of
 latency numbers, and latency deltas under roughly 2.5% are within run-to-run noise on
 this corpus.
 
+## Account index CV sweep
+
+The RPC workflow has a separate opt-in for the isolated Account-index preparation sweep:
+
+```json
+{"account_index_sweep": true}
+```
+
+It is accepted only for `jsonbench-sweep` on the ARM flat snapshot with overlay isolation and the
+pinned `nethermindeth/nethermind:rocksdb-auto-base-d66cfd50e0` image. The runner executes these nine
+arms sequentially against the same isolated view: `master` (binary), `forced-interpolation`, then
+`auto-cv-0.2`, `auto-cv-0.05`, `auto-cv-0.1`, `auto-cv-0.15`, `auto-cv-0.25`, `auto-cv-0.35`, and
+`auto-cv-0.5`. The arms run sequentially, each on a fresh isolated view of the same snapshot. Each arm uses the pinned 497-record corpus at 100 rps, with a 120-second discarded
+warm-up and a 60-second measured cell. The helper rewrites Account SSTs before the node starts and
+records only aggregate counts, resolved options, native table metrics, preparation CPU/RSS timing,
+the unchanged Account-content digest, and the helper SHA in the public artifact. Raw helper JSON,
+logs, paths, and corpus data remain in runner scratch.
+
 ## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
 
 For call sets that must not appear in GitHub logs or artifacts (e.g. shared by a
