@@ -155,8 +155,6 @@ namespace Nethermind.Evm.Test.Tracing
         [TestCase(100_000)]
         public void ResetForParallelTx_does_not_reserve_capacity_for_the_whole_block(int txCount)
         {
-            // Parallel execution pools one tracer per transaction, so a per-tracer reservation that
-            // scales with the block's transaction count costs O(txCount^2) across the pool.
             Transaction tx = Build.A.Transaction.TestObject;
             Transaction[] txs = new Transaction[txCount];
             Array.Fill(txs, tx);
