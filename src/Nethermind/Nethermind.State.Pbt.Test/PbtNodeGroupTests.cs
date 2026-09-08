@@ -100,14 +100,9 @@ public class PbtNodeGroupTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(4)]
-    [TestCase(8)]
-    [TestCase(12)]
-    [TestCase(252)]
-    [TestCase(256)]
-    [TestCase(516)]
-    public void Reader_validates_every_required_leaf_bit_and_ignores_suffix_bits(int groupDepth)
+    [Test]
+    public void Reader_and_writer_validate_every_required_leaf_bit_and_ignore_suffix_bits(
+        [Values(0, 4, 8, 12, 252, 256, 516)] int groupDepth, [Values] bool streamingWriter)
     {
         byte[] groupBytes = new byte[(groupDepth + 7) / 8];
         groupBytes.AsSpan().Fill(0xA5);
@@ -122,39 +117,47 @@ public class PbtNodeGroupTests
             path.Path.CopyTo(key);
             byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key), Value(1));
             byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
-            Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1));
+            Assert.That(ValidateLeafGroup(groupKey, position, payload, streamingWriter), Is.EqualTo(1));
 
             for (int bit = 0; bit < key.Length * 8; bit++)
             {
                 byte mask = (byte)(0x80 >> (bit & 7));
                 payload[3 + (bit >> 3)] ^= mask;
                 if (bit < path.BitDepth)
-                    Assert.That(() => ReadGroupCount(groupKey, payload), Throws.TypeOf<InvalidDataException>(), $"position {position}, bit {bit}");
+                    Assert.That(() => ValidateLeafGroup(groupKey, position, payload, streamingWriter), Throws.TypeOf<InvalidDataException>(), $"position {position}, bit {bit}");
                 else
-                    Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1), $"position {position}, suffix bit {bit}");
+                    Assert.That(ValidateLeafGroup(groupKey, position, payload, streamingWriter), Is.EqualTo(1), $"position {position}, suffix bit {bit}");
                 payload[3 + (bit >> 3)] ^= mask;
             }
         }
     }
 
-    [TestCase(8)]
-    [TestCase(12)]
-    [TestCase(252)]
-    [TestCase(PbtFourLevelGroupGeometry.MaxGroupDepth)]
-    public void Reader_rejects_leaf_keys_shorter_than_required_path(int groupDepth)
+    [Test]
+    public void Reader_and_writer_reject_leaf_keys_shorter_than_required_path(
+        [Values(8, 12, 252, PbtFourLevelGroupGeometry.MaxGroupDepth)] int groupDepth, [Values] bool streamingWriter)
     {
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
         IPbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, 0);
         byte[] key = new byte[(path.BitDepth + 7) / 8];
         byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key), Value(1));
         byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
-        Assert.That(ReadGroupCount(groupKey, payload), Is.EqualTo(1));
+        Assert.That(ValidateLeafGroup(groupKey, 0, payload, streamingWriter), Is.EqualTo(1));
 
         byte[] shortEncoding = PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key.AsSpan(0, key.Length - 1)), Value(1));
         byte[] shortPayload = new byte[shortEncoding.Length + PbtNodeGroupCodec.TrailerLength];
         shortEncoding.CopyTo(shortPayload, 0);
         BinaryPrimitives.WriteUInt32LittleEndian(shortPayload.AsSpan(shortPayload.Length - sizeof(uint)), 1u);
-        Assert.That(() => ReadGroupCount(groupKey, shortPayload), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => ValidateLeafGroup(groupKey, 0, shortPayload, streamingWriter), Throws.TypeOf<InvalidDataException>());
+    }
+
+    private static int ValidateLeafGroup(IPbtNodePath groupKey, int position, byte[] payload, bool streamingWriter)
+    {
+        if (!streamingWriter) return ReadGroupCount(groupKey, payload);
+        using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
+        writer.Write(position, payload.AsSpan(0, payload.Length - PbtNodeGroupCodec.TrailerLength));
+        using RefCountingMemory writtenPayload = writer.Detach()!;
+        Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
+        return 1;
     }
 
     private static int ReadGroupCount(IPbtNodePath groupKey, byte[] payload) => new PbtNodeGroupReader(groupKey, payload).Count;
@@ -610,6 +613,29 @@ public class PbtNodeGroupTests
             }
         }
     }
+    [Test]
+    public void Streaming_writer_commits_leaves_without_allocating(
+        [Values(0, 4, 8, 268, PbtFourLevelGroupGeometry.MaxGroupDepth)] int groupDepth)
+    {
+        PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
+        using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
+        int positionCount = groupDepth == 0 ? PbtFourLevelGroupGeometry.PositionCount : PbtFourLevelGroupGeometry.RootPosition;
+        for (int position = 0; position < positionCount; position++)
+        {
+            IPbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+            byte[] key = new byte[Math.Max(1, path.Path.Length)];
+            path.Path.CopyTo(key);
+            byte[] encoding = PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key), Value(1));
+            encoding.CopyTo(writer.GetSpan(position, encoding.Length));
+
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            writer.Commit();
+            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+            Assert.That(allocatedBytes, Is.Zero, $"position {position}");
+        }
+    }
+
     [TestCase(0, 1)]
     [TestCase(0, 31)]
     [TestCase(4, 30)]

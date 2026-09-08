@@ -60,8 +60,7 @@ internal sealed class PbtNodeGroupWriter : IDisposable
         if (_pendingPosition < 0) throw new InvalidOperationException("No PBT node is reserved.");
         ReadOnlySpan<byte> encoding = _memory!.GetSpan().Slice(_written, _pendingLength);
         PbtNodeCodec.ValidateExact(encoding);
-        if (encoding[0] == 0)
-            PbtNodeGroupCodec.ValidateNodeEncoding(PbtFourLevelGroupGeometry.PathOf(_groupKey, _pendingPosition), encoding);
+        PbtNodeGroupReader.ValidateLeafPath(_groupKey, _pendingPosition, encoding);
         _offsets[_pendingPosition] = (ushort)_written;
         _availability |= 1u << _pendingPosition;
         _written += _pendingLength;

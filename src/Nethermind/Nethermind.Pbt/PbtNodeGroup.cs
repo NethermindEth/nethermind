@@ -308,7 +308,7 @@ public readonly ref struct PbtNodeGroupReader
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
     }
-    private static void ValidateLeafPath(IPbtNodePath groupKey, int position, ReadOnlySpan<byte> encoding)
+    internal static void ValidateLeafPath(IPbtNodePath groupKey, int position, ReadOnlySpan<byte> encoding)
     {
         if (encoding[0] != 0 || position == PbtFourLevelGroupGeometry.RootPosition) return;
         Span<byte> directions = stackalloc byte[PbtFourLevelGroupGeometry.LevelsPerGroup];
