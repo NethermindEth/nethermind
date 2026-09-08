@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
-public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy)
+public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy) : IDisposable
 {
     public const byte FormatVersion = 2;
 
@@ -489,4 +489,6 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], last);
         _column.PutSpan(key, value);
     }
+
+    public void Dispose() => _reclaimTurn.Dispose();
 }

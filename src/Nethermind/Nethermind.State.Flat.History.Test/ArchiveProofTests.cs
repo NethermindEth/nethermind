@@ -1052,7 +1052,7 @@ public class ArchiveProofTests
     [Test]
     public void A_walk_start_waiting_behind_a_reclaim_pass_is_cancellable()
     {
-        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
         using ManualResetEventSlim inside = new();
         using ManualResetEventSlim hold = new();
         Task reclaim = Task.Run(() => metadata.TryReclaimOutsideWalk(() =>
@@ -1060,14 +1060,20 @@ public class ArchiveProofTests
             inside.Set();
             hold.Wait();
         }));
-        inside.Wait();
+        Assert.That(inside.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the reclaim pass is inside its callback and holds the turn");
         using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
 
-        Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
-            "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
+        try
+        {
+            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+                "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
+        }
+        finally
+        {
+            hold.Set();
+            Assert.That(reclaim.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        }
 
-        hold.Set();
-        reclaim.Wait();
         Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
     }
 
