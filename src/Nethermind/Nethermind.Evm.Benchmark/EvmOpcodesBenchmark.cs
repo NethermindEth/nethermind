@@ -38,6 +38,10 @@ namespace Nethermind.Evm.Benchmark;
 /// Stack values are prepared per benchmark case based on <see cref="Opcode"/>.
 /// Run: dotnet run -c Release --filter "*EvmOpcodesBenchmark*"
 /// </summary>
+/// <remarks>
+/// Includes a harness call, gas reset and cleanup check per opcode. Use <see cref="OpcodeChainBenchmarks"/>
+/// to measure sustained interpreter dispatch without those per-opcode harness costs.
+/// </remarks>
 [Config(typeof(EvmOpcodesBenchmarkConfig))]
 public unsafe class EvmOpcodesBenchmark
 {
@@ -55,6 +59,7 @@ public unsafe class EvmOpcodesBenchmark
     private GCHandle _continuationHandlersHandle;
     private BenchmarkVm _vm = null!;
     private byte[] _opcodeCode = null!;
+    private CodeInfo _opcodeCodeInfo = null!;
     private byte[] _stackBuffer = null!;
     private int _stackOffset;
     private int _stackLength;
@@ -84,7 +89,7 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly UInt256 ShiftAmount = new(64);
     private static readonly UInt256 BytePosition = new(15);
     private static readonly UInt256 SignExtendPosition = new(15);
-    private static readonly UInt256 JumpDestination = UInt256.Zero;
+    private static readonly UInt256 JumpDestination = UInt256.One;
     private static readonly UInt256 One = UInt256.One;
     private static readonly UInt256 CallTarget = new(0x1000UL);
     private static readonly UInt256 CallGasLimit = new(100_000UL);
@@ -225,22 +230,28 @@ public unsafe class EvmOpcodesBenchmark
             }
         }
 
-        ReadOnlyMemory<byte> inputData = Opcode == Instruction.CALLDATACOPY ? CopySource : default;
-        _env = ExecutionEnvironment.Rent(
-            codeInfo: new CodeInfo(bytecode),
-            executingAccount: address,
-            caller: address,
-            codeSource: address,
-            callDepth: 0,
-            value: 0,
-            inputData: inputData);
-
         _opcodeCode = (byte[])bytecode.Clone();
         _opcodeCode[0] = (byte)Opcode;
         if (Opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
         {
             _opcodeCode[1] = ExtendedStackImmediate;
         }
+        else if (Opcode is Instruction.JUMP or Instruction.JUMPI)
+        {
+            // Keep the taken destination separate from the opcode under test.
+            _opcodeCode[(int)JumpDestination] = (byte)Instruction.JUMPDEST;
+        }
+        _opcodeCodeInfo = new CodeInfo(_opcodeCode);
+
+        ReadOnlyMemory<byte> inputData = Opcode == Instruction.CALLDATACOPY ? CopySource : default;
+        _env = ExecutionEnvironment.Rent(
+            codeInfo: _opcodeCodeInfo,
+            executingAccount: address,
+            caller: address,
+            codeSource: address,
+            callDepth: 0,
+            value: 0,
+            inputData: inputData);
 
         _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(ulong.MaxValue),
@@ -303,7 +314,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
@@ -327,7 +338,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
@@ -345,7 +356,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
@@ -701,7 +712,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;

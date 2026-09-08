@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -17,6 +18,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.Tracing;
@@ -118,10 +120,36 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Warm_up_opcode_handlers_does_not_throw() =>
+    public void Warm_up_opcode_handlers_returns_the_pooled_access_tracker()
+    {
+        object trackingState;
+        using (StackAccessTracker tracker = new())
+            trackingState = ReadWarmedOpcodeField(typeof(StackAccessTracker), "_trackingState", tracker);
+
         Assert.That(
             () => EthereumVirtualMachine.WarmUpEvmInstructions(TestState, CodeInfoRepository),
             Throws.Nothing);
+
+        using StackAccessTracker reused = new();
+        Assert.That(ReadWarmedOpcodeField(typeof(StackAccessTracker), "_trackingState", reused), Is.SameAs(trackingState));
+    }
+
+    [Test]
+    public void Warm_up_code_preserves_each_opcodes_jump_bitmap([Values(Instruction.JUMP, Instruction.JUMPI)] Instruction instruction)
+    {
+        MethodInfo factory = typeof(VirtualMachine<EthereumGasPolicy>).GetMethod("CreateWarmUpCodeInfo", BindingFlags.Static | BindingFlags.NonPublic)!;
+        CodeInfo jump = (CodeInfo)factory.Invoke(null, [instruction])!;
+        Assert.That(jump.ValidateJump(1), Is.True);
+
+        CodeInfo push = (CodeInfo)factory.Invoke(null, [Instruction.PUSH32])!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(push.ValidateJump(1), Is.False);
+            Assert.That(jump.ValidateJump(1), Is.True);
+            Assert.That(jump.CodeSpan[0], Is.EqualTo((byte)instruction));
+            Assert.That(push.CodeSpan[0], Is.EqualTo((byte)Instruction.PUSH32));
+        }
+    }
 
     [TestCase(0UL, 0UL)]
     [TestCase(MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
@@ -249,36 +277,339 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(1023, true, 1)]
-    [TestCase(1024, false, 1)]
-    [TestCase(1024, true, 2)]
-    [TestCase(2048, true, 3)]
+    [TestCase(1023, true, 1, Instruction.JUMPDEST)]
+    [TestCase(1024, false, 1, Instruction.JUMPDEST)]
+    [TestCase(1024, true, 2, Instruction.JUMPDEST)]
+    [TestCase(2048, true, 3, Instruction.JUMPDEST)]
+    [TestCase(1023, true, 1, Instruction.RETURNDATASIZE)]
+    [TestCase(1024, false, 1, Instruction.RETURNDATASIZE)]
+    [TestCase(1024, true, 2, Instruction.RETURNDATASIZE)]
+    [TestCase(2048, true, 3, Instruction.RETURNDATASIZE)]
     public void Cancellation_is_polled_before_the_first_opcode_and_each_complete_1024_opcode_batch(
         int continuingOpcodeCount,
         bool appendStop,
-        int expectedPollCount)
+        int expectedPollCount,
+        Instruction opcode)
     {
-        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
-        Array.Fill(code, (byte)Instruction.JUMPDEST);
-        if (appendStop)
-            code[^1] = (byte)Instruction.STOP;
+        byte[] code = CreateCancellationCode(continuingOpcodeCount, appendStop, opcode);
         CountingCancellationTracer tracer = new();
 
         Execute(tracer, code);
 
-        Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(continuingOpcodeCount + (appendStop ? 1 : 0)));
+        }
     }
 
-    [Test]
-    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode()
+    [TestCase(Instruction.JUMPDEST)]
+    [TestCase(Instruction.RETURNDATASIZE)]
+    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode(Instruction opcode)
     {
-        byte[] code = new byte[1025];
-        Array.Fill(code, (byte)Instruction.JUMPDEST);
-        code[^1] = (byte)Instruction.STOP;
+        byte[] code = CreateCancellationCode(1024, true, opcode);
         CountingCancellationTracer tracer = new(cancelAtPoll: 2);
 
         Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
         Assert.That(tracer.PollCount, Is.EqualTo(2));
+    }
+
+    private static byte[] CreateCancellationCode(int continuingOpcodeCount, bool appendStop, Instruction opcode)
+    {
+        byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
+        for (int i = 0; i < continuingOpcodeCount; i++)
+            code[i] = (byte)(opcode == Instruction.RETURNDATASIZE && (i & 1) == 0 ? Instruction.POP : opcode);
+        if (opcode == Instruction.RETURNDATASIZE)
+            code[0] = (byte)opcode;
+        if (appendStop)
+            code[^1] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private static IEnumerable<TestCaseData> FixedCostOpcodeGasCases()
+    {
+        (Instruction Opcode, int Depth, ulong Cost)[] operations =
+        [
+            (Instruction.ADD, 2, 3), (Instruction.MUL, 2, 5), (Instruction.SUB, 2, 3),
+            (Instruction.ADDMOD, 3, 8), (Instruction.MULMOD, 3, 8),
+            (Instruction.DIV, 2, 5), (Instruction.SDIV, 2, 5), (Instruction.MOD, 2, 5),
+            (Instruction.SMOD, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
+            (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
+            (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
+            (Instruction.POP, 1, 2),
+            (Instruction.CALLDATALOAD, 1, 3),
+            (Instruction.BYTE, 2, 3), (Instruction.CLZ, 1, 5),
+            (Instruction.SHL, 2, 3), (Instruction.SHR, 2, 3), (Instruction.SAR, 2, 3),
+            (Instruction.DUP1, 1, 3), (Instruction.DUP2, 2, 3), (Instruction.DUP3, 3, 3), (Instruction.DUP4, 4, 3),
+            (Instruction.DUP5, 5, 3), (Instruction.DUP6, 6, 3), (Instruction.DUP7, 7, 3), (Instruction.DUP8, 8, 3),
+            (Instruction.DUP9, 9, 3), (Instruction.DUP10, 10, 3), (Instruction.DUP11, 11, 3), (Instruction.DUP12, 12, 3),
+            (Instruction.DUP13, 13, 3), (Instruction.DUP14, 14, 3), (Instruction.DUP15, 15, 3), (Instruction.DUP16, 16, 3),
+            (Instruction.AND, 2, 3), (Instruction.OR, 2, 3), (Instruction.XOR, 2, 3),
+            (Instruction.SWAP1, 2, 3), (Instruction.SWAP2, 3, 3), (Instruction.SWAP3, 4, 3), (Instruction.SWAP4, 5, 3),
+            (Instruction.SWAP5, 6, 3), (Instruction.SWAP6, 7, 3), (Instruction.SWAP7, 8, 3), (Instruction.SWAP8, 9, 3),
+            (Instruction.SWAP9, 10, 3), (Instruction.SWAP10, 11, 3), (Instruction.SWAP11, 12, 3), (Instruction.SWAP12, 13, 3),
+            (Instruction.SWAP13, 14, 3), (Instruction.SWAP14, 15, 3), (Instruction.SWAP15, 16, 3), (Instruction.SWAP16, 17, 3)
+        ];
+        foreach ((Instruction opcode, int depth, ulong cost) in operations)
+        {
+            if (opcode is not (>= Instruction.DUP1 and <= Instruction.DUP16))
+                foreach (int fullDepth in new[] { 1023, 1024 })
+                    foreach (int tracerMode in new[] { 0, 1, 2 })
+                        foreach (bool sufficientGas in new[] { false, true })
+                            yield return new TestCaseData(opcode, fullDepth, cost, tracerMode, true, sufficientGas, false)
+                                .SetName($"Fixed_cost_full_stack_{opcode}_tracer_{tracerMode}_depth_{fullDepth}_gas_{sufficientGas}");
+            foreach (int tracerMode in new[] { 0, 1, 2 })
+            {
+                foreach (bool sufficientStack in new[] { false, true })
+                {
+                    foreach (bool sufficientGas in new[] { false, true })
+                    {
+                        foreach (bool appendStop in new[] { false, true })
+                        {
+                            yield return new TestCaseData(opcode, depth, cost, tracerMode, sufficientStack, sufficientGas, appendStop)
+                                .SetName($"Fixed_cost_gas_{opcode}_tracer_{tracerMode}_stack_{sufficientStack}_gas_{sufficientGas}_stop_{appendStop}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(FixedCostOpcodeGasCases))]
+    public void Fixed_cost_opcode_gas_status_preserves_failure_precedence(
+        Instruction opcode, int depth, ulong cost, int tracerMode, bool sufficientStack, bool sufficientGas, bool appendStop)
+    {
+        int pushes = sufficientStack ? depth : depth - 1;
+        byte[] code = new byte[pushes * 2 + 1 + (appendStop ? 1 : 0)];
+        for (int i = 0; i < pushes; i++)
+        {
+            code[i * 2] = (byte)Instruction.PUSH1;
+            code[i * 2 + 1] = 1;
+        }
+        code[pushes * 2] = (byte)opcode;
+        ulong gasLimit = GasCostOf.Transaction + (ulong)pushes * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        block.Header.Number = MainnetSpecProvider.OsakaActivation.BlockNumber;
+        block.Header.Timestamp = MainnetSpecProvider.OsakaBlockTimestamp;
+        TestAllTracerWithOutput tracer = tracerMode switch
+        {
+            0 => new NoInstructionTracer(),
+            1 => new TestAllTracerWithOutput(),
+            _ => new CountingCancellationTracer()
+        };
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        string expectedError = !sufficientGas ? nameof(EvmExceptionType.OutOfGas)
+            : !sufficientStack ? nameof(EvmExceptionType.StackUnderflow) : null;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(expectedError));
+            Assert.That(tracer.StatusCode, Is.EqualTo(expectedError is null ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(pushes + 1 + (appendStop && expectedError is null ? 1 : 0)));
+        }
+    }
+
+    /// <remarks>
+    /// Reflection discovers checked-body families; opcode mappings are maintained by hand.
+    /// Update the mapping and boundary cases when registering another opcode to an existing family.
+    /// </remarks>
+    [Test]
+    public void Checked_opcode_bodies_have_boundary_cases()
+    {
+        Dictionary<string, Instruction[]> coveredBodies = new()
+        {
+            ["Math2Opcode"] = [Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT],
+            ["Math3Opcode"] = [Instruction.ADDMOD, Instruction.MULMOD],
+            ["Math1Opcode"] = [Instruction.ISZERO, Instruction.NOT],
+            ["BitwiseOpcode"] = [Instruction.EQ, Instruction.AND, Instruction.OR, Instruction.XOR],
+            ["CountLeadingZerosOpcode"] = [Instruction.CLZ],
+            ["ByteOpcode"] = [Instruction.BYTE],
+            ["ShiftOpcode"] = [Instruction.SHL, Instruction.SHR],
+            ["SarOpcode"] = [Instruction.SAR],
+            ["EnvAddressOpcode"] = [Instruction.ADDRESS, Instruction.CALLER],
+            ["Env32BytesOpcode"] = [Instruction.ORIGIN, Instruction.CHAINID],
+            ["EnvUInt256Opcode"] = [Instruction.CALLVALUE],
+            ["EnvUInt32Opcode"] = [Instruction.CALLDATASIZE],
+            ["EnvUInt64Opcode"] = [Instruction.MSIZE],
+            ["BlkAddressOpcode"] = [Instruction.COINBASE],
+            ["BlkUInt256Opcode"] = [Instruction.GASPRICE, Instruction.BASEFEE],
+            ["BlkUInt64Opcode"] = [Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.GASLIMIT],
+            ["CallDataLoadOpcode"] = [Instruction.CALLDATALOAD],
+            ["CodeSizeOpcode"] = [Instruction.CODESIZE],
+            ["ReturnDataSizeOpcode"] = [Instruction.RETURNDATASIZE],
+            ["PrevRandaoOpcode"] = [Instruction.PREVRANDAO],
+            ["SelfBalanceOpcode"] = [Instruction.SELFBALANCE],
+            ["PopOpcode"] = [Instruction.POP],
+            ["ProgramCounterOpcode"] = [Instruction.PC],
+            ["GasOpcode"] = [Instruction.GAS],
+            ["Push0Opcode"] = [Instruction.PUSH0],
+            ["PushOpcode"] = OpcodeRange(Instruction.PUSH1, Instruction.PUSH32),
+            ["DupOpcode"] = OpcodeRange(Instruction.DUP1, Instruction.DUP16),
+            ["SwapOpcode"] = OpcodeRange(Instruction.SWAP1, Instruction.SWAP16),
+        };
+        HashSet<Instruction> coveredOpcodes = [.. StackGrowingOpcodes()];
+        foreach (TestCaseData testCase in FixedCostOpcodeGasCases())
+            coveredOpcodes.Add((Instruction)testCase.Arguments[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Type body in typeof(VirtualMachine<>).GetNestedTypes(BindingFlags.NonPublic))
+            {
+                if (!body.IsValueType || body.GetProperty("HasCheckedBody", BindingFlags.Public | BindingFlags.Static) is null)
+                    continue;
+
+                // Include conditional checked bodies even when this host disables their fast path.
+                string name = body.Name.Split('`')[0];
+                bool covered = coveredBodies.TryGetValue(name, out Instruction[] opcodes);
+                Assert.That(covered, Is.True, $"Add boundary cases for {name}.");
+                if (covered)
+                    foreach (Instruction opcode in opcodes)
+                        Assert.That(coveredOpcodes, Does.Contain(opcode), $"Missing {name}: {opcode}.");
+            }
+        }
+    }
+
+    private static Instruction[] OpcodeRange(Instruction first, Instruction last)
+    {
+        Instruction[] opcodes = new Instruction[last - first + 1];
+        for (int i = 0; i < opcodes.Length; i++) opcodes[i] = (Instruction)((int)first + i);
+        return opcodes;
+    }
+
+    private static IEnumerable<TestCaseData> StackGrowthCases()
+    {
+        foreach (Instruction opcode in StackGrowingOpcodes())
+        {
+            int width = opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32 ? opcode - Instruction.PUSH0 : 0;
+            int[] lengths = width == 0 ? [0] : width == 1 ? [0, 1] : [0, width / 2, width];
+            foreach (int depth in new[] { 1023, 1024 })
+                foreach (bool sufficientGas in new[] { false, true })
+                    foreach (int tracerMode in new[] { 0, 1, 2 })
+                        foreach (int immediateLength in lengths)
+                            yield return new TestCaseData(opcode, depth, sufficientGas, tracerMode, immediateLength);
+        }
+    }
+
+    private static IEnumerable<Instruction> StackGrowingOpcodes()
+    {
+        for (Instruction opcode = Instruction.PUSH0; opcode <= Instruction.DUP16; opcode++) yield return opcode;
+        yield return Instruction.PC;
+        yield return Instruction.GAS;
+        yield return Instruction.CODESIZE;
+        yield return Instruction.ADDRESS;
+        yield return Instruction.ORIGIN;
+        yield return Instruction.CALLER;
+        yield return Instruction.CALLVALUE;
+        yield return Instruction.CALLDATASIZE;
+        yield return Instruction.PREVRANDAO;
+        yield return Instruction.RETURNDATASIZE;
+        yield return Instruction.SELFBALANCE;
+        yield return Instruction.GASPRICE;
+        yield return Instruction.COINBASE;
+        yield return Instruction.TIMESTAMP;
+        yield return Instruction.NUMBER;
+        yield return Instruction.GASLIMIT;
+        yield return Instruction.CHAINID;
+        yield return Instruction.BASEFEE;
+        yield return Instruction.MSIZE;
+    }
+
+    [Test]
+    public void Push_immediate_consumes_only_declared_width([Range(1, 32)] int width, [Values] bool traced)
+    {
+        byte[] code = new byte[width + 1];
+        code[0] = (byte)((byte)Instruction.PUSH1 + width - 1);
+        byte[] expected = new byte[32];
+        for (int i = 0; i < width; i++)
+            expected[32 - width + i] = code[1 + i] = (byte)(0xa0 + i);
+        AssertStackValue(code, expected, traced);
+    }
+
+    [Test]
+    public void Environment_value_is_pushed_after_charging_gas(
+        [Values(Instruction.PC, Instruction.GAS, Instruction.CODESIZE)] Instruction opcode, [Values] bool traced)
+    {
+        UInt256 expected = opcode switch
+        {
+            Instruction.PC => 0,
+            Instruction.GAS => 100000UL - GasCostOf.Transaction - GasCostOf.Base,
+            _ => 9
+        };
+        AssertStackValue([(byte)opcode], expected.ToBigEndian(), traced);
+    }
+
+    [Test]
+    public void Modular_arithmetic_preserves_full_width_operands(
+        [Values(Instruction.ADDMOD, Instruction.MULMOD)] Instruction opcode,
+        [Values(0, 1, 251, -1)] int modulusValue, [Values] bool traced)
+    {
+        BigInteger a = (BigInteger.One << 256) - 1;
+        BigInteger b = a - 1;
+        BigInteger modulus = modulusValue == -1 ? a - 2 : modulusValue;
+        BigInteger expected = modulus.IsZero ? BigInteger.Zero
+            : (opcode == Instruction.ADDMOD ? a + b : a * b) % modulus;
+        byte[] code = [(byte)Instruction.PUSH32, .. ((UInt256)modulus).ToBigEndian(),
+            (byte)Instruction.PUSH32, .. ((UInt256)b).ToBigEndian(),
+            (byte)Instruction.PUSH32, .. ((UInt256)a).ToBigEndian(), (byte)opcode];
+
+        AssertStackValue(code, ((UInt256)expected).ToBigEndian(), traced, 9);
+    }
+
+    private void AssertStackValue(byte[] prefix, byte[] expected, bool traced, int expectedOpcodeCount = 6)
+    {
+        byte[] code = [.. prefix, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 0, (byte)Instruction.RETURN];
+        TestAllTracerWithOutput tracer = traced ? new TestAllTracerWithOutput() : new NoInstructionTracer();
+
+        Execute(tracer, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpcodeCount));
+        }
+    }
+
+    [TestCaseSource(nameof(StackGrowthCases))]
+    public void Stack_growth_preserves_limit_and_gas_precedence(Instruction opcode, int depth, bool sufficientGas, int tracerMode, int immediateLength)
+    {
+        byte[] code = new byte[depth * 2 + 1 + immediateLength];
+        for (int i = 0; i < depth; i++)
+        {
+            code[i * 2] = (byte)Instruction.PUSH1;
+            code[i * 2 + 1] = 1;
+        }
+        code[depth * 2] = (byte)opcode;
+        code.AsSpan(depth * 2 + 1).Fill(0xa5);
+        ulong cost = opcode == Instruction.SELFBALANCE ? GasCostOf.SelfBalance
+            : opcode is >= Instruction.PUSH1 and <= Instruction.DUP16 ? GasCostOf.VeryLow : GasCostOf.Base;
+        ulong gasLimit = GasCostOf.Transaction + (ulong)depth * GasCostOf.VeryLow + cost - (sufficientGas ? 0UL : 1UL);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        // PrepareTx retains the activation on this shared fixture; change only this execution's header.
+        block.Header.Number = MainnetSpecProvider.CancunActivation.BlockNumber;
+        block.Header.Timestamp = MainnetSpecProvider.CancunBlockTimestamp;
+        TestAllTracerWithOutput tracer = tracerMode switch
+        {
+            0 => new NoInstructionTracer(),
+            1 => new TestAllTracerWithOutput(),
+            _ => new CountingCancellationTracer()
+        };
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        string expectedError = !sufficientGas ? nameof(EvmExceptionType.OutOfGas)
+            : depth == 1024 ? nameof(EvmExceptionType.StackOverflow) : null;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(expectedError));
+            Assert.That(tracer.StatusCode, Is.EqualTo(expectedError is null ? StatusCode.Success : StatusCode.Failure));
+            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(depth + 1));
+        }
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]
