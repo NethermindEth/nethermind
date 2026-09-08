@@ -49,7 +49,10 @@ internal sealed class FrameTxPayerExposureFilter(
             // The sender-balance filters defer to this one, so their cumulative bound is taken here. Only what
             // the payer ledger does not already sum is counted, or a self-paid reservation would count twice.
             TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-            if (tx.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, out UInt256 pending))
+            if (tx.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, out UInt256 pending)
+                // Reserving nothing, a payer-less transaction is the only one that has to read the other
+                // half of that split itself; TryReserve sums it for the rest.
+                || (payer is null && UInt256.AddOverflow(pending, SenderReservedAsPayer(tx), out pending)))
             {
                 return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction cumulative cost cannot be priced");
             }
@@ -111,6 +114,21 @@ internal sealed class FrameTxPayerExposureFilter(
         if (logger.IsTrace)
             logger.Trace($"Skipped adding frame transaction {tx.Hash}, sender {tx.SenderAddress} owes {owed} + {maxCost} against {balance} available.");
         return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, pending cost: {owed}, transaction cost: {maxCost}");
+    }
+
+    /// <summary>What the sender of <paramref name="tx"/> already owes as a payer, net of the reservation
+    /// <paramref name="tx"/> displaces.</summary>
+    /// <remarks>The bucket walk skips every transaction with a resolved payer, which is exactly the set this
+    /// ledger holds — the sender's own self-paid prefixes among them. Netted like the reserving branch, so a
+    /// replacement is not measured against the incumbent it evicts.</remarks>
+    private UInt256 SenderReservedAsPayer(Transaction tx)
+    {
+        Address sender = tx.SenderAddress!;
+        UInt256 reserved = exposure.GetReserved(sender);
+        if (reserved.IsZero) return UInt256.Zero;
+
+        UInt256 replaced = ReplacedPendingReservation(tx, sender);
+        return reserved > replaced ? reserved - replaced : UInt256.Zero;
     }
 
     /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending

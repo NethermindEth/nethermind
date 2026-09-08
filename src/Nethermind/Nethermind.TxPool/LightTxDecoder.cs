@@ -49,12 +49,13 @@ public class LightTxDecoder : TxDecoder<Transaction>
             : Rlp.LengthOfSequence(content);
     }
 
-    /// <summary>Content length of the grouped form, or zero for a record that needs neither payer nor paymaster.</summary>
+    /// <summary>Content length of the grouped form, or zero for a record that needs none of its slots.</summary>
     /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
-    /// disagree and over- or under-fill the buffer.</remarks>
+    /// disagree and over- or under-fill the buffer. The exposure is a slot in its own right: a payer-less frame
+    /// transaction reserves nothing but is still summed at the price admission recorded.</remarks>
     private static int TrailingContentLength(Transaction tx, Address? paymaster)
     {
-        if (tx.PayerAddress is null && paymaster is null) return 0;
+        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null) return 0;
 
         // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
         // nonce_keys list a groupless record still writes, whose first element is a scalar.
@@ -105,11 +106,11 @@ public class LightTxDecoder : TxDecoder<Transaction>
             if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
             else writer.StartSequence(0);
 
-            // Null when only the paymaster needs the group: a record admitted without simulation names a
-            // sponsor the cap counts, but has no resolved payer to reserve against.
+            // Null when the payer is not what needs the group: a record admitted without simulation names a
+            // sponsor the cap counts, or a price the sender bound sums, with no payer to reserve against.
             writer.Encode(tx.PayerAddress);
-            // A payer that never reached the exposure gate holds no reservation, which this record does not
-            // distinguish from a zero one: reserving, releasing and restoring zero are all no-ops.
+            // A transaction that never reached the exposure gate holds no price, which this record does not
+            // distinguish from a zero one: reserving, releasing and summing zero are all no-ops.
             writer.Encode(tx.PayerExposure ?? default);
             if (paymaster is not null) writer.Encode(paymaster);
         }

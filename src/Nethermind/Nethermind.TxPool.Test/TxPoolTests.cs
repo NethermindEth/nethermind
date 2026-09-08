@@ -3830,6 +3830,60 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(false, TestName = "the sender covers both")]
+        [TestCase(true, TestName = "the sender is one wei short of both")]
+        public void SubmitTx_PayerlessFrameTx_CannotRebookWhatTheSenderReservedForItself(bool rejected)
+        {
+            // The self-paid one holds a reservation, and the cumulative walk skips exactly the transactions
+            // the ledger holds, so only reading the ledger stops the payer-less one booking the balance twice.
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
+
+            Transaction selfPaid = SelfPayingFrameTx(nonce: 0, feePerGas: 1_000_000_000);
+            Transaction payerless = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonce: 1);
+            // As FrameTxDecoder sets it: on the builder's stand-in the bucket sweep prices it above the
+            // balance this gate is given and evicts it before the assertion runs.
+            payerless.GasLimit = FrameTxValidation.TotalGasLimit(payerless.Frames);
+            UInt256 both = MaxCostOf(selfPaid) + MaxCostOf(payerless);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, rejected ? both - 1 : both);
+
+            Assert.That(_txPool.SubmitTx(selfPaid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            SimulatesAs(simulator, FrameTxSimulationResult.Undecided("simulator unavailable"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(selfPaid.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address),
+                    "the incumbent must be self-paid, or the walk sees it and the ledger is not what binds");
+                Assert.That(_txPool.SubmitTx(payerless, TxHandlingOptions.None),
+                    Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+            }
+        }
+
+        [TestCase(false, TestName = "the sender still covers the priced cost")]
+        [TestCase(true, TestName = "the sender covers only the gas-limit product")]
+        public async Task Sender_charged_frame_transaction_is_swept_on_the_price_admission_recorded(bool evicted)
+        {
+            // Admission and the retention sweep have to agree on what a frame transaction costs, or a balance
+            // between the two readings retains one the admission bound would now refuse.
+            CreatePoolWithSimulator(FrameTxSimulationResult.Undecided("simulator unavailable"));
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+            UInt256 priced = MaxCostOf(tx);
+            UInt256 product = tx.MaxFeePerGas * (UInt256)tx.GasLimit;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, priced);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, evicted ? product : priced);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(product, Is.LessThan(priced), "the product must understate the price, or neither arm pins anything");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(evicted ? 0 : 1));
+            }
+        }
+
         [TestCase(1, false, TestName = "a funded sender")]
         [TestCase(0, true, TestName = "a zero-balance sender")]
         public void SubmitTx_LocalZeroFeeFrameTx_StillNeedsANonZeroSenderBalance(int balance, bool rejected)
@@ -3862,8 +3916,8 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the payer still covers it, so the sender's balance must not evict it");
-                // Clamped by the sender's balance the seed is zero, and the running minimum spreads that
-                // across the whole bucket: retained, but first in line for eviction and blocking its bucket.
+                // Without the payer carve-out the seed is clamped to zero by the sender's balance, and the
+                // running minimum spreads that over the bucket: first to be evicted, and blocking the rest.
                 Assert.That(tx.GasBottleneck, Is.EqualTo(tx.CalculateEffectiveGasPrice(eip1559Enabled: true, _headInfo.CurrentBaseFee)).And.Not.Zero,
                     "a sponsored transaction must keep its ordering key");
             }
@@ -4764,8 +4818,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
 
-            UInt256 gasCost = maxFee * (UInt256)KeyedFrameTxGasLimit;
-            EnsureSenderBalance(sender, gasCost - UInt256.One);
+            // The builder's stand-in gas limit is not the frame-gas sum FrameTxDecoder sets, so the gas-limit
+            // product is not what the sweep measures: the threshold is the price admission recorded.
+            Assert.That(keyed.PayerExposure, Is.Not.Null, "admission must have recorded the price the sweep reads");
+            EnsureSenderBalance(sender, keyed.PayerExposure.Value - UInt256.One);
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 

@@ -76,8 +76,12 @@ namespace Nethermind.TxPool
         internal static bool FeeChargedToSender(this Transaction tx) =>
             !tx.SupportsFrames || tx.PayerAddress is null || tx.PayerAddress == tx.SenderAddress;
 
+        /// <summary>Whether <paramref name="balance"/> no longer covers <paramref name="tx"/> on top of the
+        /// bucket ahead of it.</summary>
+        /// <remarks>Priced the way admission priced it, so the retention sweep cannot retain a frame transaction
+        /// on a cheaper reading of the cost the admission bound already refused to grant.</remarks>
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
-            => tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
+            => tx.IsOverflowWhenAddingPricedCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
 
         private struct SenderBucketState(UInt256 accountNonce, UInt256 txNonce, bool unreservedOnly)
         {

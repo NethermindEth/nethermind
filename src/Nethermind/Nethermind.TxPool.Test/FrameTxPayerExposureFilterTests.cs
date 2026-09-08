@@ -202,6 +202,69 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
+    // The mirror of the case below: the walk skips every transaction with a resolved payer, which is exactly
+    // what the ledger holds, so a payer-less arrival — reserving nothing — has to read the ledger itself.
+    [TestCase(1ul, 2 * TestCost, false, TestName = "the sender covers the reservation and the arrival")]
+    [TestCase(1ul, 2 * TestCost - 1, true, TestName = "the sender covers only the reservation")]
+    [TestCase(0ul, TestCost, false, TestName = "a replacement is not measured against what it displaces")]
+    public void Accept_PayerlessFrameTx_SumsTheSendersSelfPaidReservation(ulong nonce, int senderBalance, bool rejected)
+    {
+        Transaction pending = FrameTxCostingExactly(TestCost, payer: TestItem.AddressA);
+        pending.PayerExposure = TestCost; // as its own admission priced and reserved it
+        pending.Hash = TestItem.KeccakA;
+
+        Transaction tx = FrameTxCostingExactly(TestCost);
+        tx.PayerAddress = null;
+        tx.Nonce = nonce;
+        tx.Hash = TestItem.KeccakB;
+
+        PayerExposureCache cache = new();
+        cache.TryReserve(TestItem.AddressA, TestCost, UInt256.MaxValue, out _);
+
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(0), cache, tx, senderAccounts, Pool(blobs: false, pending));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+            Assert.That(cache.GetReserved(TestItem.AddressA), Is.EqualTo((UInt256)TestCost),
+                "a payer-less admission takes no reservation of its own");
+        }
+    }
+
+    [Test]
+    public void Accept_PayerlessFrameTx_SumsARestoredRecordAtTheAdmittedPrice()
+    {
+        // A restored record is frameless and cannot be re-priced, so without the exposure in its bytes the
+        // bound falls back to the gas-limit product, which carries only the frame-gas sum.
+        Transaction pending = BlobFrameTxCosting(TestCost);
+        pending.PayerAddress = null;
+        pending.PayerExposure = TestCost;
+        pending.GasLimit = FrameTxValidation.TotalGasLimit(pending.Frames!);
+        pending.Hash = TestItem.KeccakA;
+        Transaction restored = LightTxDecoder.Decode(LightTxDecoder.Encode(pending));
+
+        Transaction tx = BlobFrameTxCosting(TestCost);
+        tx.PayerAddress = null;
+        tx.Nonce = 1;
+        tx.Hash = TestItem.KeccakB;
+
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)(2 * TestCost - 1));
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx, senderAccounts, Pool(blobs: true, restored));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Frames, Is.Null, "the incumbent must be frameless, or this pins nothing");
+            Assert.That((UInt256)pending.GasLimit * pending.MaxFeePerGas, Is.LessThan((UInt256)TestCost),
+                "the product must understate the price, or the fallback would reject too");
+            Assert.That(result, Is.EqualTo(AcceptTxResult.InsufficientFunds));
+        }
+    }
+
     // The exposure ledger holds frame reservations only, so a plain transaction pooled first is invisible to
     // it and the sender's balance would be booked twice.
     [TestCase(TestCost + OrdinaryCost, false, TestName = "the sender covers both")]

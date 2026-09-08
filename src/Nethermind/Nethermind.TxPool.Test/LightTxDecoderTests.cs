@@ -310,6 +310,24 @@ public class LightTxDecoderTests
         }
     }
 
+    // A payer-less frame tx reserves nothing but is still summed at the price admission recorded, and a
+    // restored record is frameless and cannot be re-priced, so the exposure has to open the group alone.
+    [Test]
+    public void Round_trip_of_a_payerless_record_keeps_the_price_admission_recorded()
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx);
+        tx.PayerExposure = 12_345;
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.PayerAddress, Is.Null, "the record must name no payer, or this pins the payer slot instead");
+            Assert.That(decoded.PayerAddress, Is.Null);
+            Assert.That(decoded.PayerExposure, Is.EqualTo((UInt256)12_345));
+        }
+    }
+
     // A legacy record whose flat list is empty leaves the group zero-length, and IsSequenceNext is an
     // unguarded index: deciding the branch on it first read past the end of the buffer.
     [Test]
@@ -404,7 +422,7 @@ public class LightTxDecoderTests
         Assert.That(grownBy, Is.EqualTo(1 + 1 + 1 + 1 + 21));
     }
 
-    // The group is written only for a payer or a paymaster, so a keys-only record keeps the flat list every
+    // The group is written only for a slot that has a value, so a keys-only record keeps the flat list every
     // earlier build writes — and stays readable by one, which a nested form would not be.
     [Test]
     public void A_keys_only_record_keeps_the_flat_list()
