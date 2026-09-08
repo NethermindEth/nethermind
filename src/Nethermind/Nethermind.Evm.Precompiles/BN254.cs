@@ -27,9 +27,10 @@ internal static unsafe class BN254
 
     /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
     /// <remarks>
-    /// <paramref name="input"/> must be exactly 128 bytes — two 64-byte big-endian G1 points — and
-    /// <paramref name="output"/> exactly 64 bytes; deserialization reads and serialization writes through raw
-    /// pointers with no bounds check, so a mismatched length is rejected up front rather than read past the buffer.
+    /// <paramref name="input"/> must be exactly 128 bytes (two 64-byte big-endian G1 points) and
+    /// <paramref name="output"/> at least 64 bytes: both are accessed through raw pointers with no bounds check, so a
+    /// short buffer would read or write past the end. A longer <paramref name="input"/> is rejected to keep the
+    /// contract exact; a longer <paramref name="output"/> is fine — only the first 64 bytes are written.
     /// </remarks>
     /// <returns><c>false</c> on a length mismatch, a point that fails to deserialize, or a serialization failure.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -37,7 +38,7 @@ internal static unsafe class BN254
     {
         const int chunkSize = 64;
 
-        if (input.Length != 2 * chunkSize || output.Length != chunkSize)
+        if (input.Length != 2 * chunkSize || output.Length < chunkSize)
             return false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
@@ -57,10 +58,10 @@ internal static unsafe class BN254
 
     /// <summary>Multiplies a BN254 G1 point by a scalar and writes the normalized result (EIP-196).</summary>
     /// <remarks>
-    /// <paramref name="input"/> must be exactly 96 bytes — a 64-byte big-endian G1 point followed by a 32-byte
-    /// big-endian scalar — and <paramref name="output"/> exactly 64 bytes; deserialization reads and serialization
-    /// writes through raw pointers with no bounds check, so a mismatched length is rejected up front rather than
-    /// read past the buffer.
+    /// <paramref name="input"/> must be exactly 96 bytes (a 64-byte big-endian G1 point followed by a 32-byte
+    /// big-endian scalar) and <paramref name="output"/> at least 64 bytes: both are accessed through raw pointers
+    /// with no bounds check, so a short buffer would read or write past the end. A longer <paramref name="input"/> is
+    /// rejected to keep the contract exact; a longer <paramref name="output"/> is fine — only the first 64 bytes are written.
     /// </remarks>
     /// <returns><c>false</c> on a length mismatch, a point or scalar that fails to decode, or a serialization failure.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -69,7 +70,7 @@ internal static unsafe class BN254
         const int chunkSize = 64;
         const int scalarSize = 32;
 
-        if (input.Length != chunkSize + scalarSize || output.Length != chunkSize)
+        if (input.Length != chunkSize + scalarSize || output.Length < chunkSize)
             return false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))

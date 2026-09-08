@@ -23,40 +23,27 @@ public class BN254Tests
     private const string ValidMulInput =
         "089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
-    [TestCase(0)]
-    [TestCase(64)]
-    [TestCase(96)]
-    [TestCase(127)]
-    [TestCase(129)]
-    [TestCase(192)]
-    public void Add_rejects_wrong_input_length(int inputLength) =>
+    [Test]
+    public void Add_rejects_wrong_input_length([Values(0, 64, 96, 127, 129, 192)] int inputLength) =>
         Assert.That(BN254.Add(new byte[64], new byte[inputLength]), Is.False);
 
-    [TestCase(0)]
-    [TestCase(63)]
-    [TestCase(65)]
-    public void Add_rejects_wrong_output_length(int outputLength) =>
+    [Test]
+    public void Add_rejects_short_output([Values(0, 63)] int outputLength) =>
         Assert.That(BN254.Add(new byte[outputLength], new byte[128]), Is.False);
 
     [Test]
-    public void Add_accepts_exact_length_valid_input() =>
-        Assert.That(BN254.Add(new byte[64], Bytes.FromHexString(ValidAddInput)), Is.True);
+    public void Add_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
+        Assert.That(BN254.Add(new byte[outputLength], Bytes.FromHexString(ValidAddInput)), Is.True);
 
-    [TestCase(0)]
-    [TestCase(64)]
-    [TestCase(95)]
-    [TestCase(97)]
-    [TestCase(128)]
-    public void Mul_rejects_wrong_input_length(int inputLength) =>
+    [Test]
+    public void Mul_rejects_wrong_input_length([Values(0, 64, 95, 97, 128)] int inputLength) =>
         Assert.That(BN254.Mul(new byte[64], new byte[inputLength]), Is.False);
 
-    [TestCase(0)]
-    [TestCase(63)]
-    [TestCase(65)]
-    public void Mul_rejects_wrong_output_length(int outputLength) =>
+    [Test]
+    public void Mul_rejects_short_output([Values(0, 63)] int outputLength) =>
         Assert.That(BN254.Mul(new byte[outputLength], new byte[96]), Is.False);
 
     [Test]
-    public void Mul_accepts_exact_length_valid_input() =>
-        Assert.That(BN254.Mul(new byte[64], Bytes.FromHexString(ValidMulInput)), Is.True);
+    public void Mul_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
+        Assert.That(BN254.Mul(new byte[outputLength], Bytes.FromHexString(ValidMulInput)), Is.True);
 }
