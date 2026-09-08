@@ -54,6 +54,24 @@ public class FlatSnapTrieFactoryTests
     }
 
     [Test]
+    public void FinalizeSync_EndsTheStateSync()
+    {
+        (FlatSnapTrieFactory factory, IPersistence _, IPersistenceManager manager) = BuildWithManager();
+
+        factory.FinalizeSync();
+
+        manager.Received(1).EndStateSync();
+    }
+
+    private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistenceManager manager) BuildWithManager()
+    {
+        IPersistence persistence = Substitute.For<IPersistence>();
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
+        return (new FlatSnapTrieFactory(persistence, manager, syncConfig, LimboLogs.Instance), persistence, manager);
+    }
+
+    [Test]
     public void CreateTrees_DoNotClearDatabase()
     {
         (FlatSnapTrieFactory factory, IPersistence persistence) = Build();

@@ -188,6 +188,7 @@ public class OrphanStorageRowSweepTests
             Assert.That(sweep.Supported, Is.False, "windowed rows are pre-values, a different contract from the post-value rows this sweep judges");
             Assert.That(handledBefore, Is.False);
             Assert.That(sweep.AlreadyHandled, Is.True, "recorded once so the decision is not re-logged on every start");
+            Assert.That(sweep.IsSwept, Is.False, "handled is not swept: a consumer that needs the rows judged can tell the two apart");
             Assert.That(() => sweep.RunOnePass(repair: true, maxUnits: long.MaxValue, TimeSpan.MaxValue, CancellationToken.None), Throws.InvalidOperationException);
         }
     }
@@ -203,6 +204,7 @@ public class OrphanStorageRowSweepTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(sweep.IsSwept, Is.True);
             Assert.That(late, Is.EqualTo(completed), "init steps run concurrently and a small history completes in milliseconds, so a consumer subscribing after the fact must still get the report");
             Assert.That(sweep.TryGetCompletedReport(out OrphanStorageRowReport polled), Is.True);
             Assert.That(polled, Is.EqualTo(completed));
@@ -258,6 +260,21 @@ public class OrphanStorageRowSweepTests
 
         Assert.That(() => sweep.AlreadyHandled, Is.True.After(10_000, 50), "the background thread drains, sweeps, announces and stamps on its own");
         Assert.That(announced, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)));
+    }
+
+    [Test]
+    public void A_pass_whose_budget_is_already_spent_still_advances_at_least_one_row()
+    {
+        for (ulong block = 100; block < 100 + OrphanStorageRowSweep.BudgetCheckInterval + 100; block++) HistoryColumnsWriter.RecordStorage(_history, Living, 2, block, [0x21]);
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+
+        bool completed = sweep.RunOnePass(repair: true, maxUnits: long.MaxValue, TimeSpan.Zero, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.False, "precondition: the budget cut the pass");
+            Assert.That(sweep.Report.RowsScanned, Is.EqualTo(OrphanStorageRowSweep.BudgetCheckInterval), "a budget that is spent before the first row is not a reason to write the same cursor back; the pass must move");
+        }
     }
 
     private int RowCount(Address address, UInt256 slot)

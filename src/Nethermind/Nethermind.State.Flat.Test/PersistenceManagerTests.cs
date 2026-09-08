@@ -172,6 +172,28 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public async Task A_real_persist_ends_a_state_sync_that_was_never_finalized()
+    {
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(_ => Substitute.For<IPersistence.IWriteBatch>());
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<WriteFlags>()).Returns(_ => Substitute.For<IPersistence.IWriteBatch>());
+
+        _persistenceManager.BeginStateSync();
+        bool duringSync = _persistenceManager.RunMaintenance(_ => { }, CancellationToken.None);
+        await _persistenceManager.AddToPersistence(CreateStateId(100));
+        bool afterPersist = _persistenceManager.RunMaintenance(_ => { }, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(duringSync, Is.False);
+            Assert.That(afterPersist, Is.True, "a sync that was abandoned never finalizes; the next real persist is block processing's proof that the sync is over, so the flag cannot latch for the life of the process");
+        }
+    }
+
+    [Test]
     public void ClearForStateSync_ClearsTheBaseAndRefusesMaintenanceUntilTheSyncEnds()
     {
         int invoked = 0;
