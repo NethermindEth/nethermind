@@ -52,6 +52,8 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         }
 
         HashSet<string> names = new(_handlers.Keys, StringComparer.OrdinalIgnoreCase);
+        if (names.Count != _handlers.Count)
+            throw new WeavingException("Named handlers differ only by case.");
         TypeDefinition instructionType = ModuleDefinition.GetType("Nethermind.Evm.Instruction")
             ?? throw new WeavingException("Instruction enum was not found.");
         foreach (FieldDefinition opcode in instructionType.Fields)
@@ -60,7 +62,25 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         if (!names.SetEquals(new[] { "BadInstruction" }))
             throw new WeavingException("Named handlers do not match the instruction enum.");
         VerifyTableHandlers(vm);
+        RemoveUnusedFactories(vm, methods);
         WriteInfo($"Named {_handlers.Count} opcode handlers without adding runtime calls.");
+    }
+
+    private static void RemoveUnusedFactories(TypeDefinition vm, MethodDefinition[] originals)
+    {
+        HashSet<MethodDefinition> factories = [];
+        foreach (MethodDefinition method in originals)
+            if (IsFactory(method.Name)) factories.Add(method);
+        foreach (TypeDefinition type in vm.Module.GetTypes())
+            foreach (MethodDefinition method in type.Methods)
+            {
+                if (!method.HasBody || factories.Contains(method)) continue;
+                foreach (Instruction instruction in method.Body.Instructions)
+                    if (instruction.Operand is MethodReference reference && reference.DeclaringType.Resolve() == vm
+                        && factories.Contains(Resolve(reference)))
+                        throw new WeavingException($"Method {method.FullName} still references an original opcode factory.");
+            }
+        foreach (MethodDefinition factory in factories) vm.Methods.Remove(factory);
     }
 
     private void VerifyTableHandlers(TypeDefinition vm)
@@ -182,6 +202,15 @@ public sealed class ModuleWeaver : BaseModuleWeaver
     {
         if (target.GenericParameters.Count != original.GenericArguments.Count)
             throw new WeavingException($"Handler {target.Name} does not match the dispatch arity of {original.ElementMethod.FullName}.");
+        MethodDefinition template = Resolve(original);
+        if (target.HasThis != template.HasThis || target.ExplicitThis != template.ExplicitThis
+            || target.CallingConvention != template.CallingConvention
+            || target.ReturnType.FullName != template.ReturnType.FullName
+            || target.Parameters.Count != template.Parameters.Count)
+            throw new WeavingException($"Handler {target.Name} does not match the dispatch signature of {template.FullName}.");
+        for (int i = 0; i < target.Parameters.Count; i++)
+            if (target.Parameters[i].ParameterType.FullName != template.Parameters[i].ParameterType.FullName)
+                throw new WeavingException($"Handler {target.Name} does not match parameter {i} of {template.FullName}.");
         MethodReference reference = new(target.Name, original.ElementMethod.ReturnType, original.DeclaringType)
         {
             HasThis = original.HasThis,

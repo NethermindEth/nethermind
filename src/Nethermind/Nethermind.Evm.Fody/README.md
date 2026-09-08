@@ -39,6 +39,12 @@ carried through to the final function pointer. Gas-policy and fork variants keep
 their generic specialization. The build fails if the generated names do not cover
 the instruction enum; unassigned table entries use `OpBadInstruction`.
 
+After checking for remaining references, the weaver removes the original pointer
+factories. The two dispatch templates remain for the reflection tests that compare
+their IL and attributes against every named handler. Invalid debug sequence points,
+scope boundaries and local indices produce warnings and omit the affected debug
+information; invalid executable signatures still fail the build.
+
 Validation:
 
 ```sh
@@ -58,6 +64,11 @@ assuming unchanged throughput; identical IL semantics do not guarantee identical
 JIT layout or tiering behavior.
 
 ## Measured scope
+
+A Windows x64 Release build on SDK 10.0.400 produces a 487,424-byte managed
+`Nethermind.Evm.dll`. Named handler bodies and their specialized factories add IL
+and metadata even after unused factories are removed. Managed assembly size is
+separate from native JIT code size and the guest ELF measurements below.
 
 Windows x64 .NET 10 FullOpts disassembly confirmed that the SLOAD, metered
 SSTORE and STATICCALL instruction bodies inline into their named handlers while

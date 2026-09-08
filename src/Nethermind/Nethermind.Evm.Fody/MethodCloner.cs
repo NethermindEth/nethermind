@@ -15,6 +15,8 @@ internal sealed class MethodCloner(MethodDefinition source, Action<string> warn)
 
     public MethodDefinition Clone(string name)
     {
+        if (!source.IsStatic)
+            throw new WeavingException($"Only static methods can be cloned: {source.FullName}.");
         _target = new MethodDefinition(name, source.Attributes, source.ReturnType)
         {
             DeclaringType = source.DeclaringType,
@@ -104,24 +106,33 @@ internal sealed class MethodCloner(MethodDefinition source, Action<string> warn)
         return _target;
     }
 
-    private ScopeDebugInformation CloneScope(ScopeDebugInformation scope, Dictionary<int, Instruction> byOffset, MethodBody body)
+    private ScopeDebugInformation? CloneScope(ScopeDebugInformation scope, Dictionary<int, Instruction> byOffset, MethodBody body)
     {
-        ScopeDebugInformation copy = new(MapOffset(scope.Start), MapOffset(scope.End)) { Import = scope.Import };
+        if (!TryMapOffset(scope.Start, out Instruction? start) || !TryMapOffset(scope.End, out Instruction? end))
+            return null;
+        ScopeDebugInformation copy = new(start, end) { Import = scope.Import };
         foreach (VariableDebugInformation variable in scope.Variables)
+        {
+            if ((uint)variable.Index >= (uint)body.Variables.Count)
+            {
+                warn($"Debug variable {variable.Name} at index {variable.Index} in {source.FullName} has no local.");
+                continue;
+            }
             copy.Variables.Add(new VariableDebugInformation(body.Variables[variable.Index], variable.Name) { Attributes = variable.Attributes });
+        }
         foreach (ConstantDebugInformation constant in scope.Constants)
             copy.Constants.Add(new ConstantDebugInformation(constant.Name, MapType(constant.ConstantType), constant.Value));
         foreach (ScopeDebugInformation nested in scope.Scopes)
-            copy.Scopes.Add(CloneScope(nested, byOffset, body));
+            if (CloneScope(nested, byOffset, body) is { } cloned) copy.Scopes.Add(cloned);
         return copy;
 
         // A scope end at the method's end has no instruction; Cecil represents it as an unresolved offset.
-        Instruction? MapOffset(InstructionOffset offset)
+        bool TryMapOffset(InstructionOffset offset, out Instruction? instruction)
         {
-            if (offset.IsEndOfMethod) return null;
-            if (!byOffset.TryGetValue(offset.Offset, out Instruction? instruction))
-                throw new WeavingException($"Scope boundary at IL_{offset.Offset:x4} in {source.FullName} is not an instruction.");
-            return instruction;
+            instruction = null;
+            if (offset.IsEndOfMethod || byOffset.TryGetValue(offset.Offset, out instruction)) return true;
+            warn($"Scope boundary at IL_{offset.Offset:x4} in {source.FullName} is not an instruction; dropping scope.");
+            return false;
         }
     }
 

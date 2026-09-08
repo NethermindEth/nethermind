@@ -5,6 +5,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Evm.Test" />
     <PackageReference Include="FodyHelpers" PrivateAssets="all" />
   </ItemGroup>
 </Project>
