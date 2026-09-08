@@ -6,13 +6,13 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions
 {
@@ -20,31 +20,57 @@ namespace Nethermind.Core.Extensions
     {
         private const ulong ShortInputDomain = 0xD6E8FEB86659FD93UL;
 
-        internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;
+        /// <summary>Installs the guest hash mixers' per-run seed.</summary>
+        /// <param name="seed">The full-width 256-bit seed for this run.</param>
+        /// <remarks>
+        /// The guest currently seeds from <c>new_payload_request_root</c>, providing payload-dependent
+        /// hashing without an additional randomness input. This seed is public and identical across
+        /// provers and retries for the same payload, so pathological collisions are shared.
+        /// Fresh prover-private cryptographic randomness would provide independent hash layouts per
+        /// proof attempt; standard support is proposed in
+        /// <see href="https://github.com/eth-act/zkevm-standards/issues/41">eth-act/zkevm-standards#41</see>.
+        /// <para>
+        /// Install the entire seed before creating hash-keyed containers;
+        /// reseeding invalidates stored hashes. Not synchronised against concurrent hashing.
+        /// In release guests, unseeded scalar hashing of 32-byte and other inputs longer than 16 bytes
+        /// (except 20-byte addresses) silently uses a zero seed; address and short-input hashing access
+        /// uninitialised seed arrays. Missing seeding is not guaranteed to fail immediately.
+        /// </para>
+        /// <para>
+        /// A no-op on the host, which seeds its hashes per process. The guest installs its seed at run
+        /// time to avoid a static constructor and its initialisation checks on hash calls.
+        /// These mixers are not cryptographic authentication functions.
+        /// </para>
+        /// </remarks>
+        public static partial void SeedHashes(in UInt256 seed);
+
+        /// <summary>Combines a hash with the next value for in-memory bucketing.</summary>
+        /// <remarks>Uses CRC on the host and the run-seeded mixer in the guest.</remarks>
+        public static partial int CombineHash(uint hash, ulong value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static Vector128<byte> ComputeAesSeed(int len)
         {
             ulong lengthSalt = (uint)len;
             lengthSalt |= lengthSalt << 32;
-            return Vector128.Create(AesHashSeed0 ^ lengthSalt, AesHashSeed1 ^ lengthSalt).AsByte();
+            return AesHashSeed ^ Vector128.Create(lengthSalt).AsByte();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static Vector128<byte> ComputeAesFinalSeed()
-            => Vector128.Create(AesHashFinalSeed0, AesHashFinalSeed1).AsByte();
+            => AesHashFinalSeed;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Vector128<byte> ComputeAes20Seed()
-            => Vector128.Create(AesHash20Seed0, AesHash20Seed1).AsByte();
+            => AesHash20Seed;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Vector128<byte> ComputeAes32Seed()
-            => Vector128.Create(AesHash32Seed0, AesHash32Seed1).AsByte();
+            => AesHash32Seed;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Vector128<byte> ComputeAesPairSeed()
-            => Vector128.Create(AesHashPairSeed0, AesHashPairSeed1).AsByte();
+            => AesHashPairSeed;
 
         // Round constants for FastHash64ForAddressAndSlot. Public values, distinct from each other; the secrecy
         // is the seed they are combined with.
@@ -208,8 +234,8 @@ namespace Nethermind.Core.Extensions
         /// <remarks>
         /// <para>
         /// This routine is optimized for throughput and low overhead on modern CPUs. It uses keyed AES rounds when
-        /// hardware acceleration is available. Otherwise, normal builds use process-seeded XXH3 and ZK builds use
-        /// their deterministic guest mixer.
+        /// hardware acceleration is available. Otherwise, both builds use the seeded scalar mixer. ZK builds use
+        /// a deterministic seed installed before execution.
         /// </para>
         /// <para>
         /// The hash is intended for in-memory data structures (for example, hash tables, caches, and quick bucketing).
@@ -260,29 +286,29 @@ namespace Nethermind.Core.Extensions
             }
 
             return Vector128.Create(lo, hi ^ ShortInputDomain).AsByte();
+        }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            static ulong ReadPartialWord(ref byte p, int length)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReadPartialWord(ref byte p, int length)
+        {
+            Debug.Assert((uint)length < sizeof(ulong));
+
+            ulong value = 0;
+            int offset = 0;
+            if ((length & sizeof(uint)) != 0)
             {
-                Debug.Assert((uint)length < sizeof(ulong));
-
-                ulong value = 0;
-                int offset = 0;
-                if ((length & sizeof(uint)) != 0)
-                {
-                    value = Unsafe.ReadUnaligned<uint>(ref p);
-                    offset = sizeof(uint);
-                }
-                if ((length & sizeof(ushort)) != 0)
-                {
-                    value |= (ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref p, offset)) << (offset * 8);
-                    offset += sizeof(ushort);
-                }
-                if ((length & sizeof(byte)) != 0)
-                    value |= (ulong)Unsafe.Add(ref p, offset) << (offset * 8);
-
-                return value;
+                value = Unsafe.ReadUnaligned<uint>(ref p);
+                offset = sizeof(uint);
             }
+            if ((length & sizeof(ushort)) != 0)
+            {
+                value |= (ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref p, offset)) << (offset * 8);
+                offset += sizeof(ushort);
+            }
+            if ((length & sizeof(byte)) != 0)
+                value |= (ulong)Unsafe.Add(ref p, offset) << (offset * 8);
+
+            return value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -365,7 +391,7 @@ namespace Nethermind.Core.Extensions
                 acc0 = FastHashAesRound(acc0, data);
             }
 
-            return (int)MumFold(acc0);
+            return (int)MumFold(FastHashAesRound(acc0, ComputeAesFinalSeed()));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -374,106 +400,6 @@ namespace Nethermind.Core.Extensions
                 ? x64.Aes.Encrypt(state, roundKey)
                 // Keep the round key outside AESE so state and roundKey have distinct roles in the mixer.
                 : Arm.Aes.MixColumns(Arm.Aes.Encrypt(state, Vector128<byte>.Zero)) ^ roundKey;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        [SkipLocalsInit]
-        internal static int FastHashCrc(ref byte start, int len, uint seed)
-        {
-            uint hash;
-            if (len < 16)
-            {
-                if (len >= 8)
-                {
-                    ulong lo = Unsafe.ReadUnaligned<ulong>(ref start);
-                    ulong hi = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, len - 8));
-                    uint h0 = CrcLane(seed, lo);
-                    uint h1 = CrcLane(seed ^ 0x9E3779B9u, hi);
-                    hash = h0 + BitOperations.RotateLeft(h1, 11);
-                }
-                else
-                {
-                    hash = CrcTailOrdered(seed, ref start, len);
-                }
-            }
-            else
-            {
-                uint h0 = seed;
-                uint h1 = seed ^ 0x9E3779B9u;
-                uint h2 = seed ^ 0x85EBCA6Bu;
-                uint h3 = seed ^ 0xC2B2AE35u;
-
-                ref byte q = ref start;
-                int aligned = len & ~7;
-                int remaining = aligned;
-
-                while (remaining >= 64)
-                {
-                    h0 = CrcLane(h0, Unsafe.ReadUnaligned<ulong>(ref q));
-                    h1 = CrcLane(h1, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 8)));
-                    h2 = CrcLane(h2, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 16)));
-                    h3 = CrcLane(h3, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 24)));
-
-                    h0 = CrcLane(h0, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 32)));
-                    h1 = CrcLane(h1, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 40)));
-                    h2 = CrcLane(h2, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 48)));
-                    h3 = CrcLane(h3, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 56)));
-
-                    q = ref Unsafe.Add(ref q, 64);
-                    remaining -= 64;
-                }
-
-                if (remaining >= 32)
-                {
-                    h0 = CrcLane(h0, Unsafe.ReadUnaligned<ulong>(ref q));
-                    h1 = CrcLane(h1, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 8)));
-                    h2 = CrcLane(h2, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 16)));
-                    h3 = CrcLane(h3, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 24)));
-
-                    q = ref Unsafe.Add(ref q, 32);
-                    remaining -= 32;
-                }
-
-                if (remaining >= 8) h0 = CrcLane(h0, Unsafe.ReadUnaligned<ulong>(ref q));
-                if (remaining >= 16) h1 = CrcLane(h1, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 8)));
-                if (remaining >= 24) h2 = CrcLane(h2, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 16)));
-
-                h2 = BitOperations.RotateLeft(h2, 17) + BitOperations.RotateLeft(h3, 23);
-                h0 += BitOperations.RotateLeft(h1, 11);
-                hash = h2 + h0;
-
-                int tailBytes = len - aligned;
-                if (tailBytes != 0)
-                {
-                    ref byte tailRef = ref Unsafe.Add(ref start, aligned);
-                    hash = CrcTailOrdered(hash, ref tailRef, tailBytes);
-                }
-            }
-
-            hash ^= hash >> 16;
-            hash *= 0x9E3779B1u;
-            hash ^= hash >> 16;
-            return (int)hash;
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            static uint CrcTailOrdered(uint hash, ref byte p, int length)
-            {
-                if ((length & 4) != 0)
-                {
-                    hash = Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref p));
-                    p = ref Unsafe.Add(ref p, 4);
-                }
-                if ((length & 2) != 0)
-                {
-                    hash = Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref p));
-                    p = ref Unsafe.Add(ref p, 2);
-                }
-                if ((length & 1) != 0)
-                {
-                    hash = Crc32C(hash, p);
-                }
-                return hash;
-            }
-        }
 
         public static long ToPositiveLong(this ReadOnlySpan<byte> bytes)
         {
@@ -616,10 +542,7 @@ namespace Nethermind.Core.Extensions
         // equals its constant, which seeded inputs hit with probability 2^-64.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long MumFold(ulong a, ulong b)
-        {
-            ulong low = Math.BigMul(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL, out ulong high);
-            return (long)(low ^ high);
-        }
+            => (long)MultiplyFold(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long MumFold(Vector128<byte> mixed)
@@ -631,8 +554,8 @@ namespace Nethermind.Core.Extensions
         /// <param name="start">Reference to the first byte of the 32-byte input.</param>
         /// <returns>A 64-bit hash value with good distribution across all bits.</returns>
         /// <remarks>
-        /// Uses AES hardware acceleration when available. Otherwise, normal builds use process-seeded XXH3 and ZK
-        /// builds use their deterministic guest mixer.
+        /// Uses AES hardware acceleration when available. Otherwise, both builds use the seeded scalar mixer. ZK
+        /// builds use a deterministic seed installed before execution.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long FastHash64For32Bytes(ref byte start)
@@ -645,22 +568,11 @@ namespace Nethermind.Core.Extensions
                 // Two AES rounds for full diffusion: after round 1, variation spreads to one column;
                 // after round 2, every output byte depends on every input byte.
                 Vector128<byte> mixed = FastHashAesRound(data, key);
-                mixed = FastHashAesRound(mixed, key);
+                mixed = FastHashAesRound(mixed, key ^ ComputeAesFinalSeed());
                 return MumFold(mixed);
             }
 
             return FastHash64For32BytesFallback(ref start);
-        }
-
-        // Deterministic CRC path; production fallback only in ZK builds (standard builds use XXH3).
-        // Kept internal for direct distribution tests.
-        internal static long FastHash64For32BytesCrc(ref byte start, uint seed)
-        {
-            ulong h0 = Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref start));
-            ulong h1 = Crc32C(seed ^ 0x9E3779B9u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)));
-            ulong h2 = Crc32C(seed ^ 0x85EBCA6Bu, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 16)));
-            ulong h3 = Crc32C(seed ^ 0xC2B2AE35u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 24)));
-            return MumFold(h0 | (h1 << 32), h2 | (h3 << 32));
         }
 
         /// <summary>
@@ -669,8 +581,8 @@ namespace Nethermind.Core.Extensions
         /// <param name="start">Reference to the first byte of the 20-byte input.</param>
         /// <returns>A 64-bit hash value with good distribution across all bits.</returns>
         /// <remarks>
-        /// Uses AES hardware acceleration when available. Otherwise, normal builds use process-seeded XXH3 and ZK
-        /// builds use their deterministic guest mixer.
+        /// Uses AES hardware acceleration when available. Otherwise, both builds use the seeded scalar mixer. ZK
+        /// builds use a deterministic seed installed before execution.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long FastHash64For20Bytes(ref byte start)
@@ -685,7 +597,7 @@ namespace Nethermind.Core.Extensions
                 // bytes (16-19) to one column, leaving the low 32 bits of the output constant
                 // when bytes 0-15 are constant (e.g., zero-padded small-integer addresses).
                 Vector128<byte> mixed = FastHashAesRound(data, key);
-                mixed = FastHashAesRound(mixed, key);
+                mixed = FastHashAesRound(mixed, key ^ ComputeAesFinalSeed());
                 return MumFold(mixed);
             }
 
@@ -710,8 +622,7 @@ namespace Nethermind.Core.Extensions
         /// </para>
         /// <para>
         /// Four parts need five rounds, because the last one injected needs a second round to spread its
-        /// difference past one column. Round keys are the seed against a distinct constant, which drops the
-        /// repeated round key for about 2% of the hash.
+        /// difference past one column. Round keys alternate between the seed halves with distinct constants.
         /// </para>
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -720,15 +631,16 @@ namespace Nethermind.Core.Extensions
             if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {
                 Vector128<byte> seed = ComputeAesPairSeed();
+                Vector128<byte> finalSeed = ComputeAesFinalSeed();
                 Vector128<byte> addressHead = Unsafe.As<byte, Vector128<byte>>(ref address);
                 uint addressTail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref address, 16));
                 Vector128<byte> indexLow = Unsafe.As<byte, Vector128<byte>>(ref index);
                 Vector128<byte> indexHigh = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref index, 16));
 
                 Vector128<byte> mixed = FastHashAesRound(addressHead ^ seed, seed);
-                mixed = FastHashAesRound(mixed ^ Vector128.CreateScalar(addressTail).AsByte(), seed ^ PairRound2);
+                mixed = FastHashAesRound(mixed ^ Vector128.CreateScalar(addressTail).AsByte(), finalSeed ^ PairRound2);
                 mixed = FastHashAesRound(mixed ^ indexLow, seed ^ PairRound3);
-                mixed = FastHashAesRound(mixed ^ indexHigh, seed ^ PairRound4);
+                mixed = FastHashAesRound(mixed ^ indexHigh, finalSeed ^ PairRound4);
                 mixed = FastHashAesRound(mixed, seed ^ PairRound5);
                 return MumFold(mixed);
             }
@@ -736,13 +648,156 @@ namespace Nethermind.Core.Extensions
             return MumFold((ulong)FastHash64For32Bytes(ref index), (ulong)FastHash64For20Bytes(ref address));
         }
 
-        /// <inheritdoc cref="FastHash64For32BytesCrc"/>
-        internal static long FastHash64For20BytesCrc(ref byte start, uint seed)
+        private const int WordWidth = 32;
+
+        // Width-specific nonlinear derivation keeps addresses separate from padded 32-byte keys.
+        private static ulong DeriveAddressSeed(ulong word)
         {
-            ulong h0 = Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref start));
-            ulong h1 = Crc32C(seed ^ 0x9E3779B9u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)));
-            uint h2 = Crc32C(seed ^ 0x85EBCA6Bu, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16)));
-            return MumFold(h0 | (h1 << 32), h2);
+            word += 0x9E3779B97F4A7C15UL + Address.Size;
+            word = (word ^ (word >> 30)) * 0xBF58476D1CE4E5B9UL;
+            word = (word ^ (word >> 27)) * 0x94D049BB133111EBUL;
+            return word ^ (word >> 31);
         }
+
+        [Conditional("DEBUG")]
+        private static void AssertSeeded() =>
+            Debug.Assert(AddressSeeds is not null, $"{nameof(SeedHashes)} must run before the guest hashes a key.");
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int FastHashFallback(ReadOnlySpan<byte> input)
+        {
+            AssertSeeded();
+            ulong hash = input.Length switch
+            {
+                WordWidth => Mix32(ref MemoryMarshal.GetReference(input)),
+                Address.Size => MixAddress(ref MemoryMarshal.GetReference(input)),
+                <= 16 => MixShortBytes(input),
+                _ => MixBytes(input)
+            };
+            return (int)(hash ^ (hash >> 32));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MixAddress(ref byte b)
+        {
+            AssertSeeded();
+            ref ulong seeds = ref MemoryMarshal.GetArrayDataReference(AddressSeeds!);
+            return MixWords(
+                Unsafe.ReadUnaligned<ulong>(ref b),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)),
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)), 0, ref seeds);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static long FastHash64For32BytesFallback(ref byte start)
+            => (long)Mix32(ref start);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Mix32(ref byte b)
+        {
+            AssertSeeded();
+            ref ulong seeds = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in InstanceRandom));
+            return MixWords(
+                Unsafe.ReadUnaligned<ulong>(ref b),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)), ref seeds);
+        }
+
+#if ZK_EVM
+        // Keep a call boundary: the RISC-V backend can omit the int truncation after an inlined multiply-fold.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+#else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+        private static ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
+        {
+            // Mix each seed limb into its key limb before any information is lost to folding.
+            ulong a = MultiplyFold(u0 ^ seeds, u1 ^ Unsafe.Add(ref seeds, 1));
+            ulong b = MultiplyFold(u2 ^ Unsafe.Add(ref seeds, 2), u3 ^ Unsafe.Add(ref seeds, 3));
+            return (ulong)MumFold(a, b);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MultiplyFold(ulong a, ulong b)
+        {
+#if ZK_EVM
+            uint al = (uint)a, ah = (uint)(a >> 32);
+            uint bl = (uint)b, bh = (uint)(b >> 32);
+            ulong lower = (ulong)al * bl;
+            ulong middle = (ulong)ah * bl + (lower >> 32);
+            ulong carry = (ulong)al * bh + (uint)middle;
+            ulong low = (carry << 32) | (uint)lower;
+            ulong high = (ulong)ah * bh + (middle >> 32) + (carry >> 32);
+            return low ^ high;
+#else
+            ulong high = Math.BigMul(a, b, out ulong low);
+            return low ^ high;
+#endif
+        }
+
+        private static ulong[] CreateShortHashSeeds(in UInt256 seed)
+        {
+            ulong[] hashes = new ulong[17];
+            ref ulong words = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in seed));
+            for (int length = 0; length < hashes.Length; length++)
+                hashes[length] = MixWords((uint)length, ShortInputDomain, 0, 0, ref words);
+            return hashes;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ReadShortWords(ReadOnlySpan<byte> input, out ulong low, out ulong high)
+        {
+            ref byte start = ref MemoryMarshal.GetReference(input);
+            high = 0;
+            if (input.Length >= sizeof(ulong))
+            {
+                low = Unsafe.ReadUnaligned<ulong>(ref start);
+                high = input.Length == 16
+                    ? Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, sizeof(ulong)))
+                    : ReadPartialWord(ref Unsafe.Add(ref start, sizeof(ulong)), input.Length - sizeof(ulong));
+            }
+            else
+            {
+                low = ReadPartialWord(ref start, input.Length);
+            }
+        }
+
+        private static ulong MixShortBytes(ReadOnlySpan<byte> input)
+        {
+            ref ulong seeds = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in InstanceRandom));
+            ulong hash = ShortHashSeeds![input.Length];
+            ReadShortWords(input, out ulong low, out ulong high);
+            ulong tail = MultiplyFold(low ^ seeds, high ^ Unsafe.Add(ref seeds, 1));
+            if (input.Length == 16)
+            {
+                hash = (ulong)MumFold(hash ^ tail, Unsafe.Add(ref seeds, 2));
+                tail = MultiplyFold(seeds, Unsafe.Add(ref seeds, 1));
+            }
+            return (ulong)MumFold(hash ^ tail, Unsafe.Add(ref seeds, 3));
+        }
+
+        private static ulong MixBytes(ReadOnlySpan<byte> input)
+        {
+            ref ulong seeds = ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in InstanceRandom));
+            ulong hash = MixWords((uint)input.Length, ShortInputDomain, 0, 0, ref seeds);
+            while (input.Length >= 16)
+            {
+                ref byte start = ref MemoryMarshal.GetReference(input);
+                ulong block = MultiplyFold(Unsafe.ReadUnaligned<ulong>(ref start) ^ seeds,
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)) ^ Unsafe.Add(ref seeds, 1));
+                hash = (ulong)MumFold(hash ^ block, Unsafe.Add(ref seeds, 2));
+                input = input[16..];
+            }
+
+            // The length participates before the blocks, so zero-padding the tail is unambiguous.
+            ReadShortWords(input, out ulong low, out ulong high);
+            ulong tail = MultiplyFold(low ^ seeds, high ^ Unsafe.Add(ref seeds, 1));
+            return (ulong)MumFold(hash ^ tail, Unsafe.Add(ref seeds, 3));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static long FastHash64For20BytesFallback(ref byte start)
+            => (long)MixAddress(ref start);
     }
 }

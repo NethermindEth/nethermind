@@ -246,6 +246,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
         if (result.Count == 0)
         {
+            result.Dispose();
             return null;
         }
         return result;

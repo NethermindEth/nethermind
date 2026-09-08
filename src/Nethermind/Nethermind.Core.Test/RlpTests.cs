@@ -149,6 +149,51 @@ namespace Nethermind.Core.Test
             AssertValueWriterMatchesExpected(writer, buffer, ExpectedValueHash(value));
         }
 
+        [TestCaseSource(nameof(ValueWriterValueHashCases))]
+        public void RlpReader_roundtrips_value_hash(ValueHash256? value)
+        {
+            byte[] buffer = new byte[Rlp.LengthOf(in value)];
+            RlpWriter writer = new(buffer);
+            writer.Encode(in value);
+
+            RlpReader reader = new(buffer);
+
+            Assert.That(reader.DecodeValueKeccak(), Is.EqualTo(value));
+
+            if (value is null)
+            {
+                Assert.Throws<RlpException>(() =>
+                {
+                    RlpReader nonNullReader = new(buffer);
+                    nonNullReader.DecodeValueKeccakNonNull();
+                });
+            }
+            else
+            {
+                RlpReader nonNullReader = new(buffer);
+                Assert.That(nonNullReader.DecodeValueKeccakNonNull(), Is.EqualTo(value.Value));
+            }
+        }
+
+        [TestCaseSource(nameof(ValueWriterHashCases))]
+        public void RlpReader_roundtrips_hash(Hash256? value)
+        {
+            byte[] buffer = new byte[Rlp.LengthOf(value)];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            RlpReader reader = new(buffer);
+            Hash256? decoded = reader.DecodeKeccakOrNull();
+
+            Assert.That(decoded, Is.EqualTo(value));
+            if (value == Keccak.OfAnEmptyString || value == Keccak.EmptyTreeHash)
+            {
+                // The interned instances must come back by reference, which is the only observable
+                // difference between comparing the payload as a span and as a ValueHash256.
+                Assert.That(decoded, Is.SameAs(value));
+            }
+        }
+
         [TestCaseSource(nameof(ValueWriterAddressCases))]
         public void RlpWriter_encodes_address_like_Rlp(Address? value)
         {
