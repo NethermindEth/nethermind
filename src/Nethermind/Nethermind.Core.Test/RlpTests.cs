@@ -768,11 +768,7 @@ namespace Nethermind.Core.Test
 
                 CappedArray<byte> cappedData = new(data);
                 RlpReader cappedReader = new(cappedData);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(cappedReader.IsNotNull, Is.True);
-                    Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
-                }
+                Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
             }
         }
 
@@ -1097,17 +1093,12 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void RlpReader_from_default_capped_array_is_null()
+        public void RlpReader_from_default_capped_array_is_empty()
         {
             CappedArray<byte> data = default;
             RlpReader reader = new(data);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(reader.IsNull, Is.True);
-                Assert.That(reader.IsNotNull, Is.False);
-                Assert.That(reader.Length, Is.Zero);
-            }
+            Assert.That(reader.Length, Is.Zero);
         }
 
         [Test]
