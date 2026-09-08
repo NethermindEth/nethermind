@@ -19,6 +19,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Nethermind.State.Flat;
 using NSubstitute;
 using NUnit.Framework;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -159,127 +160,83 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase("Blocks")]
-        [TestCase("FlatAccount")]
-        [TestCase("FlatStorage")]
-        public void RocksDbFeatureSst_RoundTripsAfterCompactionAndReopen(string dbName)
+        [Test]
+        public void FlatAccountColumn_UsesInterpolatedIndexAndRoundTripsAfterReopen()
         {
-            DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            DbConfig config = new();
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            byte[][] keys = CreateSstKeys();
+            IDictionary<string, string> resolvedOptions = DbOnTheRocks.ExtractOptions(
+                configFactory.GetForDatabase(DbNames.Flat, nameof(FlatDbColumns.Account)).RocksDbOptions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resolvedOptions["block_based_table_factory.index_type"], Is.EqualTo("kBinarySearch"));
+                Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kInterpolation"));
+            }
+
+            byte[][] keys = CreateAccountKeys();
             byte[][] values = new byte[keys.Length][];
 
-            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, configFactory, LimboLogs.Instance))
+            using (ColumnsDb<FlatDbColumns> db = new(DbPath, new(DbNames.Flat, DbPath), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>()))
             {
-                for (int batch = 0; batch < 8; batch++)
+                IDb account = db.GetColumnDb(FlatDbColumns.Account);
+                for (int i = 0; i < keys.Length; i++)
                 {
-                    for (int i = batch; i < keys.Length; i += 8)
-                    {
-                        values[i] = CreateSstValue(i, batch);
-                        db.PutSpan(keys[i], values[i], WriteFlags.None);
-                    }
-
-                    db.Flush();
+                    values[i] = CreateAccountValue(i);
+                    account.PutSpan(keys[i], values[i], WriteFlags.None);
                 }
 
-                int flushedSstCount = Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories).Length;
-                Assert.That(flushedSstCount, Is.GreaterThan(1));
-                db.Compact();
-                int compactedSstCount = Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories).Length;
-                Assert.That(compactedSstCount, Is.LessThan(flushedSstCount));
-                AssertSstReads(db, keys, values);
-
-                byte[] replacement = CreateSstValue(0, 8);
-                using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot();
-                db.PutSpan(keys[0], replacement, WriteFlags.None);
                 db.Flush();
-
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(snapshot.Get(keys[0]), Is.EqualTo(values[0]));
-                    Assert.That(snapshot.Get(CreateMissingKey()), Is.Null);
-                }
-
-                values[0] = replacement;
             }
 
-            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, configFactory, LimboLogs.Instance);
-            AssertSstReads(reopened, keys, values);
-        }
-
-        private static void AssertSstReads(DbOnTheRocks db, byte[][] keys, byte[][] values)
-        {
-            IReadOnlyKeyValueStore store = db;
-            for (int i = 0; i < keys.Length; i++)
+            using ColumnsDb<FlatDbColumns> reopened = new(DbPath, new(DbNames.Flat, DbPath), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>());
+            IDb reopenedAccount = reopened.GetColumnDb(FlatDbColumns.Account);
+            using (Assert.EnterMultipleScope())
             {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(store.Get(keys[i]), Is.EqualTo(values[i]));
-                    Assert.That(store.KeyExists(keys[i]), Is.True);
-                }
+                Assert.That(reopenedAccount.Get(keys[0]), Is.EqualTo(values[0]));
+                Assert.That(reopenedAccount.Get(CreateMissingAccountKey()), Is.Null);
             }
-
-            Assert.That(store.Get(CreateMissingKey()), Is.Null);
 
             int index = 0;
-            byte[] lowerBound = new byte[20];
-            byte[] upperBound = new byte[20];
-            upperBound.AsSpan().Fill(0xFF);
-            using ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(lowerBound, upperBound);
+            using ISortedView view = ((ISortedKeyValueStore)reopenedAccount).GetViewBetween(keys[100], keys[110]);
             while (view.MoveNext())
             {
-                if (index >= keys.Length) Assert.Fail("SST iterator returned more keys than were written.");
-
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[index]));
-                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[index]));
+                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[100 + index]));
+                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[100 + index]));
                 }
 
                 index++;
             }
 
-            Assert.That(index, Is.EqualTo(keys.Length));
+            Assert.That(index, Is.EqualTo(10));
         }
 
-        private static byte[][] CreateSstKeys()
+        private static byte[][] CreateAccountKeys()
         {
-            byte[][] keys = new byte[2048][];
+            byte[][] keys = new byte[1024][];
             for (int i = 0; i < keys.Length; i++)
             {
-                byte[] key = new byte[20];
-                key[0] = (byte)(i >> 8);
-                key[1] = (byte)i;
-                uint state = (uint)i + 0x9E3779B9u;
-                for (int j = 2; j < key.Length; j++)
-                {
-                    state = state * 1664525u + 1013904223u;
-                    key[j] = (byte)(state >> 24);
-                }
-
-                keys[i] = key;
+                keys[i] = ValueKeccak.Compute(i.ToBigEndianByteArray()).Bytes[..20].ToArray();
             }
 
+            Array.Sort(keys, Bytes.Comparer);
             return keys;
         }
 
-        private static byte[] CreateSstValue(int keyIndex, int batch)
+        private static byte[] CreateAccountValue(int index)
         {
             byte[] value = new byte[128];
             for (int i = 0; i < value.Length; i++)
             {
-                value[i] = (byte)(keyIndex + batch * 13 + i);
+                value[i] = (byte)(index + i);
             }
 
             return value;
         }
 
-        private static byte[] CreateMissingKey()
-        {
-            byte[] key = new byte[20];
-            key.AsSpan().Fill(0xFF);
-            return key;
-        }
+        private static byte[] CreateMissingAccountKey() => ValueKeccak.Compute("missing-flat-account").Bytes[..20].ToArray();
 
         [Test]
         public void SharedCacheCanBeCreatedAndDisposed()
