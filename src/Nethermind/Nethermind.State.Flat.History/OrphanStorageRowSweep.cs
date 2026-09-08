@@ -26,7 +26,7 @@ public sealed class OrphanStorageRowSweep(
     private const int OrphanAccounts = 2;
     private const int TallyLength = 3;
     private const int RowsPerBatch = 1 << 16;
-    private const int BudgetCheckInterval = 1 << 10;
+    internal const int BudgetCheckInterval = 1 << 10;
     private const int IdentityLength = BaseFlatPersistence.AccountKeyLength;
     private const int BlockBytes = sizeof(ulong);
     private const int StorageRowKeyLength = BaseFlatPersistence.StorageKeyLength + BlockBytes;
@@ -130,6 +130,7 @@ public sealed class OrphanStorageRowSweep(
         long passStartedAt = Stopwatch.GetTimestamp();
         long rowsThisPass = 0;
         long currentPrefix = -1;
+        TimeSpan loading = TimeSpan.Zero;
 
         Span<byte> upper = stackalloc byte[StorageRowKeyLength + 1];
         upper.Fill(0xFF);
@@ -139,7 +140,7 @@ public sealed class OrphanStorageRowSweep(
             ReadOnlySpan<byte> key = view.CurrentKey;
             if (key.Length != StorageRowKeyLength) continue;
 
-            if (rowsThisPass >= maxUnits || ((rowsThisPass & (BudgetCheckInterval - 1)) == 0 && Stopwatch.GetElapsedTime(passStartedAt) >= budget))
+            if (rowsThisPass >= maxUnits || (rowsThisPass > 0 && (rowsThisPass & (BudgetCheckInterval - 1)) == 0 && Stopwatch.GetElapsedTime(passStartedAt) - loading >= budget))
             {
                 token.ThrowIfCancellationRequested();
                 Flush(repair, startKey, orphanRows);
@@ -169,7 +170,9 @@ public sealed class OrphanStorageRowSweep(
             ValueHash256 identity = IdentityOf(key);
             if (!timelines.TryGetValue(identity, out AccountTimeline? timeline))
             {
+                long loadStartedAt = Stopwatch.GetTimestamp();
                 timeline = AccountTimeline.Load(accountRows, rowFormat, identity, token);
+                loading += Stopwatch.GetElapsedTime(loadStartedAt);
                 timelines[identity] = timeline;
             }
 
