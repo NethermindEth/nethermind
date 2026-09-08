@@ -510,19 +510,13 @@ public class JsonRpcSocketsClientTests
         }
 
         /// <summary>
-        /// Binds a loopback listener on an OS-assigned port and reports the endpoint it actually got.
+        /// Binds a loopback listener on an OS-assigned port and reports the endpoint it actually got, so two
+        /// concurrent runs of this assembly cannot collide on one port.
         /// </summary>
         /// <remarks>
-        /// These fixtures used to hard-code one fixed port for every one of them, so two concurrent runs of this
-        /// assembly fought over it: the loser fails with AddressAlreadyInUse, which surfaces as unrelated-looking
-        /// assertion failures in whichever tests lost the race. Worse, a run killed mid-suite leaves the listener
-        /// behind, and the next run then blocks in Accept indefinitely instead of failing.
-        ///
-        /// Binding happens here rather than inside <c>OneShotServer</c> so that the listener is already accepting
-        /// before the test's client task starts connecting. The old code relied on the same ordering incidentally,
-        /// by binding synchronously ahead of its first await.
+        /// Binding happens here rather than inside <c>OneShotServer</c> so that the listener is already
+        /// accepting before the test's client task starts connecting.
         /// </remarks>
-        /// <summary>Listens on an OS-assigned loopback port, so concurrent runs cannot collide.</summary>
         private static Socket ListenOnLoopback(out IPEndPoint boundEndPoint)
         {
             Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
