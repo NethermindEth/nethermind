@@ -454,15 +454,24 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     /// Keeps the retrieved context as the stored one, disposing a replacement published while it was being retrieved.
     /// </summary>
     /// <remarks>
-    /// <see cref="ImproveBlock"/> publishes a replacement before it checks <paramref name="retrieved"/>'s
-    /// cancellation, so a replacement published before that cancellation is only seen from this side.
+    /// <see cref="ImproveBlock"/> publishes a replacement before it re-reads the round's shared cancellation
+    /// source, so a replacement published before that cancellation is only seen from this side. A context
+    /// belonging to a later round is left alone: all contexts of one round share
+    /// <see cref="IBlockImprovementContext.StartDateTime"/> — it is threaded unchanged through the improvement
+    /// chain — so a differing one owns a cancellation source that is still live. The swap comes before the
+    /// disposal and is retried, so a context is only ever disposed once it has actually been replaced.
     /// </remarks>
     private void RetainRetrievedContext(string payloadId, IBlockImprovementContext retrieved)
     {
-        if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? stored) && !ReferenceEquals(stored, retrieved))
+        while (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? stored)
+               && !ReferenceEquals(stored, retrieved)
+               && stored.StartDateTime == retrieved.StartDateTime)
         {
-            stored.DisposeAndCancelOngoingImprovements();
-            _payloadStorage.TryUpdate(payloadId, retrieved, stored);
+            if (_payloadStorage.TryUpdate(payloadId, retrieved, stored))
+            {
+                stored.DisposeAndCancelOngoingImprovements();
+                return;
+            }
         }
     }
 
