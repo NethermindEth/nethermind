@@ -27,7 +27,7 @@ public static partial class EvmInstructions
     {
         if (!TryGetPostTxView(vm, out TransactionDiffView view, out FrameTxContext ctx)) return EvmExceptionType.BadInstruction;
 
-        TGasPolicy.Consume<TxTraceGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (param > 0x15) return EvmExceptionType.BadInstruction;
 
@@ -84,7 +84,7 @@ public static partial class EvmInstructions
             return stack.PushUInt256<TTracingInst>(account.TryGetPreTxStorage(slot.Key, out UInt256 before) ? before : default);
         if (!account.TryGetStorageChange(slot.Key, out StorageChange? change)) return EvmExceptionType.BadInstruction;
         EvmWord after = change.Value.Value;
-        return stack.Push32Bytes<TTracingInst>(ref Unsafe.As<EvmWord, byte>(ref after));
+        return stack.Push32Bytes<TTracingInst, OnFlag>(ref Unsafe.As<EvmWord, byte>(ref after));
     }
 
     // 0x0A deployed address / 0x0B deployed code hash, indexed by deployment position.
@@ -96,7 +96,7 @@ public static partial class EvmInstructions
         if (param == 0x0A) return stack.PushAddress<TTracingInst>(address);
 
         ValueHash256 codeHash = view.Slice.GetAccountChanges(address)!.CodeChange!.Value.CodeHash;
-        return stack.Push32Bytes<TTracingInst>(in codeHash);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(in codeHash);
     }
 
     // 0x0D address / 0x0E topic count / 0x0F..0x12 topics / 0x13 data length, indexed by event position.
@@ -108,7 +108,7 @@ public static partial class EvmInstructions
         switch (param)
         {
             case 0x0D: return stack.PushAddress<TTracingInst>(log.Address);
-            case 0x0E: return stack.PushUInt32<TTracingInst>((uint)log.Topics.Length);
+            case 0x0E: return stack.PushUInt32<TTracingInst, OnFlag>((uint)log.Topics.Length);
             case 0x13: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)log.Data.Length);
             default:
                 int topic = param - 0x0F;
@@ -150,13 +150,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         StorageCell cell = new(address, in key);
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, vm.Spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, vm.Spec))
             return EvmExceptionType.OutOfGas;
         if (param == 0x00 && account is not null && account.TryGetPreTxStorage(key, out UInt256 before))
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in cell);
-        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst, OnFlag>() : stack.PushBytes<TTracingInst>(value);
 
         // Reported like SLOAD, so a trace over a failed assertion shows the slot it read.
         if (vm.TxTracer.IsTracingOpLevelStorage)
@@ -172,7 +172,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             return EvmExceptionType.OutOfGas;
         IWorldState state = vm.WorldState;
         switch (param)
@@ -184,12 +184,12 @@ public static partial class EvmInstructions
             case 0x04:
                 {
                     ValueHash256 hash = account?.CodeChange is not null ? view.GetPreTxCodeHash(address, account) : state.GetCodeHash(address);
-                    return stack.Push32Bytes<TTracingInst>(in hash);
+                    return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
                 }
             default:
                 {
                     ValueHash256 hash = state.GetCodeHash(address);
-                    return stack.Push32Bytes<TTracingInst>(in hash);
+                    return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
                 }
         }
     }
@@ -199,7 +199,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<TxTraceGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         return param switch
         {
             0x06 => in3.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(view.TryGetSlotRun(address, out _, out int slots) ? slots : 0)) : EvmExceptionType.BadInstruction,
@@ -210,7 +210,7 @@ public static partial class EvmInstructions
             0x09 => view.TryGetAddressEventGlobalIndex(address, in in3, out int global)
                 ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)global)
                 : EvmExceptionType.BadInstruction,
-            _ => in3.IsZero ? stack.PushUInt32<TTracingInst>(ChangeFlags(account)) : EvmExceptionType.BadInstruction, // 0x0A
+            _ => in3.IsZero ? stack.PushUInt32<TTracingInst, OnFlag>(ChangeFlags(account)) : EvmExceptionType.BadInstruction, // 0x0A
         };
     }
 
