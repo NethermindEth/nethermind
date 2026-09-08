@@ -123,16 +123,22 @@ public partial class BlockProcessor
             EnsureParallelBuffers(len);
             BlockReceiptsTracer[] receiptsTracers = _receiptsTracerPool;
             GasValidationResultSlot[] gasResults = _gasResultPool;
-            // Also reset the slots the previous block used but this one does not: an unreset
-            // tracer keeps that block's receipts and the Block itself, and an unreset gas slot
-            // keeps its InvalidBlockException, so a shrinking tx count would pin the larger
-            // block indefinitely. The pool never shrinks, so this runs once per shrink.
-            int slotsToReset = Math.Max(len, _pooledSlotsInUse);
-            for (int i = 0; i < slotsToReset; i++)
+            for (int i = 0; i < len; i++)
             {
                 receiptsTracers[i].ResetForParallelTx(block, parallelSafeTracer);
                 gasResults[i].Reset();
             }
+
+            // Release the slots the previous block used but this one does not. Left alone they keep
+            // that block's receipts, the block itself and any InvalidBlockException in the gas slot;
+            // resetting them like the active ones would only swap the current block in. The pool
+            // never shrinks, so this runs once per shrink rather than every block.
+            for (int i = len; i < _pooledSlotsInUse; i++)
+            {
+                receiptsTracers[i].ReleaseForPooling();
+                gasResults[i].Reset();
+            }
+
             _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();

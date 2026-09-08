@@ -346,6 +346,28 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         }
     }
 
+    /// <summary>
+    /// Drops everything this tracer holds from its last use, leaving it ready for a later
+    /// <see cref="ResetForParallelTx"/>.
+    /// </summary>
+    /// <remarks>
+    /// For a pooled parallel tracer whose slot this block does not use. <see cref="ResetForParallelTx"/>
+    /// would swap the current block and tracer in rather than let go, so a slot left idle across
+    /// successive blocks would keep the last block that did use it — and its transactions and access
+    /// list — alive for as long as the pool lives. List capacity is kept; only the references go.
+    /// </remarks>
+    public void ReleaseForPooling()
+    {
+        _otherTracer = NullBlockTracer.Instance;
+        _currentTxTracer = NullTxTracer.Instance;
+        Block = null!;
+        CurrentTx = null;
+        _currentIndex = 0;
+        _txReceipts.Clear();
+        _cumulativeBlockGasPerTx.Clear();
+        _cumulativeReceiptGas = 0;
+    }
+
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         CurrentTx = tx;
