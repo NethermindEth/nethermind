@@ -9,11 +9,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Autofac;
-using Fody;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
-using Nethermind.Evm.Fody;
-using CilInstruction = Mono.Cecil.Cil.Instruction;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -108,133 +103,11 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Opcode_cloner_rejects_instance_methods()
-    {
-        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
-        MethodDefinition method = CreateWeaverMethod(module, "Instance");
-        method.IsStatic = false;
-        method.HasThis = true;
-        method.Body.Instructions.Insert(0, CilInstruction.Create(OpCodes.Ldarg, method.Body.ThisParameter));
-
-        Assert.That(() => new MethodCloner(method, _ => { }).Clone("Clone"),
-            Throws.TypeOf<WeavingException>().With.Message.Contains("Only static methods"));
-    }
-
-    [Test]
-    public void Opcode_cloner_drops_stale_scopes([Values] bool nested, [Values] bool staleStart)
-    {
-        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
-        MethodDefinition method = CreateWeaverMethod(module, "Template");
-        CilInstruction first = method.Body.Instructions[0];
-        ScopeDebugInformation scope = new(first, null);
-        if (staleStart) scope.Start = new InstructionOffset(99);
-        else scope.End = new InstructionOffset(99);
-        method.DebugInformation.Scope = nested ? new ScopeDebugInformation(first, null) : scope;
-        if (nested) method.DebugInformation.Scope.Scopes.Add(scope);
-        List<string> warnings = [];
-
-        MethodDefinition clone = new MethodCloner(method, warnings.Add).Clone("Clone");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warnings, Has.Count.EqualTo(1));
-            Assert.That(warnings[0], Does.Contain("Scope boundary"));
-            if (nested) Assert.That(clone.DebugInformation.Scope.Scopes, Is.Empty);
-            else Assert.That(clone.DebugInformation.Scope, Is.Null);
-            Assert.That(clone.Body.Instructions, Has.Count.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public void Opcode_cloner_skips_stale_debug_locals()
-    {
-        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
-        MethodDefinition method = CreateWeaverMethod(module, "Template");
-        method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
-        VariableDefinition removed = new(module.TypeSystem.Int32);
-        method.Body.Variables.Add(removed);
-        method.DebugInformation.Scope = new ScopeDebugInformation(method.Body.Instructions[0], null);
-        method.DebugInformation.Scope.Variables.Add(new VariableDebugInformation(method.Body.Variables[0], "kept"));
-        method.DebugInformation.Scope.Variables.Add(new VariableDebugInformation(removed, "removed"));
-        Mono.Cecil.Cil.MethodBody updatedBody = new(method);
-        updatedBody.Instructions.Add(method.Body.Instructions[0]);
-        updatedBody.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
-        method.Body = updatedBody;
-        List<string> warnings = [];
-
-        MethodDefinition clone = new MethodCloner(method, warnings.Add).Clone("Clone");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warnings, Is.EqualTo(new[] { $"Debug variable removed at index 1 in {method.FullName} has no local." }));
-            Assert.That(clone.DebugInformation.Scope.Variables, Has.Count.EqualTo(1));
-            Assert.That(clone.DebugInformation.Scope.Variables[0].Name, Is.EqualTo("kept"));
-        }
-    }
-
-    [Test]
-    public void Opcode_retarget_rejects_incompatible_signatures([Values("count", "type", "return", "instance")] string mismatch)
-    {
-        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
-        MethodDefinition method = CreateWeaverMethod(module, "Template");
-        method.Parameters.Add(new ParameterDefinition(module.TypeSystem.Int32));
-        MethodDefinition clone = new MethodCloner(method, _ => { }).Clone("Clone");
-        switch (mismatch)
-        {
-            case "count": clone.Parameters.Clear(); break;
-            case "type": clone.Parameters[0].ParameterType = module.TypeSystem.Int64; break;
-            case "return": clone.ReturnType = module.TypeSystem.Int32; break;
-            case "instance": clone.HasThis = true; break;
-        }
-        MethodInfo retarget = typeof(ModuleWeaver).GetMethod("Retarget", BindingFlags.Static | BindingFlags.NonPublic)!;
-
-        Assert.That(() => retarget.Invoke(null, [new GenericInstanceMethod(method), clone]),
-            Throws.TypeOf<TargetInvocationException>().With.InnerException.TypeOf<WeavingException>());
-    }
-
-    [Test]
-    public void Opcode_weaver_rejects_names_differing_only_by_case()
-    {
-        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
-        MethodDefinition handler = CreateWeaverMethod(module, "ExecuteOpcode");
-        TypeDefinition vm = handler.DeclaringType;
-        handler.Body.Instructions.Insert(0, CilInstruction.Create(OpCodes.Tail));
-        MethodDefinition factory = new("OpcodeHandler", Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
-        vm.Methods.Add(factory);
-        factory.GenericParameters.Add(new GenericParameter("TOpcode", factory));
-        factory.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ldftn, new GenericInstanceMethod(handler)));
-        factory.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ret));
-        MethodDefinition table = new("GenerateOpcodeHandlers", Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
-        vm.Methods.Add(table);
-        foreach (string name in new[] { "SLoadOpcode", "SloadOpcode" })
-        {
-            TypeDefinition opcode = new("Test", name, Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
-            module.Types.Add(opcode);
-            GenericInstanceMethod call = new(factory);
-            call.GenericArguments.Add(opcode);
-            table.Body.Instructions.Add(CilInstruction.Create(OpCodes.Call, call));
-        }
-        ModuleWeaver weaver = new() { ModuleDefinition = module };
-
-        Assert.That(weaver.Execute, Throws.TypeOf<WeavingException>().With.Message.Contains("differ only by case"));
-    }
-
-    [Test]
     public void Original_opcode_factories_are_removed()
     {
         Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
-        foreach (MethodInfo method in vmType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic))
+        foreach (MethodInfo method in vmType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
             Assert.That(method.Name, Is.Not.AnyOf("OpcodeHandler", "TerminatingOpcodeHandler", "JumpIfOpcodeHandler", "GetCallHandler", "GetCreateHandler"));
-    }
-
-    private static MethodDefinition CreateWeaverMethod(ModuleDefinition module, string name)
-    {
-        TypeDefinition vm = new("Nethermind.Evm", "VirtualMachine`1", Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
-        module.Types.Add(vm);
-        MethodDefinition method = new(name, Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
-        vm.Methods.Add(method);
-        method.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ret));
-        return method;
     }
 
     [Test]

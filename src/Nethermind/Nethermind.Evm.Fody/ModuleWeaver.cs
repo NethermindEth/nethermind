@@ -76,7 +76,8 @@ public sealed class ModuleWeaver : BaseModuleWeaver
             {
                 if (!method.HasBody || factories.Contains(method)) continue;
                 foreach (Instruction instruction in method.Body.Instructions)
-                    if (instruction.Operand is MethodReference reference && reference.DeclaringType.Resolve() == vm
+                    if (instruction.Operand is MethodReference reference && IsFactory(reference.Name)
+                        && reference.DeclaringType.Resolve() == vm
                         && factories.Contains(Resolve(reference)))
                         throw new WeavingException($"Method {method.FullName} still references an original opcode factory.");
             }
@@ -198,7 +199,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         };
     }
 
-    private static GenericInstanceMethod Retarget(GenericInstanceMethod original, MethodDefinition target)
+    internal static GenericInstanceMethod Retarget(GenericInstanceMethod original, MethodDefinition target)
     {
         if (target.GenericParameters.Count != original.GenericArguments.Count)
             throw new WeavingException($"Handler {target.Name} does not match the dispatch arity of {original.ElementMethod.FullName}.");

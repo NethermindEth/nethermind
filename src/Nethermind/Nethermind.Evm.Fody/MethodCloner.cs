@@ -131,7 +131,7 @@ internal sealed class MethodCloner(MethodDefinition source, Action<string> warn)
         {
             instruction = null;
             if (offset.IsEndOfMethod || byOffset.TryGetValue(offset.Offset, out instruction)) return true;
-            warn($"Scope boundary at IL_{offset.Offset:x4} in {source.FullName} is not an instruction; dropping scope.");
+            warn($"Scope boundary at IL_{offset.Offset:x4} in {source.FullName} is not an instruction; dropping scope and its nested scopes.");
             return false;
         }
     }
