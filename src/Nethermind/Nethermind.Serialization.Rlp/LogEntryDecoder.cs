@@ -13,6 +13,14 @@ namespace Nethermind.Serialization.Rlp
     public sealed class LogEntryDecoder() : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
+
+        /// <summary>Smallest RLP encoding this decoder accepts for a log entry.</summary>
+        /// <remarks>
+        /// <c>[address, [], ""]</c> - a 21-byte address, an empty topics list and empty data under a
+        /// one-byte sequence prefix. Lets callers bound a declared log count by the bytes holding it.
+        /// </remarks>
+        public const int MinEncodedLength = 24;
+
         public static LogEntryDecoder Instance { get; } = new();
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

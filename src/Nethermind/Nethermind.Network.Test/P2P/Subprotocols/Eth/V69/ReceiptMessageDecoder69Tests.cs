@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -11,6 +12,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 [TestFixture]
 public class ReceiptMessageDecoder69Tests
 {
+    // Comfortably under RlpLimit.ReceiptLogs, but more logs than the bytes declaring them could hold.
+    private const int UnbackedLogCount = 1_000;
+
     [Test]
     public void Can_roundtrip_receipt()
     {
@@ -41,16 +45,43 @@ public class ReceiptMessageDecoder69Tests
     [Test]
     public void Decode_throws_on_null_log_entry()
     {
-        byte[] encoded = EncodeReceiptWithNullLogEntry();
+        byte[] encoded = EncodeReceiptWithLogs(1, null);
         ReceiptMessageDecoder69 decoder = new();
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        // One byte cannot hold a log entry, so the log-count guard rejects it before the null check.
+        Assert.That(Decode, Throws.InstanceOf<RlpException>());
 
         void Decode()
         {
             RlpReader context = new(encoded);
             decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
         }
+    }
+
+    [Test]
+    public void Decode_rejects_a_log_count_the_message_cannot_hold()
+    {
+        byte[] encoded = EncodeReceiptWithLogs(UnbackedLogCount, null);
+        ReceiptMessageDecoder69 decoder = new();
+
+        Assert.That(Decode, Throws.TypeOf<RlpLimitException>());
+
+        void Decode()
+        {
+            RlpReader context = new(encoded);
+            decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
+        }
+    }
+
+    [Test]
+    public void Decode_accepts_a_log_list_of_smallest_possible_entries()
+    {
+        byte[] encoded = EncodeReceiptWithLogs(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog());
+
+        RlpReader context = new(encoded);
+        TxReceipt? decoded = new ReceiptMessageDecoder69().Decode(ref context, RlpBehaviors.Eip658Receipts);
+
+        Assert.That(decoded!.Logs, Has.Length.EqualTo(UnbackedLogCount));
     }
 
     [Test]
@@ -74,9 +105,10 @@ public class ReceiptMessageDecoder69Tests
         }
     }
 
-    private static byte[] EncodeReceiptWithNullLogEntry()
+    private static byte[] EncodeReceiptWithLogs(int logCount, LogEntry? log)
     {
-        int logsLength = Rlp.OfEmptyList.Length;
+        int logLength = log is null ? Rlp.OfEmptyList.Length : Rlp.LengthOf(log);
+        int logsLength = logCount * logLength;
         int contentLength = Rlp.LengthOf((byte)TxType.EIP1559)
             + Rlp.LengthOf((byte)1)
             + Rlp.LengthOf(21000UL)
@@ -88,7 +120,11 @@ public class ReceiptMessageDecoder69Tests
         writer.Encode((byte)1);
         writer.Encode(21000UL);
         writer.StartSequence(logsLength);
-        writer.EncodeNullObject();
+        for (int i = 0; i < logCount; i++)
+        {
+            LogEntryDecoder.Instance.Encode(ref writer, log);
+        }
+
         return encoded;
     }
 }

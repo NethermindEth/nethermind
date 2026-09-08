@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
             int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, logsRlpLimit.Limit + 1);
-            ctx.GuardLimit(numberOfReceipts, logsRlpLimit);
+            Rlp.GuardLimit(numberOfReceipts, (lastCheck - ctx.Position) / LogEntryDecoder.MinEncodedLength, logsRlpLimit);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {

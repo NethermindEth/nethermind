@@ -46,8 +46,9 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
-        ctx.GuardLimit(numberOfReceipts, RlpLimit.ReceiptLogs);
+        RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
+        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, logsRlpLimit.Limit + 1);
+        Rlp.GuardLimit(numberOfReceipts, (lastCheck - ctx.Position) / LogEntryDecoder.MinEncodedLength, logsRlpLimit);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
