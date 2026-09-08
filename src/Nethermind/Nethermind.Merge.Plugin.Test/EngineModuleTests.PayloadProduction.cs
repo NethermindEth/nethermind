@@ -473,7 +473,7 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
-            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.Best.CurrentBestBlock?.Transactions.Length).ToList();
 
         using (Assert.EnterMultipleScope())
         {
@@ -531,7 +531,7 @@ public partial class EngineModuleTests
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
-            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.Best.CurrentBestBlock?.Transactions.Length).ToList();
 
         Assert.That(transactionsLength, Is.EqualTo(new[] { 1, 2 }));
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
