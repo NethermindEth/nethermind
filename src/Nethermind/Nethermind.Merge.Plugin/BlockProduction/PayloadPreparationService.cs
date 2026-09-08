@@ -135,44 +135,63 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
+    /// <remarks>
+    /// Publishes with an explicit compare-and-swap rather than <c>AddOrUpdate</c>: creating a context starts
+    /// a build and allocates cancellation sources, and <c>AddOrUpdate</c> may run its factories repeatedly
+    /// under contention, leaving all but the last created context referenced by nobody. The candidate here is
+    /// created at most once and re-offered until it is either published or disposed.
+    /// </remarks>
     protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
-        IBlockImprovementContext? publishedContext = null;
-        IBlockImprovementContext storedContext = _payloadStorage.AddOrUpdate(payloadId,
-            id => publishedContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
-            (id, currentContext) =>
+        IBlockImprovementContext? candidate = null;
+        try
+        {
+            while (true)
             {
-                if (cts.IsCancellationRequested)
+                if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? currentContext))
                 {
-                    // If cancelled, return previous
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
-                    return currentContext;
-                }
-                if (!currentContext.ImprovementTask.IsCompleted)
-                {
-                    // If there is payload improvement and its not yet finished leave it be
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
-                    return currentContext;
-                }
+                    if (cts.IsCancellationRequested)
+                    {
+                        // If cancelled, keep the previous
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
+                        return;
+                    }
+                    if (!currentContext.ImprovementTask.IsCompleted)
+                    {
+                        // If there is payload improvement and its not yet finished leave it be
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
+                        return;
+                    }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
-                if (!cts.IsCancellationRequested)
-                {
+                    candidate ??= CreateBlockImprovementContext(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
                     currentContext.Dispose();
-                    return publishedContext = newContext;
+                    // The entry moved on under us: re-read and offer the same candidate again.
+                    if (!_payloadStorage.TryUpdate(payloadId, candidate, currentContext)) continue;
                 }
                 else
                 {
-                    newContext.Dispose();
-                    return currentContext;
+                    candidate ??= CreateBlockImprovementContext(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
+                    if (!_payloadStorage.TryAdd(payloadId, candidate)) continue;
                 }
-            });
 
-        // Only a context published by this call may be cancelled here: the branches that keep
-        // `currentContext` can hand back one belonging to a later round, whose `cts` is still live.
-        if (cts.IsCancellationRequested && ReferenceEquals(storedContext, publishedContext))
+                IBlockImprovementContext published = candidate;
+                candidate = null;
+
+                // Only the context this call published may be cancelled here: an entry kept by another
+                // round belongs to that round, whose `cts` is still live.
+                if (cts.IsCancellationRequested)
+                {
+                    published.DisposeAndCancelOngoingImprovements();
+                }
+
+                return;
+            }
+        }
+        finally
         {
-            storedContext.DisposeAndCancelOngoingImprovements();
+            // A candidate created but never published is referenced by nobody. Plain `Dispose`, as
+            // cancelling would stop the round shared with whichever context is stored.
+            candidate?.Dispose();
         }
     }
 
