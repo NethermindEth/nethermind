@@ -39,7 +39,7 @@ public class OrphanStorageSweepTests
         {
         }
 
-        _sweep = new OrphanStorageSweep(_db, ManagerLikeTheReal(), LimboLogs.Instance);
+        _sweep = new OrphanStorageSweep(_db, ManagerLikeTheReal(), new SweepPacer(), LimboLogs.Instance);
     }
 
     [TearDown]
@@ -49,27 +49,26 @@ public class OrphanStorageSweepTests
         _db.Dispose();
     }
 
-    private IPersistenceManager ManagerLikeTheReal(Action? beforeTheBatch = null, Action? afterTheBatch = null, Action? betweenTheReadAndTheBatch = null)
+    private IPersistenceManager ManagerLikeTheReal(Action? beforeTheBatch = null, Action? afterTheBatch = null, Func<bool>? stateSyncWriting = null)
     {
         IPersistenceManager manager = Substitute.For<IPersistenceManager>();
-        manager.LeaseReader().Returns(_ => _persistence.CreateReader());
-        manager.When(m => m.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()))
-            .Do(call =>
-            {
-                beforeTheBatch?.Invoke();
-                StateId current;
-                using (IPersistence.IPersistenceReader reader = _persistence.CreateReader()) current = reader.CurrentState;
-                betweenTheReadAndTheBatch?.Invoke();
-                StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
-                using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(unchanged, unchanged))
-                {
-                    call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
-                }
+        manager.RunMaintenance(Arg.Any<Action<IPersistence.IWriteBatch>>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            beforeTheBatch?.Invoke();
+            if (stateSyncWriting?.Invoke() == true) return false;
 
-                afterTheBatch?.Invoke();
-            });
+            using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+            {
+                call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
+            }
+
+            afterTheBatch?.Invoke();
+            return true;
+        });
         return manager;
     }
+
+    private static byte[] ProgressKey => Keccak.Compute("OrphanStorageSweepProgress").BytesToArray();
 
     [Test]
     public void Slots_under_an_absent_or_storage_less_account_are_deleted_and_everything_else_stays()
@@ -179,7 +178,7 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(third, slot, EncodedValue);
         }
 
-        bool completed = _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
+        bool completed = _sweep.RunOnePass(repair: true, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
         SlotValue value = default;
         bool firstGone;
         bool secondStillThere;
@@ -217,7 +216,7 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
         }
 
-        _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
+        _sweep.RunOnePass(repair: true, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
         _sweep.RunToCompletion(repair: true, CancellationToken.None);
         long scannedByFirstSweep = _sweep.Report.SlotsScanned;
 
@@ -248,8 +247,8 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
         }
 
-        _sweep.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None);
-        using OrphanStorageSweep resumed = new(_db, ManagerLikeTheReal(), LimboLogs.Instance);
+        _sweep.RunOnePass(repair: true, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
+        using OrphanStorageSweep resumed = new(_db, ManagerLikeTheReal(), new SweepPacer(), LimboLogs.Instance);
 
         OrphanStorageReport report = resumed.RunToCompletion(repair: true, CancellationToken.None);
 
@@ -267,12 +266,12 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(PathWithPrefix(0x20000000, tail: 0x01), slot, EncodedValue);
         }
 
-        using (OrphanStorageSweep interrupted = new(_db, ManagerLikeTheReal(afterTheBatch: () => throw new OperationCanceledException()), LimboLogs.Instance))
+        using (OrphanStorageSweep interrupted = new(_db, ManagerLikeTheReal(afterTheBatch: () => throw new OperationCanceledException()), new SweepPacer(), LimboLogs.Instance))
         {
-            Assert.That(() => interrupted.RunOnePass(repair: true, maxSlots: 1, TimeSpan.MaxValue, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => interrupted.RunOnePass(repair: true, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>());
         }
 
-        using OrphanStorageSweep resumed = new(_db, ManagerLikeTheReal(), LimboLogs.Instance);
+        using OrphanStorageSweep resumed = new(_db, ManagerLikeTheReal(), new SweepPacer(), LimboLogs.Instance);
 
         OrphanStorageReport report = resumed.RunToCompletion(repair: true, CancellationToken.None);
 
@@ -284,12 +283,10 @@ public class OrphanStorageSweepTests
     public void A_database_without_a_persisted_state_is_stamped_without_a_scan()
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> freshDb = new();
-        IPersistence freshPersistence = new RocksDbPersistence(freshDb, LimboLogs.Instance);
         IPersistenceManager fresh = Substitute.For<IPersistenceManager>();
-        fresh.LeaseReader().Returns(_ => freshPersistence.CreateReader());
         byte[] progressKey = Keccak.Compute("OrphanStorageSweepProgress").BytesToArray();
         freshDb.GetColumnDb(FlatDbColumns.Metadata).PutSpan(progressKey, new byte[sizeof(uint) + 5 * sizeof(long)]);
-        using OrphanStorageSweep sweep = new(freshDb, fresh, LimboLogs.Instance);
+        using OrphanStorageSweep sweep = new(freshDb, fresh, new SweepPacer(), LimboLogs.Instance);
 
         bool stamped = sweep.TryStampFresh();
 
@@ -303,7 +300,32 @@ public class OrphanStorageSweepTests
     }
 
     [Test]
-    public void A_database_cleared_under_the_pass_stops_the_sweep_before_it_deletes_anything()
+    public void A_maintenance_batch_refused_because_a_state_sync_is_writing_stops_the_sweep_and_keeps_its_cursor()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        ValueHash256 orphan = PathWithPrefix(0x10000000, tail: 0x01);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
+        }
+
+        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(stateSyncWriting: () => true), new SweepPacer(), LimboLogs.Instance);
+
+        Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
+            "a state sync writing to the base owns it; the sweep stops instead of judging half-written data");
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        SlotValue value = default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted while another writer is assembling the base");
+            Assert.That(sweep.AlreadyHandled, Is.False, "the base still holds a real state, so the pass is owed and resumes on the next start");
+            Assert.That(_db.GetColumnDb(FlatDbColumns.Metadata).Get(ProgressKey), Is.Not.Null, "the cursor written before the deletes stays, so the resume covers the slice that was never deleted");
+        }
+    }
+
+    [Test]
+    public void A_database_cleared_before_the_batch_is_recorded_as_swept_without_deleting_anything()
     {
         ValueHash256 slot = TestItem.KeccakB.ValueHash256;
         ValueHash256 orphan = PathWithPrefix(0x10000000, tail: 0x01);
@@ -317,10 +339,10 @@ public class OrphanStorageSweepTests
             _persistence.Clear();
             using IPersistence.IWriteBatch rebuilding = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
             rebuilding.SetStorageRawEncoded(orphan, slot, EncodedValue);
-        }), LimboLogs.Instance);
+        }, stateSyncWriting: () => true), new SweepPacer(), LimboLogs.Instance);
 
         Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
-            "a state sync that starts under the pass clears the database and rebuilds it with storage landing before accounts; the sweep must read that on disk, where the manager's cached state id does not show it, and stop");
+            "a state sync that clears the base rebuilds it with storage landing before accounts; the sweep must not judge it");
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         SlotValue value = default;
@@ -328,11 +350,40 @@ public class OrphanStorageSweepTests
         {
             Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True, "nothing is deleted from a database another writer is assembling");
             Assert.That(sweep.AlreadyHandled, Is.True, "the clear emptied every data column, so what the sync writes next is written by this version and cannot be orphaned; the resynced database owes no pass");
+            Assert.That(_db.GetColumnDb(FlatDbColumns.Metadata).Get(ProgressKey), Is.Null);
         }
     }
 
     [Test]
-    public void A_database_cleared_between_the_state_read_and_the_batch_is_treated_as_rebuilt()
+    public void An_account_that_gained_storage_between_the_scan_and_the_delete_keeps_its_slots()
+    {
+        ValueHash256 slot = TestItem.KeccakB.ValueHash256;
+        Address revived = TestItem.AddressD;
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            batch.SetStorage(revived, 1, SlotValue.FromSpanWithoutLeadingZero([0x0E]));
+        }
+
+        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(beforeTheBatch: () =>
+        {
+            using IPersistence.IWriteBatch reviving = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            reviving.SetAccount(revived, new Account(1, 1, TestItem.KeccakD, Keccak.OfAnEmptyString));
+        }), new SweepPacer(), LimboLogs.Instance);
+
+        OrphanStorageReport report = sweep.RunToCompletion(repair: true, CancellationToken.None);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        SlotValue value = default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.OrphanAccounts, Is.EqualTo(1), "the scan judged the snapshot it opened, where the account did not exist yet");
+            Assert.That(reader.TryGetSlot(revived, 1, ref value), Is.True, "the delete re-checks the live account under the persistence lock and leaves the slots of an account that has storage now");
+            Assert.That(sweep.AlreadyHandled, Is.True);
+        }
+    }
+
+    [Test]
+    public void A_started_sweep_waits_for_the_drain_then_sweeps_in_the_background_and_stamps()
     {
         ValueHash256 slot = TestItem.KeccakB.ValueHash256;
         ValueHash256 orphan = PathWithPrefix(0x10000000, tail: 0x01);
@@ -341,23 +392,12 @@ public class OrphanStorageSweepTests
             batch.SetStorageRawEncoded(orphan, slot, EncodedValue);
         }
 
-        using OrphanStorageSweep sweep = new(_db, ManagerLikeTheReal(betweenTheReadAndTheBatch: () =>
-        {
-            _persistence.Clear();
-            using IPersistence.IWriteBatch rebuilding = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
-            rebuilding.SetStorageRawEncoded(orphan, slot, EncodedValue);
-        }), LimboLogs.Instance);
-
-        Assert.That(() => sweep.RunToCompletion(repair: true, CancellationToken.None), Throws.InstanceOf<OperationCanceledException>(),
-            "a clear landing after the manager read the state makes the batch refuse to apply on top of the wrong state; that refusal is the rebuild, not a failure");
+        _sweep.Start(repair: true, drainedAtBlock: Persisted.BlockNumber);
+        Assert.That(() => _sweep.AlreadyHandled, Is.True.After(10_000, 50), "the background thread drains, sweeps and stamps on its own");
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         SlotValue value = default;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.True);
-            Assert.That(sweep.AlreadyHandled, Is.True);
-        }
+        Assert.That(reader.TryGetStorageRaw(orphan, slot, ref value), Is.False);
     }
 
     [Test]
@@ -379,7 +419,7 @@ public class OrphanStorageSweepTests
             batch.SetAccount(WithStorage, new Account(1, 1));
             return snapshot;
         });
-        using OrphanStorageSweep sweep = new(racing, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        using OrphanStorageSweep sweep = new(racing, Substitute.For<IPersistenceManager>(), new SweepPacer(), LimboLogs.Instance);
 
         OrphanStorageReport report = sweep.RunToCompletion(repair: false, CancellationToken.None);
 
