@@ -241,14 +241,11 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, ref Hash256? bodyTxRoot, out Block? block)
+        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, Hash256? rejectedBodyTxRoot, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-
-            // A sparse response leaves the same body under test against several headers, and building
-            // the transaction trie dominates a comparison, so build it once per body instead.
-            bodyTxRoot ??= TxTrie.CalculateRoot(blockBody.Transactions);
-            if (bodyTxRoot == header.TxRoot && _blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
+            if ((rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
+                && _blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
             {
                 block = new Block(header, blockBody);
             }
@@ -265,7 +262,7 @@ namespace Nethermind.Synchronization.FastBlocks
             int validResponsesCount = 0;
             BlockBody[]? responses = batch.Response?.Bodies ?? [];
             int responseIndex = 0;
-            Hash256? bodyTxRoot = null;
+            Hash256? rejectedBodyTxRoot = null;
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
@@ -285,23 +282,26 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (responseIndex < responses.Length)
                     {
                         responseIndex++;
-                        bodyTxRoot = null;
+                        rejectedBodyTxRoot = null;
                     }
 
                     _syncStatusList.MarkPending(blockInfo);
                     continue;
                 }
 
-                if (TryPrepareBlock(blockInfo, body, ref bodyTxRoot, out Block? block))
+                if (TryPrepareBlock(blockInfo, body, rejectedBodyTxRoot, out Block? block))
                 {
                     responseIndex++;
-                    bodyTxRoot = null;
+                    rejectedBodyTxRoot = null;
                     validResponsesCount++;
                     InsertOneBlock(block!);
                 }
                 else
                 {
                     // Body responses can be sparse, so an invalid body may belong to a later requested header.
+                    // Building the transaction trie dominates a comparison, so remember the rejected body's
+                    // root and let the remaining headers cost a hash compare instead of another trie build.
+                    rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
                     _syncStatusList.MarkPending(blockInfo);
                 }
             }

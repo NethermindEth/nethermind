@@ -76,10 +76,17 @@ public class BodiesSyncFeedTests
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _historyPruner = Substitute.For<IHistoryPruner>();
-        _feed = new BodiesSyncFeed(
+        _feed = CreateFeed(CreateBlockValidator());
+    }
+
+    private static BlockValidator CreateBlockValidator() =>
+        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
+
+    private BodiesSyncFeed CreateFeed(IBlockValidator blockValidator) =>
+        new(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            CreateBlockValidator(),
+            blockValidator,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -90,10 +97,6 @@ public class BodiesSyncFeedTests
             LimboLogs.Instance,
             flushDbInterval: 10
         );
-    }
-
-    private static BlockValidator CreateBlockValidator() =>
-        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
     [TearDown]
     public void TearDown()
@@ -188,20 +191,7 @@ public class BodiesSyncFeedTests
         blockValidator
             .ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
             .Returns(false);
-        using BodiesSyncFeed feed = new(
-            MainnetSpecProvider.Instance,
-            _syncingToBlockTree,
-            blockValidator,
-            _syncPointers,
-            _syncPeerPool,
-            _syncConfig,
-            new NullSyncReport(),
-            _historyPruner,
-            _blocksDb,
-            _metadataDb,
-            LimboLogs.Instance,
-            flushDbInterval: 10
-        );
+        using BodiesSyncFeed feed = CreateFeed(blockValidator);
         feed.InitializeFeed();
 
         using BodiesSyncBatch req = (await feed.PrepareRequest())!;
@@ -217,8 +207,8 @@ public class BodiesSyncFeedTests
 
         Assert.That(
             blockValidator.ReceivedCalls().Count(static (call) => call.GetMethodInfo().Name == nameof(IBlockValidator.ValidateBodyAgainstHeader)),
-            Is.LessThanOrEqualTo(1),
-            "an unmatched body must not be revalidated once per requested header");
+            Is.EqualTo(1),
+            "an unmatched body must be validated exactly once, not once per requested header");
         _syncPeerPool.Received(1).ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             DisconnectReason.InvalidTxOrUncle,
