@@ -199,8 +199,8 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
-    // The mirror of the case below: the walk skips every transaction with a resolved payer, which is exactly
-    // what the ledger holds, so a payer-less arrival — reserving nothing — has to read the ledger itself.
+    // The mirror of the case below: the walk skips every transaction with a resolved payer, and the ledger
+    // covers that set, so a payer-less arrival — reserving nothing — has to read the ledger itself.
     [TestCase(1ul, 2 * TestCost, false, TestName = "the sender covers the reservation and the arrival")]
     [TestCase(1ul, 2 * TestCost - 1, true, TestName = "the sender covers only the reservation")]
     [TestCase(0ul, TestCost, false, TestName = "a replacement is not measured against what it displaces")]
@@ -327,6 +327,30 @@ public class FrameTxPayerExposureFilterTests
         AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+    }
+
+    // Result equality is by id, so nothing else here would notice the split; a remote submitter never reads the
+    // detail, and composing it on the path an unfunded flood walks is what the sibling filters guard against.
+    [TestCase(false, TxHandlingOptions.None, false, TestName = "a remote self-paid rejection is message-free")]
+    [TestCase(false, TxHandlingOptions.PersistentBroadcast, true, TestName = "a local self-paid rejection is detailed")]
+    [TestCase(true, TxHandlingOptions.None, false, TestName = "a remote payer-less rejection is message-free")]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, true, TestName = "a local payer-less rejection is detailed")]
+    public void Accept_UnderfundedSender_DetailsTheRejectionForALocalSubmissionOnly(bool payerless, TxHandlingOptions handlingOptions, bool detailed)
+    {
+        Transaction tx = FrameTxCostingExactly(TestCost, payer: TestItem.AddressA);
+        if (payerless) tx.PayerAddress = null;
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)(TestCost - 1));
+
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts, handlingOptions: handlingOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.InsufficientFunds), "the rejection itself is the same either way");
+            Assert.That(result.ToString(), detailed
+                ? Does.Contain($"Account balance: {TestCost - 1}, pending cost: 0, transaction cost: {TestCost}")
+                : Does.Not.Contain("Account balance"));
+        }
     }
 
     [Test]
@@ -476,7 +500,8 @@ public class FrameTxPayerExposureFilterTests
         PayerAddress = payer ?? Payer,
     };
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null, TxDistinctSortedPool? pending = null)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null, TxDistinctSortedPool? pending = null,
+        TxHandlingOptions handlingOptions = TxHandlingOptions.None)
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
         specProvider.GetCurrentHeadSpec().Returns(Spec);
@@ -487,6 +512,6 @@ public class FrameTxPayerExposureFilterTests
             : (pending ?? Pool(blobs: false), Pool(blobs: true));
         FrameTxPayerExposureFilter filter = new(specProvider, state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
         TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>(), Spec);
-        return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+        return filter.Accept(tx, ref filteringState, handlingOptions);
     }
 }

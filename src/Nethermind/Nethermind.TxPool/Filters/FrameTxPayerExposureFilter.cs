@@ -16,7 +16,8 @@ namespace Nethermind.TxPool.Filters;
 /// only affordability gate a frame transaction meets: the sender-balance filters skip them, since their fees are
 /// the payer's liability. Whenever the sender is what pays — its own prefix, or one no payer resolved for — the
 /// bound the sibling filters held is taken here instead, over the sender's whole pending bucket rather than this
-/// transaction alone, so nothing the ledger cannot see goes unsummed.</remarks>
+/// transaction alone, so nothing the ledger cannot see goes unsummed. A free transaction is carved out of the
+/// zero-balance leg only, not of the bound: exempting the branch would skip the reservation along with it.</remarks>
 internal sealed class FrameTxPayerExposureFilter(
     IChainHeadSpecProvider specProvider,
     IReadOnlyStateProvider stateProvider,
@@ -61,7 +62,7 @@ internal sealed class FrameTxPayerExposureFilter(
             // hold even at zero cost, or a zero-fee prefix buys a pool slot no account could have paid for.
             if (pending > sender.Balance || (sender.Balance.IsZero && !tx.IsFree()))
             {
-                return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance);
+                return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance, txHandlingOptions);
             }
 
             balance = sender.Balance - pending;
@@ -69,7 +70,7 @@ internal sealed class FrameTxPayerExposureFilter(
             {
                 // Nothing to reserve against, so the sender bound is the whole gate. The price is still recorded:
                 // it is what the bound above sums this transaction at once it is one of the pending ones.
-                if (maxCost > balance) return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance);
+                if (maxCost > balance) return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance, txHandlingOptions);
 
                 tx.PayerExposure = maxCost;
                 return AcceptTxResult.Accepted;
@@ -86,7 +87,7 @@ internal sealed class FrameTxPayerExposureFilter(
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {
             return payer == tx.SenderAddress
-                ? RejectUnderfundedSender(tx, reserved, maxCost, balance)
+                ? RejectUnderfundedSender(tx, reserved, maxCost, balance, txHandlingOptions)
                 : RejectOverExposed(tx, payer, reserved, maxCost, balance);
         }
 
@@ -106,21 +107,27 @@ internal sealed class FrameTxPayerExposureFilter(
 
     /// <summary>The rejection the sender-balance filters would have returned, so a broke sender is not reported
     /// — to the caller or to the gauge — as a sponsor over-exposure.</summary>
-    private AcceptTxResult RejectUnderfundedSender(Transaction tx, in UInt256 owed, in UInt256 maxCost, in UInt256 balance)
+    /// <remarks>The detail is composed for a local submission only, as the sibling filters do: a remote
+    /// submitter never reads it, and an unfunded flood walks this path.</remarks>
+    private AcceptTxResult RejectUnderfundedSender(Transaction tx, in UInt256 owed, in UInt256 maxCost, in UInt256 balance, TxHandlingOptions handlingOptions)
     {
         if (balance.IsZero) Metrics.PendingTransactionsZeroBalance++;
         else Metrics.PendingTransactionsTooLowBalance++;
 
         if (logger.IsTrace)
             logger.Trace($"Skipped adding frame transaction {tx.Hash}, sender {tx.SenderAddress} owes {owed} + {maxCost} against {balance} available.");
-        return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, pending cost: {owed}, transaction cost: {maxCost}");
+        return (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0
+            ? AcceptTxResult.InsufficientFunds
+            : AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, pending cost: {owed}, transaction cost: {maxCost}");
     }
 
     /// <summary>What the sender of <paramref name="tx"/> already owes as a payer, net of the reservation
     /// <paramref name="tx"/> displaces.</summary>
-    /// <remarks>The bucket walk skips every transaction with a resolved payer, which is exactly the set this
-    /// ledger holds — the sender's own self-paid prefixes among them. Netted like the reserving branch, so a
-    /// replacement is not measured against the incumbent it evicts.</remarks>
+    /// <remarks>The bucket walk skips every transaction with a resolved payer, and this ledger covers that set —
+    /// the sender's own self-paid prefixes among them. It carries no nonce, so it also counts reservations
+    /// outside the walk's window and what the sender owes as another account's payer; both over-reject rather
+    /// than admit. Netted like the reserving branch, so a replacement is not measured against the incumbent
+    /// it evicts.</remarks>
     private UInt256 SenderReservedAsPayer(Transaction tx)
     {
         Address sender = tx.SenderAddress!;
