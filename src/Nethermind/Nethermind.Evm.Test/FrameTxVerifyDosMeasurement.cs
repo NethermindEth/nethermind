@@ -182,9 +182,13 @@ public class FrameTxVerifyDosMeasurement
     }
 
     /// <summary>The unpaid gas one block-production attempt burns on a prefix that never approves — the
-    /// per-attempt multiplicand for the pool-retention count measured in the TxPool tests.</summary>
+    /// per-attempt multiplicand for the pool-retention count measured in the TxPool tests. The largest
+    /// prefix the pool can retain is <see cref="Eip8141Constants.MaxVerifyGas"/>; the soispoke case sits
+    /// above it and only sizes what raising MAX_VERIFY_GAS to that budget would cost, since block
+    /// execution applies no cap.</summary>
     [TestCase(100_000L, TestName = "burn at the spec default budget")]
-    [TestCase(322_800L, TestName = "burn at the measured pool prefix")]
+    [TestCase((long)Eip8141Constants.MaxVerifyGas, TestName = "burn at the retainable ceiling")]
+    [TestCase(322_800L, TestName = "burn at soispoke's declared privacy-pool budget")]
     public void UnpaidBurnPerAttempt(long verifyGas)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
