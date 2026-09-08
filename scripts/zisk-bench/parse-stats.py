@@ -15,16 +15,23 @@ import pathlib
 import re
 import sys
 
-# `--no-thousands-sep` is what makes these plain integers; without it the separators break the parse.
-STEPS = re.compile(r"^STEPS\s+(\d+)\s*$", re.MULTILINE)
+# The pinned image groups digits (`STEPS 406,243,606`) even when passed `--no-thousands-sep`, so both
+# patterns accept separators and `number()` strips them. The flag stays on the command line for the
+# day the image honours it; nothing here depends on it either way.
+NUMBER = r"(\d[\d,]*)"
+STEPS = re.compile(rf"^STEPS\s+{NUMBER}\s*$", re.MULTILINE)
 BUCKETS = ("MAIN", "OPCODES", "PRECOMPILES", "MEMORY", "TOTAL")
 
 
+def number(text: str) -> int:
+    return int(text.replace(",", ""))
+
+
 def bucket(log: str, name: str) -> int:
-    match = re.search(rf"^{name}\s+(\d+)\s", log, re.MULTILINE)
+    match = re.search(rf"^{name}\s+{NUMBER}\s", log, re.MULTILINE)
     if match is None:
         raise SystemExit(f"cost bucket {name!r} not found — did ziskemu run with -X?")
-    return int(match.group(1))
+    return number(match.group(1))
 
 
 def main() -> int:
@@ -40,7 +47,7 @@ def main() -> int:
     if steps is None:
         raise SystemExit("no STEPS line in the log — the run did not complete")
 
-    row = {"input": args.input, "steps": int(steps.group(1))}
+    row = {"input": args.input, "steps": number(steps.group(1))}
     row.update({name.lower(): bucket(log, name) for name in BUCKETS})
 
     rows = json.loads(args.into.read_text(encoding="utf-8")) if args.into.exists() else []
