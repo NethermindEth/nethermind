@@ -54,6 +54,43 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void InternKeccak_discriminators_match_the_interned_hashes()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    RlpHelpers.FirstWord(Keccak.OfAnEmptyString.Bytes),
+                    Is.EqualTo(RlpHelpers.OfAnEmptyStringFirstWord));
+                Assert.That(
+                    RlpHelpers.FirstWord(Keccak.EmptyTreeHash.Bytes),
+                    Is.EqualTo(RlpHelpers.EmptyTreeHashFirstWord));
+            }
+        }
+
+        [TestCase(0UL)]
+        [TestCase(1UL)]
+        [TestCase(127UL)]
+        [TestCase(128UL)]
+        [TestCase(255UL)]
+        [TestCase(256UL)]
+        [TestCase(ulong.MaxValue)]
+        public void Decodes_ulong_of_every_payload_length(ulong value) =>
+            Assert.That(Rlp.Decode<ulong>(Rlp.Encode(value).Bytes), Is.EqualTo(value));
+
+        [Test]
+        public void Decodes_ulong_of_every_byte_width([Range(1, 8)] int byteWidth)
+        {
+            // Distinct per position, leading byte non-zero so the encoding is canonical at this width.
+            ulong value = 0xab;
+            for (int i = 1; i < byteWidth; i++)
+            {
+                value = (value << 8) | (byte)(i + 1);
+            }
+
+            Assert.That(Rlp.Decode<ulong>(Rlp.Encode(value).Bytes), Is.EqualTo(value));
+        }
+
+        [Test]
         public void DecodeArray_rejects_more_items_than_the_limit()
         {
             RlpLimit limit = new(4);

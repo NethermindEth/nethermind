@@ -58,11 +58,6 @@ internal static partial class RlpHelpers
     public static (int Position, int Value) DecodePositiveInt(ReadOnlySpan<byte> data, int position)
         => (DecodePositiveInt(data, position, out int value), value);
 
-    /// <inheritdoc cref="DecodeUInt256(ReadOnlySpan{byte}, int, out UInt256, int)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (int Position, UInt256 Value) DecodeUInt256(ReadOnlySpan<byte> data, int position, int length = -1)
-        => (DecodeUInt256(data, position, out UInt256 value, length), value);
-
     /// <inheritdoc cref="DecodeKeccak(ReadOnlySpan{byte}, int, out Hash256)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static (int Position, Hash256 Value) DecodeKeccak(ReadOnlySpan<byte> data, int position)
@@ -77,11 +72,6 @@ internal static partial class RlpHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static (int Position, Address? Value) DecodeAddressOrNull(ReadOnlySpan<byte> data, int position)
         => (DecodeAddressOrNull(data, position, out Address? value), value);
-
-    /// <inheritdoc cref="DecodeBloom(ReadOnlySpan{byte}, int, out Bloom)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (int Position, Bloom Value) DecodeBloom(ReadOnlySpan<byte> data, int position)
-        => (DecodeBloom(data, position, out Bloom value), value);
 
     /// <inheritdoc cref="DecodeBloomOrNull(ReadOnlySpan{byte}, int, out Bloom)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -104,7 +94,7 @@ internal static partial class RlpHelpers
 
     /// <summary>Tells whether the item at <paramref name="position"/> is the empty sequence.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsEmptySequenceNext(ReadOnlySpan<byte> data, int position) => data[position] == Rlp.EmptyListByte;
+    private static bool IsEmptySequenceNext(ReadOnlySpan<byte> data, int position) => data[position] == Rlp.EmptyListByte;
 
     /// <summary>Picks up a reader's buffer and cursor, consuming the empty sequence that encodes a null item.</summary>
     /// <remarks>
@@ -146,6 +136,11 @@ internal static partial class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowCheckpointFailed(int expected, int position) =>
         throw new RlpException($"Data checkpoint failed. Expected {expected} and is {position}");
+
+    /// <summary>Advances past the whole item at <paramref name="position"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int SkipItem(ReadOnlySpan<byte> data, int position)
+        => position + PeekNextRlpLength(data, position);
 
     /// <summary>Advances past <paramref name="count"/> whole items.</summary>
     public static int SkipItems(ReadOnlySpan<byte> data, int position, int count)
@@ -301,32 +296,38 @@ internal static partial class RlpHelpers
         }
 
         int length = prefix - 128;
-        if (length > 8)
+        value = DecodeIntegerPayload(data, position, length, maxLength: sizeof(ulong), start);
+        return position + length;
+    }
+
+    /// <summary>Decodes the payload of a big-endian RLP integer whose prefix has already been consumed.</summary>
+    /// <remarks>
+    /// Canonical RLP integers are minimal, so the accumulation runs <paramref name="length"/> times rather
+    /// than <paramref name="maxLength"/> times. Only the leading byte can be a non-canonical zero — once any
+    /// byte is non-zero the accumulator stays non-zero — so that is one test rather than one per byte.
+    /// </remarks>
+    /// <param name="maxLength">Widest payload the caller's value type accepts.</param>
+    /// <param name="start">Offset of the item's prefix, for error reporting.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong DecodeIntegerPayload(ReadOnlySpan<byte> data, int position, int length, int maxLength, int start)
+    {
+        if (length > maxLength)
         {
             ThrowUnexpectedIntegerLength(start, length);
         }
 
-        ulong result = 0ul;
-        for (int i = 8; i > 0; i--)
+        if (data[position] == 0)
         {
-            result <<= 8;
-            if (i <= length)
-            {
-                result |= data[position + length - i];
-                if (result == 0)
-                {
-                    ThrowNonCanonicalInteger(start);
-                }
-            }
+            ThrowNonCanonicalInteger(start);
         }
 
+        ulong result = Word(data, position, position + length);
         if (result < 128)
         {
             ThrowNonCanonicalInteger(start);
         }
 
-        value = result;
-        return position + length;
+        return result;
     }
 
     /// <inheritdoc cref="DecodeULong"/>
@@ -349,31 +350,7 @@ internal static partial class RlpHelpers
         }
 
         int length = prefix - 128;
-        if (length > 4)
-        {
-            ThrowUnexpectedIntegerLength(start, length);
-        }
-
-        uint result = 0;
-        for (int i = 4; i > 0; i--)
-        {
-            result <<= 8;
-            if (i <= length)
-            {
-                result |= data[position + length - i];
-                if (result == 0)
-                {
-                    ThrowNonCanonicalInteger(start);
-                }
-            }
-        }
-
-        if (result < 128)
-        {
-            ThrowNonCanonicalInteger(start);
-        }
-
-        value = result;
+        value = (uint)DecodeIntegerPayload(data, position, length, maxLength: sizeof(uint), start);
         return position + length;
     }
 
@@ -398,31 +375,7 @@ internal static partial class RlpHelpers
         }
 
         int length = prefix - 128;
-        if (length > 2)
-        {
-            ThrowUnexpectedIntegerLength(start, length);
-        }
-
-        ushort result = 0;
-        for (int i = 2; i > 0; i--)
-        {
-            result <<= 8;
-            if (i <= length)
-            {
-                result |= data[position + length - i];
-                if (result == 0)
-                {
-                    ThrowNonCanonicalInteger(start);
-                }
-            }
-        }
-
-        if (result < 128)
-        {
-            ThrowNonCanonicalInteger(start);
-        }
-
-        value = result;
+        value = (ushort)DecodeIntegerPayload(data, position, length, maxLength: sizeof(ushort), start);
         return position + length;
     }
 
@@ -491,14 +444,25 @@ internal static partial class RlpHelpers
     /// <returns>The position past the integer.</returns>
     public static int DecodeUInt256(ReadOnlySpan<byte> data, int position, out UInt256 value, int length = -1)
     {
+        position = DecodeWideIntegerSpan(data, position, out ReadOnlySpan<byte> byteSpan, length);
+        value = ToUInt256(byteSpan);
+        return position;
+    }
+
+    /// <summary>Yields the payload span of a big-endian integer of up to 32 bytes, rejecting non-canonical forms.</summary>
+    /// <param name="length">Required byte length, or -1 to accept any canonical encoding.</param>
+    /// <returns>The position past the integer.</returns>
+    private static int DecodeWideIntegerSpan(
+        ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> byteSpan, int length = -1)
+    {
         int start = position;
         if (data[position] == 0)
         {
             ThrowNonCanonicalInteger(start);
         }
 
-        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> byteSpan, RlpLimit.L32);
-        if (byteSpan.Length > 32)
+        position = DecodeByteArraySpan(data, position, out byteSpan, RlpLimit.L32);
+        if (byteSpan.Length > UInt256Bytes)
         {
             ThrowUnexpectedIntegerLength(start, byteSpan.Length);
         }
@@ -515,7 +479,6 @@ internal static partial class RlpHelpers
             ThrowInvalidLength(byteSpan.Length, length);
         }
 
-        value = ToUInt256(byteSpan);
         return position;
     }
 
@@ -569,26 +532,11 @@ internal static partial class RlpHelpers
     /// <returns>The position past the integer.</returns>
     public static int DecodeEvmWord(ReadOnlySpan<byte> data, int position, out EvmWord value)
     {
-        int start = position;
-        if (data[position] == 0)
-        {
-            ThrowNonCanonicalInteger(start);
-        }
-
-        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> byteSpan, RlpLimit.L32);
-        if (byteSpan.Length > 32)
-        {
-            ThrowUnexpectedIntegerLength(start, byteSpan.Length);
-        }
-
-        if (byteSpan.Length > 1 && byteSpan[0] == 0)
-        {
-            ThrowNonCanonicalInteger(start);
-        }
+        position = DecodeWideIntegerSpan(data, position, out ReadOnlySpan<byte> byteSpan);
 
         value = default;
-        Span<byte> dest = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref value), 32);
-        byteSpan.CopyTo(dest.Slice(32 - byteSpan.Length));
+        Span<byte> dest = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref value), UInt256Bytes);
+        byteSpan.CopyTo(dest.Slice(UInt256Bytes - byteSpan.Length));
         return position;
     }
 
@@ -743,15 +691,18 @@ internal static partial class RlpHelpers
         return position;
     }
 
-    public static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)
+    private static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)
     {
         if (bloomBytes.Length != Bloom.ByteLength)
         {
-            throw new RlpException("Incorrect bloom RLP");
+            ThrowIncorrectBloom();
         }
 
         return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIncorrectBloom() => throw new RlpException("Incorrect bloom RLP");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowAddressDecode(int prefix, int position, int dataLength)
@@ -814,6 +765,15 @@ internal static partial class RlpHelpers
         }
     }
 
+    /// <inheritdoc cref="DecodeZeroPrefixKeccak"/>
+    /// <exception cref="RlpException">The item is an RLP null.</exception>
+    public static int DecodeZeroPrefixKeccakNonNull(ReadOnlySpan<byte> data, int position, out Hash256 keccak)
+    {
+        position = DecodeZeroPrefixKeccak(data, position, out Hash256? value);
+        keccak = value ?? ThrowNullDecodedValue<Hash256>();
+        return position;
+    }
+
     /// <summary>Decodes a hash stored without its leading zero bytes, right-aligning it.</summary>
     /// <returns>The position past the item.</returns>
     public static int DecodeZeroPrefixKeccak(ReadOnlySpan<byte> data, int position, out Hash256? keccak)
@@ -865,15 +825,27 @@ internal static partial class RlpHelpers
         return position + Hash256.Size;
     }
 
+    /// <summary>Leading word of <see cref="Keccak.OfAnEmptyString"/> as <see cref="FirstWord"/> reads it.</summary>
+    /// <remarks>
+    /// A literal rather than a read of the hash, so the discriminator below costs no loads. Its value is
+    /// little-endian, which <c>InternKeccak_discriminators_match_the_interned_hashes</c> pins on the build
+    /// host; on a big-endian one the discriminator simply never matches and interning turns into a no-op,
+    /// which is a missed optimisation and not a behaviour change.
+    /// </remarks>
+    internal const ulong OfAnEmptyStringFirstWord = 0x3c23f7860146d2c5;
+
+    /// <inheritdoc cref="OfAnEmptyStringFirstWord"/>
+    internal const ulong EmptyTreeHashFirstWord = 0xa655cc1b171fe856;
+
     /// <summary>Returns the shared instance for the two hashes that dominate account payloads.</summary>
-    public static Hash256 InternKeccak(ReadOnlySpan<byte> span)
+    private static Hash256 InternKeccak(ReadOnlySpan<byte> span)
     {
         ulong first = FirstWord(span);
-        if (first == FirstWord(Keccak.OfAnEmptyString.Bytes))
+        if (first == OfAnEmptyStringFirstWord)
         {
             if (span.SequenceEqual(Keccak.OfAnEmptyString.Bytes)) return Keccak.OfAnEmptyString;
         }
-        else if (first == FirstWord(Keccak.EmptyTreeHash.Bytes))
+        else if (first == EmptyTreeHashFirstWord)
         {
             if (span.SequenceEqual(Keccak.EmptyTreeHash.Bytes)) return Keccak.EmptyTreeHash;
         }
@@ -888,7 +860,7 @@ internal static partial class RlpHelpers
     /// </remarks>
     /// <param name="span">Must be at least <see cref="Hash256.Size"/> bytes; the read is unchecked.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong FirstWord(ReadOnlySpan<byte> span)
+    internal static ulong FirstWord(ReadOnlySpan<byte> span)
     {
         Debug.Assert(span.Length >= Hash256.Size);
         return Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(span));
