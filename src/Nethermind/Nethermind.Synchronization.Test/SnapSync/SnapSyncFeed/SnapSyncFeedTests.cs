@@ -62,10 +62,6 @@ public class SnapSyncFeedTests
         snapProvider.Received(1).ReleaseRequest(batch, responseHandled: false);
     }
 
-    // A snap request that yields nothing usable is recorded only at Trace (a timeout) or in a detailed-only
-    // metric (a bad range), while the progress report keeps printing the same percentage - so a node whose every
-    // request fails is indistinguishable from one working slowly. Observed on an OP mainnet node: 23 h in
-    // StateNodes, 24 peers at head, 0 accounts, and nothing above Trace to say so.
     /// <summary>Short enough to keep these tests quick; production uses five minutes.</summary>
     private static readonly TimeSpan ShortThreshold = TimeSpan.FromMilliseconds(100);
 
@@ -151,6 +147,68 @@ public class SnapSyncFeedTests
         await Drive(feed, 1500);
 
         Assert.That(StallWarnings(logger), Has.Count.EqualTo(1));
+    }
+
+    // SimpleDispatcher hands the batch back with no peer when the pool could not allocate one. That is the shape
+    // of a stall with no usable peers, and nothing else in the feed records it.
+    [Test]
+    [NonParallelizable]
+    public async Task A_request_that_never_got_a_peer_counts_towards_the_stall()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) = CreateFeed(ShortThreshold);
+
+        using (SnapSyncBatch batch = new() { AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.Zero) })
+        {
+            Assert.That(feed.HandleResponse(batch, null), Is.EqualTo(SyncResponseHandlingResult.NotAssigned));
+        }
+
+        Assert.That(Metrics.SnapConsecutiveUnproductiveResponses, Is.GreaterThan(0));
+
+        await Drive(feed, 500);
+
+        Assert.That(StallWarnings(logger), Is.Not.Empty);
+        Assert.That(StallWarnings(logger)[0], Does.Contain("no peer available"));
+    }
+
+    /// <summary>
+    /// Long enough that only a missing reset, rather than a slow runner, can produce a warning: each run is
+    /// driven for a tenth of it, so a false warning would need most of a second of scheduling delay.
+    /// </summary>
+    private const int RestartThresholdMs = 1000;
+
+    // The feed is a singleton and outlives one run: a reorg during BAL healing restarts snap on the same instance.
+    // Healing can run for longer than the threshold, and that gap belongs to no run.
+    [Test]
+    public async Task A_restarted_run_is_not_blamed_for_the_gap_before_it()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) =
+            CreateFeed(TimeSpan.FromMilliseconds(RestartThresholdMs));
+
+        // Each Drive ends where the dispatcher ends a run, so this is two runs with a gap between them.
+        await Drive(feed, RestartThresholdMs / 10);
+        await Task.Delay(RestartThresholdMs + RestartThresholdMs / 5);
+        await Drive(feed, RestartThresholdMs / 10);
+
+        Assert.That(StallWarnings(logger), Is.Empty,
+            "neither run was driven for as long as the threshold; the gap between them belongs to neither");
+    }
+
+    // ReleaseRequest, which lets IsFinished report the run over, runs before the response is analyzed, so the
+    // dispatcher can end the run while the response that ended it is still on its way to the stall clock.
+    [Test]
+    public async Task A_response_landing_after_the_run_ended_does_not_restart_the_clock()
+    {
+        (Synchronization.SnapSync.SnapSyncFeed feed, TestLogger logger) =
+            CreateFeed(TimeSpan.FromMilliseconds(RestartThresholdMs));
+
+        await Drive(feed, RestartThresholdMs / 10);
+        feed.AnalyzeResponsePerPeer(AddRangeResult.OK, new PeerInfo(Substitute.For<ISyncPeer>()));
+
+        await Task.Delay(RestartThresholdMs + RestartThresholdMs / 5);
+        await Drive(feed, RestartThresholdMs / 10);
+
+        Assert.That(StallWarnings(logger), Is.Empty,
+            "the range was stored by the run that just ended, so it cannot start the next run's clock");
     }
 
     private static (Synchronization.SnapSync.SnapSyncFeed, TestLogger) CreateFeed(TimeSpan? stallWarningThreshold = null)

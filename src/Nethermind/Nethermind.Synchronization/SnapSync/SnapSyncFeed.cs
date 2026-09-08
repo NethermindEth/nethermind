@@ -30,11 +30,15 @@ namespace Nethermind.Synchronization.SnapSync
         // A snap request that produced nothing usable is otherwise recorded only at Trace (a timeout) or in a
         // detailed-only metric (a bad range), while ProgressTracker keeps reporting the same percentage - so a
         // node whose every request fails looks exactly like one that is working slowly. These three make the
-        // stall itself sayable: how many requests it covers, and how long it has run. All under _syncLock.
+        // stall itself sayable: how many requests it covers, and how long it has run. Written under _syncLock;
+        // the only unlocked access is WarnIfStalled's fast-path read of the timestamp.
         private int _consecutiveUnproductiveResponses;
-        private string _lastUnproductiveReason = "none recorded";
+        private string _lastUnproductiveReason = NoUnproductiveReason;
         private long _lastProductiveTimestamp;
         private long _lastStallWarningTimestamp;
+
+        private const string NoUnproductiveReason = "none recorded";
+        private const string NoPeerReason = "no peer available";
 
         /// <summary>How long snap sync may go without storing a usable range before it is called a stall.</summary>
         /// <remarks>
@@ -70,11 +74,13 @@ namespace Nethermind.Synchronization.SnapSync
                     if (finished)
                     {
                         _snapProvider.Dispose();
+                        OnRunEnded();
                         return null;
                     }
                 }
                 catch (OperationCanceledException)
                 {
+                    OnRunEnded();
                     return EmptyBatch;
                 }
                 catch (Exception e)
@@ -82,10 +88,41 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Error("Error when preparing a batch", e);
                 }
 
-                await Task.Delay(50, token);
+                try
+                {
+                    await Task.Delay(50, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Awaited outside the try above, so this is the one run-ending exit that leaves by throwing.
+                    OnRunEnded();
+                    throw;
+                }
             }
 
+            OnRunEnded();
             return EmptyBatch;
+        }
+
+        /// <summary>Ends the stall measurement at the end of a snap-sync run.</summary>
+        /// <remarks>
+        /// This feed outlives a single run: a reorg under the pivot during BAL healing discards the synced state
+        /// and starts snap over on the same instance (<c>StateSyncRunner.RunSnapSyncWithBalHealing</c>). Between the
+        /// two runs nothing stores a range, and healing can take far longer than the stall threshold, so a clock
+        /// left running would make the next run's first request report a stall that never happened, and a streak
+        /// left standing would make it name the previous run's failures. A null return from
+        /// <see cref="PrepareRequest"/> is exactly where the dispatcher ends a run.
+        /// </remarks>
+        private void OnRunEnded()
+        {
+            lock (_syncLock)
+            {
+                _lastProductiveTimestamp = 0;
+                _lastStallWarningTimestamp = 0;
+                _consecutiveUnproductiveResponses = 0;
+                _lastUnproductiveReason = NoUnproductiveReason;
+                Metrics.SnapConsecutiveUnproductiveResponses = 0;
+            }
         }
 
         public SyncResponseHandlingResult HandleResponse(SnapSyncBatch batch, PeerInfo? peer = null)
@@ -124,6 +161,11 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     if (peer is null)
                     {
+                        // SimpleDispatcher hands the batch straight back when the pool could not allocate one.
+                        // No peer means no range either, so it counts: otherwise a sync that cannot get a peer at
+                        // all leaves the streak and the reason frozen at whatever the last answered request left,
+                        // and the gauge reading zero for the whole stall.
+                        OnUnproductiveResponse(NoPeerReason);
                         return SyncResponseHandlingResult.NotAssigned;
                     }
 
@@ -184,9 +226,15 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         _stalePivotUpdateTrigger = null;
                         _consecutiveUnproductiveResponses = 0;
-                        _lastUnproductiveReason = "none recorded";
-                        _lastProductiveTimestamp = Stopwatch.GetTimestamp();
+                        _lastUnproductiveReason = NoUnproductiveReason;
                         Metrics.SnapConsecutiveUnproductiveResponses = 0;
+
+                        // Zero means no run is under way. ReleaseRequest, in the finally above, is what lets
+                        // IsFinished report the run over, so the dispatcher can end the run between there and
+                        // here - and a timestamp written after that would be charged to the next run.
+                        // Within a run this is always non-zero: WarnIfStalled starts the clock at the top of
+                        // PrepareRequest, before any batch can be handed out.
+                        if (_lastProductiveTimestamp != 0) _lastProductiveTimestamp = Stopwatch.GetTimestamp();
                     }
                 }
 
@@ -316,8 +364,8 @@ namespace Nethermind.Synchronization.SnapSync
         /// every response-driven counter frozen, so no streak of unproductive responses can reach any threshold.
         /// Elapsed time since the last stored range covers that as well as the every-request-fails shape.
         /// <para>
-        /// The clock starts at the first call rather than at construction, so the wait before snap sync is first
-        /// driven is not counted against it.
+        /// Only time within one snap-sync run counts. The clock starts at the first request of a run rather than at
+        /// construction, and <see cref="OnRunEnded"/> stops it when the run finishes.
         /// </para>
         /// </remarks>
         private void WarnIfStalled()
@@ -333,6 +381,8 @@ namespace Nethermind.Synchronization.SnapSync
             lock (_syncLock)
             {
                 long now = Stopwatch.GetTimestamp();
+                // Zero means no run is under way yet, or the last one ended: start the clock here rather than
+                // charging this run for the gap since the previous one stored a range.
                 if (_lastProductiveTimestamp == 0)
                 {
                     _lastProductiveTimestamp = now;
