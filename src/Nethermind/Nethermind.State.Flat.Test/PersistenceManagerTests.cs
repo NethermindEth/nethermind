@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -39,6 +41,7 @@ public class PersistenceManagerTests
         _config = new FlatDbConfig
         {
             CompactSize = 16,
+            CompactionOffset = 0,
             MinReorgDepth = 64,
             MaxInMemoryBaseSnapshotCount = 128 + 32,
             MaxReorgDepth = 256,
@@ -51,7 +54,7 @@ public class PersistenceManagerTests
         // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store, wired the
         // production way through FlatWorldStateModule; the container pairs it with its loader (load on
         // build, teardown on dispose).
-        _tier = new FlatTestContainer();
+        _tier = new FlatTestContainer(_config);
         _snapshotRepository = _tier.Repository;
         _persistence = Substitute.For<IPersistence>();
 
@@ -63,7 +66,7 @@ public class PersistenceManagerTests
 
         _persistenceManager = new PersistenceManager(
             _config,
-            ScheduleHelper.CreateWithOffset(_config, 0),
+            _tier.Resolve<ICompactionSchedule>(),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
@@ -89,10 +92,11 @@ public class PersistenceManagerTests
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
-    private Snapshot CreateSnapshot(StateId from, StateId to, bool compacted = false)
+    private Snapshot CreateSnapshot(StateId from, StateId to, bool compacted = false, Action<Snapshot>? populate = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
+        populate?.Invoke(snapshot);
 
         if (compacted)
         {
@@ -471,6 +475,66 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
         });
+    }
+
+    [TestCase(1)]
+    [TestCase(8)]
+    public async Task AddToPersistence_RepeatedForks_ReleasesConvertedCompactedSnapshots(int forkCount)
+    {
+        // Keep the conversion threshold reached while each fork stays below a full compaction boundary.
+        for (int i = 0; i < _config.MaxInMemoryBaseSnapshotCount; i++)
+            CreateSnapshot(Block0, CreateStateId(3, (byte)i));
+
+        ISnapshotCompactor compactor = _tier.Resolve<ISnapshotCompactor>();
+        List<Snapshot> convertedCompacts = [];
+        List<int> compactedCountsAtHandoff = [];
+        StateId latest = Block0;
+        _persistedSnapshotCompactor
+            .EnqueueAsync(Arg.Any<ArrayPoolList<StateId>>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                using ArrayPoolList<StateId> batch = call.Arg<ArrayPoolList<StateId>>();
+                if (batch[0] == latest)
+                    compactedCountsAtHandoff.Add(_snapshotRepository.CompactedSnapshotCount);
+                return ValueTask.CompletedTask;
+            });
+
+        for (int i = 1; i <= forkCount; i++)
+        {
+            StateId setup = CreateStateId(1, (byte)i);
+            latest = CreateStateId(2, (byte)i);
+            Account setupAccount = new(1, (UInt256)i);
+            CreateSnapshot(Block0, setup, populate: snapshot => snapshot.Content.Accounts[TestItem.AddressB] = setupAccount);
+            CreateSnapshot(setup, latest);
+
+            Assert.That(compactor.DoCompactSnapshot(latest), Is.True);
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(latest, SnapshotTier.InMemoryCompacted, out Snapshot? compacted), Is.True);
+            using (compacted)
+            {
+                convertedCompacts.Add(compacted!);
+                await _persistenceManager.AddToPersistence(latest);
+
+                Assert.That(compacted!.TryGetAccount(TestItem.AddressB, out Account? account), Is.True);
+                Assert.That(account, Is.EqualTo(setupAccount), "an active reader must survive conversion");
+            }
+        }
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(latest, Block0, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(_config.MaxInMemoryBaseSnapshotCount));
+            Assert.That(_snapshotRepository.CompactedSnapshotCount, Is.Zero, "converted forks must not retain compacted snapshots");
+            Assert.That(compactedCountsAtHandoff, Has.Count.EqualTo(forkCount));
+            Assert.That(compactedCountsAtHandoff, Is.All.Zero, "compacted snapshots must be released before the potentially blocking handoff");
+            Assert.That(assembled.InMemory.Count, Is.Zero);
+            Assert.That(assembled.Persisted.Count, Is.EqualTo(2), "the persisted bases must still cover the fork");
+            foreach (Snapshot compacted in convertedCompacts)
+            {
+                bool retained = compacted.TryAcquire();
+                if (retained) compacted.Dispose();
+                Assert.That(retained, Is.False, "compacted data must be released after the last reader exits");
+            }
+        }
     }
 
     [Test]

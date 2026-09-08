@@ -48,6 +48,7 @@ public ref struct RlpReader
         _isNotNull = true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public RlpReader(CappedArray<byte> data)
     {
         Data = data.AsSpan();
@@ -71,9 +72,11 @@ public ref struct RlpReader
 
     public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipLength() => Position += PeekPrefixLength();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,6 +136,7 @@ public ref struct RlpReader
         return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public byte ReadByte() => Data[Position++];
 
     public ReadOnlySpan<byte> Read(int length)
@@ -226,43 +230,35 @@ public ref struct RlpReader
 
     private Hash256 DecodeKeccakPayload()
     {
-        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+        ValueHash256 keccak = new(Read(Hash256.Size));
+        if (keccak == Keccak.OfAnEmptyString)
         {
             return Keccak.OfAnEmptyString;
         }
 
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+        if (keccak == Keccak.EmptyTreeHash)
         {
             return Keccak.EmptyTreeHash;
         }
 
-        return new Hash256(keccakSpan);
+        return new Hash256(in keccak);
     }
 
     public ValueHash256? DecodeValueKeccak()
     {
-        if (!ReadKeccakPrefix(allowNull: true))
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-        {
-            return Keccak.OfAnEmptyString.ValueHash256;
-        }
-
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-        {
-            return Keccak.EmptyTreeHash.ValueHash256;
-        }
-
-        return new ValueHash256(keccakSpan);
+        // Not a conditional expression: the implicit Hash256? -> ValueHash256 conversion would
+        // give `null` the type ValueHash256, silently yielding a non-null zero hash.
+        if (!TryDecodeValueKeccak(out ValueHash256 keccak)) return null;
+        return keccak;
     }
 
-    public ValueHash256 DecodeValueKeccakNonNull() => DecodeValueKeccak() ?? ThrowNullDecodedValue<ValueHash256>();
+    public ValueHash256 DecodeValueKeccakNonNull()
+    {
+        if (!TryDecodeValueKeccak(out ValueHash256 keccak)) ThrowNullDecodedValue<ValueHash256>();
+        return keccak;
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryDecodeValueKeccak(out ValueHash256 keccak)
     {
         Unsafe.SkipInit(out keccak);
