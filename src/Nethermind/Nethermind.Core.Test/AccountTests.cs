@@ -1,13 +1,35 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
 public class AccountTests
 {
+    [Test]
+    public void Hashing_preserves_entropy_when_code_hash_matches_storage_root()
+    {
+        UInt256 balance = 2;
+        ulong nonce = (uint)balance.GetHashCode();
+        HashSet<int> hashes = [];
+        byte[] bytes = new byte[32];
+        for (int i = 0; i < 1024; i++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, i);
+            Hash256 root = Keccak.Compute(bytes);
+            Account account = new(nonce, balance, root, root);
+            hashes.Add(account.GetHashCode());
+        }
+
+        Assert.That(hashes.Count, Is.GreaterThan(1000));
+    }
+
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
