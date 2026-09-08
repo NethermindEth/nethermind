@@ -131,15 +131,14 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task cannot_recover_eth66_partial_path()
+    public void cannot_recover_eth66_partial_path()
     {
         // The first node resolves and is collected, then its child is unavailable, so the walk gives up mid-path.
         TrieNode extension = new(new ExtensionData { Key = [3], Value = TestItem.KeccakB });
         _returnedRlp = extension.RlpEncode(Substitute.For<ITrieNodeResolver>(), ref _path).ToArray()!;
         _hash = Keccak.Compute(_returnedRlp);
 
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
-        Assert.That(response, Is.Null);
+        AssertFailedRecoveryReturnsBuffer(_nodeDataDataRecovery, _peerEth66);
     }
 
     [Test]
@@ -175,12 +174,11 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task cannot_recover_eth67_unassemblable_proofs()
+    public void cannot_recover_eth67_unassemblable_proofs()
     {
         // Proofs that hash to nothing on the queried path leave the assembled node list empty.
         _returnedRlp = [5, 6, 7];
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67);
-        Assert.That(response, Is.Null);
+        AssertFailedRecoveryReturnsBuffer(_snapRecovery, _peerEth67);
     }
 
     [Test]
@@ -190,6 +188,31 @@ public class RecoveryTests
             .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { new byte[] { 5, 6, 7 } })));
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth67);
         Assert.That(response, Is.Null);
+    }
+
+    private void AssertFailedRecoveryReturnsBuffer(IPathRecovery recovery, PeerInfo peer)
+    {
+        (TreePath, byte[])[] expected = SafeArrayPool<(TreePath, byte[])>.Shared.Rent(1);
+        SafeArrayPool<(TreePath, byte[])>.Shared.Return(expected);
+
+        Task<IOwnedReadOnlyList<(TreePath, byte[])>?> task = Recover(recovery, peer);
+        // Completed mocks keep all rentals on this thread, where the pool reuses its last returned array.
+        Assert.That(task.IsCompletedSuccessfully, Is.True);
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = task.GetAwaiter().GetResult();
+
+        (TreePath, byte[])[] actual = SafeArrayPool<(TreePath, byte[])>.Shared.Rent(1);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.Null);
+                Assert.That(actual, Is.SameAs(expected), "Recovery must return its rented node buffer.");
+            }
+        }
+        finally
+        {
+            SafeArrayPool<(TreePath, byte[])>.Shared.Return(actual);
+        }
     }
 
     private Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(IPathRecovery recovery, params PeerInfo[] peers)
