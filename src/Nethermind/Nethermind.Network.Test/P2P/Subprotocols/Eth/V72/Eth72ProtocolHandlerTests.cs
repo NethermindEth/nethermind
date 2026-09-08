@@ -485,9 +485,8 @@ public class Eth72ProtocolHandlerTests
         Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<SubprotocolException>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void should_accept_non_blob_announcement_and_ignore_cell_mask(bool hasCellMask)
+    [Test]
+    public void should_accept_non_blob_announcement_and_ignore_cell_mask([Values] bool hasCellMask)
     {
         Hash256 hash = HashFromInt(1);
         _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
@@ -1044,9 +1043,8 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void cancelled_pooled_processing_should_release_unprocessed_prehashes(bool rescheduleSucceeds)
+    [Test]
+    public void cancelled_pooled_processing_should_release_unprocessed_prehashes([Values] bool rescheduleSucceeds)
     {
         Transaction[] txs =
         [
@@ -1134,9 +1132,8 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement(bool wrongSize)
+    [Test]
+    public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement([Values] bool wrongSize)
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -2981,8 +2978,9 @@ public class Eth72ProtocolHandlerTests
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        SourceRejectingBackgroundTaskScheduler rejectingScheduler = new(ClaimedCellsResponseTypeName);
         RecreateHandler(
-            backgroundTaskScheduler: new SourceRejectingBackgroundTaskScheduler(nameof(CellsMessage72)),
+            backgroundTaskScheduler: rejectingScheduler,
             sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -2996,6 +2994,7 @@ public class Eth72ProtocolHandlerTests
         Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [tx.Hash!], [cells], cellMask.ToBytes());
         HandleZeroMessage(response, Eth72MessageCode.Cells);
+        Assert.That(rejectingScheduler.Rejected, Is.GreaterThan(0), "the cells response must actually have been rejected");
 
         registry.ClearReceivedCalls();
         using NewPooledTransactionHashesMessage72 announcement = new(
@@ -3510,9 +3509,8 @@ public class Eth72ProtocolHandlerTests
         AssertCustodyRequest(peer.CellRequests[0], hash, custodyMask);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void registry_scheduler_rejection_should_not_dispose_registry(bool rejectCustodyUpdate)
+    [Test]
+    public void registry_scheduler_rejection_should_not_dispose_registry([Values] bool rejectCustodyUpdate)
     {
         BlobCustodyTracker custodyTracker = new();
         ManualTimerFactory timerFactory = new();
@@ -5259,8 +5257,8 @@ public class Eth72ProtocolHandlerTests
         public bool TryScheduleTask<TReq>(
             TReq request,
             Func<TReq, CancellationToken, Task> fulfillFunc,
-            TimeSpan? timeout = null,
-            string? source = null) => trySchedule();
+            TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq> => trySchedule();
     }
 
     private sealed class PooledTransactionsOverrideSerializationService(IMessageSerializationService inner)
@@ -5342,16 +5340,38 @@ public class Eth72ProtocolHandlerTests
         HandleZeroMessage(empty, Eth72MessageCode.Cells);
     }
 
-    /// <summary>Runs every background task inline except those tagged with the rejected source.</summary>
-    private sealed class SourceRejectingBackgroundTaskScheduler(string rejectedSource) : IBackgroundTaskScheduler
+    /// <summary>The handler wraps a cells response in its private ClaimedCellsResponse before scheduling it.</summary>
+    private const string ClaimedCellsResponseTypeName = "ClaimedCellsResponse";
+
+    /// <summary>
+    /// Runs every background task inline except those wrapping <paramref name="rejectedRequest"/>.
+    /// </summary>
+    /// <remarks>
+    /// Matches on the wrapped request's own <see cref="Type.Name"/> rather than the scheduler's reported
+    /// name, which qualifies on collision and so is not a stable key. <see cref="Rejected"/> lets a test
+    /// assert the rejection actually happened instead of silently exercising the scheduled path.
+    /// </remarks>
+    private sealed class SourceRejectingBackgroundTaskScheduler(string rejectedRequest) : IBackgroundTaskScheduler
     {
+        public int Rejected { get; private set; }
+
         public bool TryScheduleTask<TReq>(
             TReq request,
             Func<TReq, CancellationToken, Task> fulfillFunc,
-            TimeSpan? timeout = null,
-            string? source = null)
-            => source != rejectedSource
-            && RunImmediatelyScheduler.Instance.TryScheduleTask(request, fulfillFunc, timeout, source);
+            TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            foreach (Type wrapped in typeof(TReq).GenericTypeArguments)
+            {
+                if (wrapped.Name == rejectedRequest)
+                {
+                    Rejected++;
+                    return false;
+                }
+            }
+
+            return RunImmediatelyScheduler.Instance.TryScheduleTask(request, fulfillFunc, timeout);
+        }
     }
 
     private sealed class RejectingBackgroundTaskScheduler : IBackgroundTaskScheduler
@@ -5359,8 +5379,8 @@ public class Eth72ProtocolHandlerTests
         public bool TryScheduleTask<TReq>(
             TReq request,
             Func<TReq, CancellationToken, Task> fulfillFunc,
-            TimeSpan? timeout = null,
-            string? source = null)
+            TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             if (request is IDisposable disposable)
             {
@@ -5378,8 +5398,8 @@ public class Eth72ProtocolHandlerTests
         public bool TryScheduleTask<TReq>(
             TReq request,
             Func<TReq, CancellationToken, Task> fulfillFunc,
-            TimeSpan? timeout = null,
-            string? source = null)
+            TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             _next = cancellationToken => fulfillFunc(request, cancellationToken);
             return true;

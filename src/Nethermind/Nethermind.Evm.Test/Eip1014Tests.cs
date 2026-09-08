@@ -54,9 +54,8 @@ namespace Nethermind.Evm.Test
             AssertEip1014(expectedAddress, _defaultDeployedCode);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Test_out_of_gas_existing_account(bool withStorage)
+        [Test]
+        public void Test_out_of_gas_existing_account([Values] bool withStorage)
         {
             (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
 

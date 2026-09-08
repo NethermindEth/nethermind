@@ -28,7 +28,7 @@ public class Eip2780Tests
     public void Call_value_cost_is_flat_under_eip2780()
     {
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
-        Assert.That(EthereumGasPolicy.ConsumeCallValueTransferEip2780(ref gas), Is.True);
+        Assert.That(EthereumGasPolicy.TryConsumeCallValueTransferEip2780(ref gas), Is.True);
         Assert.That(1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(Eip8038Constants.CallValue));
     }
 
@@ -37,7 +37,7 @@ public class Eip2780Tests
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
         using StackAccessTracker tracker = new();
         if (prewarm) tracker.WarmUp(TestItem.AddressB);
-        Assert.That(EthereumGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB), Is.True);
+        Assert.That(EthereumGasPolicy.TryConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB), Is.True);
         return 1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas);
     }
 

@@ -301,6 +301,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return _parentReader;
     }
 
+    private BlockHeader SuggestedBlockHeader
+        => _suggestedBlockHeader ?? throw new InvalidOperationException($"{nameof(_suggestedBlockHeader)} was not initialized.");
+
     private ReadOnlyAccountChanges GetAccountChangesOrThrow(Address address)
     {
         Debug.Assert(_suggestedBlockAccessList is not null);
@@ -389,9 +392,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingAccount(Address address)
-        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
-        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
 }

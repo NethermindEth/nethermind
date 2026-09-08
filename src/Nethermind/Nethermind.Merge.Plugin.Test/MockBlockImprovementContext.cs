@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -24,13 +24,11 @@ internal sealed class MockBlockImprovementContext(
     Action? onFirstDispose = null,
     Action? onCancelling = null) : IBlockImprovementContext
 {
-    private volatile bool _disposed;
     private int _disposeCount;
 
     public Task<Block?> ImprovementTask { get; } = Task.FromResult((Block?)currentBestBlock);
-    public Block? CurrentBestBlock { get; } = currentBestBlock;
-    public UInt256 BlockFees { get; }
-    public bool Disposed => _disposed;
+    public BlockProductionSnapshot Best { get; } = new(currentBestBlock, UInt256.Zero);
+    public bool Disposed => Volatile.Read(ref _disposeCount) > 0;
     public DateTimeOffset StartDateTime { get; } = startDateTime;
 
     public void CancelOngoingImprovements()
@@ -41,7 +39,6 @@ internal sealed class MockBlockImprovementContext(
 
     public void Dispose()
     {
-        _disposed = true;
         if (Interlocked.Increment(ref _disposeCount) == 1)
         {
             onFirstDispose?.Invoke();

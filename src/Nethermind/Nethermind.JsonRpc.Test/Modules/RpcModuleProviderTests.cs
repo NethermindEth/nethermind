@@ -306,9 +306,8 @@ public class RpcModuleProviderTests
         Assert.That((historyClass is ITestAdminRpcModule), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void ModuleFactory_FromDI_IsLazy(bool preload)
+    [Test]
+    public void ModuleFactory_FromDI_IsLazy([Values] bool preload)
     {
         IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig { PreloadRpcModules = preload }))

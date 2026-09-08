@@ -69,11 +69,8 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(result.TransactionExecuted, Is.True);
     }
 
-    [TestCase(true, true)]
-    [TestCase(true, false)]
-    [TestCase(false, true)]
-    [TestCase(false, false)]
-    public void Sets_state_root_on_receipts_before_eip658(bool withStateDiff, bool withTrace)
+    [Test]
+    public void Sets_state_root_on_receipts_before_eip658([Values] bool withStateDiff, [Values] bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithGasLimit(100000).TestObject;
 
@@ -267,9 +264,8 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0ul));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_estimate_with_value(bool systemUser)
+    [Test]
+    public void Can_estimate_with_value([Values] bool systemUser)
     {
         ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction.WithValue(ulong.MaxValue).WithGasLimit(gasLimit)
@@ -351,9 +347,8 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
     }
 
 
-    [TestCase(562949953421312ul)]
-    [TestCase(562949953421311ul)]
-    public void Should_reject_tx_with_high_max_fee_per_gas(ulong topDigit)
+    [Test]
+    public void Should_reject_tx_with_high_max_fee_per_gas([Values(562949953421312ul, 562949953421311ul)] ulong topDigit)
     {
         Transaction tx = Build.A.Transaction.WithMaxFeePerGas(new(0, 0, 0, topDigit)).WithGasLimit(32768)
             .WithType(TxType.EIP1559).WithValue(0)

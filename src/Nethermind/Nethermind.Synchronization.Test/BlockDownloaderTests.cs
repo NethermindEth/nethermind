@@ -372,13 +372,8 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(2048));
     }
 
-    [TestCase(32, true)]
-    [TestCase(1, true)]
-    [TestCase(0, true)]
-    [TestCase(32, false)]
-    [TestCase(1, false)]
-    [TestCase(0, false)]
-    public async Task Can_sync_with_peer_when_it_times_out(int ignoredBlocks, bool mergeDownloader)
+    [Test]
+    public async Task Can_sync_with_peer_when_it_times_out([Values(32, 1, 0)] int ignoredBlocks, [Values] bool mergeDownloader)
     {
         Action<ContainerBuilder> configurer = builder =>
             builder.AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>());
@@ -508,9 +503,8 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.BlockTree.BestSuggestedBody!.Number, Is.EqualTo(0));
     }
 
-    [TestCase(33UL)]
-    [TestCase(65UL)]
-    public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(ulong headNumber)
+    [Test]
+    public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies([Values(33UL, 65UL)] ulong headNumber)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -629,9 +623,8 @@ public partial class BlockDownloaderTests
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(32));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Can_DownloadBlockOutOfOrder(bool isMerge)
+    [Test]
+    public async Task Can_DownloadBlockOutOfOrder([Values] bool isMerge)
     {
         uint chainLength = 1024;
         uint syncPivotNumber = 128;
@@ -981,20 +974,16 @@ public partial class BlockDownloaderTests
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
             SemaphoreSlim peerSemaphore = new(1, 1);
-            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
-
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci =>
                 {
                     CancellationToken token = ci.ArgAt<CancellationToken>(3);
                     await peerSemaphore.WaitAsync(token);
+                    SyncPeerAllocation peerAllocation = new(ci.ArgAt<AllocationContexts>(1), null, () => peerSemaphore.Release());
+                    peerAllocation.AllocatePeer(peerInfo);
                     return peerAllocation;
                 });
-
-            PeerPool
-                .When((p) => p.Free(peerAllocation))
-                .Do((c) => peerSemaphore.Release());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
