@@ -80,9 +80,8 @@ public class FlatSnapTrieFactoryTests
         Assert.That(factory.IsRangePhaseFinished(), Is.False);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Factory_CreatesTreesWithoutThrowing_ForBothDoubleWriteFlagValues(bool doubleWriteCheck)
+    [Test]
+    public void Factory_CreatesTreesWithoutThrowing_ForBothDoubleWriteFlagValues([Values] bool doubleWriteCheck)
     {
         (FlatSnapTrieFactory factory, _) = Build(doubleWriteCheck);
 

@@ -34,7 +34,7 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
         return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
     }
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
 }

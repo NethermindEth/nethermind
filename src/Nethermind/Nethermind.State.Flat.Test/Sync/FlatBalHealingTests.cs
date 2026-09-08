@@ -310,9 +310,8 @@ public class FlatBalHealingTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Storage_written_around_an_account_delete_is_wiped_from_flat_store(bool blockByBlock)
+    [Test]
+    public void Storage_written_around_an_account_delete_is_wiped_from_flat_store([Values] bool blockByBlock)
     {
         SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
         Hash256 afterWrite = BuildRoot(

@@ -20,12 +20,8 @@ public class SlotValueTests
         return data;
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(16)]
-    [TestCase(31)]
-    [TestCase(32)]
-    public void Test_Ctor_AcceptsLengthsUpTo32(int length)
+    [Test]
+    public void Test_Ctor_AcceptsLengthsUpTo32([Values(0, 1, 16, 31, 32)] int length)
     {
         byte[] data = IncrementingBytes(length);
 
@@ -41,9 +37,8 @@ public class SlotValueTests
     public void Test_Ctor_ThrowsOnOversizedInput() =>
         Assert.That(() => new SlotValue(new byte[33]), Throws.ArgumentException);
 
-    [TestCase(33)]
-    [TestCase(64)]
-    public void Test_FromSpanWithoutLeadingZero_ThrowsOnOversizedInput(int length) =>
+    [Test]
+    public void Test_FromSpanWithoutLeadingZero_ThrowsOnOversizedInput([Values(33, 64)] int length) =>
         Assert.That(() => SlotValue.FromSpanWithoutLeadingZero(new byte[length]), Throws.ArgumentException);
 
     [Test]
@@ -54,11 +49,8 @@ public class SlotValueTests
         Assert.That(value.AsReadOnlySpan.ToArray(), Is.EqualTo(data));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(16)]
-    [TestCase(31)]
-    public void Test_FromSpanWithoutLeadingZero_PadsLeadingZeros(int length)
+    [Test]
+    public void Test_FromSpanWithoutLeadingZero_PadsLeadingZeros([Values(0, 1, 16, 31)] int length)
     {
         byte[] data = IncrementingBytes(length);
 

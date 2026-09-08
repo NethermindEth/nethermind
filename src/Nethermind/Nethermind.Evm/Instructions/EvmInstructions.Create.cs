@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -61,19 +62,11 @@ public static partial class EvmInstructions
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
+    /// <typeparam name="TSpec">The fork rules the opcode table specialized this handler on.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gas">Reference to the gas state.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TOpCreate : struct, IOpCreate
-        where TTracingInst : struct, IFlag
-        where TEip8037 : struct, IFlag =>
-        InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037, DynamicCreateSpec>(ref stack, ref gas, vm);
-
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037, TSpec>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -92,8 +85,7 @@ public static partial class EvmInstructions
             goto StaticCallViolation;
         }
 
-        // Reset the return data buffer as contract creation does not use previous return data.
-        vm.ReturnData = null;
+        Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
         ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
 
@@ -111,12 +103,11 @@ public static partial class EvmInstructions
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.
-        bool isEip3860 = TSpec.IsEip3860Enabled(spec);
+        bool isEip3860 = TSpec.IsEip3860Enabled;
         if (isEip3860)
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
-                TGasPolicy.SetOutOfGas(ref gas);
                 goto OutOfGas;
             }
         }
@@ -125,7 +116,7 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
-        if (!TSpec.ConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
+        if (!TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
@@ -136,8 +127,8 @@ public static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Load the initialization code from memory based on the specified position and length.
@@ -148,16 +139,16 @@ public static partial class EvmInstructions
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Compute the contract address:
@@ -168,7 +159,7 @@ public static partial class EvmInstructions
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
-        if (TSpec.UseHotAndColdStorage(spec))
+        if (TSpec.UseHotAndColdStorage)
         {
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
@@ -177,7 +168,7 @@ public static partial class EvmInstructions
         bool isAliveAccount = !state.IsDeadAccount(contractAddress);
         bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
 
-        if (chargeCreateStateGas && !TGasPolicy.ConsumeCreateStateGas(ref gas))
+        if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
         // Get remaining gas for the create operation.
@@ -201,7 +192,7 @@ public static partial class EvmInstructions
         CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
         // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
-        // Collision behaves as an immediate exceptional halt — burned callGas counts as block_execution.
+        // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
         if (isNonZeroAccount)
         {
             if (chargeCreateStateGas)
@@ -209,8 +200,8 @@ public static partial class EvmInstructions
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetCreateStateCost());
             }
 
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         state.ClearStorage(contractAddress);

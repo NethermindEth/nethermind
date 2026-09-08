@@ -101,15 +101,8 @@ namespace Nethermind.Xdc.Test
             }
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(3)]
-        [TestCase(4)]
-        [TestCase(5)]
-        [TestCase(6)]
-        [TestCase(13)]
-        public void Rejects_Empty_Mandatory_Fixed_Size_Field(int fieldIndex)
+        [Test]
+        public void Rejects_Empty_Mandatory_Fixed_Size_Field([Values(0, 1, 2, 3, 4, 5, 6, 13)] int fieldIndex)
         {
             XdcHeaderDecoder codec = new();
             byte[] validRlp = codec.Encode(Build.A.XdcBlockHeader().TestObject).Bytes;

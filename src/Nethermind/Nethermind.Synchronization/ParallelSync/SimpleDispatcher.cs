@@ -57,11 +57,21 @@ public class SimpleDispatcher<T>(
 
             if (peer is null)
             {
+                allocation.Dispose();
                 HandleResponse(request, null);
                 continue;
             }
 
-            await semaphore.WaitAsync(token);
+            try
+            {
+                await semaphore.WaitAsync(token);
+            }
+            catch
+            {
+                allocation.Dispose();
+                throw;
+            }
+
             _ = Task.Run(async () =>
             {
                 try
@@ -75,8 +85,7 @@ public class SimpleDispatcher<T>(
             });
         }
 
-        // Wait for in-flight tasks to complete. Drain with CancellationToken.None so that
-        // peer allocations are always freed in DoDispatch even when the caller cancels.
+        // Drain with CancellationToken.None so cancellation does not abandon in-flight tasks.
         for (int i = 0; i < maxThreads; i++)
             await semaphore.WaitAsync(CancellationToken.None);
     }
@@ -88,30 +97,31 @@ public class SimpleDispatcher<T>(
         CancellationToken token)
     {
         long dispatchTime = Stopwatch.GetTimestamp();
-        try
+        using (allocation)
         {
-            await downloader.Dispatch(peer, request, token);
+            try
+            {
+                await downloader.Dispatch(peer, request, token);
+            }
+            catch (ConcurrencyLimitReachedException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
+            }
+            catch (TimeoutException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
+            }
+            Metrics.SyncDispatcherDispatchTimeMicros.Observe(
+                Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
         }
-        catch (ConcurrencyLimitReachedException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
-        }
-        catch (TimeoutException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
-        }
-        Metrics.SyncDispatcherDispatchTimeMicros.Observe(
-            Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
-
-        peerPool.Free(allocation);
 
         if (token.IsCancellationRequested) return;
 

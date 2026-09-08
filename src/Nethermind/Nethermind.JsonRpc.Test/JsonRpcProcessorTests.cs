@@ -343,9 +343,8 @@ public class JsonRpcProcessorTests
         return new ReadOnlySequence<byte>(start, 0, end, end.Memory.Length);
     }
 
-    [TestCase("engine_newPayloadV4")]
-    [TestCase("eth_call")]
-    public void JsonRpcEnvelopeReader_reads_envelope_and_params_range(string methodName)
+    [Test]
+    public void JsonRpcEnvelopeReader_reads_envelope_and_params_range([Values("engine_newPayloadV4", "eth_call")] string methodName)
     {
         JsonRpcEnvelope envelope = ReadEnvelope($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{methodName}\",\"params\":[1,{{\"a\":2}}],\"extra\":{{\"ignored\":true}}}}", out byte[] body);
 
@@ -452,10 +451,8 @@ public class JsonRpcProcessorTests
     private static IJsonRpcService CreateEchoService() =>
         CreateService(static request => new JsonRpcSuccessResponse { Id = request.Id });
 
-    [TestCase(RpcEndpoint.Http)]
-    [TestCase(RpcEndpoint.Ws)]
-    [TestCase(RpcEndpoint.IPC)]
-    public async Task Request_recorder_captures_payload(RpcEndpoint endpoint)
+    [Test]
+    public async Task Request_recorder_captures_payload([Values(RpcEndpoint.Http, RpcEndpoint.Ws, RpcEndpoint.IPC)] RpcEndpoint endpoint)
     {
         List<string> records = [];
         JsonRpcProcessor processor = CreateRecordingProcessor(RpcRecorderState.Request, records);
@@ -637,9 +634,8 @@ public class JsonRpcProcessorTests
         Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(expectedId));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Can_process_uppercase_params(bool returnErrors)
+    [Test]
+    public async Task Can_process_uppercase_params([Values] bool returnErrors)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"), returnErrors: returnErrors);
         JsonRpcResponse response = AssertSingleResponse(result).Response!;

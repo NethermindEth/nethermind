@@ -381,7 +381,8 @@ public class DetectionScannerTests
         public int Count => _queue.Count;
         public bool Full { get; set; }
 
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             if (Full) return false;
             _queue.Enqueue(ct => fulfillFunc(request, ct));

@@ -139,9 +139,8 @@ public class SlotRlpEncodingTests
 
     // Regression: a pre-feature DB holds raw slots but may lack BOTH metadata markers, so detection must key
     // on slot presence — otherwise the raw values are misread as RLP and crash on the first SLOAD.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Pre_feature_db_with_raw_slots_falls_back_to_raw(bool seedLayoutMarker)
+    [Test]
+    public void Pre_feature_db_with_raw_slots_falls_back_to_raw([Values] bool seedLayoutMarker)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         if (seedLayoutMarker) db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });

@@ -256,10 +256,8 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(ulong.MaxValue)]
-        [TestCase(10000UL)]
-        [TestCase(10001UL)]
-        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(ulong errorMargin)
+        [Test]
+        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException([Values(ulong.MaxValue, 10000UL, 10001UL)] ulong errorMargin)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;

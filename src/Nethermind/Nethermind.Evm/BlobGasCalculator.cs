@@ -57,7 +57,7 @@ public static class BlobGasCalculator
 
     public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, ulong blobGasPriceUpdateFraction, out UInt256 blobBaseFee)
     {
-        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out UInt256 feePerBlobGas))
+        if (!TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out UInt256 feePerBlobGas))
         {
             blobBaseFee = UInt256.MaxValue;
             return false;

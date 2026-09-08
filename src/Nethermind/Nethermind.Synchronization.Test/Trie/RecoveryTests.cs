@@ -213,10 +213,10 @@ public class RecoveryTests
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
+            SyncPeerAllocation allocation = new(allocationContexts);
             // Hand the peers out in turn, so a multi-peer case allocates more than just the first.
-            PeerInfo peer = peers[Interlocked.Increment(ref allocated) % peers.Length];
-            SyncPeerAllocation alloc = new(peer, allocationContexts);
-            return alloc;
+            allocation.AllocatePeer(peers[Interlocked.Increment(ref allocated) % peers.Length]);
+            return allocation;
         });
     }
 
@@ -235,7 +235,7 @@ public class RecoveryTests
         static async Task<SyncPeerAllocation> NeverAllocates(CancellationToken token)
         {
             await Task.Delay(Timeout.Infinite, token);
-            return SyncPeerAllocation.FailedAllocation;
+            return new SyncPeerAllocation(AllocationContexts.Snap);
         }
     }
 
@@ -297,9 +297,13 @@ public class RecoveryTests
         int allocations = 0;
         _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(c => Interlocked.Increment(ref allocations) == 1
-                ? throw new InvalidOperationException("peer pool unavailable")
-                : new SyncPeerAllocation(_peerEth67, (AllocationContexts)c[1]));
+            .Returns(c =>
+            {
+                if (Interlocked.Increment(ref allocations) == 1) throw new InvalidOperationException("peer pool unavailable");
+                SyncPeerAllocation allocation = new((AllocationContexts)c[1]);
+                allocation.AllocatePeer(_peerEth67);
+                return allocation;
+            });
 
         byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256);
         Assert.That(response, Is.EqualTo(_nodeRlp));
