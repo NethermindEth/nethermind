@@ -81,9 +81,8 @@ internal class SubnetSnapshotManagerTests
         Assert.Throws<ArgumentException>(() => _snapshotManager.StoreSnapshot(snapshot));
     }
 
-    [TestCase(450UL)]
-    [TestCase(1350UL)]
-    public void OnUpdateMainChain_StoresSnapshot(ulong gapNumber)
+    [Test]
+    public void OnUpdateMainChain_StoresSnapshot([Values(450UL, 1350UL)] ulong gapNumber)
     {
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(900UL);

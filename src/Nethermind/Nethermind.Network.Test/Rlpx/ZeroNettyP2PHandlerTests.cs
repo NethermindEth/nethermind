@@ -63,9 +63,8 @@ public class ZeroNettyP2PHandlerTests
         yield return new TestCaseData(ReadTimeoutException.Instance).SetName("Read_timeout_is_logged_at_trace");
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session(bool isStatic)
+    [Test]
+    public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session([Values] bool isStatic)
     {
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
         {

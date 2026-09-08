@@ -125,9 +125,8 @@ public class TxValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
+    [Test]
+    public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden([Values] bool validateChainId)
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
