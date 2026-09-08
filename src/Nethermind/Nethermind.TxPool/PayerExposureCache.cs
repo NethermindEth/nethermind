@@ -11,12 +11,16 @@ namespace Nethermind.TxPool;
 
 /// <summary>Sums the pending maximum cost reserved per frame-transaction payer, bounding each payer's mempool exposure to its balance (EIP-8141).</summary>
 /// <remarks>Per-payer totals and the individual reservations behind them move under one lock, so a replacement
-/// discount cannot be granted against a reservation another thread has already released.</remarks>
+/// discount cannot be granted against a reservation another thread has already released. Every reserve is
+/// released exactly once, so a hash reserved twice stays backed until both of its releases have run.</remarks>
 internal sealed class PayerExposureCache
 {
     private readonly Lock _lock = new();
     private readonly Dictionary<AddressAsKey, UInt256> _reserved = [];
     private readonly Dictionary<Hash256AsKey, Reservation> _live = [];
+
+    /// <summary>Reservations one hash holds beyond its newest, kept aside so the common single-holder entry costs nothing.</summary>
+    private readonly Dictionary<Hash256AsKey, Stack<Reservation>> _displaced = [];
 
     private readonly record struct Reservation(AddressAsKey Payer, UInt256 Cost);
 
@@ -79,10 +83,19 @@ internal sealed class PayerExposureCache
                 Interlocked.Increment(ref Metrics.FrameTxPayersWithReservedExposure);
             }
 
-            // A hash resubmitted concurrently reserves twice; summing keeps the single release symmetric.
-            _live[hash] = _live.TryGetValue(hash, out Reservation duplicate) && duplicate.Payer.Equals(key)
-                ? duplicate with { Cost = duplicate.Cost + cost }
-                : new Reservation(key, cost);
+            // Two submissions of one hash can be in flight at once and only one of them inserts, so each holds its
+            // own reservation and the loser's release cannot take the pooled one's; newest is released first.
+            if (_live.TryGetValue(hash, out Reservation older))
+            {
+                if (!_displaced.TryGetValue(hash, out Stack<Reservation>? holders))
+                {
+                    _displaced[hash] = holders = new Stack<Reservation>();
+                }
+
+                holders.Push(older);
+            }
+
+            _live[hash] = new Reservation(key, cost);
             return true;
         }
     }
@@ -95,12 +108,22 @@ internal sealed class PayerExposureCache
     /// admitted against a running total this ledger already held, so re-taking them reproduces a sum that fitted once.</remarks>
     public void Restore(AddressAsKey key, Hash256 hash, in UInt256 cost) => TryReserve(key, hash, cost, UInt256.MaxValue, out _);
 
-    /// <summary>Releases whatever <paramref name="hash"/> reserved, if anything; a repeated release is a no-op.</summary>
+    /// <summary>Releases the newest reservation <paramref name="hash"/> holds, if any; a release beyond them is a no-op.</summary>
+    /// <remarks>Newest first, so a duplicate admission releases what it itself reserved and leaves the pooled
+    /// transaction backed by the reservation admission granted it.</remarks>
     public void Subtract(Hash256 hash)
     {
         lock (_lock)
         {
-            if (!_live.Remove(hash, out Reservation live) || !_reserved.TryGetValue(live.Payer, out UInt256 existing))
+            if (!_live.Remove(hash, out Reservation live)) return;
+
+            if (_displaced.TryGetValue(hash, out Stack<Reservation>? holders))
+            {
+                _live[hash] = holders.Pop();
+                if (holders.Count == 0) _displaced.Remove(hash);
+            }
+
+            if (!_reserved.TryGetValue(live.Payer, out UInt256 existing))
             {
                 return;
             }
@@ -127,6 +150,7 @@ internal sealed class PayerExposureCache
             Interlocked.Add(ref Metrics.FrameTxPayersWithReservedExposure, -_reserved.Count);
             _reserved.Clear();
             _live.Clear();
+            _displaced.Clear();
         }
     }
 }

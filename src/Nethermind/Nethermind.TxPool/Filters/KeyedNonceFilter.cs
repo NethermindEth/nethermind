@@ -41,7 +41,9 @@ internal sealed class KeyedNonceFilter(
     /// <summary>Whether <paramref name="tx"/> would take its sender past the configured pending limit.</summary>
     /// <remarks>The account-nonce filters bound a sender by nonce distance, which keyed domains are immune to:
     /// every fresh key is current at sequence zero, so the same configured limit has to hold as a pending count.
-    /// A transaction displacing a pending one adds nothing to that count.</remarks>
+    /// A transaction displacing a pending one adds nothing to that count. The default of no limit is the
+    /// account-nonce default too, and leaves a keyed sender where an ordinary one is: bounded by the pool's
+    /// fee-ordered eviction rather than per sender.</remarks>
     private bool ExceedsPerSenderLimit(Transaction tx)
     {
         // A limit of 0 means no limit.

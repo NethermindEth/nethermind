@@ -267,6 +267,51 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
+    public void ExposureCache_ASecondReserveOnOneHashIsReleasedSeparately()
+    {
+        // Two submissions of one hash race the hash cache and one of them fails to insert and releases straight
+        // away: that release must not take the reservation backing the copy the pool kept.
+        PayerExposureCache cache = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryReserve(Payer, HashFor(1), 1000, balance: 10_000, out _), Is.True);
+            Assert.That(cache.TryReserve(Payer, HashFor(1), 1000, balance: 10_000, out _), Is.True);
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)2000), "both reserves count against the payer");
+        }
+
+        cache.Subtract(HashFor(1));
+        Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1000), "the pooled copy is still backed");
+
+        cache.Subtract(HashFor(1));
+        Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+
+        // Negative control: a release past the reserves stays a no-op rather than becoming free room.
+        cache.Subtract(HashFor(1));
+        Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    public void ExposureCache_ASecondReserveOnOneHashReleasesToItsOwnPayer()
+    {
+        // The payer is resolved per submission, so a repeat can name another one. Overwriting the entry would
+        // strand the first payer's total with nothing left to release it.
+        PayerExposureCache cache = new();
+        cache.TryReserve(Payer, HashFor(1), 1000, balance: 10_000, out _);
+        cache.TryReserve(TestItem.AddressC, HashFor(1), 700, balance: 10_000, out _);
+
+        cache.Subtract(HashFor(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetReserved(TestItem.AddressC), Is.EqualTo(UInt256.Zero), "the newest reserve is released first");
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1000));
+        }
+
+        cache.Subtract(HashFor(1));
+        Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
     public void MaxCost_CountsTheBlobTerm()
     {
         // A large max_fee_per_blob_gas must not smuggle unbounded exposure past a gas-only reservation.

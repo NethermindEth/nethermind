@@ -27,6 +27,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -3749,6 +3750,46 @@ namespace Nethermind.TxPool.Test
                 Assert.That(keyed.CanPayBaseFee(baseFee), Is.False, "the keyed entry must be the one below the base fee, or this pins nothing");
                 Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True);
                 Assert.That(readyForSender, Does.Contain(atAccountNonce));
+            }
+        }
+
+        /// <summary>
+        /// The mirror case: a keyed sequence past the sender's account nonce sorts behind the ordinary entries, so
+        /// the scan cannot stop at the first of those. Its domain is current whatever that entry's fee says.
+        /// </summary>
+        [Test]
+        public void Ordinary_tx_below_the_base_fee_does_not_hide_a_keyed_frame_tx_behind_it()
+        {
+            const ulong accountNonce = 3;
+            const ulong keyedSequence = 5;
+            const int baseFee = 2;
+
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sender, UInt256.MaxValue, accountNonce);
+            // A sequence above the account nonce, so the keyed entry sorts behind the ordinary one.
+            _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, (UInt256)1), [(byte)keyedSequence]);
+
+            Transaction atAccountNonce = Build.A.Transaction
+                .WithNonce(accountNonce)
+                .WithMaxFeePerGas(baseFee - 1)
+                .WithMaxPriorityFeePerGas(baseFee - 1)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: keyedSequence, value: UInt256.Zero, maxFee: 1.GWei);
+
+            Assert.That(_txPool.SubmitTx(atAccountNonce, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee: baseFee);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(atAccountNonce.CanPayBaseFee(baseFee), Is.False, "the ordinary entry must be the one below the base fee, or this pins nothing");
+                Assert.That(atAccountNonce.Nonce, Is.LessThan(keyed.Nonce), "the ordinary entry must sort first, or this pins nothing");
+                Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True);
+                Assert.That(readyForSender, Does.Contain(keyed));
             }
         }
 

@@ -348,13 +348,19 @@ namespace Nethermind.TxPool
 
         /// <summary>Whether a sender's bucket holds anything includable in the next block.</summary>
         /// <remarks>Scanned rather than judged on the bucket's lowest entry: an EIP-8250 keyed transaction is
-        /// ordered by its own sequence, so it can sort ahead of an eligible account-nonce transaction whose
-        /// domain it says nothing about. Buckets are bounded per sender, and the scan stops at the first hit.</remarks>
+        /// ordered by its own sequence, so it can sort either side of an eligible account-nonce transaction whose
+        /// domain it says nothing about. Account-nonce entries do execute in nonce order, so once one of them is
+        /// unready the rest are too and the scan skips them; only keyed entries are judged all the way down.</remarks>
         private bool HasReadyTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
         {
+            bool accountNonceBlocked = false;
             foreach (Transaction tx in bucket)
             {
+                bool keyed = KeyedNonceManager.UsesKeyedNonce(tx);
+                if (!keyed && accountNonceBlocked) continue;
                 if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, sender)) return true;
+
+                accountNonceBlocked |= !keyed;
             }
 
             return false;
