@@ -598,6 +598,7 @@ public class SnapshotRepositoryTests
             Assert.That(retained.Contains(CreateStateId(3, rootByte: 1)), Is.False);
         }
     }
+
     [Test]
     public void RemoveOrphanedStates_ConvertedSibling_IsDroppedWithOrWithoutInMemoryOrphans([Values] bool inMemoryOrphan)
     {
@@ -617,6 +618,7 @@ public class SnapshotRepositoryTests
             Assert.That(_repository.HasState(CreateStateId(3)), Is.True);
         }
     }
+
     [Test]
     public void RemoveOrphanedStates_PreservesHistorySkippedByCompaction([Values] bool insideWindow)
     {
