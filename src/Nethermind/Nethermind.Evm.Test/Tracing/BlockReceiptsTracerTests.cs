@@ -152,7 +152,7 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void ResetForParallelTx_does_not_reserve_capacity_for_the_whole_block(int txCount)
+        public void ResetForParallelTx_does_not_reserve_capacity_for_the_whole_block([Values(1_000, 100_000)] int txCount)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Transaction[] txs = new Transaction[txCount];
