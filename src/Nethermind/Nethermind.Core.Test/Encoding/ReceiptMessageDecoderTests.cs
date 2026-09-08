@@ -31,15 +31,19 @@ public class ReceiptMessageDecoderTests
         Assert.That(Rlp.LengthOf(ReceiptRlpBuilder.MinimalLog()), Is.EqualTo(LogEntryDecoder.MinEncodedLength));
 
     [Test]
-    public void Decode_rejects_a_log_count_the_message_cannot_hold() =>
-        Assert.Throws<RlpLimitException>(() => DecodeReceipt(ReceiptRlpBuilder.EncodeReceipt(UnbackedLogCount)));
+    public void Decode_rejects_a_log_count_the_message_cannot_hold()
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount));
+
+        Assert.Throws<RlpLimitException>(() => DecodeReceipt(encoded));
+    }
 
     [Test]
     public void Decode_accepts_a_log_list_of_smallest_possible_entries()
     {
-        TxReceipt receipt = DecodeReceipt(ReceiptRlpBuilder.EncodeReceipt(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
 
-        Assert.That(receipt.Logs, Has.Length.EqualTo(UnbackedLogCount));
+        Assert.That(DecodeReceipt(encoded).Logs, Has.Length.EqualTo(UnbackedLogCount));
     }
 
     private static TxReceipt DecodeReceipt(byte[] bytes)

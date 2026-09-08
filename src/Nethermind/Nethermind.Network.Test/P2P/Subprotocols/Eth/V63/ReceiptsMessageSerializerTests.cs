@@ -215,7 +215,7 @@ public class ReceiptsMessageSerializerTests
     public void Deserialize_Throws_On_A_Receipt_Log_Count_The_Message_Cannot_Hold()
     {
         // Hand-built rather than round-tripped: the point is a count no encoder would produce.
-        byte[] serialized = WrapInSequence(WrapInSequence(ReceiptRlpBuilder.EncodeReceipt(UnbackedLogCount)));
+        byte[] serialized = WrapInSequence(WrapInSequence(ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount))));
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));

@@ -4,6 +4,7 @@
 using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -11,6 +12,9 @@ namespace Nethermind.Optimism.Test;
 
 public class ReceiptDecoderTests
 {
+    // Comfortably under RlpLimit.ReceiptLogs, but more logs than the bytes declaring them could hold.
+    private const int UnbackedLogCount = 1_000;
+
     [Test]
     public void Null_receipt_roundtrips()
     {
@@ -64,6 +68,22 @@ public class ReceiptDecoderTests
             RlpReader reader = new(encoded);
             decoder.Decode(ref reader);
         }
+    }
+
+    [Test]
+    public void Optimism_receipt_message_decoding_rejects_a_log_count_the_message_cannot_hold()
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount));
+
+        Assert.That(() => DecodeMessageReceipt(encoded), Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void Optimism_receipt_message_decoding_accepts_a_log_list_of_smallest_possible_entries()
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+
+        Assert.That(DecodeMessageReceipt(encoded)!.Logs, Has.Length.EqualTo(UnbackedLogCount));
     }
 
     [Test]
@@ -268,6 +288,12 @@ public class ReceiptDecoderTests
                 TestName = "Canyon receipt"
             };
         }
+    }
+
+    private static TxReceipt? DecodeMessageReceipt(byte[] encoded)
+    {
+        RlpReader reader = new(encoded);
+        return new OptimismReceiptMessageDecoder().Decode(ref reader);
     }
 
     private static byte[] EncodeReceiptWithNullBloom()

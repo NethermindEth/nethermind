@@ -14,10 +14,11 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
 
-        /// <summary>Smallest RLP encoding this decoder accepts for a log entry.</summary>
+        /// <summary>Smallest RLP encoding of a non-null log entry.</summary>
         /// <remarks>
         /// <c>[address, [], ""]</c> - a 21-byte address, an empty topics list and empty data under a
-        /// one-byte sequence prefix. Lets callers bound a declared log count by the bytes holding it.
+        /// one-byte sequence prefix. Lets callers that reject null entries bound a declared log count
+        /// by the bytes holding it; the decoder itself also accepts a one-byte <c>0xC0</c> as a null.
         /// </remarks>
         public const int MinEncodedLength = 24;
 
