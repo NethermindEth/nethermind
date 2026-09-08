@@ -22,11 +22,11 @@ namespace Nethermind.Core.ZkEvm.Test.Crypto;
 /// </remarks>
 public class KeccakMemoTests
 {
-    private const int MinLength = 8;
-    private const int MaxLength = 64;
+    private const int MinLength = (int)KeccakCache.MinMemoLength;
+    private const int MaxLength = (int)KeccakCache.MaxMemoLength;
 
     /// <summary>Slots in the memo, so the tests can size themselves against replacement.</summary>
-    private const int SlotCount = 1 << 15;
+    private const int SlotCount = 1 << KeccakCache.MemoSlotBits;
 
     [Test]
     public void Memo_answers_with_the_digest_stored_for_an_input([Range(MinLength, MaxLength)] int length)
@@ -121,13 +121,13 @@ public class KeccakMemoTests
     public void Memo_rejects_a_same_slot_key_differing_only_in_its_partial_word()
     {
         const int length = 20;
-        byte[] holder = Pattern(length, seed: 41);
 
-        AssertOnlyTheSlotHolderIsAnswered(holder, tail =>
+        AssertOnlyTheSlotHolderIsAnswered(tail =>
         {
+            byte[] holder = Pattern(length, seed: 41);
             byte[] partner = (byte[])holder.Clone();
             BinaryPrimitives.WriteUInt32LittleEndian(partner.AsSpan(length & ~7), tail);
-            return partner;
+            return (holder, partner);
         });
     }
 
@@ -140,13 +140,13 @@ public class KeccakMemoTests
     public void Memo_rejects_a_same_slot_key_that_prefixes_the_one_it_holds()
     {
         const int length = 24;
-        byte[] holder = Pattern(length, seed: 53);
 
         // Only the word past the prefix is varied, so the two walk through slots independently.
-        AssertOnlyTheSlotHolderIsAnswered(holder, word =>
+        AssertOnlyTheSlotHolderIsAnswered(word =>
         {
+            byte[] holder = Pattern(length, seed: 53);
             BinaryPrimitives.WriteUInt32LittleEndian(holder.AsSpan(length - sizeof(ulong)), word);
-            return holder[..(length - sizeof(ulong))];
+            return (holder, holder[..(length - sizeof(ulong))]);
         });
     }
 
@@ -186,31 +186,35 @@ public class KeccakMemoTests
     }
 
     /// <summary>
-    /// Searches the variations of an input for one sharing its slot, then asserts that storing a digest
-    /// for the input leaves that variation a miss rather than an answer.
+    /// Searches <paramref name="variation"/> for a pair sharing a slot, then asserts that storing a digest
+    /// for the holder leaves its partner a miss rather than an answer.
     /// </summary>
+    /// <param name="variation">
+    /// Builds a candidate pair from a seed. Both halves are rebuilt per seed, so the pair the search
+    /// matched is the pair the assertions run against.
+    /// </param>
     /// <remarks>
     /// The slot index is not observable from here, so a shared slot is told from one input displacing
     /// the other, and the search asserting that it found a pair is what keeps the case from passing
     /// vacuously.
     /// </remarks>
-    private static void AssertOnlyTheSlotHolderIsAnswered(byte[] holder, Func<uint, byte[]> variation)
+    private static void AssertOnlyTheSlotHolderIsAnswered(Func<uint, (byte[] Holder, byte[] Partner)> variation)
     {
-        byte[]? partner = null;
-        for (uint candidate = 1; candidate < 8 * SlotCount && partner is null; candidate++)
+        (byte[] Holder, byte[] Partner)? pair = null;
+        for (uint candidate = 1; candidate < 8 * SlotCount && pair is null; candidate++)
         {
-            byte[] next = variation(candidate);
-            if (SharesASlot(holder, next))
+            (byte[] holder, byte[] partner) = variation(candidate);
+            if (SharesASlot(holder, partner))
             {
-                partner = next;
+                pair = (holder, partner);
             }
         }
 
-        Assert.That(partner, Is.Not.Null, "no candidate landed in the same slot");
+        Assert.That(pair, Is.Not.Null, "no candidate landed in the same slot");
 
-        KeccakCache.WriteMemo(holder, Digest(holder.Length));
+        KeccakCache.WriteMemo(pair.Value.Holder, Digest(pair.Value.Holder.Length));
 
-        Assert.That(KeccakCache.TryReadMemo(partner, out _), Is.False);
+        Assert.That(KeccakCache.TryReadMemo(pair.Value.Partner, out _), Is.False);
     }
 
     /// <summary>Whether the two inputs share a slot, told from one displacing the other.</summary>

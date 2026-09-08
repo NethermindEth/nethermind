@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -16,9 +17,9 @@ public static partial class KeccakCache
     // seqlock the host form needs is not required, and one slot per key is enough — a collision just
     // recomputes. Only inputs of 8..64 bytes are memoized; longer ones repeat rarely and would cost
     // more to store and compare than the hash they save.
-    private const nuint MinMemoLength = sizeof(ulong);
-    private const nuint MaxMemoLength = 64;
-    private const int MemoSlotBits = 15;
+    internal const nuint MinMemoLength = sizeof(ulong);
+    internal const nuint MaxMemoLength = 64;
+    internal const int MemoSlotBits = 15;
     private const int MemoSlotCount = 1 << MemoSlotBits;
 
     /// <summary>Knuth's multiplicative hash constant, 2^32 / phi rounded to an odd integer.</summary>
@@ -49,13 +50,19 @@ public static partial class KeccakCache
             return;
         }
 
-        if (TryReadMemo(input, out keccak256))
+        ref byte inputRef = ref MemoryMarshal.GetReference(input);
+        nuint words = length >> 3;
+        nuint partial = length & 7;
+        ulong lastWord = MemoLastKeyWord(ref inputRef, length, partial);
+        ref ulong slot = ref MemoSlot(ref inputRef, length, words, lastWord);
+
+        if (TryReadSlot(ref slot, ref inputRef, length, words, partial, lastWord, out keccak256))
         {
             return;
         }
 
         keccak256 = ValueKeccak.Compute(input);
-        WriteMemo(input, keccak256);
+        WriteSlot(ref slot, ref inputRef, length, words, partial, lastWord, keccak256);
     }
 
     /// <summary>Reads the digest memoized for an input, if its slot still holds that input.</summary>
@@ -63,20 +70,42 @@ public static partial class KeccakCache
     /// <param name="keccak256">The memoized digest, or default on a miss.</param>
     /// <returns>Whether the digest was memoized.</returns>
     /// <remarks>
-    /// Split from <see cref="WriteMemo"/> so the memo is reachable without the guest's keccak
-    /// precompile, which no host test process can call. A miss derives its slot twice as a result,
-    /// which is a handful of prover units against the 38,454 of the permutation it is about to pay.
+    /// A seam for tests, which cannot go through <see cref="ComputeTo"/> because the guest's keccak is a
+    /// zkVM precompile no host process can call. Deriving the slot here rather than taking it keeps the
+    /// seam off the guest's path: <see cref="ComputeTo"/> derives once and probes and stores against that.
     /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryReadMemo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        ref byte inputRef = ref MemoryMarshal.GetReference(input);
         nuint length = (nuint)(uint)input.Length;
+        Debug.Assert(length - MinMemoLength <= MaxMemoLength - MinMemoLength, "input outside the memoized length range");
+
+        ref byte inputRef = ref MemoryMarshal.GetReference(input);
         nuint words = length >> 3;
         nuint partial = length & 7;
         ulong lastWord = MemoLastKeyWord(ref inputRef, length, partial);
-        ref ulong slot = ref MemoSlot(ref inputRef, length, words, lastWord);
+        return TryReadSlot(ref MemoSlot(ref inputRef, length, words, lastWord), ref inputRef, length, words, partial, lastWord, out keccak256);
+    }
 
+    /// <summary>Memoizes a digest for an input, replacing whatever its slot held.</summary>
+    /// <param name="input">An input of <see cref="MinMemoLength"/> to <see cref="MaxMemoLength"/> bytes.</param>
+    /// <param name="keccak256">The digest of <paramref name="input"/>.</param>
+    /// <remarks><inheritdoc cref="TryReadMemo" path="/remarks"/></remarks>
+    internal static void WriteMemo(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
+    {
+        nuint length = (nuint)(uint)input.Length;
+        Debug.Assert(length - MinMemoLength <= MaxMemoLength - MinMemoLength, "input outside the memoized length range");
+
+        ref byte inputRef = ref MemoryMarshal.GetReference(input);
+        nuint words = length >> 3;
+        nuint partial = length & 7;
+        ulong lastWord = MemoLastKeyWord(ref inputRef, length, partial);
+        WriteSlot(ref MemoSlot(ref inputRef, length, words, lastWord), ref inputRef, length, words, partial, lastWord, keccak256);
+    }
+
+    /// <summary>Reads <paramref name="slot"/>'s digest, if the slot still holds the probed input.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryReadSlot(ref ulong slot, ref byte inputRef, nuint length, nuint words, nuint partial, ulong lastWord, out ValueHash256 keccak256)
+    {
         if (Unsafe.Add(ref slot, MemoLengthWord) == length)
         {
             for (nuint i = 0; i < words; i++)
@@ -99,19 +128,10 @@ public static partial class KeccakCache
         return false;
     }
 
-    /// <summary>Memoizes a digest for an input, replacing whatever its slot held.</summary>
-    /// <param name="input">An input of <see cref="MinMemoLength"/> to <see cref="MaxMemoLength"/> bytes.</param>
-    /// <param name="keccak256">The digest of <paramref name="input"/>.</param>
+    /// <summary>Stores a digest and its input's key in <paramref name="slot"/>, replacing whatever it held.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void WriteMemo(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
+    private static void WriteSlot(ref ulong slot, ref byte inputRef, nuint length, nuint words, nuint partial, ulong lastWord, in ValueHash256 keccak256)
     {
-        ref byte inputRef = ref MemoryMarshal.GetReference(input);
-        nuint length = (nuint)(uint)input.Length;
-        nuint words = length >> 3;
-        nuint partial = length & 7;
-        ulong lastWord = MemoLastKeyWord(ref inputRef, length, partial);
-        ref ulong slot = ref MemoSlot(ref inputRef, length, words, lastWord);
-
         for (nuint i = 0; i < words; i++)
         {
             Unsafe.Add(ref slot, i) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3));
