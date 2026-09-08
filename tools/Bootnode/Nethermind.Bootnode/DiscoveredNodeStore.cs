@@ -1,25 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System.Buffers.Text;
+using System.Diagnostics;
+using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Bootnode;
 
 internal sealed class DiscoveredNodeStore
 {
+    private const string EnrPrefix = "enr:";
     private const int DefaultMaxRetainedNodes = 100_000;
     internal const int DefaultNodePageSize = 1_000;
     internal const int MaxNodePageSize = 1_000;
 
-    private readonly ConcurrentDictionary<Hash256, TrackedNode> _nodes = new();
-    private readonly LinkedList<Hash256> _activeRetentionOrder = new();
-    private readonly LinkedList<Hash256> _inactiveRetentionOrder = new();
-    private readonly Dictionary<Hash256, RetentionEntry> _retentionEntries = [];
-    private readonly SortedSet<Hash256> _orderedNodes = [];
-    private readonly SortedSet<Hash256> _orderedActiveNodes = [];
+    private readonly Dictionary<Hash256, TrackedNode> _nodes;
+    private readonly RetentionList _activeRetentionOrder = new(active: true);
+    private readonly RetentionList _inactiveRetentionOrder = new(active: false);
+    private readonly BucketedNodeIndex _orderedNodes = new();
+    private readonly BucketedNodeIndex _orderedActiveNodes = new();
     private readonly Lock _lock = new();
     private readonly int _maxRetainedNodes;
     private int _activeCount;
@@ -37,26 +41,30 @@ internal sealed class DiscoveredNodeStore
     {
         BootnodeOptionValidation.ValidatePositive(nameof(maxRetainedNodes), maxRetainedNodes);
         _maxRetainedNodes = maxRetainedNodes;
+        _nodes = new Dictionary<Hash256, TrackedNode>(maxRetainedNodes);
     }
 
-    public DiscoverySnapshot AddOrUpdate(Node node, string protocol, bool isActive)
+    public void AddOrUpdate(Node node, string protocol, bool isActive)
     {
+        NodeProtocol parsedProtocol = ParseProtocol(protocol);
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
         lock (_lock)
         {
             TrackedNodeSnapshot after;
+            TrackedNode trackedNode;
             if (_nodes.TryGetValue(node.IdHash, out TrackedNode? existing))
             {
+                trackedNode = existing;
                 TrackedNodeSnapshot before = existing.CreateSnapshot();
-                existing.Update(node, protocol, now, isActive);
+                existing.Update(node, parsedProtocol, now, isActive);
                 after = existing.CreateSnapshot();
                 ApplyTransition(before, after);
                 UpdateActiveIndex(node.IdHash, after.Active);
             }
             else
             {
-                TrackedNode trackedNode = TrackedNode.Create(node, protocol, now, isActive);
+                trackedNode = TrackedNode.Create(node, parsedProtocol, now, isActive);
                 _nodes[node.IdHash] = trackedNode;
                 _orderedNodes.Add(node.IdHash);
                 after = trackedNode.CreateSnapshot();
@@ -64,9 +72,8 @@ internal sealed class DiscoveredNodeStore
                 UpdateActiveIndex(node.IdHash, after.Active);
             }
 
-            UpdateRetentionOrder(node.IdHash, after);
+            UpdateRetentionOrder(trackedNode, after);
             PruneRetainedNodes();
-            return CreateSnapshotCore();
         }
     }
 
@@ -84,33 +91,35 @@ internal sealed class DiscoveredNodeStore
         return CreateSnapshot();
     }
 
-    public DiscoverySnapshot Remove(Node node, string protocol)
+    public void Remove(Node node, string protocol)
     {
+        NodeProtocol parsedProtocol = ParseProtocol(protocol);
         lock (_lock)
         {
             if (_nodes.TryGetValue(node.IdHash, out TrackedNode? trackedNode))
             {
                 TrackedNodeSnapshot before = trackedNode.CreateSnapshot();
-                trackedNode.MarkInactive(protocol, DateTimeOffset.UtcNow);
+                trackedNode.MarkInactive(parsedProtocol, DateTimeOffset.UtcNow);
                 TrackedNodeSnapshot after = trackedNode.CreateSnapshot();
                 ApplyTransition(before, after);
                 UpdateActiveIndex(node.IdHash, after.Active);
-                UpdateRetentionOrder(node.IdHash, after);
+                UpdateRetentionOrder(trackedNode, after);
                 PruneRetainedNodes();
             }
-
-            return CreateSnapshotCore();
         }
     }
 
     public string? GetProtocol(Node node)
     {
-        if (_nodes.TryGetValue(node.IdHash, out TrackedNode? trackedNode))
+        lock (_lock)
         {
-            return trackedNode.GetProtocol();
-        }
+            if (_nodes.TryGetValue(node.IdHash, out TrackedNode? trackedNode))
+            {
+                return trackedNode.GetProtocol();
+            }
 
-        return null;
+            return null;
+        }
     }
 
     public NodeDto[] GetActiveNodes(int offset = 0, int limit = DefaultNodePageSize) => GetNodes(activeOnly: true, offset, limit);
@@ -123,7 +132,7 @@ internal sealed class DiscoveredNodeStore
         {
             lock (_lock)
             {
-                return _retentionEntries.Count;
+                return _activeRetentionOrder.Count + _inactiveRetentionOrder.Count;
             }
         }
     }
@@ -153,6 +162,13 @@ internal sealed class DiscoveredNodeStore
         error = string.Empty;
         return true;
     }
+
+    internal static string ToEnrString(byte[] rlp) =>
+        string.Create(EnrPrefix.Length + Base64Url.GetEncodedLength(rlp.Length), rlp, static (chars, state) =>
+        {
+            EnrPrefix.CopyTo(chars);
+            Base64Url.EncodeToChars(state, chars[EnrPrefix.Length..]);
+        });
 
     private DiscoverySnapshot CreateSnapshotCore() =>
         new(
@@ -189,19 +205,19 @@ internal sealed class DiscoveredNodeStore
 
         switch (snapshot.Protocol)
         {
-            case "discv4":
+            case NodeProtocol.Discv4:
                 _allDiscv4Count += delta;
                 if (snapshot.Active) _activeDiscv4Count += delta;
                 break;
-            case "discv5":
+            case NodeProtocol.Discv5:
                 _allDiscv5Count += delta;
                 if (snapshot.Active) _activeDiscv5Count += delta;
                 break;
-            case "both":
+            case NodeProtocol.Both:
                 _allBothCount += delta;
                 if (snapshot.Active) _activeBothCount += delta;
                 break;
-            case "configured":
+            case NodeProtocol.Configured:
                 _allConfiguredCount += delta;
                 if (snapshot.Active) _activeConfiguredCount += delta;
                 break;
@@ -212,58 +228,51 @@ internal sealed class DiscoveredNodeStore
     {
         while (_allCount > _maxRetainedNodes)
         {
-            LinkedListNode<Hash256>? oldestNode = _inactiveRetentionOrder.First ?? _activeRetentionOrder.First;
+            TrackedNode? oldestNode = _inactiveRetentionOrder.First ?? _activeRetentionOrder.First;
             if (oldestNode is null)
             {
                 return;
             }
 
-            RemoveRetentionEntry(oldestNode.Value);
-            _orderedNodes.Remove(oldestNode.Value);
-            _orderedActiveNodes.Remove(oldestNode.Value);
-            if (_nodes.TryRemove(oldestNode.Value, out TrackedNode? trackedNode))
+            RemoveRetentionEntry(oldestNode);
+            _orderedNodes.Remove(oldestNode.IdHash);
+            _orderedActiveNodes.Remove(oldestNode.IdHash);
+            if (_nodes.Remove(oldestNode.IdHash))
             {
-                RemoveFromSnapshot(trackedNode.CreateSnapshot());
+                RemoveFromSnapshot(oldestNode.CreateSnapshot());
             }
         }
     }
 
-    private void TouchRetentionOrder(Hash256 idHash, bool active)
+    private void TouchRetentionOrder(TrackedNode trackedNode, bool active)
     {
-        LinkedListNode<Hash256> node;
-        if (_retentionEntries.TryGetValue(idHash, out RetentionEntry existingEntry))
+        if (trackedNode.IsInRetentionOrder)
         {
-            GetRetentionOrder(existingEntry.Active).Remove(existingEntry.Node);
-            node = existingEntry.Node;
-        }
-        else
-        {
-            node = new LinkedListNode<Hash256>(idHash);
+            GetRetentionOrder(trackedNode.RetainedAsActive).Remove(trackedNode);
         }
 
-        GetRetentionOrder(active).AddLast(node);
-        _retentionEntries[idHash] = new RetentionEntry(node, active);
+        GetRetentionOrder(active).AddLast(trackedNode);
     }
 
-    private void UpdateRetentionOrder(Hash256 idHash, TrackedNodeSnapshot snapshot)
+    private void UpdateRetentionOrder(TrackedNode trackedNode, TrackedNodeSnapshot snapshot)
     {
         if (snapshot.IsBootnode)
         {
-            RemoveRetentionEntry(idHash);
+            RemoveRetentionEntry(trackedNode);
             return;
         }
 
-        TouchRetentionOrder(idHash, snapshot.Active);
+        TouchRetentionOrder(trackedNode, snapshot.Active);
     }
 
-    private LinkedList<Hash256> GetRetentionOrder(bool active) =>
+    private RetentionList GetRetentionOrder(bool active) =>
         active ? _activeRetentionOrder : _inactiveRetentionOrder;
 
-    private void RemoveRetentionEntry(Hash256 idHash)
+    private void RemoveRetentionEntry(TrackedNode trackedNode)
     {
-        if (_retentionEntries.Remove(idHash, out RetentionEntry entry))
+        if (trackedNode.IsInRetentionOrder)
         {
-            GetRetentionOrder(entry.Active).Remove(entry.Node);
+            GetRetentionOrder(trackedNode.RetainedAsActive).Remove(trackedNode);
         }
     }
 
@@ -274,35 +283,39 @@ internal sealed class DiscoveredNodeStore
             throw new ArgumentOutOfRangeException(offset < 0 ? nameof(offset) : nameof(limit), error);
         }
 
-        List<TrackedNodeView> nodeViews;
+        TrackedNodeView[] nodeViews;
         lock (_lock)
         {
             int nodeCount = activeOnly ? _activeCount : _allCount;
-            nodeViews = new List<TrackedNodeView>(Math.Min(limit, nodeCount));
-            int matchedNodes = 0;
-            SortedSet<Hash256> orderedNodes = activeOnly ? _orderedActiveNodes : _orderedNodes;
-            foreach (Hash256 idHash in orderedNodes)
+            int resultCount = Math.Min(limit, Math.Max(0, nodeCount - offset));
+            if (resultCount == 0)
             {
+                return [];
+            }
+
+            nodeViews = new TrackedNodeView[resultCount];
+            int resultIndex = 0;
+            BucketedNodeIndex.Enumerator enumerator =
+                (activeOnly ? _orderedActiveNodes : _orderedNodes).GetEnumerator(offset);
+            while (resultIndex < resultCount && enumerator.MoveNext())
+            {
+                Hash256 idHash = enumerator.Current;
                 if (!_nodes.TryGetValue(idHash, out TrackedNode? trackedNode))
                 {
                     continue;
                 }
 
-                if (matchedNodes++ < offset)
-                {
-                    continue;
-                }
+                nodeViews[resultIndex++] = trackedNode.CreateView();
+            }
 
-                nodeViews.Add(trackedNode.CreateView());
-                if (nodeViews.Count == limit)
-                {
-                    break;
-                }
+            if (resultIndex != resultCount)
+            {
+                Array.Resize(ref nodeViews, resultIndex);
             }
         }
 
-        NodeDto[] nodes = new NodeDto[nodeViews.Count];
-        for (int i = 0; i < nodeViews.Count; i++)
+        NodeDto[] nodes = new NodeDto[nodeViews.Length];
+        for (int i = 0; i < nodeViews.Length; i++)
         {
             nodes[i] = nodeViews[i].ToDto();
         }
@@ -322,160 +335,344 @@ internal sealed class DiscoveredNodeStore
         }
     }
 
+    private sealed class BucketedNodeIndex
+    {
+        // High-bit buckets preserve hash order while making offset seeks independent of the number of skipped nodes.
+        private const int BucketCount = 1 << 12;
+        private readonly List<Hash256>?[] _buckets = new List<Hash256>?[BucketCount];
+
+        public void Add(Hash256 idHash)
+        {
+            int bucketIndex = GetBucketIndex(idHash);
+            List<Hash256> bucket = _buckets[bucketIndex] ??= [];
+            int index = bucket.BinarySearch(idHash);
+            if (index < 0)
+            {
+                bucket.Insert(~index, idHash);
+            }
+        }
+
+        public void Remove(Hash256 idHash)
+        {
+            int bucketIndex = GetBucketIndex(idHash);
+            List<Hash256>? bucket = _buckets[bucketIndex];
+            if (bucket is null)
+            {
+                return;
+            }
+
+            int index = bucket.BinarySearch(idHash);
+            if (index >= 0)
+            {
+                bucket.RemoveAt(index);
+                if (bucket.Count == 0)
+                {
+                    _buckets[bucketIndex] = null;
+                }
+            }
+        }
+
+        public Enumerator GetEnumerator(int offset) => new(_buckets, offset);
+
+        private static int GetBucketIndex(Hash256 idHash)
+        {
+            ReadOnlySpan<byte> bytes = idHash.Bytes;
+            return (bytes[0] << 4) | (bytes[1] >> 4);
+        }
+
+        public struct Enumerator
+        {
+            private readonly List<Hash256>?[] _buckets;
+            private int _bucketIndex;
+            private int _nodeIndex;
+
+            public Hash256 Current { get; private set; }
+
+            public Enumerator(List<Hash256>?[] buckets, int offset)
+            {
+                _buckets = buckets;
+                _bucketIndex = 0;
+                _nodeIndex = -1;
+                Current = null!;
+
+                while (_bucketIndex < buckets.Length)
+                {
+                    int bucketCount = buckets[_bucketIndex]?.Count ?? 0;
+                    if (offset < bucketCount)
+                    {
+                        _nodeIndex = offset - 1;
+                        return;
+                    }
+
+                    offset -= bucketCount;
+                    _bucketIndex++;
+                }
+            }
+
+            public bool MoveNext()
+            {
+                while (_bucketIndex < _buckets.Length)
+                {
+                    List<Hash256>? bucket = _buckets[_bucketIndex];
+                    if (bucket is not null && ++_nodeIndex < bucket.Count)
+                    {
+                        Current = bucket[_nodeIndex];
+                        return true;
+                    }
+
+                    _bucketIndex++;
+                    _nodeIndex = -1;
+                }
+
+                return false;
+            }
+        }
+    }
+
     private sealed class TrackedNode
     {
-        private readonly Lock _lock = new();
-        private Node _node;
-        private string _protocol;
+        private readonly byte[] _nodeId;
+        private IPAddress _host;
+        private int _tcpPort;
+        private int _discoveryPort;
+        private NodeProtocol _protocols;
+        private NodeProtocol _activeProtocols;
         private bool _isBootnode;
         private string? _configuredEnode;
-        private bool _activeDiscv4;
-        private bool _activeDiscv5;
-        private bool _activeConfigured;
-        private DateTimeOffset _lastSeenUtc;
+        private byte[]? _enrRlp;
+        private ulong _enrSequence;
+        private long _lastSeenUtcTicks;
         private int _seenCount;
 
-        private TrackedNode(Node node, string protocol, DateTimeOffset now, bool isActive)
+        private TrackedNode(Node node, NodeProtocol protocol, DateTimeOffset now, bool isActive)
         {
-            _node = node;
-            _protocol = protocol;
+            IdHash = node.IdHash;
+            _nodeId = node.Id.Bytes;
+            _host = node.Address.Address;
+            _tcpPort = node.Port;
+            _discoveryPort = node.DiscoveryPort;
+            _protocols = protocol;
             _isBootnode = node.IsBootnode;
             _configuredEnode = node.IsBootnode ? node.ToString(Node.Format.ENode) : null;
+            UpdateEnr(node);
             SetProtocolActive(protocol, isActive);
-            FirstSeenUtc = now;
-            _lastSeenUtc = now;
+            FirstSeenUtcTicks = now.UtcTicks;
+            _lastSeenUtcTicks = now.UtcTicks;
             _seenCount = 1;
         }
 
-        private DateTimeOffset FirstSeenUtc { get; }
+        public Hash256 IdHash { get; }
+        public bool IsActive => _activeProtocols != NodeProtocol.None;
+        public bool IsInRetentionOrder { get; set; }
+        public bool RetainedAsActive { get; set; }
+        public TrackedNode? PreviousRetentionNode { get; set; }
+        public TrackedNode? NextRetentionNode { get; set; }
+        private long FirstSeenUtcTicks { get; }
 
-        public static TrackedNode Create(Node node, string protocol, DateTimeOffset now, bool isActive) =>
+        public static TrackedNode Create(Node node, NodeProtocol protocol, DateTimeOffset now, bool isActive) =>
             new(node, protocol, now, isActive);
 
-        public void Update(Node node, string protocol, DateTimeOffset now, bool isActive)
+        public void Update(Node node, NodeProtocol protocol, DateTimeOffset now, bool isActive)
         {
-            lock (_lock)
+            if (node.IsBootnode)
             {
-                if (node.IsBootnode)
-                {
-                    _configuredEnode ??= node.ToString(Node.Format.ENode);
-                }
-
-                _node = node;
-                _isBootnode |= node.IsBootnode;
-                _protocol = MergeProtocol(_protocol, protocol);
-                if (isActive)
-                {
-                    SetProtocolActive(protocol, isActive: true);
-                }
-                _lastSeenUtc = now;
-                _seenCount++;
+                _configuredEnode ??= node.ToString(Node.Format.ENode);
             }
+
+            SetEndpoint(node);
+            UpdateEnr(node);
+            _isBootnode |= node.IsBootnode;
+            _protocols |= protocol;
+            if (isActive)
+            {
+                SetProtocolActive(protocol, isActive: true);
+            }
+
+            _lastSeenUtcTicks = now.UtcTicks;
+            _seenCount++;
         }
 
-        public void MarkInactive(string protocol, DateTimeOffset now)
+        public void MarkInactive(NodeProtocol protocol, DateTimeOffset now)
         {
-            lock (_lock)
-            {
-                SetProtocolActive(protocol, isActive: false);
-                _lastSeenUtc = now;
-            }
+            SetProtocolActive(protocol, isActive: false);
+            _lastSeenUtcTicks = now.UtcTicks;
         }
 
-        public string GetProtocol()
+        public string GetProtocol() => ProtocolToString(GetProtocolCore());
+
+        public TrackedNodeSnapshot CreateSnapshot() => new(GetProtocolCore(), IsActive, _isBootnode);
+
+        public TrackedNodeView CreateView() =>
+            new(
+                _nodeId,
+                IdHash,
+                _host,
+                _tcpPort,
+                _discoveryPort,
+                _configuredEnode,
+                _enrRlp,
+                GetProtocolCore(),
+                IsActive,
+                _isBootnode,
+                FirstSeenUtcTicks,
+                _lastSeenUtcTicks,
+                _seenCount);
+
+        private NodeProtocol GetProtocolCore()
         {
-            lock (_lock)
-            {
-                return _protocol;
-            }
+            NodeProtocol discoveryProtocols = _protocols & NodeProtocol.Both;
+            return discoveryProtocols == NodeProtocol.None ? NodeProtocol.Configured : discoveryProtocols;
         }
 
-        public TrackedNodeSnapshot CreateSnapshot()
+        private void SetEndpoint(Node node)
         {
-            lock (_lock)
-            {
-                return new TrackedNodeSnapshot(_protocol, IsActiveCore, _isBootnode);
-            }
+            _host = node.Address.Address;
+            _tcpPort = node.Port;
+            _discoveryPort = node.DiscoveryPort;
         }
 
-        public TrackedNodeView CreateView()
+        private void UpdateEnr(Node node)
         {
-            lock (_lock)
+            NodeRecord? enr = node.Enr;
+            if (enr?.Signature is null || (_enrRlp is not null && enr.EnrSequence <= _enrSequence))
             {
-                return new TrackedNodeView(
-                    _node,
-                    _protocol,
-                    IsActiveCore,
-                    FirstSeenUtc,
-                    _lastSeenUtc,
-                    _seenCount,
-                    _isBootnode,
-                    _configuredEnode);
+                return;
             }
+
+            _enrRlp = enr.ToRlpBytes();
+            _enrSequence = enr.EnrSequence;
         }
 
-        private bool IsActiveCore => _activeDiscv4 || _activeDiscv5 || _activeConfigured;
-
-        private void SetProtocolActive(string protocol, bool isActive)
+        private void SetProtocolActive(NodeProtocol protocol, bool isActive)
         {
-            switch (protocol)
+            if (isActive)
             {
-                case "discv4":
-                    _activeDiscv4 = isActive;
-                    break;
-                case "discv5":
-                    _activeDiscv5 = isActive;
-                    break;
-                case "both":
-                    _activeDiscv4 = isActive;
-                    _activeDiscv5 = isActive;
-                    break;
-                case "configured":
-                    _activeConfigured = isActive;
-                    break;
-                default:
-                    throw new ArgumentException($"Unsupported discovery protocol '{protocol}'.", nameof(protocol));
+                _activeProtocols |= protocol;
             }
-        }
-
-        private static string MergeProtocol(string current, string next)
-        {
-            if (current == next)
+            else
             {
-                return current;
+                _activeProtocols &= ~protocol;
             }
-
-            if (current == "configured")
-            {
-                return next;
-            }
-
-            if (next == "configured")
-            {
-                return current;
-            }
-
-            return "both";
         }
     }
 
     private readonly record struct TrackedNodeView(
-        Node Node,
-        string Protocol,
+        byte[] NodeId,
+        Hash256 IdHash,
+        IPAddress Host,
+        int TcpPort,
+        int DiscoveryPort,
+        string? Enode,
+        byte[]? EnrRlp,
+        NodeProtocol Protocol,
         bool Active,
-        DateTimeOffset FirstSeenUtc,
-        DateTimeOffset LastSeenUtc,
-        int SeenCount,
         bool IsBootnode,
-        string? ConfiguredEnode)
+        long FirstSeenUtcTicks,
+        long LastSeenUtcTicks,
+        int SeenCount)
     {
         public NodeDto ToDto() =>
-            NodeDto.FromNode(Node, Protocol, Active, FirstSeenUtc, LastSeenUtc, SeenCount, IsBootnode, ConfiguredEnode);
+            new(
+                NodeId.AsSpan().ToHexString(withZeroX: false),
+                IdHash.ToString(),
+                // Match Node.Host formatting without retaining the discovery Node graph.
+                Host.IsIPv4MappedToIPv6 ? Host.MapToIPv4().ToString() : Host.ToString(),
+                TcpPort,
+                DiscoveryPort,
+                Enode,
+                EnrRlp is null ? null : ToEnrString(EnrRlp),
+                ProtocolToString(Protocol),
+                Active,
+                IsBootnode,
+                new DateTimeOffset(FirstSeenUtcTicks, TimeSpan.Zero),
+                new DateTimeOffset(LastSeenUtcTicks, TimeSpan.Zero),
+                SeenCount);
     }
 
-    private readonly record struct TrackedNodeSnapshot(string Protocol, bool Active, bool IsBootnode);
+    private sealed class RetentionList(bool active)
+    {
+        public TrackedNode? First { get; private set; }
+        public TrackedNode? Last { get; private set; }
+        public int Count { get; private set; }
 
-    private readonly record struct RetentionEntry(LinkedListNode<Hash256> Node, bool Active);
+        public void AddLast(TrackedNode node)
+        {
+            Debug.Assert(!node.IsInRetentionOrder);
+            node.PreviousRetentionNode = Last;
+            node.NextRetentionNode = null;
+            node.IsInRetentionOrder = true;
+            node.RetainedAsActive = active;
+            if (Last is null)
+            {
+                First = node;
+            }
+            else
+            {
+                Last.NextRetentionNode = node;
+            }
+
+            Last = node;
+            Count++;
+        }
+
+        /// <remarks>The caller must ensure <paramref name="node"/> belongs to this list.</remarks>
+        public void Remove(TrackedNode node)
+        {
+            Debug.Assert(node.IsInRetentionOrder && node.RetainedAsActive == active);
+            if (node.PreviousRetentionNode is null)
+            {
+                First = node.NextRetentionNode;
+            }
+            else
+            {
+                node.PreviousRetentionNode.NextRetentionNode = node.NextRetentionNode;
+            }
+
+            if (node.NextRetentionNode is null)
+            {
+                Last = node.PreviousRetentionNode;
+            }
+            else
+            {
+                node.NextRetentionNode.PreviousRetentionNode = node.PreviousRetentionNode;
+            }
+
+            node.PreviousRetentionNode = null;
+            node.NextRetentionNode = null;
+            node.IsInRetentionOrder = false;
+            Count--;
+        }
+    }
+
+    private static NodeProtocol ParseProtocol(string protocol) => protocol switch
+    {
+        "discv4" => NodeProtocol.Discv4,
+        "discv5" => NodeProtocol.Discv5,
+        "both" => NodeProtocol.Both,
+        "configured" => NodeProtocol.Configured,
+        _ => throw new ArgumentException($"Unsupported discovery protocol '{protocol}'.", nameof(protocol))
+    };
+
+    private static string ProtocolToString(NodeProtocol protocol) => protocol switch
+    {
+        NodeProtocol.Discv4 => "discv4",
+        NodeProtocol.Discv5 => "discv5",
+        NodeProtocol.Both => "both",
+        NodeProtocol.Configured => "configured",
+        _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null)
+    };
+
+    [Flags]
+    private enum NodeProtocol : byte
+    {
+        None = 0,
+        Discv4 = 1,
+        Discv5 = 2,
+        Both = Discv4 | Discv5,
+        Configured = 4
+    }
+
+    private readonly record struct TrackedNodeSnapshot(NodeProtocol Protocol, bool Active, bool IsBootnode);
 }
 
 internal readonly record struct DiscoverySnapshot(

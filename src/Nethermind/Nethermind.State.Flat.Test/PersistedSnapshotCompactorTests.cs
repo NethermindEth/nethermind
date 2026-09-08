@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -14,6 +18,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -38,6 +43,27 @@ public class PersistedSnapshotCompactorTests
     {
         _memArena.Dispose();
         try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task EnqueueAsync_FailedHandoff_ReturnsBatchToPool(bool disposed)
+    {
+        using FlatTestContainer tier = new();
+        using CancellationTokenSource cancellation = new();
+        ArrayPool<StateId> pool = Substitute.For<ArrayPool<StateId>>();
+        StateId[] rented = new StateId[1];
+        pool.Rent(1).Returns(rented);
+        using ArrayPoolList<StateId> batch = new(pool, 1) { new StateId(1, Keccak.EmptyTreeHash) };
+
+        if (disposed)
+            await tier.Compactor.DisposeAsync();
+        else
+            await cancellation.CancelAsync();
+
+        Type exceptionType = disposed ? typeof(ObjectDisposedException) : typeof(OperationCanceledException);
+        Assert.That(async () => await tier.Compactor.EnqueueAsync(batch, 0, cancellation.Token), Throws.InstanceOf(exceptionType));
+        pool.Received(1).Return(rented, Arg.Any<bool>());
     }
 
     /// <summary>
