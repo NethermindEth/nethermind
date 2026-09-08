@@ -191,16 +191,18 @@ namespace Nethermind.Db.Test
 
             using ColumnsDb<FlatDbColumns> reopened = new(DbPath, new(DbNames.Flat, DbPath), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>());
             IDb reopenedAccount = reopened.GetColumnDb(FlatDbColumns.Account);
-            using (Assert.EnterMultipleScope())
+            for (int i = 0; i < keys.Length; i++)
             {
-                Assert.That(reopenedAccount.Get(keys[0]), Is.EqualTo(values[0]));
-                Assert.That(reopenedAccount.Get(CreateMissingAccountKey()), Is.Null);
+                Assert.That(reopenedAccount.Get(keys[i]), Is.EqualTo(values[i]), $"account key {i}");
             }
+
+            Assert.That(reopenedAccount.Get(CreateMissingAccountKey()), Is.Null);
 
             int index = 0;
             using ISortedView view = ((ISortedKeyValueStore)reopenedAccount).GetViewBetween(keys[100], keys[110]);
             while (view.MoveNext())
             {
+                Assert.That(index, Is.LessThan(10), "bounded scan returned more rows than requested");
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[100 + index]));
