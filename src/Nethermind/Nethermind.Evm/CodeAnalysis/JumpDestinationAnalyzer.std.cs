@@ -7,6 +7,11 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
+/// <remarks>
+/// The word-at-a-time scan the standard build takes. The zkEVM build compiles its own
+/// <c>PopulateJumpDestinationBitmap_Scalar</c> and <c>ProcessJumpDestinationBitmap_Byte</c> instead - see
+/// <c>JumpDestinationAnalyzer.zkevm.cs</c>, kept honest by <c>GuestJumpDestinationTests</c>.
+/// </remarks>
 public sealed partial class JumpDestinationAnalyzer
 {
     private const int BytesPerUInt64 = sizeof(ulong);
