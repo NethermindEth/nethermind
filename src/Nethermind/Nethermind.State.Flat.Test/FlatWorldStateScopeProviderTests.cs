@@ -1114,7 +1114,10 @@ public class FlatWorldStateScopeProviderTests
 
         using IWorldStateScopeProvider.ITrieWarmupSession initialBorrow = scope.CreateTrieWarmupSession();
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
-        scope.StartWriteBatch(0).Dispose();
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(0))
+        {
+            initialBorrow.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        }
         if (commit) scope.Commit(1);
         await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressB)));
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
@@ -1205,6 +1208,64 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(context.TrieWarmer.AddressJobPushes, Is.EqualTo(1));
             Assert.That(context.TrieWarmer.CompleteJob(), Is.False);
+        }
+    }
+
+    [Test]
+    public void TrieWarmupSession_ScopeOwnsOneLeaseUntilDisposed([Values] bool storage)
+    {
+        using WarmupSessionContext context = new();
+        using TestMemDb codeDb = new();
+        using FlatWorldStateScope scope = new(
+            new StateId(0, TestItem.KeccakA), context.Bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb),
+            Substitute.For<IFlatCommitTarget>(), new FlatDbConfig(), context.TrieWarmer, LimboLogs.Instance);
+        using (IWorldStateScopeProvider.ITrieWarmupSession firstBorrow = scope.CreateTrieWarmupSession())
+        using (IWorldStateScopeProvider.ITrieWarmupSession secondBorrow = scope.CreateTrieWarmupSession())
+        {
+            Assert.That(firstBorrow, Is.SameAs(secondBorrow));
+        }
+
+        if (storage) scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), UInt256.Zero);
+        else scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Assert.That(context.TrieWarmer.CompleteJob(), Is.True);
+        scope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Reader.DisposeCount, Is.EqualTo(1));
+            Assert.That(context.ResourcePool.ReturnedCachedResources, Is.EqualTo(1));
+            Assert.That(context.TrieWarmer.ExitCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void TrieWarmupSession_NoOpOrFailedConstructionDoesNotRetainResources([Values] bool failConstruction)
+    {
+        using WarmupSessionContext context = new();
+        using TestMemDb codeDb = new();
+        ITrieWarmer warmer = failConstruction ? Substitute.For<ITrieWarmer>() : new NoopTrieWarmer();
+        if (failConstruction) warmer.When(instance => instance.OnEnterScope()).Do(_ => throw new InvalidOperationException());
+        FlatWorldStateScope CreateScope() => new(
+            new StateId(0, TestItem.KeccakA), context.Bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb),
+            Substitute.For<IFlatCommitTarget>(), new FlatDbConfig(), warmer, LimboLogs.Instance);
+
+        if (failConstruction)
+        {
+            Assert.Throws<InvalidOperationException>(() => CreateScope());
+        }
+        else
+        {
+            using FlatWorldStateScope scope = CreateScope();
+            using IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
+            Assert.That(borrow, Is.SameAs(IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Reader.DisposeCount, Is.EqualTo(1));
+            Assert.That(context.ResourcePool.ReturnedCachedResources, Is.EqualTo(1));
         }
     }
 

@@ -176,11 +176,6 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node)
-                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
         else if (DoFindStateNodeExternal(path, hash, out node))
         {
         }
@@ -194,12 +189,6 @@ public sealed class SnapshotBundle : IDisposable
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<TreePath> key = new(path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -210,7 +199,15 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
+        if (_readOnlySnapshotBundle.TryFindStateNodes(key, out node)) return true;
+
+        if (_transientResource.TryGetStateNode(path, hash, out node) || _trieNodeCache.TryGet(null, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
+
+        return false;
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
@@ -220,11 +217,6 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -245,12 +237,6 @@ public sealed class SnapshotBundle : IDisposable
     // check for slightly improved latency.
     private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<(Hash256, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -261,7 +247,15 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(key, out node)) return true;
+
+        if (_transientResource.TryGetStorageNode(address, path, hash, out node) || _trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
+
+        return false;
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
@@ -429,43 +423,38 @@ public sealed class SnapshotBundle : IDisposable
     {
         lock (_warmupSessionLock)
         {
-            FlatTrieWarmupSession? session = GetTrieWarmupSession(baseState, trieWarmer, logManager);
-            if (session is null) return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
-            session.AcquireLease();
-            return session;
-        }
-    }
-
-    internal FlatTrieWarmupSession? GetTrieWarmupSession(
-        in StateId baseState,
-        ITrieWarmer trieWarmer,
-        ILogManager logManager)
-    {
-        lock (_warmupSessionLock)
-        {
-            if (_isDisposed) return null;
+            if (_isDisposed || IsHistorical || trieWarmer is NoopTrieWarmer)
+                return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
 
             if (_warmupSession is null)
             {
-                if (_warmingStopped) return null;
+                if (_warmingStopped) return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
                 if (!_readOnlySnapshotBundle.TryLease()) throw new ObjectDisposedException(nameof(SnapshotBundle));
                 TransientResource transientResource = _transientResource;
                 bool transientLeased = false;
+                SnapshotPooledList initialSnapshots = new(_snapshots.Count);
                 try
                 {
                     transientLeased = transientResource.TryAcquireLease();
                     if (!transientLeased) throw new ObjectDisposedException(nameof(SnapshotBundle));
+                    foreach (Snapshot snapshot in _snapshots)
+                    {
+                        snapshot.AcquireLease();
+                        initialSnapshots.Add(snapshot);
+                    }
                     _warmupSession = new FlatTrieWarmupSession(
-                        baseState, this, _readOnlySnapshotBundle, transientResource, _trieNodeCache, trieWarmer, logManager);
+                        baseState, this, _readOnlySnapshotBundle, initialSnapshots, transientResource, _trieNodeCache, trieWarmer, logManager);
                 }
                 catch
                 {
+                    initialSnapshots.Dispose();
                     if (transientLeased) transientResource.ReleaseLease();
                     _readOnlySnapshotBundle.Dispose();
                     throw;
                 }
             }
 
+            _warmupSession.AcquireLease();
             return _warmupSession;
         }
     }

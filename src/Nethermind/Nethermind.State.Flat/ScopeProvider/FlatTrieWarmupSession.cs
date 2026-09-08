@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -19,6 +20,7 @@ internal sealed class FlatTrieWarmupSession :
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
+    private readonly SnapshotPooledList _initialSnapshots;
     private readonly TransientResource _transientResource;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
@@ -34,6 +36,7 @@ internal sealed class FlatTrieWarmupSession :
         in StateId baseState,
         SnapshotBundle snapshotBundle,
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
+        SnapshotPooledList initialSnapshots,
         TransientResource transientResource,
         ITrieNodeCache trieNodeCache,
         ITrieWarmer trieWarmer,
@@ -41,6 +44,7 @@ internal sealed class FlatTrieWarmupSession :
     {
         _snapshotBundle = snapshotBundle;
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
+        _initialSnapshots = initialSnapshots;
         _transientResource = transientResource;
         _trieNodeCache = trieNodeCache;
         _trieWarmer = trieWarmer;
@@ -91,7 +95,7 @@ internal sealed class FlatTrieWarmupSession :
             Address accountAddress = address.ToAddress();
             StorageWarmer? storageWarmer = _storageWarmers.GetOrAdd(accountAddress, static (address, session) =>
             {
-                Hash256 storageRoot = session._readOnlySnapshotBundle.GetAccount(address.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
+                Hash256 storageRoot = session.GetAccount(address.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
                 return storageRoot == Keccak.EmptyTreeHash
                     ? null
                     : new StorageWarmer(session, address.Value.ToAccountPath.ToHash256(), storageRoot, session._logManager);
@@ -134,17 +138,31 @@ internal sealed class FlatTrieWarmupSession :
 
     private void ExitOperation() => RefCountingLease.ReleaseOnce(ref _operations);
 
+    private Account? GetAccount(Address address)
+    {
+        HashedKey<Address> key = new(address);
+        for (int i = _initialSnapshots.Count - 1; i >= 0; i--)
+        {
+            if (_initialSnapshots[i].TryGetAccount(key, out Account? account)) return account;
+        }
+
+        return _readOnlySnapshotBundle.GetAccount(address, key);
+    }
+
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
-        if (!_transientResource.TryGetStateNode(in path, hash, out TrieNode? node)
+        HashedKey<TreePath> key = new(path);
+        for (int i = _initialSnapshots.Count - 1; i >= 0; i--)
+        {
+            if (_initialSnapshots[i].TryGetStateNode(key, out TrieNode? snapshotNode))
+                return ValidateNode(snapshotNode, address: null, in path, hash);
+        }
+
+        if (!_readOnlySnapshotBundle.TryFindStateNodes(key, out TrieNode? node)
+            && !_transientResource.TryGetStateNode(in path, hash, out node)
             && !_trieNodeCache.TryGet(address: null, in path, hash, out node))
         {
-            if (!_readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node))
-            {
-                node = CreateUnknownNode(hash);
-            }
-
-            node = _transientResource.GetOrAddStateNode(in path, node);
+            node = _transientResource.GetOrAddStateNode(in path, new TrieNode(NodeType.Unknown, hash));
         }
 
         return ValidateNode(node, address: null, in path, hash);
@@ -152,25 +170,21 @@ internal sealed class FlatTrieWarmupSession :
 
     private TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash)
     {
-        if (!_transientResource.TryGetStorageNode(address, in path, hash, out TrieNode? node)
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
+        for (int i = _initialSnapshots.Count - 1; i >= 0; i--)
+        {
+            if (_initialSnapshots[i].TryGetStorageNode(key, out TrieNode? snapshotNode))
+                return ValidateNode(snapshotNode, address, in path, hash);
+        }
+
+        if (!_readOnlySnapshotBundle.TryFindStorageNodes(key, out TrieNode? node)
+            && !_transientResource.TryGetStorageNode(address, in path, hash, out node)
             && !_trieNodeCache.TryGet(address, in path, hash, out node))
         {
-            if (!_readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node))
-            {
-                node = CreateUnknownNode(hash);
-            }
-
-            node = _transientResource.GetOrAddStorageNode(address, in path, node);
+            node = _transientResource.GetOrAddStorageNode(address, in path, new TrieNode(NodeType.Unknown, hash));
         }
 
         return ValidateNode(node, address, in path, hash);
-    }
-
-    private static TrieNode CreateUnknownNode(Hash256 hash)
-    {
-        TrieNode node = new(NodeType.Unknown, hash);
-        node.MarkWarmerOwned();
-        return node;
     }
 
     private static TrieNode ValidateNode(TrieNode node, Hash256? address, in TreePath path, Hash256 hash) =>
@@ -191,6 +205,7 @@ internal sealed class FlatTrieWarmupSession :
         }
         finally
         {
+            _initialSnapshots.Dispose();
             _readOnlySnapshotBundle.Dispose();
         }
     }
