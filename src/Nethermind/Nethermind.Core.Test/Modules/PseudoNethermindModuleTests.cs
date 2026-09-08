@@ -86,22 +86,6 @@ public class PseudoNethermindModuleTests
     }
 
     [Test]
-    public void Explicit_backend_selection_is_preserved([Values] bool enabled)
-    {
-        FlatDbConfig flatDbConfig = new() { Enabled = enabled };
-
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(flatDbConfig))
-            .Build();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
-            Assert.That(flatDbConfig.Enabled, Is.EqualTo(enabled));
-        }
-    }
-
-    [Test]
     public void FlatDb_test_container_wires_inert_persisted_snapshot_tier()
     {
         using IContainer container = new ContainerBuilder()

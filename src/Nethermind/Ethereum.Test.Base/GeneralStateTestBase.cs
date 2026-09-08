@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -77,16 +76,17 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            // Flat by default; TEST_USE_TRIE=1 selects patricia, matching the generic test harness.
+            // Patricia by default (the production default); opt into the flat state layout with
+            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-            flatDbConfig.Enabled = TestBlockchain.UseFlatDbByDefault;
+            flatDbConfig.Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
             // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
             // run, and a fire-and-forget background convert from one test can race another test's files. Long
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
             flatDbConfig.EnableLongFinality = false;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             using IContainer container = new ContainerBuilder()
-                .AddModule(new TestNethermindModule(configProvider, preserveFlatDbConfig: true))
+                .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)

@@ -116,7 +116,7 @@ public abstract class StateSyncFeedTestsBase(
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
                 FastSync = true
-            }, new FlatDbConfig { Enabled = false }), preserveFlatDbConfig: true))
+            }, new FlatDbConfig { Enabled = false })))
             .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
             {
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout

@@ -23,7 +23,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -75,10 +74,10 @@ public abstract class BlockchainTestBase
     protected virtual ILogManager? ComponentLogManagerOverride => null;
 
     /// <summary>
-    /// Whether to run under the flat state layout. Defaults to flat; set <c>TEST_USE_TRIE=1</c> to select
-    /// patricia, mirroring <see cref="TestBlockchain.UseFlatDbByDefault"/>.
+    /// Whether to run under the flat state layout instead of patricia (the production default).
+    /// Driven by the <c>TEST_USE_FLAT=1</c> environment variable, mirroring TestBlockchain.UseFlatDb.
     /// </summary>
-    protected static bool UseFlatDb => TestBlockchain.UseFlatDbByDefault;
+    protected static bool UseFlatDb => Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
@@ -128,7 +127,8 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // Flat by default; TEST_USE_TRIE=1 selects patricia, matching the generic test harness.
+        // Patricia by default (the production default); opt into the flat state layout with
+        // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
         flatDbConfig.Enabled = UseFlatDb;
         // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
@@ -156,7 +156,7 @@ public abstract class BlockchainTestBase
         ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider, preserveFlatDbConfig: true))
+            .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(componentLogManager)
             .AddSingleton(rewardCalculator)

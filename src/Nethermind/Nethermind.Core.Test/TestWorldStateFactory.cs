@@ -71,7 +71,7 @@ public static class TestWorldStateFactory
         ConfigProvider configProvider = new();
         configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
         return new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider, preserveFlatDbConfig: true))
+            .AddModule(new TestNethermindModule(configProvider))
             .Build();
     }
 
