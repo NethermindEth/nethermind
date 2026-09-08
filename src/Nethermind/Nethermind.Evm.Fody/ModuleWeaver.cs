@@ -80,9 +80,9 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 MethodDefinition target = Resolve(reference);
                 if (instruction.OpCode == OpCodes.Ldftn)
                 {
-                    if (!expected.Contains(target))
+                    if (expected.Contains(target)) actual.Add(target);
+                    else if (target.Name is "ExecuteOpcode" or "ExecuteJumpIfOpcode")
                         throw new WeavingException($"Opcode table still references unnamed handler {target.Name}.");
-                    actual.Add(target);
                 }
                 else
                 {

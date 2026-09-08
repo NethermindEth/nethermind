@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Fody;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -28,7 +29,7 @@ internal sealed class MethodCloner(MethodDefinition source)
         foreach (ParameterDefinition parameter in source.Parameters)
             _target.Parameters.Add(new ParameterDefinition(parameter.Name, parameter.Attributes, MapType(parameter.ParameterType)));
         foreach (CustomAttribute attribute in source.CustomAttributes)
-            _target.CustomAttributes.Add(new CustomAttribute(attribute.Constructor, attribute.GetBlob()));
+            _target.CustomAttributes.Add(CloneAttribute(attribute));
 
         MethodBody body = _target.Body;
         body.InitLocals = source.Body.InitLocals;
@@ -70,11 +71,19 @@ internal sealed class MethodCloner(MethodDefinition source)
                 HandlerEnd = handler.HandlerEnd is null ? null : instructions[handler.HandlerEnd],
                 FilterStart = handler.FilterStart is null ? null : instructions[handler.FilterStart]
             });
+        // Instructions an earlier weaver inserted still carry offset zero, so recompute before keying on offsets.
+        int offset = 0;
         Dictionary<int, Instruction> byOffset = [];
-        foreach (Instruction instruction in source.Body.Instructions) byOffset[instruction.Offset] = instructions[instruction];
+        foreach (Instruction instruction in source.Body.Instructions)
+        {
+            instruction.Offset = offset;
+            byOffset.Add(offset, instructions[instruction]);
+            offset += instruction.GetSize();
+        }
         foreach (SequencePoint point in source.DebugInformation.SequencePoints)
         {
-            if (!byOffset.TryGetValue(point.Offset, out Instruction? instruction)) continue;
+            if (!byOffset.TryGetValue(point.Offset, out Instruction? instruction))
+                throw new WeavingException($"Sequence point at IL_{point.Offset:x4} in {source.FullName} is not an instruction.");
             _target.DebugInformation.SequencePoints.Add(new SequencePoint(instruction, point.Document)
             {
                 StartLine = point.StartLine,
@@ -100,8 +109,24 @@ internal sealed class MethodCloner(MethodDefinition source)
         return copy;
 
         // A scope end at the method's end has no instruction; Cecil represents it as an unresolved offset.
-        Instruction? MapOffset(InstructionOffset offset) =>
-            offset.IsEndOfMethod ? null : byOffset[offset.Offset];
+        Instruction? MapOffset(InstructionOffset offset)
+        {
+            if (offset.IsEndOfMethod) return null;
+            if (!byOffset.TryGetValue(offset.Offset, out Instruction? instruction))
+                throw new WeavingException($"Scope boundary at IL_{offset.Offset:x4} in {source.FullName} is not an instruction.");
+            return instruction;
+        }
+    }
+
+    /// <summary>Copies an attribute read from the image by blob; one another weaver built in memory has no blob, so copy its arguments.</summary>
+    private static CustomAttribute CloneAttribute(CustomAttribute attribute)
+    {
+        if (!attribute.IsResolved) return new CustomAttribute(attribute.Constructor, attribute.GetBlob());
+        CustomAttribute copy = new(attribute.Constructor);
+        foreach (CustomAttributeArgument argument in attribute.ConstructorArguments) copy.ConstructorArguments.Add(argument);
+        foreach (CustomAttributeNamedArgument field in attribute.Fields) copy.Fields.Add(field);
+        foreach (CustomAttributeNamedArgument property in attribute.Properties) copy.Properties.Add(property);
+        return copy;
     }
 
     private static Instruction[] MapBranches(Instruction[] branches, Dictionary<Instruction, Instruction> instructions)
