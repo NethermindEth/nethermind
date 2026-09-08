@@ -23,6 +23,8 @@ public class FlatTreeSyncStore(
 {
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
+    private readonly object _syncGate = new();
+    private bool _syncBegun;
 
     internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
 
@@ -40,8 +42,22 @@ public class FlatTreeSyncStore(
         return computedHash == hash;
     }
 
+    private void EnsureStateSyncBegun()
+    {
+        if (Volatile.Read(ref _syncBegun)) return;
+
+        lock (_syncGate)
+        {
+            if (_syncBegun) return;
+
+            persistenceManager.BeginStateSync();
+            Volatile.Write(ref _syncBegun, true);
+        }
+    }
+
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
     {
+        EnsureStateSyncBegun();
         if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
@@ -228,6 +244,7 @@ public class FlatTreeSyncStore(
 
     public void EnsureStorageEmpty(Hash256 address)
     {
+        EnsureStateSyncBegun();
         // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
         // because the trie is always traversed from the account's storage root hash — when the
         // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
@@ -264,7 +281,7 @@ public class FlatTreeSyncStore(
         {
             // Empty batch - just incrementing state
         }
-        persistenceManager.ResetPersistedStateId();
+        persistenceManager.EndStateSync();
         persistence.Flush();
     }
 

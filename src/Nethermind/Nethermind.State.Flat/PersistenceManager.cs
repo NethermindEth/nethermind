@@ -58,6 +58,7 @@ public class PersistenceManager(
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
+    private bool _stateSyncWriting;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -455,16 +456,58 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
-    public void RunMaintenance(Action<IPersistence.IWriteBatch> work, CancellationToken cancellationToken)
+    public bool RunMaintenance(Action<IPersistence.IWriteBatch> work, CancellationToken cancellationToken)
     {
         _persistenceLock.Wait(cancellationToken);
         try
         {
-            StateId current;
-            using (IPersistence.IPersistenceReader reader = persistence.CreateReader()) current = reader.CurrentState;
-            StateId unchanged = current == StateId.PreGenesis ? StateId.Sync : current;
-            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(unchanged, unchanged);
+            if (_stateSyncWriting) return false;
+
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
             work(batch);
+            return true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    public void BeginStateSync()
+    {
+        _persistenceLock.Wait();
+        try
+        {
+            _stateSyncWriting = true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    public void ClearForStateSync()
+    {
+        _persistenceLock.Wait();
+        try
+        {
+            _stateSyncWriting = true;
+            persistence.Clear();
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    public void EndStateSync()
+    {
+        _persistenceLock.Wait();
+        try
+        {
+            using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+            CurrentPersistedStateId = reader.CurrentState;
+            _stateSyncWriting = false;
         }
         finally
         {

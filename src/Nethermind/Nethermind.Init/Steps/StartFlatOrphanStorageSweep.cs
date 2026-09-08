@@ -30,7 +30,7 @@ public class StartFlatOrphanStorageSweep(
         {
             if (!sweep.Value.AlreadyHandled)
             {
-                sweep.Value.MarkLayoutUnsupported();
+                sweep.Value.MarkUnsupported();
                 if (_logger.IsInfo) _logger.Info($"Flat orphan storage sweep does not support the {config.Layout} layout; recorded and skipped.");
             }
 

@@ -11,7 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using NSubstitute;
+using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -76,7 +76,7 @@ public class OrphanStorageRowSweepTests
     [Test]
     public void Rows_whose_account_had_no_storage_at_their_block_are_deleted_and_the_rest_stay()
     {
-        using OrphanStorageRowSweep sweep = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
 
         OrphanStorageRowReport? announced = null;
         sweep.Completed += completed => announced = completed;
@@ -104,7 +104,7 @@ public class OrphanStorageRowSweepTests
     [Test]
     public void A_check_counts_without_deleting_or_stamping()
     {
-        using OrphanStorageRowSweep sweep = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
 
         OrphanStorageRowReport report = sweep.RunToCompletion(repair: false, CancellationToken.None);
 
@@ -117,11 +117,11 @@ public class OrphanStorageRowSweepTests
     }
 
     [Test]
-    public void A_pass_that_runs_out_of_budget_yields_at_a_prefix_boundary_and_resumes_from_its_cursor()
+    public void A_pass_that_runs_out_of_budget_yields_inside_a_bucket_and_resumes_from_the_row_it_stopped_at()
     {
-        using OrphanStorageRowSweep sweep = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
 
-        bool completed = sweep.RunOnePass(repair: true, maxRows: 1, TimeSpan.MaxValue, CancellationToken.None);
+        bool completed = sweep.RunOnePass(repair: true, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
         bool handledAfterOnePass = sweep.AlreadyHandled;
         OrphanStorageRowReport report = sweep.RunToCompletion(repair: true, CancellationToken.None);
 
@@ -139,12 +139,12 @@ public class OrphanStorageRowSweepTests
     [Test]
     public void A_sweep_finished_by_a_later_instance_announces_the_whole_sweep()
     {
-        using (OrphanStorageRowSweep first = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance))
+        using (OrphanStorageRowSweep first = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance))
         {
-            first.RunOnePass(repair: true, maxRows: 1, TimeSpan.MaxValue, CancellationToken.None);
+            first.RunOnePass(repair: true, maxUnits: 1, TimeSpan.MaxValue, CancellationToken.None);
         }
 
-        using OrphanStorageRowSweep resumed = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep resumed = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
         OrphanStorageRowReport? announced = null;
         resumed.Completed += completed => announced = completed;
 
@@ -155,15 +155,15 @@ public class OrphanStorageRowSweepTests
     }
 
     [Test]
-    public void A_progress_record_left_at_cursor_zero_is_resumed_with_its_tally_not_restarted()
+    public void A_progress_record_left_at_the_start_of_the_key_space_is_resumed_with_its_tally_not_restarted()
     {
-        Span<byte> record = stackalloc byte[sizeof(uint) + 3 * sizeof(long)];
-        BinaryPrimitives.WriteUInt32BigEndian(record, 0);
-        BinaryPrimitives.WriteInt64BigEndian(record[sizeof(uint)..], 3);
-        BinaryPrimitives.WriteInt64BigEndian(record[(sizeof(uint) + sizeof(long))..], 2);
-        BinaryPrimitives.WriteInt64BigEndian(record[(sizeof(uint) + 2 * sizeof(long))..], 1);
+        Span<byte> record = stackalloc byte[1 + 3 * sizeof(long)];
+        record[0] = 0;
+        BinaryPrimitives.WriteInt64BigEndian(record[1..], 3);
+        BinaryPrimitives.WriteInt64BigEndian(record[(1 + sizeof(long))..], 2);
+        BinaryPrimitives.WriteInt64BigEndian(record[(1 + 2 * sizeof(long))..], 1);
         _flat.GetColumnDb(FlatDbColumns.Metadata).PutSpan(Keccak.Compute("OrphanStorageRowsSweepProgress").Bytes, record);
-        using OrphanStorageRowSweep resumed = new(_history, _flat, Substitute.For<IPersistenceManager>(), _rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep resumed = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
         OrphanStorageRowReport? announced = null;
         resumed.Completed += completed => announced = completed;
 
@@ -178,18 +178,86 @@ public class OrphanStorageRowSweepTests
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> windowed = new();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(windowed, new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 128 });
-        using OrphanStorageRowSweep sweep = new(windowed, _flat, Substitute.For<IPersistenceManager>(), rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep sweep = new(windowed, _flat, _availability, rowFormat, new SweepPacer(), LimboLogs.Instance);
 
         bool handledBefore = sweep.AlreadyHandled;
-        sweep.MarkFormatUnsupported();
+        sweep.MarkUnsupported();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sweep.Supported, Is.False, "windowed rows are pre-values, a different contract from the post-value rows this sweep judges");
             Assert.That(handledBefore, Is.False);
             Assert.That(sweep.AlreadyHandled, Is.True, "recorded once so the decision is not re-logged on every start");
-            Assert.That(() => sweep.RunOnePass(repair: true, maxRows: long.MaxValue, TimeSpan.MaxValue, CancellationToken.None), Throws.InvalidOperationException);
+            Assert.That(() => sweep.RunOnePass(repair: true, maxUnits: long.MaxValue, TimeSpan.MaxValue, CancellationToken.None), Throws.InvalidOperationException);
         }
+    }
+
+    [Test]
+    public void A_subscriber_that_arrives_after_completion_receives_the_latched_report()
+    {
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+        OrphanStorageRowReport completed = sweep.RunToCompletion(repair: true, CancellationToken.None);
+
+        OrphanStorageRowReport? late = null;
+        sweep.Completed += report => late = report;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(late, Is.EqualTo(completed), "init steps run concurrently and a small history completes in milliseconds, so a consumer subscribing after the fact must still get the report");
+            Assert.That(sweep.TryGetCompletedReport(out OrphanStorageRowReport polled), Is.True);
+            Assert.That(polled, Is.EqualTo(completed));
+        }
+    }
+
+    [Test]
+    public void A_fresh_flat_state_whose_history_still_holds_rows_is_not_stamped_without_a_scan()
+    {
+        _availability.PublishWatermark(20, _rowFormat.FormatVersion);
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+
+        Assert.That(sweep.TryStampFresh(), Is.False, "freshness is judged from the database the rows live in: a flat state without a persisted block says nothing about a history that already has rows to judge");
+    }
+
+    [Test]
+    public void A_database_with_neither_a_persisted_state_nor_a_watermark_is_stamped_without_a_scan()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> empty = new();
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(empty, new FlatDbConfig { HistoryEnabled = true });
+        using OrphanStorageRowSweep sweep = new(empty, _flat, availability, rowFormat, new SweepPacer(), LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sweep.TryStampFresh(), Is.True);
+            Assert.That(sweep.AlreadyHandled, Is.True);
+        }
+    }
+
+    [Test]
+    public void A_history_with_a_published_global_floor_is_unsupported()
+    {
+        _availability.PublishWatermark(20, _rowFormat.FormatVersion);
+        _availability.PublishGlobalFloor(5);
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+
+        Assert.That(sweep.Supported, Is.False, "below a floor the absence of an account row means pruned, not absent; the deletion is irreversible, so the premise is checked rather than assumed");
+    }
+
+    [Test]
+    public void A_started_sweep_waits_for_the_drain_then_sweeps_in_the_background_and_announces()
+    {
+        IPersistence flatPersistence = new RocksDbPersistence(_flat, LimboLogs.Instance);
+        using (flatPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.EmptyTreeHash)))
+        {
+        }
+
+        using OrphanStorageRowSweep sweep = new(_history, _flat, _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+        OrphanStorageRowReport? announced = null;
+        sweep.Completed += report => announced = report;
+
+        sweep.Start(repair: true, drainedAtBlock: 1);
+
+        Assert.That(() => sweep.AlreadyHandled, Is.True.After(10_000, 50), "the background thread drains, sweeps, announces and stamps on its own");
+        Assert.That(announced, Is.EqualTo(new OrphanStorageRowReport(RowsScanned: 11, OrphanRows: 5, OrphanAccounts: 4)));
     }
 
     private int RowCount(Address address, UInt256 slot)

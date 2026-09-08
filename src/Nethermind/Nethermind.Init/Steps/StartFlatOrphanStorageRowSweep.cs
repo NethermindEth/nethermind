@@ -30,8 +30,8 @@ public class StartFlatOrphanStorageRowSweep(
         {
             if (!sweep.Value.AlreadyHandled)
             {
-                sweep.Value.MarkFormatUnsupported();
-                if (_logger.IsInfo) _logger.Info("Flat history orphan storage row sweep skipped and recorded: this history is windowed, and the windowed format stores pre-values, which do not carry the same-block create-and-destroy defect; the live slots it falls through to are covered by the flat state sweep.");
+                sweep.Value.MarkUnsupported();
+                if (_logger.IsInfo) _logger.Info("Flat history orphan storage row sweep skipped and recorded: this history is windowed or carries a published floor, and the sweep's judgement is only sound over post-value rows captured contiguously from genesis; the live slots are covered by the flat state sweep.");
             }
 
             return Task.CompletedTask;

@@ -127,6 +127,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return new CarryForwardCachingPersistence(cachedReader);
             })
+            .AddSingleton<SweepPacer>()
             .AddSingleton<OrphanStorageSweep>()
             .AddStep(typeof(StartFlatOrphanStorageSweep));
 
