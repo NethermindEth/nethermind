@@ -102,8 +102,8 @@ public class ReceiptMessageDecoder69Tests
             static decoded => Assert.That(decoded.Logs, Has.Length.EqualTo(1)));
     }
 
-    /// <summary>Decodes <paramref name="receipt"/> with the list header <paramref name="headerIndex"/> locates
-    /// left canonical, or under-declared by one byte.</summary>
+    /// <summary>Asserts that the receipt decodes when the list header <paramref name="headerIndex"/> locates
+    /// is canonical, and that it is rejected when that header under-declares its content by one byte.</summary>
     private static void AssertHeaderMustMatchItsContent(
         TxReceipt receipt, Func<byte[], int> headerIndex, bool underDeclare, Action<TxReceipt> assertDecoded)
     {
