@@ -16,10 +16,12 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
+using Nethermind.History;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -107,6 +109,29 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 Assert.That(activation, Is.EqualTo(new ForkActivation(pivot.Number, pivot.Timestamp)));
                 Assert.That(levels.LoadLevel(pivot.Number), Is.Null);
             }
+        }
+
+        [Test]
+        public async Task Start_block_processor_creates_history_pruner_before_the_processing_loop_starts()
+        {
+            List<string> order = [];
+            IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
+            processor.When(p => p.Start()).Do(_ => order.Add("start"));
+            IMainProcessingContext processingContext = Substitute.For<IMainProcessingContext>();
+            processingContext.BlockchainProcessor.Returns(processor);
+            using IContainer container = new ContainerBuilder()
+                .AddSingleton(processingContext)
+                .AddSingleton<IHistoryPruner>(_ =>
+                {
+                    order.Add("pruner");
+                    return Substitute.For<IHistoryPruner>();
+                })
+                .AddSingleton<StartBlockProcessor>()
+                .Build();
+
+            await container.Resolve<StartBlockProcessor>().Execute(CancellationToken.None);
+
+            Assert.That(order, Is.EqualTo(new[] { "pruner", "start" }));
         }
 
         private static IContainer CreateWarmupEnvironment(SyncConfig syncConfig, ulong now) => new ContainerBuilder()

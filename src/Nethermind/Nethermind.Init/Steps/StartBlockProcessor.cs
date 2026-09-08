@@ -5,14 +5,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Processing;
+using Nethermind.History;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockchain))]
-    public class StartBlockProcessor(IMainProcessingContext mainProcessingContext) : IStep
+    public class StartBlockProcessor(IMainProcessingContext mainProcessingContext, IHistoryPruner historyPruner) : IStep
     {
-        public Task Execute(CancellationToken _)
+        public Task Execute(CancellationToken cancellationToken)
         {
+            // The pruner subscribes to ProcessingQueueEmpty, which Start() raises once; created any later, an idle node never prunes.
+            _ = historyPruner;
             mainProcessingContext.BlockchainProcessor.Start();
             return Task.CompletedTask;
         }
