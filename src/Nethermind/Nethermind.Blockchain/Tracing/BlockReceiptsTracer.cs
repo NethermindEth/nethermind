@@ -321,7 +321,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _currentIndex = 0;
         CurrentTx = null;
         _currentTxTracer = NullTxTracer.Instance;
-        int txCount = block.Transactions.Length;
+        // A parallel worker tracer records exactly one transaction, so presizing it to the block's
+        // transaction count would make a pool of one tracer per transaction reserve O(txCount^2).
+        int txCount = parallel ? 1 : block.Transactions.Length;
         _txReceipts.Clear();
         _txReceipts.EnsureCapacity(txCount);
         _cumulativeBlockGasPerTx.Clear();

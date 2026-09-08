@@ -266,15 +266,27 @@ public partial class BlockProcessor
             // GasValidationResultSlot instances already pooled in slots [0, currentLength);
             // freshly allocated arrays would force re-instantiation of every slot every block.
             int newLength = Math.Max(length, currentLength == 0 ? 4 : currentLength * 2);
-            Array.Resize(ref _receiptsTracerPool, newLength);
-            Array.Resize(ref _gasResultPool, newLength);
-            Array.Resize(ref _txExecutionOrder, newLength);
-            Array.Resize(ref _txExecutionSortKeys, newLength);
+            BlockReceiptsTracer[] receiptsTracerPool = _receiptsTracerPool;
+            GasValidationResultSlot[] gasResultPool = _gasResultPool;
+            int[] txExecutionOrder = _txExecutionOrder;
+            TxExecutionSortKey[] txExecutionSortKeys = _txExecutionSortKeys;
+            Array.Resize(ref receiptsTracerPool, newLength);
+            Array.Resize(ref gasResultPool, newLength);
+            Array.Resize(ref txExecutionOrder, newLength);
+            Array.Resize(ref txExecutionSortKeys, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
-                _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
-                _gasResultPool[i] = new GasValidationResultSlot();
+                receiptsTracerPool[i] = new BlockReceiptsTracer(true);
+                gasResultPool[i] = new GasValidationResultSlot();
             }
+
+            // Grow into locals and publish only once every buffer is sized and every new slot is
+            // populated; the guard above reads _receiptsTracerPool.Length, so a pool left half built
+            // by a failure part way through would be reused as if it were complete.
+            _receiptsTracerPool = receiptsTracerPool;
+            _gasResultPool = gasResultPool;
+            _txExecutionOrder = txExecutionOrder;
+            _txExecutionSortKeys = txExecutionSortKeys;
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
