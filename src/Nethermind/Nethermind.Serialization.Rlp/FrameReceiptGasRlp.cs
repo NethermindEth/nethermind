@@ -29,4 +29,8 @@ internal static class FrameReceiptGasRlp
             state = 0;
         }
     }
+
+    /// <summary>Returns the content length of a frame receipt's <c>gas_used</c> list.</summary>
+    public static int GetGasUsedContentLength(ulong execution, ulong state) =>
+        Rlp.LengthOf(execution) + Rlp.LengthOf(state);
 }
