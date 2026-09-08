@@ -121,7 +121,9 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 }
 
                 Recompute(state, changes, emitter, prefix.Length);
-                if (publisher.IsNew(state.RootHash.ValueHash256)) Publish(publisher, block, state, prefix.Length, store, emitter);
+                NodeView view = NodeViews.FromRoot(state.RootRef, prefix.Length, store);
+                if (publisher.IsNew(view.Hash)) publisher.Publish(block, view, emitter);
+                view.Release();
                 emitter?.CompleteBlock();
 
                 if (checkpoint is not null && block - lastCheckpoint >= checkpointBlocks)

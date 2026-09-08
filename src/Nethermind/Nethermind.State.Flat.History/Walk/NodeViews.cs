@@ -96,7 +96,16 @@ internal static class NodeViews
     private static NodeView AsBranch(ReadOnlySpan<byte> rlp, Hash256? knownHash)
     {
         ChildVector children = ChildVector.Rent();
-        BranchRlp.ReadChildren(rlp, children);
+        try
+        {
+            BranchRlp.ReadChildren(rlp, children);
+        }
+        catch
+        {
+            ChildVector.Return(children);
+            throw;
+        }
+
         return NodeView.Branch(children, rlp, knownHash);
     }
 

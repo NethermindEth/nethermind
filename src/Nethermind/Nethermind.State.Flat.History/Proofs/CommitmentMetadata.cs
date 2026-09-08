@@ -37,7 +37,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private readonly IDb _storageColumn = history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
     private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly object _lock = new();
-    private readonly object _reclaimLock = new();
+    private readonly SemaphoreSlim _reclaimTurn = new(1, 1);
     private readonly object _depthWriteLock = new();
     private readonly ClockCache<ValueHash256, int> _storageTrieDepths = new(StorageTrieDepthCacheEntries);
     private bool _layoutEnsured;
@@ -342,9 +342,10 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryGetWalkInProgress(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkRangeKey, out fromInclusive, out toInclusive);
 
-    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items)
+    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, CancellationToken token = default)
     {
-        lock (_reclaimLock)
+        _reclaimTurn.Wait(token);
+        try
         {
             lock (_lock)
             {
@@ -354,16 +355,25 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
                 WriteRange(WalkRangeKey, fromInclusive, toInclusive);
             }
         }
+        finally
+        {
+            _reclaimTurn.Release();
+        }
     }
 
-    public bool TryReclaimOutsideWalk(Action reclaim)
+    public bool TryReclaimOutsideWalk(Action reclaim, CancellationToken token = default)
     {
-        lock (_reclaimLock)
+        _reclaimTurn.Wait(token);
+        try
         {
             if (TryReadRange(WalkRangeKey, out _, out _)) return false;
 
             reclaim();
             return true;
+        }
+        finally
+        {
+            _reclaimTurn.Release();
         }
     }
 

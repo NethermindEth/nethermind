@@ -166,7 +166,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
             _accounts.RemoveEpoch(demoted, CommitmentKeyLayout.FineTier);
             _storages.RemoveEpoch(demoted, CommitmentKeyLayout.FineTier);
             metadata.TryAdvanceDemotedThroughEpoch(storedDemoted, demoted + 1);
-        });
+        }, token);
 
         if (!reclaimed && !_deferralLogged)
         {

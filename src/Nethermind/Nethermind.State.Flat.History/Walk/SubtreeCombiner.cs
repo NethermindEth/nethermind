@@ -28,47 +28,69 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
         using SeriesPublisher publisher = new(scope, parent, own, writer);
         using ChildSeries children = new(reader, keys, from, to, RowsPerCursor(BranchRlp.ChildCount), token);
         NodeView current = children.Combine();
-        emitter?.BeginBlock(from);
-        publisher.Publish(from, current, emitter);
-        emitter?.CompleteBlock();
-
-        observer?.OnAnchor(from, current);
-        bool observing = observer is not null && (!observer.ObservesEveryBlock || observer.OnBlock(from, current));
-        ulong observed = from;
-        while (children.TryAdvance(out ulong block))
+        try
         {
-            token.ThrowIfCancellationRequested();
+            emitter?.BeginBlock(from);
+            publisher.Publish(from, current, emitter);
+            emitter?.CompleteBlock();
+
+            observer?.OnAnchor(from, current);
+            bool observing = observer is not null && (!observer.ObservesEveryBlock || observer.OnBlock(from, current));
+            ulong observed = from;
+            ulong nextEpochStart = emitter is null ? ulong.MaxValue : emitter.Policy.EpochStart(emitter.Policy.Epoch(from) + 1);
+            while (children.TryAdvance(out ulong block))
+            {
+                token.ThrowIfCancellationRequested();
+                nextEpochStart = PublishEpochStarts(publisher, current, emitter, nextEpochStart, block, to);
+                if (observing && observer!.ObservesEveryBlock)
+                {
+                    for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer.OnBlock(quiet, current);
+                }
+
+                NodeView previous = current;
+                current = children.Combine();
+                bool moved = previous.Hash != current.Hash;
+                previous.Release();
+                emitter?.BeginBlock(block);
+                publisher.Publish(block, current, emitter);
+                emitter?.CompleteBlock();
+                if (observing)
+                {
+                    if (observer!.ObservesEveryBlock) observing = observer.OnBlock(block, current);
+                    else if (moved) observer.OnChanged(block, current);
+                }
+
+                observed = block;
+            }
+
+            PublishEpochStarts(publisher, current, emitter, nextEpochStart, ulong.MaxValue, to);
             if (observing && observer!.ObservesEveryBlock)
             {
-                for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer.OnBlock(quiet, current);
+                for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = observer.OnBlock(quiet, current);
             }
-
-            NodeView previous = current;
-            current = children.Combine();
-            bool moved = previous.Hash != current.Hash;
-            previous.Release();
-            emitter?.BeginBlock(block);
-            publisher.Publish(block, current, emitter);
-            emitter?.CompleteBlock();
-            if (observing)
-            {
-                if (observer!.ObservesEveryBlock) observing = observer.OnBlock(block, current);
-                else if (moved) observer.OnChanged(block, current);
-            }
-
-            observed = block;
         }
-
-        if (observing && observer!.ObservesEveryBlock)
+        finally
         {
-            for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = observer.OnBlock(quiet, current);
+            current.Release();
         }
 
-        current.Release();
         foreach (SeriesKey key in keys)
         {
             if (key.Scratch) writer.Delete(key);
         }
+    }
+
+    private static ulong PublishEpochStarts(SeriesPublisher publisher, in NodeView current, CommitmentEmitter? emitter, ulong nextEpochStart, ulong beforeBlock, ulong to)
+    {
+        while (emitter is not null && nextEpochStart <= to && nextEpochStart < beforeBlock)
+        {
+            emitter.BeginBlock(nextEpochStart);
+            publisher.Publish(nextEpochStart, current, emitter);
+            emitter.CompleteBlock();
+            nextEpochStart += emitter.Policy.EpochBlocks;
+        }
+
+        return nextEpochStart;
     }
 
     public void CombineRoot(
@@ -84,6 +106,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
         ChildSeries[] groups = new ChildSeries[BranchRlp.ChildCount];
         SeriesPublisher[] groupPublishers = new SeriesPublisher[BranchRlp.ChildCount];
         NodeView[] groupViews = new NodeView[BranchRlp.ChildCount];
+        NodeView current = default;
         try
         {
             for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
@@ -96,7 +119,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             }
 
             using SeriesPublisher rootPublisher = new(SeriesScope.Accounts, TreePath.Empty, key: null, writer);
-            NodeView current = NodeViews.Combine(groupViews);
+            current = NodeViews.Combine(groupViews);
             emitter?.BeginBlock(from);
             for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(from, groupViews[nibble], emitter);
             rootPublisher.Publish(from, current, emitter);
@@ -152,10 +175,10 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             }
 
             for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = root.OnBlock(quiet, current);
-            current.Release();
         }
         finally
         {
+            current.Release();
             foreach (ChildSeries? group in groups) group?.Dispose();
             foreach (SeriesPublisher? publisher in groupPublishers) publisher?.Dispose();
             foreach (NodeView view in groupViews) view.Release();

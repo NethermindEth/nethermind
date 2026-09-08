@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -1033,18 +1034,11 @@ public class ArchiveProofTests
         _policy = EpochPolicy;
         _recentEpochs = 2;
         _fineEpochs = 1;
-        for (ulong number = Blocks + 1; number <= 4 * EpochPolicy.EpochBlocks; number++)
-        {
-            ulong current = number;
-            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(5000 + current)));
-        }
-
-        _chain.PublishWatermark();
         ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
-        retrofit.PruneBelow(_chain.Head);
+        retrofit.PruneBelow(4 * EpochPolicy.EpochBlocks);
         using CancellationTokenSource stuck = new(TimeSpan.FromSeconds(20));
 
-        _reclaimer!.ReclaimNow(stuck.Token);
+        Assert.That(() => _reclaimer!.ReclaimNow(stuck.Token), Throws.Nothing, "the reclaimer must finish: a pass that compares the derived cursor never advances it and the loop spins until the token fires");
 
         using (Assert.EnterMultipleScope())
         {
@@ -1052,6 +1046,54 @@ public class ArchiveProofTests
             Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.LessThan(retrofit.Metadata.FineFromEpoch), "precondition: the two floors differ, so the demote branch runs on epochs the drop never reaches");
             Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.EqualTo(retrofit.Metadata.RetainedFromEpoch));
             Assert.That(retrofit.Metadata.DemotedThroughEpoch, Is.EqualTo(retrofit.Metadata.FineFromEpoch), "the demote cursor starts below the dropped floor, so the pass must compare against the stored cursor and write the derived target, or it never advances");
+        }
+    }
+
+    [Test]
+    public void A_walk_start_waiting_behind_a_reclaim_pass_is_cancellable()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using ManualResetEventSlim inside = new();
+        using ManualResetEventSlim hold = new();
+        Task reclaim = Task.Run(() => metadata.TryReclaimOutsideWalk(() =>
+        {
+            inside.Set();
+            hold.Wait();
+        }));
+        inside.Wait();
+        using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
+
+        Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
+
+        hold.Set();
+        reclaim.Wait();
+        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+    }
+
+    [Test]
+    public void A_series_publisher_deduplicates_on_the_hash_of_the_view_it_published()
+    {
+        using SeriesWriter writer = new(_historyColumns);
+        using SeriesPublisher publisher = new(SeriesScope.Accounts, TreePath.FromNibble([1, 2]), key: null, writer);
+        NodeView view = NodeView.Leaf([0x3, 0x4], [0xAA]);
+        NodeView other = NodeView.Leaf([0x3, 0x4], [0xBB]);
+        try
+        {
+            bool freshBefore = publisher.IsNew(view.Hash);
+            publisher.Publish(1, view, emitter: null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(freshBefore, Is.True);
+                Assert.That(publisher.IsNew(view.Hash), Is.False, "the guard compares against the hash of the view it published, the prefix-stripped node, not the whole tree's root");
+                Assert.That(publisher.IsNew(other.Hash), Is.True);
+            }
+        }
+        finally
+        {
+            view.Release();
+            other.Release();
         }
     }
 

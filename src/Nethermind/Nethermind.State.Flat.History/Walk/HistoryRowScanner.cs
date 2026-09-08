@@ -116,9 +116,8 @@ internal sealed class HistoryRowScanner(
             BinaryPrimitives.WriteUInt32BigEndian(lower, done + 1);
         }
 
-        byte[] end = new byte[StorageRowKeyLength + 1];
+        byte[] end = firstByte == byte.MaxValue ? new byte[StorageRowKeyLength + 1] : [(byte)(firstByte + 1)];
         if (firstByte == byte.MaxValue) end.AsSpan().Fill(0xFF);
-        else end[0] = (byte)(firstByte + 1);
 
         while (true)
         {

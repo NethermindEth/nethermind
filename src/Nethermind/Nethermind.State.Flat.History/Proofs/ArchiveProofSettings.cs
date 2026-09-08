@@ -20,6 +20,13 @@ public sealed class ArchiveProofSettings
         RecentEpochs = BuildEnabled && config.ArchiveProofRecentEpochs > 0 ? config.ArchiveProofRecentEpochs : 0;
         FineEpochs = BuildEnabled && config.ArchiveProofFineEpochs > 0 ? config.ArchiveProofFineEpochs : 0;
 
+        if (RecentEpochs > 0 && FineEpochs > RecentEpochs && logger.IsWarn)
+        {
+            logger.Warn(
+                $"FlatDb.ArchiveProofFineEpochs is {FineEpochs} but FlatDb.ArchiveProofRecentEpochs is {RecentEpochs}: per-block rows cannot outlive the served floor, " +
+                "so the fine floor follows the retained floor and the larger value has no effect.");
+        }
+
         if (!supported && (config.ArchiveProofBuildEnabled || config.ArchiveProofServeEnabled) && logger.IsWarn)
         {
             logger.Warn(

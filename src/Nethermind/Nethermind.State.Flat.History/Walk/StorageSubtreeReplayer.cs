@@ -215,9 +215,12 @@ internal sealed class StorageSubtreeReplayer(
 
         public void PublishChange(ulong block, CommitmentEmitter? emitter)
         {
-            ValueHash256 root = Tree!.RootHash.ValueHash256;
-            check?.OnRoot(block, root);
-            if (publisher is not null && publisher.IsNew(root)) PublishView(block, emitter);
+            check?.OnRoot(block, Tree!.RootHash.ValueHash256);
+            if (publisher is null) return;
+
+            NodeView view = NodeViews.FromRoot(Tree!.RootRef, slotPrefix.Length, _store!);
+            if (publisher.IsNew(view.Hash)) publisher.Publish(block, view, emitter);
+            view.Release();
         }
 
         public void Finish() => check?.End();

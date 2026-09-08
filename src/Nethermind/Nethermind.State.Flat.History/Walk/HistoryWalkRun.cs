@@ -99,7 +99,7 @@ internal sealed class HistoryWalkRun
             if (!resuming)
             {
                 scratch.DeleteAllScratch();
-                _metadata.BeginWalk(_from, _to, WorkItems);
+                _metadata.BeginWalk(_from, _to, WorkItems, _token);
             }
             else
             {
